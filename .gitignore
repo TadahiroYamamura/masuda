@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+venv/
+
+# Claude loop outputs (generated at runtime)
+TASK.md
+fizzbuzz.py
+test_fizzbuzz.py
+
+# Claude Code
+.claude.json
