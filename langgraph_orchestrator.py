@@ -24,9 +24,13 @@ from pydantic import BaseModel, Field
 from perspectives.config import PERSPECTIVES
 
 MAX_RETRIES = 2
-ABORT_THRESHOLD = 5       # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
+# 以下3つのしきい値は観点数（PERSPECTIVES）に応じた固定値。観点を追加・削除したら手動で見直すこと。
+# 現在は13観点構成: ABORT_THRESHOLD=8（約半数の観点がredoしたら異常とみなす早期警告）、
+# ITERATION_BUDGET=78（13観点 × 最大6回(review3回+check3回) = 現在のグラフ構造上の理論最大値。
+# redo_total等のロジックが正しく機能している限り発火しない、最終防衛ラインとしての保険）
+ABORT_THRESHOLD = 8       # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
 TOKEN_BUDGET = 500_000    # 1回のレビューで消費できるトークン数（review/check/synthesizeのLLM呼び出し合計）の上限
-ITERATION_BUDGET = 30     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
+ITERATION_BUDGET = 78     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
 
 # review/synthesizeは指摘の質が重要なため上位モデル、checkは合否判定という単純な分類タスクのため軽量モデルを使う
 REVIEW_MODEL = os.environ.get("REVIEW_MODEL", "claude-sonnet-5")
