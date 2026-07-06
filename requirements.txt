@@ -1,2 +1,5 @@
 langgraph
+langchain
+langchain-anthropic
+pydantic
 pytest

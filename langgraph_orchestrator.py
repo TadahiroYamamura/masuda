@@ -1,298 +1,294 @@
 """
-LangGraph orchestrator for AI PR review.
+LangGraph による PR レビューグラフ。
 
-ステートマシンのフェーズ:
-  review → check → review（次の観点）→ ... → synthesize → done
-                ↓ ok=false
-              redo → check（再実行）
+各観点について review_node → check_node を実行し、check の結果に応じて
+同じ観点をやり直す（redo）か、次の観点に進むかをグラフ内部の条件分岐エッジで判断する。
+全観点が終わったら synthesize_node で最終レポートを生成する。
 
-各フェーズで TASK.md を書き出して終了。TASK.md の指示自体はサブエージェントが実行する
-（レビューの推論もサブエージェント自身が行う。Anthropic/OpenAIの従量課金APIは使わず、
-Claude Codeのサブスクリプションの範囲内で完結させるための設計）。
-Main Claude がサブエージェント経由でタスクを実行後に本スクリプトを再度呼び出す。
+GitHub Actions上での非対話実行を前提とし、`.invoke()` 一発でレビュー全体を完走させる
+（Anthropicの従量課金APIを直接呼ぶ。サブエージェントへの委譲は行わない）。
 """
 
+import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from typing import TypedDict
 
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, StateGraph
+from pydantic import BaseModel, Field
 
 from perspectives.config import PERSPECTIVES
 
 MAX_RETRIES = 2
-ABORT_THRESHOLD = 5  # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
-ITERATION_BUDGET = 30  # detect_stepの累計呼び出し回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
-DEFAULT_PR = "pull-requests/0001.md"
-STATE_FILE = Path("review_results/review_state.json")
-TASK_FILE = Path("TASK.md")
+ABORT_THRESHOLD = 5       # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
+TOKEN_BUDGET = 500_000    # 1回のレビューで消費できるトークン数（review/check/synthesizeのLLM呼び出し合計）の上限
+ITERATION_BUDGET = 30     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
+
+# review/synthesizeは指摘の質が重要なため上位モデル、checkは合否判定という単純な分類タスクのため軽量モデルを使う
+REVIEW_MODEL = os.environ.get("REVIEW_MODEL", "claude-sonnet-5")
+CHECK_MODEL = os.environ.get("CHECK_MODEL", "claude-haiku-4-5-20251001")
 
 TOTAL = len(PERSPECTIVES)
 
 
-# ── State ─────────────────────────────────────────────────────────────────────
+# ── LLM呼び出し用スキーマ ──────────────────────────────────────────────────────
 
-class OrchestratorState(TypedDict):
-    action: str        # "review" | "redo" | "check" | "synthesize" | "done" | "abort"
-    idx: int           # 現在の観点インデックス（synthesize/done 時は -1。abort 時は中断契機となった観点）
-    pr_file: str
-
-
-# ── State file helpers ────────────────────────────────────────────────────────
-
-def _read_state() -> dict:
-    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+class Issue(BaseModel):
+    severity: str = Field(description="深刻度: 高/中/低")
+    location: str = Field(description="問題箇所（ファイル名・行番号など、不明な場合は 'PR全体'）")
+    description: str = Field(description="問題の説明")
+    suggestion: str = Field(description="修正の提案")
 
 
-def _write_state(s: dict) -> None:
-    STATE_FILE.write_text(json.dumps(s, ensure_ascii=False, indent=2), encoding="utf-8")
+class ReviewResult(BaseModel):
+    perspective_id: int
+    perspective_name: str
+    has_issues: bool
+    issues: list[Issue] = Field(default_factory=list)
+    summary: str = Field(description="レビュー結果の1〜2文の要約")
 
 
-def _init_state() -> dict:
-    return {
-        "pr_file": DEFAULT_PR,
-        "phase": "review",
-        "current_idx": 0,
-        "redo_counts": {},
-        "redo_total": 0,
-        "iteration_total": 0,
-    }
-
-
-# ── TASK.md templates ──────────────────────────────────────────────────────────
-# レビューの推論自体をサブエージェント自身に行わせる（従量課金APIを使わず、
-# Claude Codeのサブスクリプションの範囲内で完結させるため）。
-
-def _task_review(idx: int, pr_file: str, is_redo: bool = False) -> str:
-    p = PERSPECTIVES[idx]
-    prefix = "やり直し: " if is_redo else ""
-    redo_note = (
-        f"\nやり直しの場合、`review_results/check_{idx}.json` に前回レビューへのフィードバック"
-        "が記録されているので、それを確認し反映すること。\n"
-        if is_redo else ""
+class CheckResult(BaseModel):
+    perspective_id: int
+    ok: bool
+    feedback: str = Field(
+        default="",
+        description="ok=false の場合のフィードバック（見落とし・誤検知の具体的な説明）。ok=true の場合は空文字。",
     )
-    return f"""\
-# TASK: {prefix}PRレビュー — 観点 {idx + 1}/{TOTAL}: {p['name']}
-
-## 指示
-`{pr_file}` の内容を読み、以下の観点でレビューせよ。
-{redo_note}
-{p['review_prompt']}
-
-レビュー結果を次のJSON形式で `review_results/result_{idx}.json` に書き出せ（問題が無い場合は `has_issues: false`, `issues: []` とすること）:
-
-```json
-{{
-  "perspective_id": {idx},
-  "perspective_name": "{p['name']}",
-  "has_issues": true または false,
-  "issues": [
-    {{"severity": "高/中/低", "location": "問題箇所（ファイル名・行番号など）", "description": "問題の説明", "suggestion": "修正の提案"}}
-  ],
-  "summary": "レビュー結果の1〜2文の要約"
-}}
-```
-
-## 完了条件
-`review_results/result_{idx}.json` が存在すること
-"""
 
 
-def _task_check(idx: int, pr_file: str) -> str:
-    p = PERSPECTIVES[idx]
-    return f"""\
-# TASK: レビュー検証 — 観点 {idx + 1}/{TOTAL}: {p['name']}
-
-## 指示
-`{pr_file}` の内容と `review_results/result_{idx}.json` のレビュー結果を確認し、以下の観点で検証せよ。
-
-{p['checker_prompt']}
-
-検証結果を次のJSON形式で `review_results/check_{idx}.json` に書き出せ（ok=trueの場合、feedbackは空文字とすること）:
-
-```json
-{{"perspective_id": {idx}, "ok": true または false, "feedback": "ok=falseの場合、見落とし・誤検知の具体的な説明"}}
-```
-
-## 完了条件
-`review_results/check_{idx}.json` が存在すること
-"""
-
-
-def _task_synthesize(pr_file: str) -> str:
-    return f"""\
-# TASK: 最終レポート生成
-
-## 指示
-`{pr_file}` の内容と、`review_results/result_0.json` 〜 `review_results/result_{TOTAL - 1}.json`（存在するもののみ）の各観点のレビュー結果を確認し、複数の観点からのレビュー結果を統合した、開発者向けの最終レポートをMarkdown形式で作成せよ。
+SYNTHESIS_SYSTEM_PROMPT = """\
+あなたはPRレビューの最終レポートを作成するエージェントです。
+複数の観点からのレビュー結果を統合し、開発者向けの分かりやすいレポートをMarkdown形式で作成してください。
 
 レポートの構成:
 1. ## サマリー（問題の総数、深刻度の内訳、1〜2文の総評）
 2. ## 問題一覧（問題があった観点のみ。深刻度 高→低 の順）
 3. ## 問題なし（問題が検出されなかった観点の一覧）
 
-箇条書きを活用し、開発者がすぐに修正に着手できる具体的な記述にすること。
-
-作成したレポートを `review_results/final_report.md` に書き出せ。
-
-## 完了条件
-`review_results/final_report.md` が存在すること
+箇条書きを活用し、開発者がすぐに修正に着手できる具体的な記述にしてください。
 """
+
+
+def get_llm(model: str) -> ChatAnthropic:
+    return ChatAnthropic(model=model)
+
+
+# ── State ─────────────────────────────────────────────────────────────────────
+
+class ReviewState(TypedDict):
+    pr_content: str
+    idx: int
+    results: dict          # perspective_id(int) -> ReviewResult(dict)
+    checks: dict            # perspective_id(int) -> CheckResult(dict)
+    redo_counts: dict        # perspective_id(int) -> int
+    redo_total: int
+    iteration_total: int
+    token_total: int
+    status: str              # "in_progress" | "done" | "aborted"
+    abort_reason: dict | None
+    next_step: str
+
+
+def _abort_reason(state: ReviewState, idx: int) -> dict:
+    p = PERSPECTIVES[idx]
+    if state["redo_total"] >= ABORT_THRESHOLD:
+        return {
+            "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} のレビュー検証（check）フェーズ",
+            "reason": f"redo（差戻し）が累計{ABORT_THRESHOLD}回発生したため、無限ループ防止のため中断しました。",
+        }
+    if state["token_total"] >= TOKEN_BUDGET:
+        return {
+            "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} の処理中",
+            "reason": (
+                f"1回のレビューで消費したトークン数が上限（{TOKEN_BUDGET}トークン）に達したため中断しました"
+                f"（実測: {state['token_total']}トークン）。"
+            ),
+        }
+    return {
+        "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} の処理中",
+        "reason": (
+            f"ループの反復回数が上限（{ITERATION_BUDGET}回）に達したため、無限ループ防止のため中断しました"
+            f"（実測: {state['iteration_total']}回）。"
+        ),
+    }
+
+
+def _over_budget(state: ReviewState) -> bool:
+    return (
+        state["redo_total"] >= ABORT_THRESHOLD
+        or state["token_total"] >= TOKEN_BUDGET
+        or state["iteration_total"] > ITERATION_BUDGET
+    )
 
 
 # ── Nodes ─────────────────────────────────────────────────────────────────────
 
-def detect_step(state: OrchestratorState) -> OrchestratorState:
-    Path("review_results").mkdir(exist_ok=True)
-
-    if not STATE_FILE.exists():
-        s = _init_state()
-        s["iteration_total"] = 1
-        _write_state(s)
-        return {"action": "review", "idx": 0, "pr_file": s["pr_file"]}
-
-    s = _read_state()
-    s["iteration_total"] = s.get("iteration_total", 0) + 1
-    if s["iteration_total"] > ITERATION_BUDGET:
-        _write_state(s)
-        return {"action": "abort", "idx": s["current_idx"], "pr_file": s["pr_file"]}
-    _write_state(s)
-
-    phase = s["phase"]
-    idx = s["current_idx"]
-    pr_file = s["pr_file"]
-
-    # ── review フェーズ: result_N.json の生成を待つ ──────────────────────────
-    if phase == "review":
-        if not Path(f"review_results/result_{idx}.json").exists():
-            is_redo = s["redo_counts"].get(str(idx), 0) > 0
-            return {"action": "redo" if is_redo else "review", "idx": idx, "pr_file": pr_file}
-        # result が存在 → check フェーズへ遷移
-        s["phase"] = "check"
-        _write_state(s)
-        return {"action": "check", "idx": idx, "pr_file": pr_file}
-
-    # ── check フェーズ: check_N.json の生成を待つ ────────────────────────────
-    if phase == "check":
-        check_file = Path(f"review_results/check_{idx}.json")
-        if not check_file.exists():
-            return {"action": "check", "idx": idx, "pr_file": pr_file}
-
-        check_data = json.loads(check_file.read_text(encoding="utf-8"))
-
-        if check_data["ok"]:
-            return _advance(s, idx, pr_file)
-
-        redo_count = s["redo_counts"].get(str(idx), 0)
-        if redo_count < MAX_RETRIES:
-            redo_total = s.get("redo_total", 0) + 1
-            s["redo_total"] = redo_total
-            if redo_total >= ABORT_THRESHOLD:
-                _write_state(s)
-                return {"action": "abort", "idx": idx, "pr_file": pr_file}
-
-            # リドー: result を削除（check はサブエージェントがフィードバック参照用に使う）
-            Path(f"review_results/result_{idx}.json").unlink(missing_ok=True)
-            s["redo_counts"][str(idx)] = redo_count + 1
-            s["phase"] = "review"
-            _write_state(s)
-            return {"action": "redo", "idx": idx, "pr_file": pr_file}
-
-        # 最大リトライ超過 → スキップして次へ
-        print(f"[orchestrator] 観点 {idx} は最大リトライ回数を超えました。スキップします。", file=sys.stderr)
-        return _advance(s, idx, pr_file)
-
-    # ── synthesize フェーズ ───────────────────────────────────────────────────
-    if phase == "synthesize":
-        if not Path("review_results/final_report.md").exists():
-            return {"action": "synthesize", "idx": -1, "pr_file": pr_file}
-        s["phase"] = "done"
-        _write_state(s)
-        return {"action": "done", "idx": -1, "pr_file": pr_file}
-
-    return {"action": "done", "idx": -1, "pr_file": pr_file}
-
-
-def _advance(s: dict, idx: int, pr_file: str) -> OrchestratorState:
-    """現在の観点を完了し、次の観点または synthesize に遷移する。"""
-    next_idx = idx + 1
-    if next_idx >= TOTAL:
-        s["phase"] = "synthesize"
-        _write_state(s)
-        return {"action": "synthesize", "idx": -1, "pr_file": pr_file}
-    s["current_idx"] = next_idx
-    s["phase"] = "review"
-    _write_state(s)
-    return {"action": "review", "idx": next_idx, "pr_file": pr_file}
-
-
-def write_task_md(state: OrchestratorState) -> OrchestratorState:
-    action = state["action"]
+def review_node(state: ReviewState) -> ReviewState:
     idx = state["idx"]
-    pr_file = state["pr_file"]
+    p = PERSPECTIVES[idx]
 
-    if action in ("done", "abort"):
-        TASK_FILE.unlink(missing_ok=True)
-        return state
+    feedback_section = ""
+    prev_check = state["checks"].get(idx)
+    if prev_check and not prev_check["ok"] and prev_check.get("feedback"):
+        feedback_section = f"\n\n## 前回レビューへのフィードバック（要反映）\n{prev_check['feedback']}"
 
-    match action:
-        case "review":
-            content = _task_review(idx, pr_file)
-        case "redo":
-            content = _task_review(idx, pr_file, is_redo=True)
-        case "check":
-            content = _task_check(idx, pr_file)
-        case _:  # synthesize
-            content = _task_synthesize(pr_file)
+    structured_llm = get_llm(REVIEW_MODEL).with_structured_output(ReviewResult, include_raw=True)
+    messages = [
+        SystemMessage(content=p["review_prompt"] + feedback_section),
+        HumanMessage(content=f"## PR内容\n\n{state['pr_content']}"),
+    ]
+    raw = structured_llm.invoke(messages)
+    result: ReviewResult = raw["parsed"]
+    result.perspective_id = idx
+    result.perspective_name = p["name"]
 
-    TASK_FILE.write_text(content, encoding="utf-8")
-    print(f"[orchestrator] TASK.md written (action={action}, idx={idx})", file=sys.stderr)
+    state["token_total"] += (raw["raw"].usage_metadata or {}).get("total_tokens", 0)
+    state["iteration_total"] += 1
+
+    results = dict(state["results"])
+    results[idx] = result.model_dump()
+    state["results"] = results
+
+    Path("review_results").mkdir(exist_ok=True)
+    Path(f"review_results/result_{idx}.json").write_text(
+        result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    if _over_budget(state):
+        state["status"] = "aborted"
+        state["abort_reason"] = _abort_reason(state, idx)
+        state["next_step"] = "abort"
+    else:
+        state["next_step"] = "check"
     return state
 
 
-def _execution_directive(action: str) -> dict:
-    return {"run": "claude", "agent": "general-purpose", "context": "new"}
-
-
-def _abort_reason(idx: int) -> dict:
-    s = _read_state()
-    if s.get("iteration_total", 0) > ITERATION_BUDGET:
-        step = f"観点 {idx + 1}/{TOTAL}: {PERSPECTIVES[idx]['name']} の処理中" if 0 <= idx < TOTAL else "レビュー全体"
-        return {
-            "step": step,
-            "reason": (
-                f"ループの反復回数が上限（{ITERATION_BUDGET}回）に達したため、無限ループ防止のため中断しました"
-                f"（実測: {s['iteration_total']}回）。"
-            ),
-        }
+def check_node(state: ReviewState) -> ReviewState:
+    idx = state["idx"]
     p = PERSPECTIVES[idx]
-    return {
-        "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} のレビュー検証（check）フェーズ",
-        "reason": f"redo（差戻し）が累計{ABORT_THRESHOLD}回発生したため、無限ループ防止のため中断しました。",
-    }
+    result = state["results"][idx]
+
+    structured_llm = get_llm(CHECK_MODEL).with_structured_output(CheckResult, include_raw=True)
+    messages = [
+        SystemMessage(content=p["checker_prompt"]),
+        HumanMessage(
+            content=(
+                f"## PR内容\n\n{state['pr_content']}\n\n"
+                f"## レビュー結果\n\n```json\n{json.dumps(result, ensure_ascii=False, indent=2)}\n```"
+            )
+        ),
+    ]
+    raw = structured_llm.invoke(messages)
+    check_result: CheckResult = raw["parsed"]
+    check_result.perspective_id = idx
+
+    state["token_total"] += (raw["raw"].usage_metadata or {}).get("total_tokens", 0)
+    state["iteration_total"] += 1
+
+    checks = dict(state["checks"])
+    checks[idx] = check_result.model_dump()
+    state["checks"] = checks
+
+    Path(f"review_results/check_{idx}.json").write_text(
+        check_result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    if _over_budget(state):
+        state["status"] = "aborted"
+        state["abort_reason"] = _abort_reason(state, idx)
+        state["next_step"] = "abort"
+        return state
+
+    if check_result.ok:
+        next_idx = idx + 1
+        state["idx"] = next_idx
+        state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
+        return state
+
+    redo_count = state["redo_counts"].get(idx, 0)
+    if redo_count < MAX_RETRIES:
+        state["redo_counts"] = {**state["redo_counts"], idx: redo_count + 1}
+        state["redo_total"] += 1
+        state["next_step"] = "review"  # 同じ観点をやり直す（idxは変えない）
+        return state
+
+    print(f"[review-graph] 観点 {idx} は最大リトライ回数を超えました。スキップします。", file=sys.stderr)
+    next_idx = idx + 1
+    state["idx"] = next_idx
+    state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
+    return state
+
+
+def synthesize_node(state: ReviewState) -> ReviewState:
+    results_json = json.dumps(
+        [state["results"][i] for i in sorted(state["results"])], ensure_ascii=False, indent=2
+    )
+    messages = [
+        SystemMessage(content=SYNTHESIS_SYSTEM_PROMPT),
+        HumanMessage(
+            content=(
+                f"## PR内容\n\n{state['pr_content']}\n\n"
+                f"## 各観点のレビュー結果\n\n```json\n{results_json}\n```"
+            )
+        ),
+    ]
+    response = get_llm(REVIEW_MODEL).invoke(messages)
+    state["token_total"] += (response.usage_metadata or {}).get("total_tokens", 0)
+
+    Path("review_results/final_report.md").write_text(response.content, encoding="utf-8")
+    state["status"] = "done"
+    return state
 
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
 
 def build_graph():
-    g = StateGraph(OrchestratorState)
-    g.add_node("detect_step", detect_step)
-    g.add_node("write_task_md", write_task_md)
-    g.set_entry_point("detect_step")
-    g.add_edge("detect_step", "write_task_md")
-    g.add_edge("write_task_md", END)
+    g = StateGraph(ReviewState)
+    g.add_node("review_node", review_node)
+    g.add_node("check_node", check_node)
+    g.add_node("synthesize_node", synthesize_node)
+    g.set_entry_point("review_node")
+    g.add_conditional_edges("review_node", lambda s: s["next_step"], {"check": "check_node", "abort": END})
+    g.add_conditional_edges(
+        "check_node", lambda s: s["next_step"], {"review": "review_node", "synthesize": "synthesize_node", "abort": END}
+    )
+    g.add_edge("synthesize_node", END)
     return g.compile()
 
 
-if __name__ == "__main__":
-    app = build_graph()
-    final_state = app.invoke({"action": "", "idx": 0, "pr_file": DEFAULT_PR})
+def main() -> None:
+    parser = argparse.ArgumentParser(description="LangGraphベースのPRレビュー")
+    parser.add_argument("--pr-file", required=True)
+    args = parser.parse_args()
 
-    if final_state["action"] == "done":
-        print("DONE")
-    elif final_state["action"] == "abort":
-        print("ABORT")
-        print(json.dumps(_abort_reason(final_state["idx"]), ensure_ascii=False))
-    else:
-        print(json.dumps(_execution_directive(final_state["action"]), ensure_ascii=False))
+    initial_state: ReviewState = {
+        "pr_content": Path(args.pr_file).read_text(encoding="utf-8"),
+        "idx": 0,
+        "results": {},
+        "checks": {},
+        "redo_counts": {},
+        "redo_total": 0,
+        "iteration_total": 0,
+        "token_total": 0,
+        "status": "in_progress",
+        "abort_reason": None,
+        "next_step": "",
+    }
+
+    graph = build_graph()
+    final_state = graph.invoke(initial_state, config={"recursion_limit": 100})
+
+    if final_state["status"] == "aborted":
+        print(json.dumps(final_state["abort_reason"], ensure_ascii=False))
+        sys.exit(1)
+
+    print("review_results/final_report.md")
+
+
+if __name__ == "__main__":
+    main()
