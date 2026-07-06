@@ -27,6 +27,9 @@ RUN python3 -m venv venv \
 
 # Project files
 COPY --chown=ubuntu:ubuntu CLAUDE.md langgraph_orchestrator.py start_claude.sh entrypoint.sh ./
+COPY --chown=ubuntu:ubuntu agents/ ./agents/
+COPY --chown=ubuntu:ubuntu perspectives/ ./perspectives/
+COPY --chown=ubuntu:ubuntu pull-requests/ ./pull-requests/
 RUN chmod +x start_claude.sh entrypoint.sh
 
 USER ubuntu
