@@ -19,12 +19,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      # masudaは公開リポジトリのため、tokenなしでチェックアウトできる。
+      # レビューのスクリプト一式(langgraph_orchestrator.py等)はこの中から使う。
+      - name: Checkout review tooling from masuda
+        uses: actions/checkout@v4
+        with:
+          repository: TadahiroYamamura/masuda
+          ref: feat/github-actions-langgraph-nodes
+          path: masuda-tools
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r masuda-tools/requirements.txt
 
       - name: Fetch PR metadata
         env:
@@ -37,12 +46,12 @@ jobs:
         run: git diff "$(jq -r .baseRefOid pr_meta.json)" "$(jq -r .headRefOid pr_meta.json)" > pr.diff
 
       - name: Render PR context
-        run: python render_pr_context.py --meta pr_meta.json --diff pr.diff -o pr_context.md
+        run: python masuda-tools/render_pr_context.py --meta pr_meta.json --diff pr.diff -o pr_context.md
 
       - name: Run review
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python langgraph_orchestrator.py --pr-file pr_context.md
+        run: python masuda-tools/langgraph_orchestrator.py --pr-file pr_context.md
 
       - name: Upload review results
         if: always()
