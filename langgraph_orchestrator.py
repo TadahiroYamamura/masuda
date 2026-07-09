@@ -24,19 +24,60 @@ from pydantic import BaseModel, Field
 from perspectives.config import PERSPECTIVES
 
 MAX_RETRIES = 2
-# 以下3つのしきい値は観点数（PERSPECTIVES）に応じた固定値。観点を追加・削除したら手動で見直すこと。
+# 以下2つのしきい値は観点数（PERSPECTIVES）に応じた固定値。観点を追加・削除したら手動で見直すこと。
 # 現在は13観点構成: ABORT_THRESHOLD=8（約半数の観点がredoしたら異常とみなす早期警告）、
 # ITERATION_BUDGET=78（13観点 × 最大6回(review3回+check3回) = 現在のグラフ構造上の理論最大値。
 # redo_total等のロジックが正しく機能している限り発火しない、最終防衛ラインとしての保険）
 ABORT_THRESHOLD = 8       # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
-TOKEN_BUDGET = 500_000    # 1回のレビューで消費できるトークン数（review/check/synthesizeのLLM呼び出し合計）の上限
 ITERATION_BUDGET = 78     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
+
+# prompt cachingを導入した結果、LangChainのusage_metadata.total_tokensはcache_read/cache_creation分も
+# 加算した「実質フルサイズ」を報告する仕様であることが分かった（キャッシュヒットしても減らない）。
+# トークン数ベースの予算では「redoが一度も起きない正常運転」でも発火してしまうため、実際の課金額（USD概算）
+# ベースの予算に変更した。cache_read/cache_write の単価を反映することで、キャッシュの効果が正しく予算に反映される。
+COST_BUDGET_USD = float(os.environ.get("COST_BUDGET_USD", "5.0"))
+
+# $/MTok（Anthropic公式の通常価格。Sonnet 5の導入価格(2026-08-31まで有効)は反映していない=保守的に見積もる）
+# cache write(5分TTL)は入力単価の1.25倍、cache readは入力単価の0.1倍という共通ルールを掛け合わせる
+PRICING_USD_PER_MTOK: dict[str, dict[str, float]] = {
+    "claude-sonnet-5": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
+}
 
 # review/synthesizeは指摘の質が重要なため上位モデル、checkは合否判定という単純な分類タスクのため軽量モデルを使う
 REVIEW_MODEL = os.environ.get("REVIEW_MODEL", "claude-sonnet-5")
 CHECK_MODEL = os.environ.get("CHECK_MODEL", "claude-haiku-4-5-20251001")
 
 TOTAL = len(PERSPECTIVES)
+
+
+def _estimate_cost_usd(model: str, usage_metadata: dict | None) -> float:
+    if not usage_metadata:
+        return 0.0
+    if model not in PRICING_USD_PER_MTOK:
+        raise ValueError(
+            f"モデル '{model}' の料金がPRICING_USD_PER_MTOKに登録されていません。"
+            "REVIEW_MODEL/CHECK_MODELを変更した場合はコスト予算の単価も追加してください。"
+        )
+    price = PRICING_USD_PER_MTOK[model]
+    details = usage_metadata.get("input_token_details") or {}
+    cache_read = details.get("cache_read") or 0
+    cache_write_5m = details.get("ephemeral_5m_input_tokens") or 0
+    cache_write_1h = details.get("ephemeral_1h_input_tokens") or 0
+    # usage_metadata["input_tokens"]はcache_read/cache_write分も含めた実質合計のため、
+    # 通常単価で課金される「非キャッシュ分」は差し引いて求める
+    regular_input = usage_metadata.get("input_tokens", 0) - cache_read - cache_write_5m - cache_write_1h
+    output_tokens = usage_metadata.get("output_tokens", 0)
+
+    cost = (
+        regular_input * price["input"]
+        + cache_write_5m * price["input"] * 1.25
+        + cache_write_1h * price["input"] * 2.0
+        + cache_read * price["input"] * 0.1
+        + output_tokens * price["output"]
+    ) / 1_000_000
+    return cost
 
 
 # ── LLM呼び出し用スキーマ ──────────────────────────────────────────────────────
@@ -82,6 +123,17 @@ def get_llm(model: str) -> ChatAnthropic:
     return ChatAnthropic(model=model)
 
 
+def _pr_content_block(pr_content: str) -> dict:
+    """全観点で共通のPR全文ブロック。先頭に固定し cache_control を付けることで、
+    観点ごとに異なる指示文（このブロックの後に続く別ブロック）が変わってもキャッシュヒットを狙える。
+    """
+    return {
+        "type": "text",
+        "text": f"## レビュー対象のPR内容\n\n{pr_content}",
+        "cache_control": {"type": "ephemeral"},
+    }
+
+
 # ── State ─────────────────────────────────────────────────────────────────────
 
 class ReviewState(TypedDict):
@@ -93,6 +145,7 @@ class ReviewState(TypedDict):
     redo_total: int
     iteration_total: int
     token_total: int
+    cost_total_usd: float
     status: str              # "in_progress" | "done" | "aborted"
     abort_reason: dict | None
     next_step: str
@@ -105,12 +158,12 @@ def _abort_reason(state: ReviewState, idx: int) -> dict:
             "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} のレビュー検証（check）フェーズ",
             "reason": f"redo（差戻し）が累計{ABORT_THRESHOLD}回発生したため、無限ループ防止のため中断しました。",
         }
-    if state["token_total"] >= TOKEN_BUDGET:
+    if state["cost_total_usd"] >= COST_BUDGET_USD:
         return {
             "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} の処理中",
             "reason": (
-                f"1回のレビューで消費したトークン数が上限（{TOKEN_BUDGET}トークン）に達したため中断しました"
-                f"（実測: {state['token_total']}トークン）。"
+                f"1回のレビューで消費した金額が上限（${COST_BUDGET_USD:.2f}）に達したため中断しました"
+                f"（実測: ${state['cost_total_usd']:.2f}、{state['token_total']}トークン）。"
             ),
         }
     return {
@@ -125,7 +178,7 @@ def _abort_reason(state: ReviewState, idx: int) -> dict:
 def _over_budget(state: ReviewState) -> bool:
     return (
         state["redo_total"] >= ABORT_THRESHOLD
-        or state["token_total"] >= TOKEN_BUDGET
+        or state["cost_total_usd"] >= COST_BUDGET_USD
         or state["iteration_total"] > ITERATION_BUDGET
     )
 
@@ -143,8 +196,13 @@ def review_node(state: ReviewState) -> ReviewState:
 
     structured_llm = get_llm(REVIEW_MODEL).with_structured_output(ReviewResult, include_raw=True)
     messages = [
-        SystemMessage(content=p["review_prompt"] + feedback_section),
-        HumanMessage(content=f"## PR内容\n\n{state['pr_content']}"),
+        SystemMessage(
+            content=[
+                _pr_content_block(state["pr_content"]),
+                {"type": "text", "text": p["review_prompt"] + feedback_section},
+            ]
+        ),
+        HumanMessage(content="上記PR内容を、指定された観点でレビューしてください。"),
     ]
     raw = structured_llm.invoke(messages)
     result: ReviewResult = raw["parsed"]
@@ -152,6 +210,7 @@ def review_node(state: ReviewState) -> ReviewState:
     result.perspective_name = p["name"]
 
     state["token_total"] += (raw["raw"].usage_metadata or {}).get("total_tokens", 0)
+    state["cost_total_usd"] += _estimate_cost_usd(REVIEW_MODEL, raw["raw"].usage_metadata)
     state["iteration_total"] += 1
 
     results = dict(state["results"])
@@ -179,12 +238,14 @@ def check_node(state: ReviewState) -> ReviewState:
 
     structured_llm = get_llm(CHECK_MODEL).with_structured_output(CheckResult, include_raw=True)
     messages = [
-        SystemMessage(content=p["checker_prompt"]),
+        SystemMessage(
+            content=[
+                _pr_content_block(state["pr_content"]),
+                {"type": "text", "text": p["checker_prompt"]},
+            ]
+        ),
         HumanMessage(
-            content=(
-                f"## PR内容\n\n{state['pr_content']}\n\n"
-                f"## レビュー結果\n\n```json\n{json.dumps(result, ensure_ascii=False, indent=2)}\n```"
-            )
+            content=f"## レビュー結果\n\n```json\n{json.dumps(result, ensure_ascii=False, indent=2)}\n```"
         ),
     ]
     raw = structured_llm.invoke(messages)
@@ -192,6 +253,7 @@ def check_node(state: ReviewState) -> ReviewState:
     check_result.perspective_id = idx
 
     state["token_total"] += (raw["raw"].usage_metadata or {}).get("total_tokens", 0)
+    state["cost_total_usd"] += _estimate_cost_usd(CHECK_MODEL, raw["raw"].usage_metadata)
     state["iteration_total"] += 1
 
     checks = dict(state["checks"])
@@ -243,6 +305,7 @@ def synthesize_node(state: ReviewState) -> ReviewState:
     ]
     response = get_llm(REVIEW_MODEL).invoke(messages)
     state["token_total"] += (response.usage_metadata or {}).get("total_tokens", 0)
+    state["cost_total_usd"] += _estimate_cost_usd(REVIEW_MODEL, response.usage_metadata)
 
     Path("review_results/final_report.md").write_text(response.content, encoding="utf-8")
     state["status"] = "done"
@@ -279,6 +342,7 @@ def main() -> None:
         "redo_total": 0,
         "iteration_total": 0,
         "token_total": 0,
+        "cost_total_usd": 0.0,
         "status": "in_progress",
         "abort_reason": None,
         "next_step": "",
