@@ -12,3 +12,7 @@ test_fizzbuzz.py
 
 # Claude Code
 .claude.json
+
+# other
+.env
+.instinct-db/
