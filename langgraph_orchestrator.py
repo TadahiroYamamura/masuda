@@ -24,12 +24,16 @@ from pydantic import BaseModel, Field
 from perspectives.config import PERSPECTIVES
 
 MAX_RETRIES = 2
-# 以下2つのしきい値は観点数（PERSPECTIVES）に応じた固定値。観点を追加・削除したら手動で見直すこと。
-# 現在は13観点構成: ABORT_THRESHOLD=8（約半数の観点がredoしたら異常とみなす早期警告）、
-# ITERATION_BUDGET=78（13観点 × 最大6回(review3回+check3回) = 現在のグラフ構造上の理論最大値。
-# redo_total等のロジックが正しく機能している限り発火しない、最終防衛ラインとしての保険）
-ABORT_THRESHOLD = 8       # redo（差戻し）の累計発生回数がこれに達したら無限ループとみなして中断する
-ITERATION_BUDGET = 78     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（redo以外の原因での無限ループ対策）
+# ITERATION_BUDGETは観点数（PERSPECTIVES）に応じた固定値。観点を追加・削除したら手動で見直すこと。
+# 現在は13観点構成: 13観点 × 最大6回(review3回+check3回) = 現在のグラフ構造上の理論最大値。
+# COST_BUDGET_USD等のロジックが正しく機能している限り発火しない、最終防衛ラインとしての保険。
+ITERATION_BUDGET = 78     # review_node/check_nodeの累計実行回数がこれを超えたら中断する（無限ループ対策）
+# redo累計回数によるABORT_THRESHOLDは撤廃した。観点単位のMAX_RETRIESと
+# 全体のCOST_BUDGET_USD/ITERATION_BUDGETで既に無限ループ・過剰コストは防げるため不要と判断。
+# 撤廃前は「redoが多い=異常」とみなして早期に全体を中断していたが、実際には単に個々の観点で
+# review/checkの意見が収束しにくいだけのケースが多く、後半の観点が一度も実行されないまま
+# 中断される弊害があった。MAX_RETRIES超過でスキップされた観点はunresolved_idsに記録し、
+# 最終レポートに「未解決の意見対立」として明示することで、判断を人間に委ねる。
 
 # prompt cachingを導入した結果、LangChainのusage_metadata.total_tokensはcache_read/cache_creation分も
 # 加算した「実質フルサイズ」を報告する仕様であることが分かった（キャッシュヒットしても減らない）。
@@ -149,15 +153,12 @@ class ReviewState(TypedDict):
     status: str              # "in_progress" | "done" | "aborted"
     abort_reason: dict | None
     next_step: str
+    single_perspective: bool  # Trueの場合、指定した1観点のみ処理してsynthesizeへ進む
+    unresolved_ids: list[int]  # MAX_RETRIES超過でスキップされた観点のid一覧（review/checkの意見が収束しなかった）
 
 
 def _abort_reason(state: ReviewState, idx: int) -> dict:
     p = PERSPECTIVES[idx]
-    if state["redo_total"] >= ABORT_THRESHOLD:
-        return {
-            "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} のレビュー検証（check）フェーズ",
-            "reason": f"redo（差戻し）が累計{ABORT_THRESHOLD}回発生したため、無限ループ防止のため中断しました。",
-        }
     if state["cost_total_usd"] >= COST_BUDGET_USD:
         return {
             "step": f"観点 {idx + 1}/{TOTAL}: {p['name']} の処理中",
@@ -177,8 +178,7 @@ def _abort_reason(state: ReviewState, idx: int) -> dict:
 
 def _over_budget(state: ReviewState) -> bool:
     return (
-        state["redo_total"] >= ABORT_THRESHOLD
-        or state["cost_total_usd"] >= COST_BUDGET_USD
+        state["cost_total_usd"] >= COST_BUDGET_USD
         or state["iteration_total"] > ITERATION_BUDGET
     )
 
@@ -217,8 +217,9 @@ def review_node(state: ReviewState) -> ReviewState:
     results[idx] = result.model_dump()
     state["results"] = results
 
+    attempt = state["redo_counts"].get(idx, 0) + 1
     Path("review_results").mkdir(exist_ok=True)
-    Path(f"review_results/result_{idx}.json").write_text(
+    Path(f"review_results/result_{idx}_attempt{attempt}.json").write_text(
         result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
@@ -260,7 +261,8 @@ def check_node(state: ReviewState) -> ReviewState:
     checks[idx] = check_result.model_dump()
     state["checks"] = checks
 
-    Path(f"review_results/check_{idx}.json").write_text(
+    attempt = state["redo_counts"].get(idx, 0) + 1
+    Path(f"review_results/check_{idx}_attempt{attempt}.json").write_text(
         check_result.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
@@ -273,7 +275,10 @@ def check_node(state: ReviewState) -> ReviewState:
     if check_result.ok:
         next_idx = idx + 1
         state["idx"] = next_idx
-        state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
+        if state["single_perspective"]:
+            state["next_step"] = "synthesize"
+        else:
+            state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
         return state
 
     redo_count = state["redo_counts"].get(idx, 0)
@@ -284,10 +289,32 @@ def check_node(state: ReviewState) -> ReviewState:
         return state
 
     print(f"[review-graph] 観点 {idx} は最大リトライ回数を超えました。スキップします。", file=sys.stderr)
+    state["unresolved_ids"] = [*state["unresolved_ids"], idx]
     next_idx = idx + 1
     state["idx"] = next_idx
-    state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
+    if state["single_perspective"]:
+        state["next_step"] = "synthesize"
+    else:
+        state["next_step"] = "synthesize" if next_idx >= TOTAL else "review"
     return state
+
+
+def _unresolved_section(state: ReviewState) -> str:
+    """MAX_RETRIES超過でスキップされた観点を、LLMを介さず確定的にレポートへ追記する。
+    review/checkの意見が収束しなかった箇所なので、AIの要約に頼らず人間の確認を促す。
+    """
+    if not state["unresolved_ids"]:
+        return ""
+    lines = [
+        "\n\n---\n\n## 未解決の意見対立（人間の確認が必要）\n",
+        f"以下の観点は、review/checkの意見が最大リトライ回数（{MAX_RETRIES}回）を超えても収束しませんでした。"
+        "AIの判定を鵜呑みにせず、人間が直接確認してください。\n",
+    ]
+    for idx in state["unresolved_ids"]:
+        p = PERSPECTIVES[idx]
+        last_check = state["checks"].get(idx, {})
+        lines.append(f"- **{p['name']}**: {last_check.get('feedback', '(フィードバックなし)')}")
+    return "\n".join(lines) + "\n"
 
 
 def synthesize_node(state: ReviewState) -> ReviewState:
@@ -307,7 +334,8 @@ def synthesize_node(state: ReviewState) -> ReviewState:
     state["token_total"] += (response.usage_metadata or {}).get("total_tokens", 0)
     state["cost_total_usd"] += _estimate_cost_usd(REVIEW_MODEL, response.usage_metadata)
 
-    Path("review_results/final_report.md").write_text(response.content, encoding="utf-8")
+    report = response.content + _unresolved_section(state)
+    Path("review_results/final_report.md").write_text(report, encoding="utf-8")
     state["status"] = "done"
     return state
 
@@ -331,11 +359,20 @@ def build_graph():
 def main() -> None:
     parser = argparse.ArgumentParser(description="LangGraphベースのPRレビュー")
     parser.add_argument("--pr-file", required=True)
+    parser.add_argument(
+        "--perspective-id",
+        type=int,
+        default=None,
+        help="指定したid（perspectives/config.pyのid、0始まり）の観点のみを実行する。省略時は全観点を順に実行する。",
+    )
     args = parser.parse_args()
+
+    if args.perspective_id is not None and not (0 <= args.perspective_id < TOTAL):
+        parser.error(f"--perspective-id は 0〜{TOTAL - 1} の範囲で指定してください")
 
     initial_state: ReviewState = {
         "pr_content": Path(args.pr_file).read_text(encoding="utf-8"),
-        "idx": 0,
+        "idx": args.perspective_id if args.perspective_id is not None else 0,
         "results": {},
         "checks": {},
         "redo_counts": {},
@@ -346,6 +383,8 @@ def main() -> None:
         "status": "in_progress",
         "abort_reason": None,
         "next_step": "",
+        "single_perspective": args.perspective_id is not None,
+        "unresolved_ids": [],
     }
 
     graph = build_graph()
