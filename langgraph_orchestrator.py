@@ -317,6 +317,22 @@ def _unresolved_section(state: ReviewState) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _extract_text(content: str | list) -> str:
+    """ChatAnthropicのAIMessage.contentはプレーンな文字列のこともあれば、
+    thinkingブロックを含む場合はブロックのリスト（各dictがtype/textを持つ）になることもある。
+    後者の場合でもtextブロックだけを連結して本文を取り出す。
+    """
+    if isinstance(content, str):
+        return content
+    parts = []
+    for block in content:
+        if isinstance(block, str):
+            parts.append(block)
+        elif isinstance(block, dict) and block.get("type") == "text":
+            parts.append(block.get("text", ""))
+    return "".join(parts)
+
+
 def synthesize_node(state: ReviewState) -> ReviewState:
     results_json = json.dumps(
         [state["results"][i] for i in sorted(state["results"])], ensure_ascii=False, indent=2
@@ -334,7 +350,7 @@ def synthesize_node(state: ReviewState) -> ReviewState:
     state["token_total"] += (response.usage_metadata or {}).get("total_tokens", 0)
     state["cost_total_usd"] += _estimate_cost_usd(REVIEW_MODEL, response.usage_metadata)
 
-    report = response.content + _unresolved_section(state)
+    report = _extract_text(response.content) + _unresolved_section(state)
     Path("review_results/final_report.md").write_text(report, encoding="utf-8")
     state["status"] = "done"
     return state
