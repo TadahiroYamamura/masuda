@@ -60,7 +60,12 @@ type Marker struct {
 	DecidedAt time.Time `json:"decided_at"`
 }
 
-// Show returns the contents of the artifact gate n is judging.
+// Show returns the contents of the artifact gate n is judging. For the plan
+// gate, if phase 4 reopened G1 (ADR-0010 — a self-reported deviation, an
+// exhausted build/test retry, or the mechanical file-list backstop), the
+// reason recorded in DEVIATION.md is prepended so `masuda plan show` explains
+// *why* the gate is open again, not just what the (still-approved-looking)
+// PLAN.md says.
 func Show(worktreeDir string, n Name) (string, error) {
 	rel, err := n.artifactPath()
 	if err != nil {
@@ -70,7 +75,14 @@ func Show(worktreeDir string, n Name) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", rel, err)
 	}
-	return string(content), nil
+	out := string(content)
+
+	if n == Plan {
+		if deviation, err := os.ReadFile(filepath.Join(worktreeDir, "DEVIATION.md")); err == nil {
+			out = "# G1 reopened — deviation reported (ADR-0010)\n\n" + string(deviation) + "\n\n---\n\n" + out
+		}
+	}
+	return out, nil
 }
 
 func writeMarker(worktreeDir string, n Name, m Marker) error {
@@ -85,8 +97,22 @@ func writeMarker(worktreeDir string, n Name, m Marker) error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// clearDeviation removes DEVIATION.md if present — once a human has decided
+// on a reopened G1, the reason that reopened it no longer needs to keep
+// showing up on `masuda plan show`.
+func clearDeviation(worktreeDir string) error {
+	err := os.Remove(filepath.Join(worktreeDir, "DEVIATION.md"))
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
 // Approve writes an approved marker for gate n. feedback may be empty.
 func Approve(worktreeDir string, n Name, feedback string) error {
+	if err := clearDeviation(worktreeDir); err != nil {
+		return err
+	}
 	return writeMarker(worktreeDir, n, Marker{Status: Approved, Feedback: feedback, DecidedAt: time.Now()})
 }
 
@@ -94,6 +120,9 @@ func Approve(worktreeDir string, n Name, feedback string) error {
 // to change, since it's the only input the next investigation/implementation
 // pass gets.
 func Reject(worktreeDir string, n Name, feedback string) error {
+	if err := clearDeviation(worktreeDir); err != nil {
+		return err
+	}
 	return writeMarker(worktreeDir, n, Marker{Status: Rejected, Feedback: feedback, DecidedAt: time.Now()})
 }
 

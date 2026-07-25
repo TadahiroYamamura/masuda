@@ -8,7 +8,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI
@@ -40,6 +40,14 @@ RUN python3 -m venv venv \
 COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
 COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/
 RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh
+
+# Pre-set the theme so a fresh container's first `claude` launch doesn't stop
+# at the interactive first-run theme-selection wizard (confirmed empirically —
+# --dangerously-skip-permissions does not skip this, only the separate
+# bypass-permissions dialog entrypoint.sh already handles). This is a fixed
+# onboarding-bypass setting, unlike runtime/CLAUDE.md, so it's fine to bake
+# into the image rather than place at container start.
+COPY --chown=ubuntu:ubuntu runtime/claude-settings.json /home/ubuntu/.claude/settings.json
 
 USER ubuntu
 

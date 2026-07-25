@@ -180,8 +180,9 @@ masuda/
     entrypoint.sh
     start_claude.sh
     mcp/lsp-config.json
-  orchestrator/            # masuda自身のPython制御ロジック（コンテナに焼き込む）
-    langgraph_orchestrator.py
+  orchestrator/            # masuda自身のPython制御ロジック
+    investigate_plan_graph.py  # フェーズ0-2、ホスト側で実行（コンテナには焼き込まない）
+    implement_graph.py         # フェーズ4、コンテナに焼き込んで実行
     perspectives/config.py
   scripts/
     local_review.sh

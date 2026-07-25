@@ -8,7 +8,9 @@ import (
 	"bytes"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -61,6 +63,38 @@ func freePort() (int, error) {
 	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
+// hostCredentialMounts returns the `-v host:container` bind-mount arguments
+// that let the container's `claude` reuse the host's own subscription login
+// (ADR-0001 — no per-request API billing) instead of hitting a fresh
+// interactive login wizard, which an unattended container can't get past.
+//
+// Confirmed empirically: without these, a brand-new container stalls at
+// "Select login method" — Claude Code has no session at all in there. Only
+// these two specific files are mounted, not the whole ~/.claude directory:
+// the container's own ~/.claude/CLAUDE.md must stay isolated from the host's
+// real one (ADR-0007) and must keep coming from runtime/CLAUDE.md via cp, not
+// a shared mount. Read-write, since an OAuth token may refresh mid-session —
+// on the same machine, under the same user account, this isn't a trust
+// boundary the way it would be for a genuinely separate party.
+func hostCredentialMounts() ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+	paths := []struct{ host, container string }{
+		{filepath.Join(home, ".claude", ".credentials.json"), "/home/ubuntu/.claude/.credentials.json"},
+		{filepath.Join(home, ".claude.json"), "/home/ubuntu/.claude.json"},
+	}
+	var mounts []string
+	for _, p := range paths {
+		if _, err := os.Stat(p.host); err != nil {
+			return nil, fmt.Errorf("%s: %w (log into `claude` on this host first)", p.host, err)
+		}
+		mounts = append(mounts, "-v", p.host+":"+p.container)
+	}
+	return mounts, nil
+}
+
 // Start launches a new sandbox container bind-mounting worktreeDir at /workspace,
 // places claudeMdPath at ~/.claude/CLAUDE.md inside the container before the
 // container's own entrypoint (and therefore Claude) starts, then starts it.
@@ -78,14 +112,32 @@ func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
 		return Handle{}, fmt.Errorf("allocating host port: %w", err)
 	}
 
-	_, err = runDocker(
+	credentialMounts, err := hostCredentialMounts()
+	if err != nil {
+		return Handle{}, fmt.Errorf("locating host Claude Code credentials: %w", err)
+	}
+
+	// The loop protocol only re-invokes the orchestrator when TASK.md is
+	// *absent*. A worktree arriving here from the phase 1-2 host loop still
+	// has that loop's terminal "DONE (G1 approved)" TASK.md sitting in it —
+	// without clearing it, this container's fresh session would read that
+	// stale file, see "DONE", and exit immediately without ever invoking the
+	// phase 4 orchestrator. Same bug and same fix as hostloop.Start's resume
+	// case.
+	if err := os.Remove(filepath.Join(worktreeDir, "TASK.md")); err != nil && !os.IsNotExist(err) {
+		return Handle{}, fmt.Errorf("clearing stale TASK.md before sandbox start: %w", err)
+	}
+
+	createArgs := []string{
 		"create",
 		"--name", name,
 		"-p", fmt.Sprintf("%d:%d", port, containerClaudePort),
-		"-v", worktreeDir+":/workspace",
-		image,
-	)
-	if err != nil {
+		"-v", worktreeDir + ":/workspace",
+	}
+	createArgs = append(createArgs, credentialMounts...)
+	createArgs = append(createArgs, image)
+
+	if _, err := runDocker(createArgs...); err != nil {
 		return Handle{}, fmt.Errorf("docker create: %w", err)
 	}
 
