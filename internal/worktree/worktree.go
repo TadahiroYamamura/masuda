@@ -6,6 +6,7 @@ package worktree
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,10 @@ func branchExists(repoRoot, branch string) bool {
 // ignored and the worktree is checked out at the branch's current tip.
 func Create(repoRoot, branch, base string) (string, error) {
 	dir := Dir(repoRoot, branch)
+
+	if _, err := os.Stat(dir); err == nil {
+		return dir, nil
+	}
 
 	if branchExists(repoRoot, branch) {
 		if _, err := runGit(repoRoot, "worktree", "add", dir, branch); err != nil {

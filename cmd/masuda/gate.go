@@ -67,6 +67,9 @@ func newGateChatCommand(n gate.Name) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			branch := args[0]
+			if n == gate.Plan {
+				return fmt.Errorf("masuda plan chat isn't implemented yet — it needs the GATE:<name> keep-alive mechanism (roadmap step 5); the phase 1-2 host loop ends its session on reaching G1. Use `masuda plan show %s` and `masuda plan approve|reject %s` instead", branch, branch)
+			}
 			if !sandbox.IsRunning(branch) {
 				return fmt.Errorf("sandbox for %q is not running — run `masuda sandbox start %s` first", branch, branch)
 			}

@@ -23,13 +23,14 @@ design doc「リポジトリ構造」「ゲート（G1/G2）のUX」、ADR-0005�
 
 design doc「全体構成」参照。
 
+- フェーズ0（worktree作成）は2番で作ったGo CLI（`masuda worktree create`）を呼び出す
 - フェーズ1-2（調査・プラン、ADR-0008: エージェント分離+調査不足時のredo）
-- フェーズ5（実装、ADR-0009: ビルド/テスト自己修正ループ、ADR-0010: プラン逸脱検知とG1再オープン）
-- フェーズ6は既存の`feat/github-actions-langgraph-nodes`のレビューグラフ（review/checkの往復、13観点）を子グラフとして組み込む
+- フェーズ4（実装、ADR-0009: ビルド/テスト自己修正ループ、ADR-0010: プラン逸脱検知とG1再オープン）
+- フェーズ5は既存の`feat/github-actions-langgraph-nodes`のレビューグラフ（review/checkの往復、13観点）を子グラフとして組み込む
 
 ## 4. レビュー内部の再設計
 
-design doc「フェーズ6（レビュー）の内部設計」、ADR-0003・0004・0011参照。
+design doc「フェーズ5（レビュー）の内部設計」、ADR-0003・0004・0011参照。
 
 - 機械的チェック / 横断的チェックの2区分
 - 機械的チェック: checker/fixerの役割分離、unresolved_idsのフォールバック
@@ -48,4 +49,4 @@ ADR-0006参照。
 design doc「レビュー単体での再利用」参照。
 
 - `masuda review <branch-or-ref>`（デフォルトは現在ブランチ vs develop）
-- フェーズ3〜6の機構を、新規ブランチではなく既存refのworktreeに対して使い回す
+- フェーズ0〜5の機構を、新規ブランチではなく既存refのworktreeに対して使い回す

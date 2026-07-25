@@ -31,7 +31,11 @@ func newRootCommand() *cobra.Command {
 	}
 	root.AddCommand(newWorktreeCommand())
 	root.AddCommand(newSandboxCommand())
-	root.AddCommand(newGateCommand(gate.Plan))
+
+	planCmd := newGateCommand(gate.Plan)
+	planCmd.AddCommand(newPlanStartCommand())
+	root.AddCommand(planCmd)
+
 	root.AddCommand(newGateCommand(gate.Review))
 	return root
 }
