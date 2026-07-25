@@ -18,5 +18,5 @@
 ## LangGraph 起動コマンド
 
 ```bash
-/opt/masuda/venv/bin/python /opt/masuda/orchestrator/implement_graph.py
+/opt/masuda/venv/bin/python /opt/masuda/orchestrator/implement_review_graph.py
 ```

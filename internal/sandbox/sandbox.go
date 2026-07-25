@@ -107,6 +107,22 @@ func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
 		image = DefaultImage
 	}
 	name := ContainerName(branch)
+
+	if IsRunning(branch) {
+		port, err := runningHostPort(name)
+		if err != nil {
+			return Handle{}, err
+		}
+		return Handle{Branch: branch, ContainerName: name, HostPort: port}, nil
+	}
+
+	// A previous run's container may still exist in the "Exited" state (its
+	// tmux session ended on its own, but `docker create`/`start` don't clean
+	// up after themselves) — docker create fails on a name conflict
+	// otherwise. Confirmed empirically when resuming after a review
+	// rejection. Ignore the error: there may be nothing to remove.
+	_, _ = runDocker("rm", "-f", name)
+
 	port, err := freePort()
 	if err != nil {
 		return Handle{}, fmt.Errorf("allocating host port: %w", err)
@@ -161,6 +177,26 @@ func Stop(branch string) error {
 	_, _ = runDocker("stop", name)
 	_, err := runDocker("rm", "-f", name)
 	return err
+}
+
+// runningHostPort returns the host port currently mapped to a running
+// container's ttyd port, so Start can report it on a no-op resume.
+func runningHostPort(name string) (int, error) {
+	out, err := runDocker("port", name, fmt.Sprintf("%d/tcp", containerClaudePort))
+	if err != nil {
+		return 0, fmt.Errorf("inspecting running container's port: %w", err)
+	}
+	// e.g. "0.0.0.0:45355\n[::]:45355\n" -- take the first mapping's port.
+	line, _, _ := strings.Cut(strings.TrimSpace(out), "\n")
+	idx := strings.LastIndex(line, ":")
+	if idx < 0 {
+		return 0, fmt.Errorf("unexpected `docker port` output: %q", out)
+	}
+	var port int
+	if _, err := fmt.Sscanf(line[idx+1:], "%d", &port); err != nil {
+		return 0, fmt.Errorf("parsing port from %q: %w", line, err)
+	}
+	return port, nil
 }
 
 // IsRunning reports whether the sandbox container for branch is currently running.

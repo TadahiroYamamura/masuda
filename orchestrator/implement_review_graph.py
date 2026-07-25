@@ -1,0 +1,519 @@
+"""
+Phase 4-5 (implement -> review -> G2) orchestrator.
+
+Runs inside the Docker sandbox (see ADR-0012's phase table), invoked by
+runtime/CLAUDE.md's loop against a worktree that already has an approved
+PLAN.md (G1 passed in phase 1-2). Phase 4 and phase 5 share one orchestrator
+because they run in the same sandbox / same self-loop session (ADR-0013) --
+this mirrors investigate_plan_graph.py covering both phase 1 and phase 2.
+
+Responsibilities:
+  - Phase 4: delegate implementation to a subagent, read back its
+    self-reported outcome (implementation_result.json), and run the ADR-0010
+    mechanical backstop (PLAN.md's declared file list vs `git status`, no
+    LLM involved)
+  - Phase 5: run the ported 13-perspective review/check loop (originally
+    feat/github-actions-langgraph-nodes's direct-API graph, now delegated to
+    subagents via TASK.md instead of calling the Anthropic API directly),
+    then synthesize a final report
+  - On any phase 4 non-clean outcome (self-reported plan deviation, exhausted
+    build/test retries, or the mechanical mismatch), reopen G1 by writing
+    DEVIATION.md and resetting its gate marker (ADR-0009, ADR-0010)
+  - On a G2 rejection, reopen phase 4 with the rejection feedback (ADR-0013)
+    instead of inventing a new gate type; review starts over from scratch
+    once the redo produces a clean implementation again
+  - Overwrite TASK.md with the next instruction; exit -- the self-looping
+    Claude session picks it up from there
+
+No LLM calls happen in this process -- pure state machine over the
+filesystem, same design as investigate_plan_graph.py.
+"""
+import json
+import re
+import subprocess
+from pathlib import Path
+from typing import TypedDict
+
+from langgraph.graph import END, StateGraph
+
+from perspectives.config import PERSPECTIVES
+
+TOTAL_PERSPECTIVES = len(PERSPECTIVES)
+# ADR-0008 used 3 for the investigate<->plan redo; this mirrors the original
+# ported review graph's own MAX_RETRIES (2) for review<->check redo instead --
+# an independent, per-domain constant, not shared with phase 1-2's.
+MAX_REVIEW_RETRIES = 2
+
+PLAN_MD = Path("PLAN.md")
+IMPLEMENTATION_RESULT_JSON = Path("implementation_result.json")
+DEVIATION_MD = Path("DEVIATION.md")
+PLAN_GATE_MARKER = Path(".masuda-gate/plan.json")
+REVIEW_GATE_MARKER = Path(".masuda-gate/review.json")
+REVIEW_STATE_JSON = Path(".masuda-review-state.json")
+REVIEW_FEEDBACK_MD = Path(".masuda-review-feedback.md")
+REVIEW_RESULTS_DIR = Path("review_results")
+FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
+TASK_MD = Path("TASK.md")
+
+# Files masuda's own machinery writes into the worktree -- never part of what
+# the mechanical backstop (ADR-0010) judges as an "implementation change".
+_MASUDA_INTERNAL_FILES = {
+    "TASK.md",
+    "PLAN.md",
+    "INVESTIGATION.md",
+    "plan_result.json",
+    ".masuda-task.md",
+    ".masuda-plan-system-prompt.md",
+    str(IMPLEMENTATION_RESULT_JSON),
+    str(DEVIATION_MD),
+    str(REVIEW_STATE_JSON),
+    str(REVIEW_FEEDBACK_MD),
+}
+_MASUDA_INTERNAL_PREFIXES = (".masuda-gate/", str(REVIEW_RESULTS_DIR) + "/")
+
+
+class State(TypedDict):
+    phase: str
+    reason: str
+
+
+def _read_plan_md() -> str:
+    if not PLAN_MD.exists():
+        raise FileNotFoundError(f"{PLAN_MD} not found — phase 4 requires an approved PLAN.md from G1")
+    return PLAN_MD.read_text(encoding="utf-8")
+
+
+def _read_implementation_result() -> dict | None:
+    if not IMPLEMENTATION_RESULT_JSON.exists():
+        return None
+    return json.loads(IMPLEMENTATION_RESULT_JSON.read_text(encoding="utf-8"))
+
+
+def _extract_planned_files(plan_md: str) -> set[str]:
+    """Pulls the backtick-quoted paths out of PLAN.md's "## 変更するファイル一覧"
+    section (top-level bullets only -- indented sub-bullets are the per-file
+    explanation, not additional files). This is a hard requirement on that
+    section's format, not a heuristic: ADR-0010's mechanical backstop only
+    works because PLAN.md is required to spell out the file list concretely.
+    """
+    match = re.search(r"^## 変更するファイル一覧\s*\n(.*?)(?=\n## |\Z)", plan_md, re.MULTILINE | re.DOTALL)
+    if not match:
+        return set()
+    files = set()
+    for line in match.group(1).splitlines():
+        if not line.startswith("- "):
+            continue
+        m = re.search(r"`([^`]+)`", line)
+        if m:
+            files.add(m.group(1).strip())
+    return files
+
+
+def _actual_changed_files() -> set[str]:
+    out = subprocess.run(
+        ["git", "status", "--porcelain"], capture_output=True, text=True, check=True
+    ).stdout
+    files = set()
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        path = line[3:]
+        if " -> " in path:  # rename: "old -> new"
+            path = path.split(" -> ", 1)[1]
+        path = path.strip().strip('"')
+        if path in _MASUDA_INTERNAL_FILES or path.startswith(_MASUDA_INTERNAL_PREFIXES):
+            continue
+        files.add(path)
+    return files
+
+
+def _mechanical_deviation() -> str | None:
+    """Returns a human-readable reason if files were touched outside PLAN.md's
+    declared list, or None if the diff stays within plan. LLM-free by design
+    (ADR-0010) -- this must not depend on the implementation subagent's own
+    judgment to be a real backstop.
+    """
+    planned = _extract_planned_files(_read_plan_md())
+    actual = _actual_changed_files()
+    extra = actual - planned
+    if not extra:
+        return None
+    return (
+        "計画外のファイルへの変更を検知しました（機械的バックストップ、ADR-0010）:\n"
+        + "\n".join(f"- {f}" for f in sorted(extra))
+        + "\n\nPLAN.mdの「変更するファイル一覧」:\n"
+        + ("\n".join(f"- {f}" for f in sorted(planned)) if planned else "(空 — PLAN.mdの構成を確認してください)")
+    )
+
+
+def _compute_diff() -> str:
+    """Stages everything (including new/deleted files) so the diff covers the
+    full implementation, not just already-tracked modifications, then reports
+    it via `git diff --cached` -- nothing is committed."""
+    subprocess.run(["git", "add", "-A"], check=True)
+    return subprocess.run(
+        ["git", "diff", "--cached", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout
+
+
+def _read_gate_marker(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+# --- phase 5 (review) state -------------------------------------------------
+
+def _read_review_state() -> dict:
+    if not REVIEW_STATE_JSON.exists():
+        return {"idx": 0, "redo_counts": {}, "unresolved_ids": []}
+    return json.loads(REVIEW_STATE_JSON.read_text(encoding="utf-8"))
+
+
+def _write_review_state(rs: dict) -> None:
+    REVIEW_STATE_JSON.write_text(json.dumps(rs, ensure_ascii=False), encoding="utf-8")
+
+
+def _clear_review_state() -> None:
+    """Wipes phase 5 state so a post-redo review starts from perspective 0
+    (ADR-0013 — previous review/check results aren't reused after a fix)."""
+    if REVIEW_STATE_JSON.exists():
+        REVIEW_STATE_JSON.unlink()
+    if REVIEW_RESULTS_DIR.exists():
+        for f in REVIEW_RESULTS_DIR.iterdir():
+            f.unlink()
+        REVIEW_RESULTS_DIR.rmdir()
+
+
+def _result_path(idx: int, attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"result_{idx}_attempt{attempt}.json"
+
+
+def _check_path(idx: int, attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"check_{idx}_attempt{attempt}.json"
+
+
+def _detect_review_phase() -> State:
+    """Advances the perspective/redo bookkeeping (pure, no LLM) until it lands
+    on a phase that actually needs a subagent round, mirroring the original
+    review_node/check_node conditional edges."""
+    rs = _read_review_state()
+    idx = rs["idx"]
+    redo_counts = rs["redo_counts"]
+    unresolved = rs["unresolved_ids"]
+
+    while idx < TOTAL_PERSPECTIVES:
+        attempt = redo_counts.get(str(idx), 0) + 1
+        if not _result_path(idx, attempt).exists():
+            return {"phase": "review_perspective", "reason": json.dumps({"idx": idx, "attempt": attempt})}
+        if not _check_path(idx, attempt).exists():
+            return {"phase": "check_perspective", "reason": json.dumps({"idx": idx, "attempt": attempt})}
+
+        check = json.loads(_check_path(idx, attempt).read_text(encoding="utf-8"))
+        if check.get("ok"):
+            idx += 1
+        elif redo_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
+            redo_counts[str(idx)] = redo_counts.get(str(idx), 0) + 1
+        else:
+            unresolved.append(idx)
+            idx += 1
+        rs = {"idx": idx, "redo_counts": redo_counts, "unresolved_ids": unresolved}
+        _write_review_state(rs)
+
+    return {"phase": "synthesize", "reason": ""}
+
+
+def _detect_post_implementation_phase() -> State:
+    """Implementation is clean (or already was) -- figure out where phase 5 /
+    G2 currently stands."""
+    if not FINAL_REPORT_MD.exists():
+        return _detect_review_phase()
+
+    marker = _read_gate_marker(REVIEW_GATE_MARKER)
+    status = (marker or {}).get("status", "pending")
+    if status == "approved":
+        return {"phase": "g2_approved", "reason": ""}
+    if status == "rejected":
+        feedback = marker.get("feedback", "")
+        REVIEW_GATE_MARKER.unlink()
+        _clear_review_state()
+        IMPLEMENTATION_RESULT_JSON.unlink()
+        REVIEW_FEEDBACK_MD.write_text(feedback, encoding="utf-8")
+        return {"phase": "implement_redo", "reason": feedback}
+    return {"phase": "await_g2", "reason": ""}
+
+
+def detect_phase(state: State) -> State:
+    result = _read_implementation_result()
+
+    if result is not None:
+        status = result.get("status")
+        if status == "needs_plan_review":
+            return {"phase": "plan_reopened", "reason": "実装エージェントの自己申告（一次防御）:\n" + result.get("reason", "")}
+        if status == "build_test_failed":
+            return {"phase": "plan_reopened", "reason": "ビルド/テストの自己修正が上限に達しました（ADR-0009）:\n" + result.get("details", "")}
+        if status == "done":
+            deviation = _mechanical_deviation()
+            if deviation:
+                return {"phase": "plan_reopened", "reason": deviation}
+            return _detect_post_implementation_phase()
+        raise ValueError(f"unknown implementation_result.json status: {status!r}")
+
+    if REVIEW_FEEDBACK_MD.exists():
+        return {"phase": "implement_redo", "reason": REVIEW_FEEDBACK_MD.read_text(encoding="utf-8")}
+    return {"phase": "implement", "reason": ""}
+
+
+# --- TASK.md rendering -------------------------------------------------------
+
+def _implement_task(redo_feedback: str | None = None) -> str:
+    plan = _read_plan_md()
+    redo_section = ""
+    if redo_feedback:
+        redo_section = f"""
+
+## G2（レビュー承認ゲート）で却下されました（ADR-0013）
+{redo_feedback}
+
+上記フィードバックを踏まえて修正すること。修正後はレビューを最初の観点からやり直す。
+"""
+    return f"""# TASK: 実装（フェーズ4）
+
+新規コンテキストのサブエージェントにPLAN.mdに基づく実装を委譲せよ
+（Dockerサンドボックス内で完結するため、フェーズ1-2のようなBash制限は不要。
+write/Edit/Bash権限を持つ通常のサブエージェントでよい）。
+
+## 実装前の準備
+環境が未セットアップの場合、CLAUDE.md・README等を参照して依存解決
+（`go mod download`・`npm install`等）を行ってから実装に入ること。
+
+## 参照するPLAN.md
+{plan}
+{redo_section}
+## 逸脱時の対応（一次防御、ADR-0010）
+実装中に計画から外れる必要があると気づいた場合、勝手に進めず作業を止め、
+`implementation_result.json`に以下を書き出して終了せよ:
+{{"status": "needs_plan_review", "reason": "<なぜ計画から外れる必要があるか>"}}
+
+## ビルド/テストの自己修正ループ（ADR-0009）
+実装後、自分でビルド・テストを実行し、失敗したら自己修正して再実行せよ。
+最大3回まで試し、それでもグリーンにならない場合は
+`implementation_result.json`に以下を書き出して終了せよ:
+{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
+
+## 完了条件
+ビルド・テストがグリーンになったら、`implementation_result.json`に
+{{"status": "done"}}を書き出すこと。
+"""
+
+
+def _plan_reopened_task(reason: str) -> str:
+    return f"""# DONE (GATE: plan — reopened)
+
+G1（プラン承認ゲート）を再オープンしました（ADR-0010）。
+
+## 理由
+{reason}
+
+人間は `masuda plan show <branch>` で理由（DEVIATION.md）とPLAN.mdを確認し、
+`masuda plan approve <branch>` / `masuda plan reject <branch> "<feedback>"` で応答してください。
+承認・却下後は `masuda plan start <branch>` でフェーズ1-2に戻るか、
+`masuda sandbox start <branch>` で実装をやり直してください。
+"""
+
+
+def _review_perspective_task(idx: int, attempt: int) -> str:
+    p = PERSPECTIVES[idx]
+    diff = _compute_diff()
+    feedback_section = ""
+    if attempt > 1:
+        prev_check = json.loads(_check_path(idx, attempt - 1).read_text(encoding="utf-8"))
+        feedback_section = f"""
+
+## 前回レビューへのフィードバック（要反映）
+{prev_check.get("feedback", "")}
+"""
+    return f"""# TASK: レビュー（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+
+新規コンテキストのサブエージェント（Bash/Read/Grep等は不要、diffのみで判断する
+機械的チェック — 探索させないこと）に以下を委譲し、レビュー結果を
+`review_results/result_{idx}_attempt{attempt}.json`に書き出させよ。
+
+## レビュー観点の指示
+{p["review_prompt"]}
+{feedback_section}
+## レビュー対象のdiff
+```diff
+{diff}
+```
+
+## 出力するJSONのスキーマ
+{{
+  "perspective_id": {idx},
+  "perspective_name": "{p["name"]}",
+  "has_issues": <bool>,
+  "issues": [{{"severity": "高|中|低", "location": "...", "description": "...", "suggestion": "..."}}],
+  "summary": "<1〜2文の要約>"
+}}
+
+## 完了条件
+`review_results/result_{idx}_attempt{attempt}.json` が存在すること
+"""
+
+
+def _check_perspective_task(idx: int, attempt: int) -> str:
+    p = PERSPECTIVES[idx]
+    diff = _compute_diff()
+    result = _result_path(idx, attempt).read_text(encoding="utf-8")
+    return f"""# TASK: レビュー結果の検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+
+新規コンテキストのサブエージェントに以下を委譲し、検証結果を
+`review_results/check_{idx}_attempt{attempt}.json`に書き出させよ。
+レビューした本人（同じコンテキスト）ではなく、独立した視点で検証すること。
+
+## 検証観点の指示
+{p["checker_prompt"]}
+
+## レビュー対象のdiff
+```diff
+{diff}
+```
+
+## 検証するレビュー結果
+```json
+{result}
+```
+
+## 出力するJSONのスキーマ
+{{
+  "perspective_id": {idx},
+  "ok": <bool、レビュー結果が妥当なら true>,
+  "feedback": "<ok=falseの場合、見落とし・誤検知の具体的な説明。ok=trueなら空文字>"
+}}
+
+## 完了条件
+`review_results/check_{idx}_attempt{attempt}.json` が存在すること
+"""
+
+
+def _unresolved_section(unresolved_ids: list[int]) -> str:
+    """MAX_REVIEW_RETRIES超過でスキップされた観点を、LLMを介さず確定的に
+    レポートへ追記する。review/checkの意見が収束しなかった箇所なので、
+    AIの要約に頼らず人間の確認を促す。"""
+    if not unresolved_ids:
+        return ""
+    lines = [
+        "\n\n---\n\n## 未解決の意見対立（人間の確認が必要）\n",
+        f"以下の観点は、review/checkの意見が最大リトライ回数（{MAX_REVIEW_RETRIES}回）を超えても収束しませんでした。"
+        "AIの判定を鵜呑みにせず、人間が直接確認してください。\n",
+    ]
+    for idx in unresolved_ids:
+        p = PERSPECTIVES[idx]
+        lines.append(f"- **{p['name']}**")
+    return "\n".join(lines) + "\n"
+
+
+def _synthesize_task() -> str:
+    rs = _read_review_state()
+    redo_counts = rs["redo_counts"]
+    results = []
+    for idx in range(TOTAL_PERSPECTIVES):
+        attempt = redo_counts.get(str(idx), 0) + 1
+        results.append(json.loads(_result_path(idx, attempt).read_text(encoding="utf-8")))
+    results_json = json.dumps(results, ensure_ascii=False, indent=2)
+    unresolved_note = _unresolved_section(rs["unresolved_ids"])
+
+    return f"""# TASK: レビュー結果の統合（フェーズ5、最終レポート作成）
+
+新規コンテキストのサブエージェントに以下を委譲し、`review_results/final_report.md`
+を生成させよ。
+
+## 指示
+複数の観点からのレビュー結果を統合し、開発者向けの分かりやすいレポートをMarkdown
+形式で作成すること。
+
+レポートの構成:
+1. ## サマリー（問題の総数、深刻度の内訳、1〜2文の総評）
+2. ## 問題一覧（問題があった観点のみ。深刻度 高→低 の順）
+3. ## 問題なし（問題が検出されなかった観点の一覧）
+
+以下の「未解決の意見対立」セクションが空でなければ、レポートの末尾にそのまま
+追記すること（内容を変更・要約しないこと。人間の確認を促すための確定的な記述のため）:
+{unresolved_note if unresolved_note else "(なし)"}
+
+## 各観点のレビュー結果
+```json
+{results_json}
+```
+
+## 完了条件
+`review_results/final_report.md` が存在すること
+"""
+
+
+_TERMINAL = {
+    "await_g2": """# DONE (GATE: review)
+
+レビューが完了し、G2（最終承認ゲート）の判断待ちです。
+
+人間は `masuda review show <branch>` でfinal_report.mdを確認し、
+`masuda review approve <branch>` / `masuda review reject <branch> "<feedback>"` で応答してください。
+承認時はローカルmerge・worktree削除まで自動で行われます（ADR-0005）。
+却下時はフェーズ4に差し戻され、フィードバックを踏まえて再実装します（ADR-0013）。
+
+(`masuda review chat` によるセッション維持はロードマップ5番のGATE:<name>実装まで未対応です)
+""",
+    "g2_approved": """# DONE (G2 approved)
+
+G2が承認されました。masuda review approveによるマージ・後片付けをお待ちください。
+""",
+}
+
+
+def write_task_md(state: State) -> State:
+    phase = state["phase"]
+    if phase == "implement":
+        content = _implement_task()
+    elif phase == "implement_redo":
+        content = _implement_task(redo_feedback=state["reason"])
+    elif phase == "plan_reopened":
+        DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
+        if PLAN_GATE_MARKER.exists():
+            PLAN_GATE_MARKER.unlink()
+        if IMPLEMENTATION_RESULT_JSON.exists():
+            IMPLEMENTATION_RESULT_JSON.unlink()
+        content = _plan_reopened_task(state["reason"])
+    elif phase == "review_perspective":
+        info = json.loads(state["reason"])
+        content = _review_perspective_task(info["idx"], info["attempt"])
+    elif phase == "check_perspective":
+        info = json.loads(state["reason"])
+        content = _check_perspective_task(info["idx"], info["attempt"])
+    elif phase == "synthesize":
+        content = _synthesize_task()
+    elif phase in _TERMINAL:
+        content = _TERMINAL[phase]
+    else:
+        raise ValueError(f"unknown phase: {phase}")
+
+    TASK_MD.write_text(content, encoding="utf-8")
+    print(f"[orchestrator] TASK.md written (phase={phase})")
+    return state
+
+
+def build_graph():
+    g = StateGraph(State)
+    g.add_node("detect_phase", detect_phase)
+    g.add_node("write_task_md", write_task_md)
+    g.set_entry_point("detect_phase")
+    g.add_edge("detect_phase", "write_task_md")
+    g.add_edge("write_task_md", END)
+    return g.compile()
+
+
+if __name__ == "__main__":
+    app = build_graph()
+    app.invoke({"phase": "", "reason": ""})
+
+    print("\n--- TASK.md ---")
+    print(TASK_MD.read_text(encoding="utf-8"))
