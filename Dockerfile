@@ -26,8 +26,12 @@ RUN python3 -m venv venv \
  && venv/bin/pip install --no-cache-dir -r requirements.txt
 
 # Project files
-COPY --chown=ubuntu:ubuntu CLAUDE.md langgraph_orchestrator.py start_claude.sh entrypoint.sh ./
-RUN chmod +x start_claude.sh entrypoint.sh
+# runtime/CLAUDE.md (loop protocol) is intentionally not baked in here — it belongs at
+# ~/.claude/CLAUDE.md, placed at container startup (masuda CLI's job, not the image build).
+# See docs/adr/0007-loop-protocol-claude-md-in-user-scope.md
+COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
+COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/
+RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh
 
 USER ubuntu
 
@@ -38,4 +42,4 @@ RUN claude install
 # ttyd web terminal port
 EXPOSE 7682
 
-ENTRYPOINT ["/workspace/entrypoint.sh"]
+ENTRYPOINT ["/workspace/runtime/entrypoint.sh"]

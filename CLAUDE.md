@@ -10,11 +10,17 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 これらは実装より前に固めた設計であり、現在のリポジトリの中身（後述）はまだこの設計に追随していない。
 
-## 現状（未移行）
+## 現状（実装ロードマップ1. リポジトリ構造の移行 完了、2以降は未着手）
 
-このファイル（`CLAUDE.md`）は元々「自己ループの作業ループ仕様」（`TASK.md`の読み書きルール等）を記述していた。この内容はADR-0007の決定により`runtime/CLAUDE.md`へ移設し、サンドボックスコンテナ内では`~/.claude/CLAUDE.md`に配置する設計に変わっている。旧内容はそのまま`runtime/CLAUDE.md`に複製済み（原文のまま、加筆なし）。ADR-0006で決めた`GATE:<name>`終了条件の追加など、`runtime/CLAUDE.md`自体への実装上の変更はまだ行われていない。
+`docs/implementation-roadmap.md`の1番（リポジトリ構造の移行）まで完了している。
 
-同様に`langgraph_orchestrator.py`（現状はFizzBuzzのトイPoC）、`perspectives/`はいずれも設計ドキュメントに沿って作り直す対象。`feat/github-actions-langgraph-nodes`ブランチのレビューグラフ（review/checkの往復、`perspectives/config.py`の13観点）はロジックとして再利用する資産。
+- `runtime/CLAUDE.md`: 旧ルートCLAUDE.md（作業ループ仕様）の原文を複製済み。ADR-0006の`GATE:<name>`終了条件の追加など、内容自体の実装上の変更はまだ未着手
+- `runtime/entrypoint.sh`・`runtime/start_claude.sh`: ルート直下から移動済み
+- `orchestrator/langgraph_orchestrator.py`: ルート直下から移動済み。中身は現状もFizzBuzzのトイPoCのまま（設計ドキュメントに沿った作り直しはロードマップ3番）
+- `orchestrator/perspectives/`: `feat/github-actions-langgraph-nodes`ブランチの13観点（`config.py`）を置き場所だけ移植済み。`langgraph_orchestrator.py`からはまだ参照されておらず、review/checkの往復ロジックへの組み込みはロードマップ3・4番
+- `cmd/masuda/`: Go CLIの雛形（`main.go`が未実装メッセージを出すだけ）。リポジトリルートに`go.mod`（`module github.com/TadahiroYamamura/masuda`）を配置。worktree管理・サンドボックス起動・ゲート操作の実装はロードマップ2番
+- `Dockerfile`: 新しいパス構成に追従。ロードマップ2番でのGo CLI実装（`~/.claude/CLAUDE.md`へのruntime/CLAUDE.md配置）が終わるまでは、自己ループを起動しても`~/.claude/CLAUDE.md`が存在せず動作しない状態が続く
+- `webhook_server.py`: 設計ドキュメントの目標構造に存在しないため削除済み
 
 ## 開発環境
 

@@ -18,5 +18,5 @@
 ## LangGraph 起動コマンド
 
 ```bash
-venv/bin/python langgraph_orchestrator.py
+venv/bin/python orchestrator/langgraph_orchestrator.py
 ```

@@ -3,7 +3,7 @@
 # if it appears. Safe to run even when the dialog is skipped (e.g. re-runs).
 
 SESSION="claude-work"
-WORKDIR="$(cd "$(dirname "$0")" && pwd)"
+WORKDIR="/workspace"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "[start_claude] session '$SESSION' already running, skip"
