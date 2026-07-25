@@ -131,6 +131,15 @@ mechanical checker（read-only）が指摘
      （`feat/github-actions-langgraph-nodes`の既存コードにある unresolved_ids の仕組みがそのまま使える）
 ```
 
+### G2却下時の扱い（フェーズ4への差し戻し）
+
+既存のレビューグラフ（review/checkの往復）自体は指摘を自動修正しない。指摘はそのまま`final_report.md`に載り、G2で人間が判断する。G2で却下された場合の扱いが当初未定義だったため、[[0013-review-rejection-reopens-implementation]]で以下のように定めた。
+
+- フェーズ4（実装）とフェーズ5（レビュー）は同一Dockerサンドボックス・同一の自己ループ上で動くため、1つのオーケストレーター（`orchestrator/implement_review_graph.py`）としてまとめる
+- G2却下は新しいゲート種別を作らず、却下フィードバックを持ってフェーズ4を再実行する形で扱う（G1再オープンと同じ「既存ゲートの再オープン」パターン）
+- 再実装後はレビューをフェーズ0（review/checkの最初の観点）からやり直す。前回のreview/check結果は使い回さない
+- G2承認時は`masuda review approve`が既存通りローカルmerge・worktree削除まで自動実行する
+
 ## ゲート（G1/G2）のUX
 
 ### 判断: worktree操作は自動、pushは常に手動
@@ -182,7 +191,7 @@ masuda/
     mcp/lsp-config.json
   orchestrator/            # masuda自身のPython制御ロジック
     investigate_plan_graph.py  # フェーズ0-2、ホスト側で実行（コンテナには焼き込まない）
-    implement_graph.py         # フェーズ4、コンテナに焼き込んで実行
+    implement_review_graph.py  # フェーズ4-5、コンテナに焼き込んで実行（G2却下でフェーズ4に戻る）
     perspectives/config.py
   scripts/
     local_review.sh

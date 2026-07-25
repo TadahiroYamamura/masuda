@@ -26,7 +26,7 @@ design doc「全体構成」参照。
 - フェーズ0（worktree作成）は2番で作ったGo CLI（`masuda worktree create`）を呼び出す
 - フェーズ1-2（調査・プラン、ADR-0008: エージェント分離+調査不足時のredo）
 - フェーズ4（実装、ADR-0009: ビルド/テスト自己修正ループ、ADR-0010: プラン逸脱検知とG1再オープン）
-- フェーズ5は既存の`feat/github-actions-langgraph-nodes`のレビューグラフ（review/checkの往復、13観点）を子グラフとして組み込む
+- フェーズ5は既存の`feat/github-actions-langgraph-nodes`のレビューグラフ（review/checkの往復、13観点）を子グラフとして組み込む。フェーズ4と同一オーケストレーターにまとめ、G2却下時はフェーズ4に差し戻す（ADR-0013）
 
 ## 4. レビュー内部の再設計
 
