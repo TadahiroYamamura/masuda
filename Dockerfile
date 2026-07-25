@@ -16,9 +16,16 @@ RUN npm install -g @anthropic-ai/claude-code
 
 # ubuntu user (uid=1000) already exists in ubuntu:24.04.
 # Using it avoids root restriction and matches host file ownership on mounted ~/.claude/.credentials.json (mode 600)
-RUN mkdir -p /workspace && chown ubuntu:ubuntu /workspace
+#
+# masuda's own control files (venv/orchestrator/runtime) live under /opt/masuda, not
+# /workspace: /workspace is reserved as the bind-mount point for the target repository's
+# worktree (masuda sandbox start mounts a different worktree there per run), and a bind
+# mount replaces the mount point's entire contents — anything baked in at /workspace would
+# be shadowed the moment a worktree is mounted over it.
+RUN mkdir -p /workspace /opt/masuda /home/ubuntu/.claude \
+ && chown ubuntu:ubuntu /workspace /opt/masuda /home/ubuntu/.claude
 
-WORKDIR /workspace
+WORKDIR /opt/masuda
 
 # Python venv + LangGraph (baked into image)
 COPY --chown=ubuntu:ubuntu requirements.txt ./
@@ -27,7 +34,8 @@ RUN python3 -m venv venv \
 
 # Project files
 # runtime/CLAUDE.md (loop protocol) is intentionally not baked in here — it belongs at
-# ~/.claude/CLAUDE.md, placed at container startup (masuda CLI's job, not the image build).
+# ~/.claude/CLAUDE.md, placed at container startup by masuda sandbox start (masuda CLI's
+# job, not the image build), so it can be iterated on without rebuilding the image.
 # See docs/adr/0007-loop-protocol-claude-md-in-user-scope.md
 COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
 COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/
@@ -39,7 +47,10 @@ USER ubuntu
 ENV PATH="/home/ubuntu/.local/bin:$PATH"
 RUN claude install
 
-# ttyd web terminal port
+# ttyd web terminal port (mapped to a per-container host port by masuda sandbox start,
+# since multiple sandboxes run in parallel)
 EXPOSE 7682
 
-ENTRYPOINT ["/workspace/runtime/entrypoint.sh"]
+WORKDIR /workspace
+
+ENTRYPOINT ["/opt/masuda/runtime/entrypoint.sh"]

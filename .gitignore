@@ -15,3 +15,11 @@ test_fizzbuzz.py
 
 # Claude Code
 .claude.json
+
+# Go
+/masuda
+
+# masuda CLI runtime state (worktrees, gate markers) — created wherever the CLI
+# is run, including here when dogfooding masuda against its own repo
+.masuda/
+.masuda-gate/
