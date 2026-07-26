@@ -63,7 +63,11 @@ func newWorkspaceCreateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			info, dir, err := newWorkspace(root, args[0], base)
+			resolvedBase, err := resolveBase(cmd, root, "base", base, defaultBase)
+			if err != nil {
+				return err
+			}
+			info, dir, err := newWorkspace(root, args[0], resolvedBase)
 			if err != nil {
 				return err
 			}
@@ -90,7 +94,11 @@ func newWorkspaceMergeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return worktree.Merge(root, info.ID, info.Branch, into)
+			resolvedInto, err := resolveBase(cmd, root, "into", into, defaultBase)
+			if err != nil {
+				return err
+			}
+			return worktree.Merge(root, info.ID, info.Branch, resolvedInto)
 		},
 	}
 	cmd.Flags().StringVar(&into, "into", defaultBase, "branch to merge into; must already be checked out in the main worktree")

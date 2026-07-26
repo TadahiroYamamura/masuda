@@ -52,7 +52,11 @@ show|chat|approve|reject.`,
 			if !worktree.BranchExists(root, branch) {
 				return fmt.Errorf("branch %q does not exist — masuda review start only reviews an existing branch (use `masuda plan start` to create a new one)", branch)
 			}
-			info, worktreeDir, err := newWorkspace(root, branch, base)
+			resolvedBase, err := resolveBase(cmd, root, "base", base, defaultBase)
+			if err != nil {
+				return err
+			}
+			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase)
 			if err != nil {
 				return err
 			}
@@ -63,8 +67,12 @@ show|chat|approve|reject.`,
 			if err != nil {
 				return err
 			}
+			resolvedImage, err := resolveImage(cmd, root, image, sandbox.DefaultImage)
+			if err != nil {
+				return err
+			}
 			claudeMd := root + "/runtime/CLAUDE.md"
-			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, claudeMd, image)
+			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, claudeMd, resolvedImage)
 			if err != nil {
 				return err
 			}

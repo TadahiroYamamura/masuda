@@ -68,7 +68,11 @@ on-disk state it left off at.`,
 			if task == "" {
 				return fmt.Errorf("no task description given — required when starting a new workspace: masuda plan start %s \"<task>\"", branch)
 			}
-			info, worktreeDir, err := newWorkspace(root, branch, base)
+			resolvedBase, err := resolveBase(cmd, root, "base", base, defaultBase)
+			if err != nil {
+				return err
+			}
+			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase)
 			if err != nil {
 				return err
 			}

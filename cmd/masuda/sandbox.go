@@ -40,8 +40,12 @@ func newSandboxStartCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			resolvedImage, err := resolveImage(cmd, root, image, sandbox.DefaultImage)
+			if err != nil {
+				return err
+			}
 			claudeMd := root + "/runtime/CLAUDE.md"
-			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, claudeMd, image)
+			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, claudeMd, resolvedImage)
 			if err != nil {
 				return err
 			}
