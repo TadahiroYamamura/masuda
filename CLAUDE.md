@@ -19,6 +19,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - `orchestrator/implement_review_graph.py`: フェーズ4-5（実装・レビュー）の状態遷移ロジック。ADR-0013により1つのオーケストレーターにまとめている。Dockerサンドボックス内で動く（旧`langgraph_orchestrator.py`のFizzBuzz PoCを置き換え、ファイル自体削除済み）
   - フェーズ4: ADR-0009のビルド/テスト自己修正はサブエージェント内で完結させ、オーケストレーターは`implementation_result.json`の結果（done/needs_plan_review/build_test_failed）だけを見る。ADR-0010の機械的バックストップ（PLAN.mdの「変更するファイル一覧」と`git status --porcelain`の突き合わせ、LLM不使用）は実機で逸脱検知を確認済み。逸脱検知時は`DEVIATION.md`を書き出しG1のゲートマーカーを削除して再オープンする
   - フェーズ5: `feat/github-actions-langgraph-nodes`の13観点review/checkループ（`perspectives/config.py`）を、直接API呼び出しからサブエージェント委譲（Task tool、diffのみを見せる機械的チェック）に移植。review/checkの往復・redo・unresolved・synthesizeまで実機で確認済み。G2却下時はフィードバックを持ってフェーズ4に差し戻し、レビューはperspective 0からやり直す（ADR-0013、実機確認済み）
+  - checker/fixer自動修正ループ（ADR-0004、ロードマップ4番の一部）: checkがhas_issues=trueの指摘を確認すると、指摘箇所のみのfixerサブエージェントが修正し、新規のcheckerで再検証する。解決すればfixed一覧へ、MAX_RETRIES到達で未解決としてsynthesizeに引き継ぐ。実際にAPIキーのハードコードを注入し、fixerが環境変数読み取りに修正、recheckが解決確認するところまで実機確認済み
   - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`が既存通りマージ・後片付け、`review reject`がフェーズ4差し戻しをトリガーする
 - `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし、計37件）
 - `orchestrator/perspectives/`: `feat/github-actions-langgraph-nodes`ブランチの13観点（`config.py`）を置き場所だけ移植済み。まだどこからも参照されておらず、review/checkの往復ロジックへの組み込みはロードマップ4番
@@ -30,7 +31,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`は対象worktree専用のbind mount先として空けてある。`git`を追加済み（対象repoがgit操作を必要とするため）
 - `webhook_server.py`: 設計ドキュメントの目標構造に存在しないため削除済み
 
-未着手: レビュー内部の再設計（機械的/横断的の2区分、checker/fixer自動修正ループ、LSP経由の整合性検証、ロードマップ4番）、`GATE:<name>`終了条件（ロードマップ5番）、`masuda review <branch-or-ref>`単体エントリーポイント（ロードマップ6番）。
+未着手: 横断的チェック（LSP経由の整合性検証、explorer→verifierの1パス構成、ロードマップ4番の残り）、`GATE:<name>`終了条件（ロードマップ5番）、`masuda review <branch-or-ref>`単体エントリーポイント（ロードマップ6番）。
 
 ## 開発環境
 

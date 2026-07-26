@@ -166,7 +166,7 @@ def _read_gate_marker(path: Path) -> dict | None:
 
 def _read_review_state() -> dict:
     if not REVIEW_STATE_JSON.exists():
-        return {"idx": 0, "redo_counts": {}, "unresolved_ids": []}
+        return {"idx": 0, "redo_counts": {}, "fix_counts": {}, "unresolved": [], "fixed": []}
     return json.loads(REVIEW_STATE_JSON.read_text(encoding="utf-8"))
 
 
@@ -193,14 +193,36 @@ def _check_path(idx: int, attempt: int) -> Path:
     return REVIEW_RESULTS_DIR / f"check_{idx}_attempt{attempt}.json"
 
 
+def _fix_path(idx: int, fix_attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"fix_{idx}_fixattempt{fix_attempt}.json"
+
+
+def _recheck_path(idx: int, fix_attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"recheck_{idx}_fixattempt{fix_attempt}.json"
+
+
 def _detect_review_phase() -> State:
-    """Advances the perspective/redo bookkeeping (pure, no LLM) until it lands
-    on a phase that actually needs a subagent round, mirroring the original
-    review_node/check_node conditional edges."""
+    """Advances the perspective/redo/fix bookkeeping (pure, no LLM) until it
+    lands on a phase that actually needs a subagent round.
+
+    Two nested loops, mirroring two different ADRs:
+      - review <-> check redo (ADR-0008-style, ported from the original
+        review_node/check_node): is the review's *assessment* accurate?
+      - fix <-> recheck redo (ADR-0004): once an issue is confirmed real,
+        can a narrow-write fixer resolve it? checker and fixer stay separate
+        roles so the fix is verified independently, not self-graded.
+    """
     rs = _read_review_state()
     idx = rs["idx"]
     redo_counts = rs["redo_counts"]
-    unresolved = rs["unresolved_ids"]
+    fix_counts = rs["fix_counts"]
+    unresolved = rs["unresolved"]
+    fixed = rs["fixed"]
+
+    def persist():
+        _write_review_state(
+            {"idx": idx, "redo_counts": redo_counts, "fix_counts": fix_counts, "unresolved": unresolved, "fixed": fixed}
+        )
 
     while idx < TOTAL_PERSPECTIVES:
         attempt = redo_counts.get(str(idx), 0) + 1
@@ -210,15 +232,41 @@ def _detect_review_phase() -> State:
             return {"phase": "check_perspective", "reason": json.dumps({"idx": idx, "attempt": attempt})}
 
         check = json.loads(_check_path(idx, attempt).read_text(encoding="utf-8"))
-        if check.get("ok"):
+        if not check.get("ok"):
+            if redo_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
+                redo_counts[str(idx)] = redo_counts.get(str(idx), 0) + 1
+            else:
+                unresolved.append({"idx": idx, "reason": "review_check_not_converged"})
+                idx += 1
+            persist()
+            continue
+
+        result = json.loads(_result_path(idx, attempt).read_text(encoding="utf-8"))
+        if not result.get("has_issues"):
             idx += 1
-        elif redo_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
-            redo_counts[str(idx)] = redo_counts.get(str(idx), 0) + 1
+            persist()
+            continue
+
+        # Confirmed real issue(s) -- ADR-0004's fix <-> recheck loop.
+        fix_attempt = fix_counts.get(str(idx), 0) + 1
+        if not _fix_path(idx, fix_attempt).exists():
+            return {
+                "phase": "fix_perspective",
+                "reason": json.dumps({"idx": idx, "attempt": attempt, "fix_attempt": fix_attempt}),
+            }
+        if not _recheck_path(idx, fix_attempt).exists():
+            return {"phase": "recheck_perspective", "reason": json.dumps({"idx": idx, "fix_attempt": fix_attempt})}
+
+        recheck = json.loads(_recheck_path(idx, fix_attempt).read_text(encoding="utf-8"))
+        if recheck.get("resolved"):
+            fixed.append(idx)
+            idx += 1
+        elif fix_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
+            fix_counts[str(idx)] = fix_counts.get(str(idx), 0) + 1
         else:
-            unresolved.append(idx)
+            unresolved.append({"idx": idx, "reason": "fix_not_resolved"})
             idx += 1
-        rs = {"idx": idx, "redo_counts": redo_counts, "unresolved_ids": unresolved}
-        _write_review_state(rs)
+        persist()
 
     return {"phase": "synthesize", "reason": ""}
 
@@ -396,18 +444,98 @@ def _check_perspective_task(idx: int, attempt: int) -> str:
 """
 
 
-def _unresolved_section(unresolved_ids: list[int]) -> str:
-    """MAX_REVIEW_RETRIES超過でスキップされた観点を、LLMを介さず確定的に
-    レポートへ追記する。review/checkの意見が収束しなかった箇所なので、
-    AIの要約に頼らず人間の確認を促す。"""
-    if not unresolved_ids:
+def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
+    """ADR-0004: the fixer is a fresh, narrow-write subagent -- never the
+    checker that flagged the issue (checking one's own fix isn't independent),
+    and never the full phase-4 implementation subagent (too heavy for what's
+    usually a small, localized fix)."""
+    p = PERSPECTIVES[idx]
+    result = _result_path(idx, attempt).read_text(encoding="utf-8")
+    retry_note = ""
+    if fix_attempt > 1:
+        prev_recheck = json.loads(_recheck_path(idx, fix_attempt - 1).read_text(encoding="utf-8"))
+        retry_note = f"""
+
+## 前回の修正では解決しませんでした
+{prev_recheck.get("feedback", "")}
+"""
+    return f"""# TASK: 指摘の自動修正（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+
+新規コンテキストのサブエージェント（指摘箇所のみ書き込み可、軽量な修正専用。
+指摘そのものを出したレビューア/checkerとは別コンテキストで実行すること）に
+以下の指摘を修正させ、完了したら`review_results/fix_{idx}_fixattempt{fix_attempt}.json`
+に`{{"status": "fixed"}}`を書き出させよ。
+
+## 修正対象の指摘
+```json
+{result}
+```
+{retry_note}
+## 注意
+指摘箇所（`issues[].location`）以外のファイルは変更しないこと。
+
+## 完了条件
+`review_results/fix_{idx}_fixattempt{fix_attempt}.json` が存在すること
+"""
+
+
+def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
+    p = PERSPECTIVES[idx]
+    diff = _compute_diff()
+    return f"""# TASK: 修正の再検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+
+新規コンテキストのサブエージェントに以下を委譲し、検証結果を
+`review_results/recheck_{idx}_fixattempt{fix_attempt}.json`に書き出させよ。
+修正した本人（fixer）ではなく、独立した視点で検証すること。
+
+## 検証観点の指示
+{p["checker_prompt"]}
+
+上記観点について、以下のdiff（修正後の最新状態）を確認し、元の指摘が解消されたか判定せよ。
+
+## 修正後のdiff
+```diff
+{diff}
+```
+
+## 出力するJSONのスキーマ
+{{
+  "resolved": <bool、指摘が解消されていれば true>,
+  "feedback": "<resolved=falseの場合、何が未解決かの具体的な説明。trueなら空文字>"
+}}
+
+## 完了条件
+`review_results/recheck_{idx}_fixattempt{fix_attempt}.json` が存在すること
+"""
+
+
+def _unresolved_section(unresolved: list[dict]) -> str:
+    """MAX_REVIEW_RETRIES超過で解決しなかった観点を、LLMを介さず確定的に
+    レポートへ追記する。review/checkの意見が収束しなかった、または自動修正が
+    収束しなかった箇所なので、AIの要約に頼らず人間の確認を促す。"""
+    if not unresolved:
         return ""
+    reason_labels = {
+        "review_check_not_converged": "review/checkの意見が収束しなかった",
+        "fix_not_resolved": f"自動修正（最大{MAX_REVIEW_RETRIES}回）を試みたが解決しなかった",
+    }
     lines = [
-        "\n\n---\n\n## 未解決の意見対立（人間の確認が必要）\n",
-        f"以下の観点は、review/checkの意見が最大リトライ回数（{MAX_REVIEW_RETRIES}回）を超えても収束しませんでした。"
-        "AIの判定を鵜呑みにせず、人間が直接確認してください。\n",
+        "\n\n---\n\n## 未解決の指摘（人間の確認が必要）\n",
+        "以下の観点は自動では解決できませんでした。AIの判定を鵜呑みにせず、人間が直接確認してください。\n",
     ]
-    for idx in unresolved_ids:
+    for entry in unresolved:
+        p = PERSPECTIVES[entry["idx"]]
+        lines.append(f"- **{p['name']}**: {reason_labels.get(entry['reason'], entry['reason'])}")
+    return "\n".join(lines) + "\n"
+
+
+def _fixed_section(fixed_ids: list[int]) -> str:
+    """自動修正できた観点も、透明性のため確定的にレポートへ追記する
+    （ADR-0004: 機械的な指摘はG2を経由せず自動的に解決できる）。"""
+    if not fixed_ids:
+        return ""
+    lines = ["\n\n---\n\n## 自動修正済みの指摘\n", "以下の観点は指摘後、自動修正・再検証により解決を確認済みです。\n"]
+    for idx in fixed_ids:
         p = PERSPECTIVES[idx]
         lines.append(f"- **{p['name']}**")
     return "\n".join(lines) + "\n"
@@ -421,7 +549,8 @@ def _synthesize_task() -> str:
         attempt = redo_counts.get(str(idx), 0) + 1
         results.append(json.loads(_result_path(idx, attempt).read_text(encoding="utf-8")))
     results_json = json.dumps(results, ensure_ascii=False, indent=2)
-    unresolved_note = _unresolved_section(rs["unresolved_ids"])
+    fixed_note = _fixed_section(rs["fixed"])
+    unresolved_note = _unresolved_section(rs["unresolved"])
 
     return f"""# TASK: レビュー結果の統合（フェーズ5、最終レポート作成）
 
@@ -430,18 +559,21 @@ def _synthesize_task() -> str:
 
 ## 指示
 複数の観点からのレビュー結果を統合し、開発者向けの分かりやすいレポートをMarkdown
-形式で作成すること。
+形式で作成すること。機械的な指摘で自動修正・解決が確認できたものは
+「自動修正済みの指摘」セクションに記載済みのため、別途「問題一覧」のような
+形で重複して記載しないこと。
 
 レポートの構成:
-1. ## サマリー（問題の総数、深刻度の内訳、1〜2文の総評）
-2. ## 問題一覧（問題があった観点のみ。深刻度 高→低 の順）
-3. ## 問題なし（問題が検出されなかった観点の一覧）
+1. ## サマリー（自動修正した件数・未解決件数、1〜2文の総評）
+2. ## 問題なし（review/checkの往復を経ても問題が検出されなかった観点の一覧）
 
-以下の「未解決の意見対立」セクションが空でなければ、レポートの末尾にそのまま
-追記すること（内容を変更・要約しないこと。人間の確認を促すための確定的な記述のため）:
-{unresolved_note if unresolved_note else "(なし)"}
+以下の「自動修正済みの指摘」「未解決の指摘」セクションが空でなければ、レポートの
+末尾にそのまま追記すること（内容を変更・要約しないこと。人間への報告を正確に
+保つための確定的な記述のため）:
+{fixed_note if fixed_note else "(自動修正済みの指摘なし)"}
+{unresolved_note if unresolved_note else "(未解決の指摘なし)"}
 
-## 各観点のレビュー結果
+## 各観点のレビュー結果（自動修正前の最終レビュー内容）
 ```json
 {results_json}
 ```
@@ -489,6 +621,12 @@ def write_task_md(state: State) -> State:
     elif phase == "check_perspective":
         info = json.loads(state["reason"])
         content = _check_perspective_task(info["idx"], info["attempt"])
+    elif phase == "fix_perspective":
+        info = json.loads(state["reason"])
+        content = _fix_perspective_task(info["idx"], info["attempt"], info["fix_attempt"])
+    elif phase == "recheck_perspective":
+        info = json.loads(state["reason"])
+        content = _recheck_perspective_task(info["idx"], info["fix_attempt"])
     elif phase == "synthesize":
         content = _synthesize_task()
     elif phase in _TERMINAL:

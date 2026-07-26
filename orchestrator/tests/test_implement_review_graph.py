@@ -61,6 +61,18 @@ def write_check(idx, attempt, ok, feedback=""):
     )
 
 
+def write_fix(idx, fix_attempt):
+    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
+    irg._fix_path(idx, fix_attempt).write_text(json.dumps({"status": "fixed"}), encoding="utf-8")
+
+
+def write_recheck(idx, fix_attempt, resolved, feedback=""):
+    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
+    irg._recheck_path(idx, fix_attempt).write_text(
+        json.dumps({"resolved": resolved, "feedback": feedback}), encoding="utf-8"
+    )
+
+
 def mark_implementation_done_and_clean():
     init_git_repo()
     import pathlib
@@ -174,9 +186,9 @@ def test_review_advances_to_check_once_result_written():
     assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1}
 
 
-def test_review_ok_check_advances_to_next_perspective():
+def test_review_ok_no_issues_advances_to_next_perspective():
     mark_implementation_done_and_clean()
-    write_result(0, 1)
+    write_result(0, 1, has_issues=False)
     write_check(0, 1, ok=True)
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "review_perspective"
@@ -207,16 +219,85 @@ def test_review_exhausted_retries_marks_unresolved_and_advances():
     assert state["phase"] == "review_perspective"
     assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
     rs = irg._read_review_state()
-    assert rs["unresolved_ids"] == [0]
+    assert rs["unresolved"] == [{"idx": 0, "reason": "review_check_not_converged"}]
 
 
 def test_all_perspectives_done_means_synthesize():
     mark_implementation_done_and_clean()
     for idx in range(irg.TOTAL_PERSPECTIVES):
-        write_result(idx, 1)
+        write_result(idx, 1, has_issues=False)
         write_check(idx, 1, ok=True)
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "synthesize"
+
+
+# --- detect_phase: phase 5 fix<->recheck loop (ADR-0004) ------------------
+
+def test_confirmed_issue_enters_fix_loop():
+    mark_implementation_done_and_clean()
+    write_result(0, 1, has_issues=True)
+    write_check(0, 1, ok=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "fix_perspective"
+    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1, "fix_attempt": 1}
+
+
+def test_fix_written_advances_to_recheck():
+    mark_implementation_done_and_clean()
+    write_result(0, 1, has_issues=True)
+    write_check(0, 1, ok=True)
+    write_fix(0, 1)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "recheck_perspective"
+    assert json.loads(state["reason"]) == {"idx": 0, "fix_attempt": 1}
+
+
+def test_recheck_resolved_advances_to_next_perspective_and_records_fixed():
+    mark_implementation_done_and_clean()
+    write_result(0, 1, has_issues=True)
+    write_check(0, 1, ok=True)
+    write_fix(0, 1)
+    write_recheck(0, 1, resolved=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "review_perspective"
+    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    assert irg._read_review_state()["fixed"] == [0]
+
+
+def test_recheck_unresolved_redoes_fix():
+    mark_implementation_done_and_clean()
+    write_result(0, 1, has_issues=True)
+    write_check(0, 1, ok=True)
+    write_fix(0, 1)
+    write_recheck(0, 1, resolved=False, feedback="まだ直っていない")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "fix_perspective"
+    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1, "fix_attempt": 2}
+
+
+def test_fix_exhausted_retries_marks_unresolved_and_advances():
+    mark_implementation_done_and_clean()
+    write_result(0, 1, has_issues=True)
+    write_check(0, 1, ok=True)
+    for fix_attempt in (1, 2, 3):
+        write_fix(0, fix_attempt)
+        write_recheck(0, fix_attempt, resolved=False, feedback=f"ng{fix_attempt}")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "review_perspective"
+    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    rs = irg._read_review_state()
+    assert rs["unresolved"] == [{"idx": 0, "reason": "fix_not_resolved"}]
+    assert rs["fixed"] == []
 
 
 def test_final_report_no_marker_means_await_g2():
@@ -339,18 +420,60 @@ def test_check_perspective_task_includes_review_result():
     assert irg.PERSPECTIVES[0]["checker_prompt"][:20] in content
 
 
-def test_synthesize_task_includes_all_final_results_and_unresolved():
+def test_fix_perspective_task_includes_flagged_issue():
     init_git_repo()
-    irg._write_review_state({"idx": irg.TOTAL_PERSPECTIVES, "redo_counts": {"0": 2}, "unresolved_ids": [0]})
+    write_result(0, 1, has_issues=True)
+
+    irg.write_task_md({"phase": "fix_perspective", "reason": json.dumps({"idx": 0, "attempt": 1, "fix_attempt": 1})})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "has_issues" in content
+    assert "fix_0_fixattempt1.json" in content
+
+
+def test_fix_perspective_task_includes_prior_recheck_feedback_on_retry():
+    init_git_repo()
+    write_result(0, 1, has_issues=True)
+    write_recheck(0, 1, resolved=False, feedback="まだ直っていない")
+
+    irg.write_task_md({"phase": "fix_perspective", "reason": json.dumps({"idx": 0, "attempt": 1, "fix_attempt": 2})})
+
+    assert "まだ直っていない" in irg.TASK_MD.read_text(encoding="utf-8")
+
+
+def test_recheck_perspective_task_includes_diff_and_checker_prompt():
+    init_git_repo()
+    import pathlib
+    pathlib.Path("README.md").write_text("fixed content", encoding="utf-8")
+
+    irg.write_task_md({"phase": "recheck_perspective", "reason": json.dumps({"idx": 0, "fix_attempt": 1})})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "fixed content" in content
+    assert irg.PERSPECTIVES[0]["checker_prompt"][:20] in content
+
+
+def test_synthesize_task_includes_fixed_and_unresolved_sections():
+    init_git_repo()
+    irg._write_review_state(
+        {
+            "idx": irg.TOTAL_PERSPECTIVES,
+            "redo_counts": {},
+            "fix_counts": {},
+            "unresolved": [{"idx": 1, "reason": "fix_not_resolved"}],
+            "fixed": [0],
+        }
+    )
     for idx in range(irg.TOTAL_PERSPECTIVES):
-        attempt = 3 if idx == 0 else 1
-        write_result(idx, attempt, has_issues=(idx == 0))
+        write_result(idx, 1, has_issues=(idx in (0, 1)))
 
     irg.write_task_md({"phase": "synthesize", "reason": ""})
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
-    assert "未解決の意見対立" in content
+    assert "自動修正済みの指摘" in content
+    assert "未解決の指摘" in content
     assert irg.PERSPECTIVES[0]["name"] in content
+    assert irg.PERSPECTIVES[1]["name"] in content
 
 
 @pytest.mark.parametrize("phase", ["await_g2", "g2_approved"])
