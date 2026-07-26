@@ -21,8 +21,9 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
   - **G1再オープンの承認/却下分岐**: 当初`plan_reopened`検知時に即座にゲートマーカー・implementation_result.jsonをクリアしていたが、これだと承認された逸脱も次回チェックで同一の逸脱として検知され無限に再オープンし続けるバグがあった（GATE導入でセッションが自動再開するようになって顕在化）。`.masuda-approved-deviations.json`に承認済み逸脱のファイル一覧を記録し、以後の機械的バックストップから除外する形に修正した。却下時・自己申告（needs_plan_review/build_test_failed）の承認時はフェーズ4を再実行する
   - フェーズ5: `feat/github-actions-langgraph-nodes`の13観点review/checkループ（`perspectives/config.py`）を、直接API呼び出しからサブエージェント委譲（Task tool、diffのみを見せる機械的チェック）に移植。review/checkの往復・redo・unresolved・synthesizeまで実機で確認済み。G2到達（`await_g2`）はGATE:reviewとして待機する。G2却下時はフィードバックを持ってフェーズ4に差し戻し、レビューはperspective 0からやり直す（ADR-0013、実機確認済み）
   - checker/fixer自動修正ループ（ADR-0004）: checkがhas_issues=trueの指摘を確認すると、指摘箇所のみのfixerサブエージェントが修正し、新規のcheckerで再検証する。解決すればfixed一覧へ、MAX_RETRIES到達で未解決としてsynthesizeに引き継ぐ。実際にAPIキーのハードコードを注入し、fixerが環境変数読み取りに修正、recheckが解決確認するところまで実機確認済み
+  - **横断的チェック（ロードマップ8番、ADR-0003・ADR-0011）**: 13観点収束後、explorer→verifierの1パス構成（redoなし）を実行。explorerはBash/Read/Grep/Glob+ネイティブLSPツールへのフルアクセスを持つサブエージェントにdiff起点の多ターン探索を委譲し、`review_results/cross_cutting_findings.json`に書き出させる。findingsが空ならverifierをスキップしてsynthesizeへ直行、findingsがあれば独立したverifierサブエージェントが妥当性のみを検証し`cross_cutting_verified.json`に確認済み分だけ残す。確認済みの指摘は自動修正せず、常に最終レポートの「横断的チェックの指摘」セクションに上げてG2で人間が判断する。実機テスト（`masuda-loop:go`）で、意図的に仕込んだコード上の矛盾（stderr握りつぶし・標準ライブラリで済む処理の外部コマンド化等）に対しexplorerが実際にLSPの`findReferences`を使って5件検出（仕込んだ本命2件＋偶発的なgofmt違反・デッドコード・潜在バグの計3件）、verifierが独立した追加検証を経て全件確認、最終レポートが13観点の「デッドコード」観点では見えなかった問題を横断的チェックが検出したことまで言及するのを確認済み——ADR-0003が想定した価値が実際に機能することを実機で確認できた
   - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`が既存通りマージ・後片付け、`review reject`がフェーズ4差し戻しをトリガーする
-- `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし、計67件）
+- `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし、計80件）
 - `orchestrator/perspectives/`: `feat/github-actions-langgraph-nodes`ブランチの13観点（`config.py`）。`implement_review_graph.py`のフェーズ5から参照済み
 - `internal/workspace/`（ロードマップ7番、新設）: ワークスペースID（`<sanitized-branch>-<ランダム6桁hex>`形式、`NewID`）とその状態ディレクトリ（`~/.local/share/masuda/workspaces/<id>/`、XDG_DATA_HOME尊重）を管理するパッケージ。`Create`がメタデータ（`workspace.json`: branch/base/repo_root/created_at）と`.masuda-base-ref`を書き込み、`Load`/`Exists`/`List`/`Remove`を提供する。branch名ではなくこのIDが以後すべてのCLIサブコマンドの引数・worktree/コンテナ/tmuxセッションのアドレッシングキーになる——同じbranchに対して複数のワークスペースが並行して存在できるようにするため
 - `internal/config/`（ロードマップ8番着手前の下準備、新設）: 対象リポジトリのルート直下に置く`.masuda.json`（ユーザーが手で編集してコミットする、任意ファイル）を読む。現状は`image`（`masuda sandbox start`/`masuda review start`実行時に使うDockerイメージ）と`base`（trunk branch名）の2フィールドのみ定義
@@ -54,7 +55,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
   - `docker/full/Dockerfile`: 上記3つを1つにまとめたkitchen sinkバリアント。複数言語混在repo向け
   - 実機ビルドで確認したイメージサイズ: base 1.64GB → go +410MB → python +50MB → typescript +80MB → full（3つ合計）+550MB。各バリアントとも対応LSPバイナリの実行可能性と`claude plugin list`でのプラグイン有効化を確認済み
 
-未着手: ロードマップ8番のうち、explorer→verifierの1パス構成（ADR-0011）と予算管理（`ITERATION_BUDGET`）の実装本体。上記のDockerイメージ側の準備は完了。
+未着手: ロードマップ8番のうち予算管理（`ITERATION_BUDGET`をサブエージェント起動1回単位に統一する仕組み、サブエージェントごとの内部ターン数上限）。explorer→verifierの1パス構成はredoループを持たないため、今回の実装単体では無限ループの実害が生じず、既存のMAX_REVIEW_RETRIES的な仕組みの流用も不要だった。ITERATION_BUDGETという概念自体、現状どの箇所にもコードとして存在しない（design docのみの構想）ため、既存の機械的チェックのMAX_REVIEW_RETRIES方式も含めた統一は別途スコープを切って着手する必要がある。
 
 ## 開発環境
 

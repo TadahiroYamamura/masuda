@@ -134,9 +134,9 @@ design doc「フェーズ5（レビュー）の内部設計」、ADR-0003・0011
   Dockerサンドボックス内でLSPプラグイン（gopls-lsp等）をどう導入するか
   （ビルド時にマーケットプレイス経由でインストールするか、gopls本体のみ入れて
   別の方法でLSP登録するか）→ **解決済み（下記）**
-- explorer→verifierの1パス構成（redoなし、ADR-0011）→ 未着手
+- explorer→verifierの1パス構成（redoなし、ADR-0011）→ **実装・実機確認済み（下記）**
 - 予算管理: `ITERATION_BUDGET`の単位を「サブエージェント起動1回」に統一、
-  サブエージェントごとの内部ターン数上限を追加 → 未着手
+  サブエージェントごとの内部ターン数上限を追加 → 未着手（下記「実装結果」の懸念事項を参照）
 
 **Dockerイメージ側の準備（完了）**: 公式マーケットプレイス
 （`anthropics/claude-plugins-official`）を調査した結果、TypeScript・Python含む
@@ -176,3 +176,67 @@ Python・TypeScriptは軽量、Goツールチェーンが支配的という結�
 各バリアントとも、対応するLSPバイナリの実行可能性（`gopls version`・
 `pyright --version`・`typescript-language-server --version`）と
 `claude plugin list`でのプラグイン有効化を実機で確認済み。
+
+**explorer→verifierの実装（完了）**: `orchestrator/implement_review_graph.py`の
+フェーズ5に、13観点の機械的チェックが全て収束した後に走るexplorer→verifierの
+1パス構成（ADR-0003・ADR-0011、redoなし）を追加した。
+
+- `CROSS_CUTTING_FINDINGS_JSON`（explorerの出力）・`CROSS_CUTTING_VERIFIED_JSON`
+  （verifierの出力）を`review_results/`配下に新設。`_detect_review_phase()`は
+  13観点収束後、findings未生成なら`cross_cutting_explore`、findingsが空でなければ
+  `cross_cutting_verify`、それ以外は`synthesize`に分岐する（findingsが空なら
+  verifierを起動する意味がないためスキップ）
+- explorerタスク（`_cross_cutting_explore_task()`）はBash・Read・Grep・Glob・
+  ネイティブLSPツールへのフルアクセスを持つサブエージェントに、diffを起点とした
+  多ターンの探索を委譲する。verifierタスク（`_cross_cutting_verify_task()`）は
+  探索した本人とは別コンテキストで指摘の妥当性のみを検証し、確認できたものだけを
+  残す。両者ともfixerによる自動修正・redoは持たない（ADR-0011: 複雑な指摘は
+  常にG2で人間が判断する）
+- 確認済みの指摘は`_cross_cutting_section()`で最終レポートに
+  「## 横断的チェックの指摘（人間の判断が必要）」として確定的に追記される
+- G2却下時の`_clear_review_state()`（レビューをperspective 0からやり直す、
+  ADR-0013）は、これら2ファイルも`review_results/`配下ごと削除するため
+  追加のコード変更は不要だった
+- **プロンプト文面の修正（レビュー指摘）**: 当初「探索の観点の例」に3つの
+  箇条書きを並列で書いていたが、実際には「実装パターンの一貫性」（ファイルAB間の
+  流儀の食い違い）と「変更の伝播漏れ」（シグネチャ変更が呼び出し元に反映されて
+  いない）は性質の異なる2カテゴリだと指摘を受け、見出しを分けて整理した。さらに
+  「伝播漏れ」の例は、Go等の静的型付け言語では単純な引数の過不足がコンパイル
+  エラーになりフェーズ4のビルド自己検証（ADR-0009）で既に弾かれるはずだという
+  指摘を受け、この観点は動的型付け言語や文字列ベースディスパッチ・リフレクション
+  経由の呼び出しなど、ビルドでは検知できないケースに限定する形に修正した
+- **実機テストで判明した罠**: `orchestrator/`はDockerイメージのビルド時に
+  `COPY`で焼き込まれる（コンテナ起動後に変わらない）ため、既存のコンテナ・
+  イメージに対してオーケストレーターのコード変更をテストする際は、必ず
+  `masuda-loop:latest`・言語バリアントイメージの両方を再ビルドしてから
+  コンテナを起動し直す必要がある。再ビルドを忘れて古いイメージのままテストした
+  結果、新しいcross_cutting_explore/verifyフェーズが一切実行されず`synthesize`に
+  直行するという見かけ上の不具合に遭遇し、原因究明に時間を要した
+
+**実機テスト（成功）**: `masuda-loop:go`イメージで、意図的に仕込んだコード上の
+矛盾（新規関数`pruneStaleLocks`が、リポジトリ内の`runGit`/`runDocker`/tmux起動
+ヘルパー等と異なりstderrを握りつぶす、標準ライブラリで済む処理を外部コマンド
+`find`に投げている、等）に対し、explorerサブエージェントが実際にネイティブLSP
+ツール（`findReferences`）を使い、以下5件を検出した:
+
+1. （高）`pruneStaleLocks`が完全なデッドコード（LSPのfind references・repo全体
+   grepで呼び出し元0件、かつ削除対象の`.lock`ファイルを生成するコード自体が
+   存在しないことも確認）
+2. （中）標準ライブラリで済む処理を外部コマンド`find`に投げている（意図的に
+   仕込んだ本命の指摘）
+3. （中）import順がgofmt違反（`gofmt -l`で実機確認。これは仕込んだものではなく
+   偶発的に混入した実際のバグをexplorerが発見した）
+4. （中）stderrを握りつぶしエラー文脈を失っている（`runGit`/`runDocker`/
+   `hostloop`の一貫したエラーラップ流儀との不一致。仕込んだ本命の指摘そのもの）
+5. （低）workspaceルートディレクトリ未作成時に失敗する潜在バグ（同一ファイル内の
+   `List()`の挙動と食い違うことを、実際に`find <存在しないパス>`を実行して
+   終了コードを確認した上で指摘）
+
+独立したverifierサブエージェントは5件すべてを追加の引用・根拠を加えた上で確認し
+（1件は熟考の上で重大度を中→低に格下げ）、最終レポートの
+「横断的チェックの指摘」セクションに正しく反映された。レポートはさらに、
+13観点中の「デッドコード・未使用変数」観点がdiff単体では検出できなかったこの
+デッドコードを、横断的チェックが検出したことを明示的に言及しており、
+ADR-0003が想定した価値（diffだけでは見えない問題の検出）が実際に機能することを
+確認できた。G2ゲート到達・`GATE:review`到達・Monitorツールでの待機まで
+一連の流れを実機で確認済み。

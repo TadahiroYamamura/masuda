@@ -92,6 +92,22 @@ def write_recheck(idx, fix_attempt, resolved, feedback=""):
     )
 
 
+def write_all_perspectives_clean():
+    for idx in range(irg.TOTAL_PERSPECTIVES):
+        write_result(idx, 1, has_issues=False)
+        write_check(idx, 1, ok=True)
+
+
+def write_cross_cutting_findings(findings):
+    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
+    irg.CROSS_CUTTING_FINDINGS_JSON.write_text(json.dumps(findings, ensure_ascii=False), encoding="utf-8")
+
+
+def write_cross_cutting_verified(findings):
+    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
+    irg.CROSS_CUTTING_VERIFIED_JSON.write_text(json.dumps(findings, ensure_ascii=False), encoding="utf-8")
+
+
 def mark_implementation_done_and_clean():
     init_git_repo()
     import pathlib
@@ -319,13 +335,117 @@ def test_review_exhausted_retries_marks_unresolved_and_advances():
     assert rs["unresolved"] == [{"idx": 0, "reason": "review_check_not_converged"}]
 
 
-def test_all_perspectives_done_means_synthesize():
+def test_all_perspectives_done_means_cross_cutting_explore():
+    """Once all 13 mechanical perspectives converge, the cross-cutting
+    explorer/verifier pass (ADR-0003/ADR-0011) runs before synthesize."""
     mark_implementation_done_and_clean()
     for idx in range(irg.TOTAL_PERSPECTIVES):
         write_result(idx, 1, has_issues=False)
         write_check(idx, 1, ok=True)
     state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "cross_cutting_explore"
+
+
+# --- detect_phase: cross-cutting explorer/verifier (ADR-0003/ADR-0011) ----
+
+def test_cross_cutting_explore_with_no_findings_skips_verify():
+    """ADR-0011: no redo loop for cross-cutting checks. If explorer found
+    nothing, there's nothing for verify to independently confirm -- go
+    straight to synthesize instead of spawning a verifier for no reason."""
+    mark_implementation_done_and_clean()
+    write_all_perspectives_clean()
+    write_cross_cutting_findings([])
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
     assert state["phase"] == "synthesize"
+
+
+def test_cross_cutting_explore_with_findings_advances_to_verify():
+    mark_implementation_done_and_clean()
+    write_all_perspectives_clean()
+    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "cross_cutting_verify"
+
+
+def test_cross_cutting_verify_done_means_synthesize():
+    mark_implementation_done_and_clean()
+    write_all_perspectives_clean()
+    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+    write_cross_cutting_verified([])
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "synthesize"
+
+
+def test_cross_cutting_explore_task_includes_diff():
+    init_git_repo()
+    pathlib.Path("README.md").write_text("updated content", encoding="utf-8")
+
+    irg.write_task_md({"phase": "cross_cutting_explore", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "updated content" in content
+    assert "DONE" not in content
+
+
+def test_cross_cutting_verify_task_includes_findings_and_diff():
+    init_git_repo()
+    pathlib.Path("README.md").write_text("updated content", encoding="utf-8")
+    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+
+    irg.write_task_md({"phase": "cross_cutting_verify", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "不整合あり" in content
+    assert "updated content" in content
+
+
+def test_synthesize_includes_cross_cutting_section_when_verified_nonempty():
+    init_git_repo()
+    write_all_perspectives_clean()
+    write_cross_cutting_verified([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+
+    irg.write_task_md({"phase": "synthesize", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "横断的チェックの指摘" in content
+    assert "不整合あり" in content
+
+
+def test_synthesize_omits_cross_cutting_section_when_no_findings():
+    init_git_repo()
+    write_all_perspectives_clean()
+    write_cross_cutting_verified([])
+
+    irg.write_task_md({"phase": "synthesize", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "横断的チェックの指摘なし" in content
+
+
+def test_g2_rejection_clears_cross_cutting_files_too():
+    """ADR-0013: G2 rejection restarts review from perspective 0, so a stale
+    cross-cutting explore/verify result from the rejected round must not
+    leak into the redo -- it lives under REVIEW_RESULTS_DIR, so the existing
+    wipe in _clear_review_state() already covers it; this pins that down."""
+    mark_implementation_done_and_clean()
+    write_all_perspectives_clean()
+    write_cross_cutting_findings([{"description": "x", "location": "y", "severity": "低"}])
+    write_cross_cutting_verified([{"description": "x", "location": "y", "severity": "低"}])
+    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
+    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "却下"}), encoding="utf-8")
+
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    assert not irg.CROSS_CUTTING_FINDINGS_JSON.exists()
+    assert not irg.CROSS_CUTTING_VERIFIED_JSON.exists()
 
 
 # --- detect_phase: phase 5 fix<->recheck loop (ADR-0004) ------------------

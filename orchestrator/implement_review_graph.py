@@ -12,10 +12,12 @@ Responsibilities:
     self-reported outcome (implementation_result.json), and run the ADR-0010
     mechanical backstop (PLAN.md's declared file list vs `git status`, no
     LLM involved)
-  - Phase 5: run the ported 13-perspective review/check loop (originally
-    feat/github-actions-langgraph-nodes's direct-API graph, now delegated to
-    subagents via TASK.md instead of calling the Anthropic API directly),
-    then synthesize a final report
+  - Phase 5: run the ported 13-perspective mechanical review/check loop
+    (originally feat/github-actions-langgraph-nodes's direct-API graph, now
+    delegated to subagents via TASK.md instead of calling the Anthropic API
+    directly), then a cross-cutting explorer/verifier pass (ADR-0003 /
+    ADR-0011 -- LSP-assisted consistency checks a diff-only mechanical
+    perspective can't see), then synthesize a final report
   - On any phase 4 non-clean outcome (self-reported plan deviation, exhausted
     build/test retries, or the mechanical mismatch), reopen G1 by writing
     DEVIATION.md and resetting its gate marker (ADR-0009, ADR-0010)
@@ -66,6 +68,8 @@ REVIEW_STATE_JSON = STATE_DIR / ".masuda-review-state.json"
 REVIEW_FEEDBACK_MD = STATE_DIR / ".masuda-review-feedback.md"
 REVIEW_RESULTS_DIR = STATE_DIR / "review_results"
 FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
+CROSS_CUTTING_FINDINGS_JSON = REVIEW_RESULTS_DIR / "cross_cutting_findings.json"
+CROSS_CUTTING_VERIFIED_JSON = REVIEW_RESULTS_DIR / "cross_cutting_verified.json"
 TASK_MD = STATE_DIR / "TASK.md"
 
 
@@ -257,6 +261,15 @@ def _detect_review_phase() -> State:
       - fix <-> recheck redo (ADR-0004): once an issue is confirmed real,
         can a narrow-write fixer resolve it? checker and fixer stay separate
         roles so the fix is verified independently, not self-graded.
+
+    Once all 13 mechanical perspectives are done, runs the cross-cutting
+    explorer/verifier pass (ADR-0003 / ADR-0011) before synthesize -- a
+    single pass with no redo loop, unlike the mechanical perspectives above:
+    ADR-0011 deliberately keeps complex/cross-cutting findings out of the
+    auto-fix loop (they always need a human's judgment at G2), so there's
+    no "assessment accuracy" to converge on the way review<->check redo
+    exists for. explorer runs once; if it found nothing, verify is skipped
+    entirely (nothing to independently confirm).
     """
     rs = _read_review_state()
     idx = rs["idx"]
@@ -313,6 +326,12 @@ def _detect_review_phase() -> State:
             unresolved.append({"idx": idx, "reason": "fix_not_resolved"})
             idx += 1
         persist()
+
+    if not CROSS_CUTTING_FINDINGS_JSON.exists():
+        return {"phase": "cross_cutting_explore", "reason": ""}
+    findings = json.loads(CROSS_CUTTING_FINDINGS_JSON.read_text(encoding="utf-8"))
+    if findings and not CROSS_CUTTING_VERIFIED_JSON.exists():
+        return {"phase": "cross_cutting_verify", "reason": ""}
 
     return {"phase": "synthesize", "reason": ""}
 
@@ -608,6 +627,92 @@ def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
 """
 
 
+def _cross_cutting_explore_task() -> str:
+    diff = _compute_diff()
+    return f"""# TASK: 横断的チェック（フェーズ5、explorer、ADR-0003・ADR-0011）
+
+新規コンテキストのサブエージェントに以下を委譲し、コードベース横断的な一貫性の
+問題を探索させ、結果を`{CROSS_CUTTING_FINDINGS_JSON}`に書き出させよ。
+
+これは13観点の機械的チェックとは異なる種類のチェックである。機械的チェックは
+diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Glob、および
+利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を
+使い、diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
+問題を多ターンで探索してよい。
+
+## 準備
+LSPが正しく機能するには依存解決が必要な場合がある。`go mod download`・
+`npm install`等、必要なら実行してから探索に入ること。
+
+## 探索の起点・範囲
+以下のdiffを起点にすること。diffで変更されたファイルが依拠する既存コード
+（呼び出し元、同じ役割を持つ他ファイル等）との不整合を探すのが目的で、
+リポジトリ全体を無制限に彷徨うことは避けること。
+
+```diff
+{diff}
+```
+
+## 探索の観点の例（性質が異なる2種類）
+- **実装パターンの一貫性**: 同じ役割のファイルAとファイルBで実装方法・エラー
+  ハンドリングの流儀が食い違っている。既存の類似実装と明らかに異なるパターンを
+  理由なく採用している
+- **ビルドでは検知されない変更の伝播漏れ**: 変更した関数のシグネチャ変更が、
+  一部の呼び出し元に意味的に反映されていない。ただしGo等の静的型付け言語では
+  単純な引数の過不足はコンパイルエラーになりフェーズ4のビルド自己検証
+  （ADR-0009）で既に弾かれているはずなので、この観点が意味を持つのは主に
+  動的型付け言語（Python/TypeScriptの型なしコード等）や、文字列ベースの
+  ディスパッチ・リフレクション経由の呼び出しなど、ビルドでは検知できない
+  ケースに限られる
+
+## 出力するJSONのスキーマ（配列。指摘がなければ空配列でよい）
+[
+  {{"description": "<問題の説明>", "location": "<ファイル:行等>", "severity": "高|中|低"}}
+]
+
+## 完了条件
+`{CROSS_CUTTING_FINDINGS_JSON}` が存在すること（指摘なしなら`[]`）
+"""
+
+
+def _cross_cutting_verify_task() -> str:
+    findings = CROSS_CUTTING_FINDINGS_JSON.read_text(encoding="utf-8")
+    diff = _compute_diff()
+    return f"""# TASK: 横断的チェックの検証（フェーズ5、verifier、ADR-0011）
+
+探索した本人（explorer、同じコンテキスト）ではなく、独立した視点の新規コンテキスト
+サブエージェントに以下の指摘を検証させ、妥当性が確認できたものだけを
+`{CROSS_CUTTING_VERIFIED_JSON}`に書き出させよ。
+
+ADR-0011により、この種の複雑な指摘は自動修正しない（常にG2で人間が判断する）。
+このステップの役割は「本当に妥当な指摘か（誤検知でないか）」を1回だけ独立検証
+することであり、redo（往復）は行わない——確認できなければその指摘は破棄する。
+
+## 検証対象の指摘
+```json
+{findings}
+```
+
+## レビュー対象のdiff
+```diff
+{diff}
+```
+
+## 検証方針
+LSP（find references・go to definition等）や実際のコードを確認し、指摘が
+誤検知でないか判断すること。判断に確信が持てない指摘は含めないこと
+（人間に無駄な確認をさせないため、確信のあるものだけを残す）。
+
+## 出力するJSONのスキーマ（配列。確認できたものだけ抽出、全て誤検知なら空配列）
+[
+  {{"description": "<問題の説明>", "location": "<ファイル:行等>", "severity": "高|中|低"}}
+]
+
+## 完了条件
+`{CROSS_CUTTING_VERIFIED_JSON}` が存在すること（確認できたものがなければ`[]`）
+"""
+
+
 def _unresolved_section(unresolved: list[dict]) -> str:
     """MAX_REVIEW_RETRIES超過で解決しなかった観点を、LLMを介さず確定的に
     レポートへ追記する。review/checkの意見が収束しなかった、または自動修正が
@@ -640,6 +745,24 @@ def _fixed_section(fixed_ids: list[int]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _cross_cutting_section() -> str:
+    """独立検証済みの横断的チェック指摘を、LLMを介さず確定的にレポートへ追記する
+    （ADR-0011: 複雑な指摘は自動修正せず、常にG2で人間が判断するため）。"""
+    if not CROSS_CUTTING_VERIFIED_JSON.exists():
+        return ""
+    findings = json.loads(CROSS_CUTTING_VERIFIED_JSON.read_text(encoding="utf-8"))
+    if not findings:
+        return ""
+    lines = [
+        "\n\n---\n\n## 横断的チェックの指摘（人間の判断が必要）\n",
+        "diffだけでは検知できないコードベース横断的な問題として検出され、独立した"
+        "verifierによる検証を経たものです。複雑な指摘のため自動修正はしていません。\n",
+    ]
+    for f in findings:
+        lines.append(f"- **{f.get('severity', '?')}**: {f.get('description', '')}（{f.get('location', '')}）")
+    return "\n".join(lines) + "\n"
+
+
 def _synthesize_task() -> str:
     rs = _read_review_state()
     redo_counts = rs["redo_counts"]
@@ -650,6 +773,7 @@ def _synthesize_task() -> str:
     results_json = json.dumps(results, ensure_ascii=False, indent=2)
     fixed_note = _fixed_section(rs["fixed"])
     unresolved_note = _unresolved_section(rs["unresolved"])
+    cross_cutting_note = _cross_cutting_section()
 
     return f"""# TASK: レビュー結果の統合（フェーズ5、最終レポート作成）
 
@@ -663,14 +787,15 @@ def _synthesize_task() -> str:
 形で重複して記載しないこと。
 
 レポートの構成:
-1. ## サマリー（自動修正した件数・未解決件数、1〜2文の総評）
+1. ## サマリー（自動修正した件数・未解決件数・横断的チェックの指摘件数、1〜2文の総評）
 2. ## 問題なし（review/checkの往復を経ても問題が検出されなかった観点の一覧）
 
-以下の「自動修正済みの指摘」「未解決の指摘」セクションが空でなければ、レポートの
-末尾にそのまま追記すること（内容を変更・要約しないこと。人間への報告を正確に
-保つための確定的な記述のため）:
+以下の「自動修正済みの指摘」「未解決の指摘」「横断的チェックの指摘」セクションが
+空でなければ、レポートの末尾にそのまま追記すること（内容を変更・要約しないこと。
+人間への報告を正確に保つための確定的な記述のため）:
 {fixed_note if fixed_note else "(自動修正済みの指摘なし)"}
 {unresolved_note if unresolved_note else "(未解決の指摘なし)"}
+{cross_cutting_note if cross_cutting_note else "(横断的チェックの指摘なし)"}
 
 ## 各観点のレビュー結果（自動修正前の最終レビュー内容）
 ```json
@@ -727,6 +852,10 @@ def write_task_md(state: State) -> State:
     elif phase == "recheck_perspective":
         info = json.loads(state["reason"])
         content = _recheck_perspective_task(info["idx"], info["fix_attempt"])
+    elif phase == "cross_cutting_explore":
+        content = _cross_cutting_explore_task()
+    elif phase == "cross_cutting_verify":
+        content = _cross_cutting_verify_task()
     elif phase == "synthesize":
         content = _synthesize_task()
     elif phase in _TERMINAL:
