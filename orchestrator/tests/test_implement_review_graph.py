@@ -126,6 +126,77 @@ def test_mechanical_deviation_detects_unplanned_file():
     assert "secrets.txt" in reason
 
 
+def test_mechanical_deviation_skipped_without_a_plan_md():
+    """Standalone review (`masuda review start`, roadmap step 6) never goes
+    through G1, so there's no PLAN.md and nothing to have deviated from —
+    the backstop must not raise FileNotFoundError trying to read one."""
+    init_git_repo()
+    irg.PLAN_MD.unlink()
+    import pathlib
+    pathlib.Path("anything.txt").write_text("whatever", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+
+    assert irg._mechanical_deviation() is None
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "review_perspective"
+
+
+# --- _read_base_ref / _compute_diff ---------------------------------------
+
+def test_read_base_ref_defaults_to_develop_when_file_absent():
+    assert irg._read_base_ref() == "develop"
+
+
+def test_read_base_ref_reads_recorded_ref():
+    irg.BASE_REF_FILE.write_text("main\n", encoding="utf-8")
+    assert irg._read_base_ref() == "main"
+
+
+def test_compute_diff_uses_recorded_base_ref_not_bare_head():
+    """A standalone review target (roadmap step 6) is already fully
+    committed -- `git diff HEAD` would show nothing since HEAD *is* the tip.
+    Diffing against the recorded base ref (not the default "develop") is what
+    makes the branch's actual committed changes visible."""
+    subprocess.run(["git", "init", "-q"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "config", "user.name", "test"], check=True)
+    import pathlib
+    pathlib.Path("README.md").write_text("base version\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "base"], check=True)
+    subprocess.run(["git", "branch", "main-for-test"], check=True)
+
+    pathlib.Path("README.md").write_text("reviewed branch version\n", encoding="utf-8")
+    subprocess.run(["git", "commit", "-q", "-am", "the actual change under review"], check=True)
+
+    irg.BASE_REF_FILE.write_text("main-for-test", encoding="utf-8")
+    diff = irg._compute_diff()
+
+    assert "reviewed branch version" in diff
+
+
+def test_compute_diff_excludes_masuda_internal_files():
+    """`git add -A` stages masuda's own scratch files too, since they're new
+    untracked paths just like real implementation files -- confirmed live
+    that without unstaging them again, review subagents were shown
+    .masuda-base-ref and implementation_result.json verbatim as if they were
+    part of the change under review."""
+    init_git_repo()
+    import pathlib
+    pathlib.Path("README.md").write_text("a real change reviewers should see", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.BASE_REF_FILE.write_text("HEAD", encoding="utf-8")
+    irg.REVIEW_RESULTS_DIR.mkdir()
+    (irg.REVIEW_RESULTS_DIR / "result_0_attempt1.json").write_text("{}", encoding="utf-8")
+
+    diff = irg._compute_diff()
+
+    assert "a real change reviewers should see" in diff
+    assert "implementation_result.json" not in diff
+    assert ".masuda-base-ref" not in diff
+    assert "result_0_attempt1.json" not in diff
+
+
 # --- detect_phase: phase 4 -----------------------------------------------
 
 def test_no_result_means_implement():

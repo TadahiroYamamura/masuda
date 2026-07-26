@@ -10,7 +10,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 これらは実装より前に固めた設計であり、現在のリポジトリの中身（後述）はまだこの設計に追随していない。
 
-## 現状（実装ロードマップ1〜3・4（機械的チェックのみ）・5完了）
+## 現状（実装ロードマップ1〜3・4（機械的チェックのみ）・5・6完了）
 
 - `runtime/CLAUDE.md`: 作業ループ仕様。`GATE:<name>`終了条件（ADR-0006、ロードマップ5番）を実装済み——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`.masuda-gate/<name>.json`のstatusがpendingでなくなるまで待機する。単発Bashの`while`ループは動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることを実機で確認したため、Monitorのような監視系ツールを使うよう指示している
 - `runtime/entrypoint.sh`・`runtime/start_claude.sh`: ルート直下から移動済み
@@ -32,7 +32,13 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`は対象worktree専用のbind mount先として空けてある。`git`を追加済み
 - `webhook_server.py`: 設計ドキュメントの目標構造に存在しないため削除済み
 
-未着手: `masuda review <branch-or-ref>`単体エントリーポイント（ロードマップ6番）、横断的チェック（LSP経由の整合性検証、ロードマップ7番。Dockerサンドボックス内でのLSPプラグイン導入方法に追加調査が必要）。
+- `masuda review start <branch-or-ref> [--base develop]`（ロードマップ6番、design docは`masuda review <branch-or-ref>`だが既存のサブコマンド構成に合わせて`start`を追加）: 既存の（新規作成ではない）ブランチに対し、フェーズ0（worktree作成）〜フェーズ5（レビュー）の機構をそのまま使い回す。`implementation_result.json`を`{"status":"done"}`で事前投入することでフェーズ1-4を丸ごとスキップし、フェーズ5に直行する。PLAN.mdが存在しないため機械的バックストップ（ADR-0010）は自動スキップ
+  - `_compute_diff()`はworktree作成時に記録した基準ref（`.masuda-base-ref`、`worktree.Create`が書き込む）に対して差分を取るよう変更。理由: 実装フェーズの差分はbare HEAD（未コミット分）で正しく見えるが、レビュー単体は既にコミット済みのブランチなのでbare HEADでは差分が空になる
+  - 実機テストで、`git add -A`がmasuda自身の内部ファイル（`.masuda-base-ref`・`implementation_result.json`等）まで差分に混入させてしまうバグを発見。ステージ後に内部ファイルだけ`git reset`で除外するよう修正
+  - **既知の制約（ロードマップ8番で解消予定）**: worktreeパス・コンテナ名はbranch名だけがキーのため、同じbranchに対してフルパイプラインが並行稼働していると衝突する。今回は「PLAN.mdが既にある」「セッションが既に起動中」の場合に拒否する安全策のみ実装した
+- 実機で、既存ブランチにコミット済みの変更を用意し`masuda review start`→フェーズ5直行→機密情報なしと正しく判定、まで確認済み
+
+未着手: ワークスペースIDによる並列実行対応（ロードマップ8番）、横断的チェック（LSP経由の整合性検証、ロードマップ7番。Dockerサンドボックス内でのLSPプラグイン導入方法に追加調査が必要）。
 
 ## 開発環境
 

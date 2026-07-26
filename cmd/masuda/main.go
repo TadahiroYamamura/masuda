@@ -36,7 +36,9 @@ func newRootCommand() *cobra.Command {
 	planCmd.AddCommand(newPlanStartCommand())
 	root.AddCommand(planCmd)
 
-	root.AddCommand(newGateCommand(gate.Review))
+	reviewCmd := newGateCommand(gate.Review)
+	reviewCmd.AddCommand(newReviewStartCommand())
+	root.AddCommand(reviewCmd)
 	return root
 }
 

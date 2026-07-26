@@ -45,6 +45,7 @@ TOTAL_PERSPECTIVES = len(PERSPECTIVES)
 MAX_REVIEW_RETRIES = 2
 
 PLAN_MD = Path("PLAN.md")
+BASE_REF_FILE = Path(".masuda-base-ref")
 IMPLEMENTATION_RESULT_JSON = Path("implementation_result.json")
 DEVIATION_MD = Path("DEVIATION.md")
 APPROVED_DEVIATIONS_JSON = Path(".masuda-approved-deviations.json")
@@ -68,6 +69,7 @@ _MASUDA_INTERNAL_FILES = {
     str(IMPLEMENTATION_RESULT_JSON),
     str(DEVIATION_MD),
     str(APPROVED_DEVIATIONS_JSON),
+    str(BASE_REF_FILE),
     str(REVIEW_STATE_JSON),
     str(REVIEW_FEEDBACK_MD),
 }
@@ -83,6 +85,18 @@ def _read_plan_md() -> str:
     if not PLAN_MD.exists():
         raise FileNotFoundError(f"{PLAN_MD} not found — phase 4 requires an approved PLAN.md from G1")
     return PLAN_MD.read_text(encoding="utf-8")
+
+
+def _read_base_ref() -> str:
+    """The ref `masuda worktree create` / `masuda review start` recorded this
+    worktree as branching from (worktree.BaseRefFileName on the Go side),
+    defaulting to "develop" for worktrees created before this file existed.
+    Used as the diff base -- both for phase 4-5's implementation diff and for
+    a standalone `masuda review start` of an already fully-committed branch,
+    where diffing against bare HEAD would show nothing (roadmap step 6)."""
+    if not BASE_REF_FILE.exists():
+        return "develop"
+    return BASE_REF_FILE.read_text(encoding="utf-8").strip() or "develop"
 
 
 def _read_implementation_result() -> dict | None:
@@ -154,7 +168,13 @@ def _mechanical_deviation() -> str | None:
     declared list (and not already an approved deviation), or None otherwise.
     LLM-free by design (ADR-0010) -- this must not depend on the
     implementation subagent's own judgment to be a real backstop.
+
+    Skips entirely when there's no PLAN.md at all -- standalone review
+    (`masuda review start`, roadmap step 6) never went through G1, so there's
+    no plan to have deviated from; nothing to back-stop.
     """
+    if not PLAN_MD.exists():
+        return None
     extra = _extra_changed_files()
     if not extra:
         return None
@@ -170,10 +190,34 @@ def _mechanical_deviation() -> str | None:
 def _compute_diff() -> str:
     """Stages everything (including new/deleted files) so the diff covers the
     full implementation, not just already-tracked modifications, then reports
-    it via `git diff --cached` -- nothing is committed."""
+    it via `git diff --cached <base ref>` -- nothing is committed.
+
+    Diffing against the worktree's recorded base ref (not bare HEAD) matters
+    for two cases: phase 4's uncommitted changes still show up (`git diff
+    <ref>` compares a commit against the working tree, same as `git diff
+    HEAD` would), and a standalone review's fully-committed branch (roadmap
+    step 6) shows its real diff instead of nothing -- `git diff HEAD` on an
+    already-committed branch has nothing to show since HEAD *is* the tip.
+
+    `git add -A` stages masuda's own scratch files too (.masuda-base-ref,
+    implementation_result.json, review_results/, ...) since they're new,
+    untracked paths just like real implementation files -- confirmed
+    empirically that without unstaging them again here, they show up
+    verbatim in what review subagents are asked to review. They're never
+    part of the change under review.
+    """
     subprocess.run(["git", "add", "-A"], check=True)
+
+    internal_paths = [f for f in _MASUDA_INTERNAL_FILES if Path(f).exists()]
+    for prefix in _MASUDA_INTERNAL_PREFIXES:
+        d = Path(prefix.rstrip("/"))
+        if d.exists():
+            internal_paths.append(str(d))
+    if internal_paths:
+        subprocess.run(["git", "reset", "--"] + internal_paths, check=True)
+
     return subprocess.run(
-        ["git", "diff", "--cached", "HEAD"], capture_output=True, text=True, check=True
+        ["git", "diff", "--cached", _read_base_ref()], capture_output=True, text=True, check=True
     ).stdout
 
 

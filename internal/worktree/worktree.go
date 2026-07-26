@@ -29,6 +29,14 @@ func Dir(repoRoot, branch string) string {
 	return filepath.Join(repoRoot, ".masuda", "worktrees", branch)
 }
 
+// BaseRefFileName is the marker file Create writes at the worktree root
+// recording which ref the branch was created from (or reviewed against, for
+// `masuda review start`). orchestrator/implement_review_graph.py reads it to
+// diff against the right point instead of a hardcoded "develop" — needed for
+// standalone review of an already-fully-committed branch, where diffing
+// against bare HEAD would show nothing (roadmap step 6).
+const BaseRefFileName = ".masuda-base-ref"
+
 func runGit(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	var stdout, stderr bytes.Buffer
@@ -43,6 +51,14 @@ func runGit(dir string, args ...string) (string, error) {
 func branchExists(repoRoot, branch string) bool {
 	_, err := runGit(repoRoot, "show-ref", "--verify", "--quiet", "refs/heads/"+branch)
 	return err == nil
+}
+
+// BranchExists reports whether branch is an existing local branch in
+// repoRoot. Exported for `masuda review start`, which — unlike `masuda plan
+// start` — must target an existing branch (there's nothing to review on one
+// Create would silently create fresh from base).
+func BranchExists(repoRoot, branch string) bool {
+	return branchExists(repoRoot, branch)
 }
 
 // Create makes a new self-contained local clone for branch, rooted at
@@ -62,6 +78,9 @@ func Create(repoRoot, branch, base string) (string, error) {
 		if _, err := runGit(repoRoot, "clone", "--local", "--branch", branch, repoRoot, dir); err != nil {
 			return "", err
 		}
+		if err := writeBaseRef(dir, base); err != nil {
+			return "", err
+		}
 		return dir, nil
 	}
 
@@ -71,7 +90,14 @@ func Create(repoRoot, branch, base string) (string, error) {
 	if _, err := runGit(dir, "checkout", "-b", branch); err != nil {
 		return "", err
 	}
+	if err := writeBaseRef(dir, base); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+func writeBaseRef(dir, base string) error {
+	return os.WriteFile(filepath.Join(dir, BaseRefFileName), []byte(base), 0o644)
 }
 
 // Merge fast-forwards or merges branch into into, entirely within repoRoot's
