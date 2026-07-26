@@ -168,16 +168,27 @@ def test_plan_redo_includes_rejection_feedback():
     assert "設計が複雑すぎる" in content
 
 
-@pytest.mark.parametrize("phase", ["await_g1", "g1_approved", "retries_exhausted"])
+@pytest.mark.parametrize("phase", ["g1_approved", "retries_exhausted"])
 def test_terminal_phases_contain_done(phase):
     ipg.write_task_md({"phase": phase, "retries": 0, "questions": []})
     content = ipg.TASK_MD.read_text(encoding="utf-8")
     assert "DONE" in content
 
 
+def test_await_g1_is_a_gate_not_a_terminal_done():
+    """await_g1 keeps the session alive (GATE:plan, roadmap step 5) rather
+    than ending it — it must not also say DONE, since the loop protocol
+    treats the two conditions as mutually exclusive."""
+    ipg.write_task_md({"phase": "await_g1", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "GATE:plan" in content
+    assert "DONE" not in content
+
+
 def test_await_g1_mentions_plan_cli_commands():
     ipg.write_task_md({"phase": "await_g1", "retries": 0, "questions": []})
     content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "masuda plan chat" in content
     assert "masuda plan approve" in content
     assert "masuda plan reject" in content
 

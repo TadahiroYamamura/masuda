@@ -371,7 +371,15 @@ def test_implement_missing_plan_raises():
         irg.write_task_md({"phase": "implement", "reason": ""})
 
 
-def test_plan_reopened_writes_deviation_and_clears_state():
+def test_plan_reopened_writes_deviation_as_a_gate_not_a_terminal_done():
+    """write_task_md's job here is only to open the gate (write DEVIATION.md,
+    render the GATE:plan message) -- it must NOT also clear the gate marker or
+    implementation_result.json anymore. That clearing now happens in
+    detect_phase/_resolve_plan_reopen, only once the gate is actually
+    resolved; doing it eagerly here was the bug that made an *approved*
+    deviation reopen the gate forever once the loop could auto-resume
+    (GATE:plan, roadmap step 5) instead of a human always restarting by hand.
+    """
     irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
     irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
@@ -379,11 +387,112 @@ def test_plan_reopened_writes_deviation_and_clears_state():
     irg.write_task_md({"phase": "plan_reopened", "reason": "計画外のファイル変更"})
 
     assert irg.DEVIATION_MD.read_text(encoding="utf-8") == "計画外のファイル変更"
-    assert not irg.PLAN_GATE_MARKER.exists(), "reopening must reset the gate so a stale approval isn't reused"
-    assert not irg.IMPLEMENTATION_RESULT_JSON.exists(), "stale result must be cleared so a retry starts clean"
+    assert irg.PLAN_GATE_MARKER.exists()
+    assert irg.IMPLEMENTATION_RESULT_JSON.exists()
     content = irg.TASK_MD.read_text(encoding="utf-8")
-    assert "DONE" in content
+    assert "GATE:plan" in content
+    assert "DONE" not in content
     assert "計画外のファイル変更" in content
+
+
+# --- detect_phase: resolving a reopened G1 (ADR-0010, ADR-0013) ----------
+
+def test_mechanical_deviation_first_detection_opens_gate_without_clearing():
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert not irg.DEVIATION_MD.exists(), "DEVIATION.md is written by write_task_md, not detect_phase"
+
+
+def test_mechanical_deviation_still_pending_reflects_same_reason():
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert state["reason"] == "既存の理由"
+
+
+def test_mechanical_deviation_approved_is_recorded_and_review_proceeds():
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert not irg.DEVIATION_MD.exists()
+    assert not irg.PLAN_GATE_MARKER.exists()
+    assert "unplanned.txt" in irg._read_approved_deviations()
+    # Approval means "accept the deviation as-is" -- implementation_result.json
+    # must survive so the next check treats it as already done, not redone.
+    assert irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert state["phase"] == "review_perspective"
+
+
+def test_mechanical_deviation_approved_does_not_reflag_on_next_check():
+    """The bug this whole mechanism exists to fix: without recording the
+    approval, the very next mechanical check would see the same extra file
+    and reopen the gate forever."""
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    irg.detect_phase({"phase": "", "reason": ""})  # resolves the approval
+
+    assert irg._mechanical_deviation() is None
+
+
+def test_mechanical_deviation_rejected_forces_fresh_implementation():
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "計画通りにして"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert not irg.DEVIATION_MD.exists()
+    assert not irg.PLAN_GATE_MARKER.exists()
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert irg._read_approved_deviations() == set()
+    assert state["phase"] == "implement_redo"
+    assert "計画通りにして" in state["reason"]
+
+
+def test_self_reported_deviation_approved_still_needs_a_redo_turn():
+    """Unlike the mechanical case, the subagent stopped *before* acting
+    (that's the point of the self-report) -- approval means "go ahead and do
+    what you proposed", which still requires another implementation turn,
+    not a direct pass into review."""
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(
+        json.dumps({"status": "needs_plan_review", "reason": "設計を変えたい"}), encoding="utf-8"
+    )
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "implement_redo"
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
 
 
 def test_review_perspective_task_includes_diff_and_perspective_prompt():
@@ -476,15 +585,22 @@ def test_synthesize_task_includes_fixed_and_unresolved_sections():
     assert irg.PERSPECTIVES[1]["name"] in content
 
 
-@pytest.mark.parametrize("phase", ["await_g2", "g2_approved"])
-def test_terminal_phases_contain_done(phase):
-    irg.write_task_md({"phase": phase, "reason": ""})
+def test_g2_approved_is_a_terminal_done():
+    irg.write_task_md({"phase": "g2_approved", "reason": ""})
     assert "DONE" in irg.TASK_MD.read_text(encoding="utf-8")
+
+
+def test_await_g2_is_a_gate_not_a_terminal_done():
+    irg.write_task_md({"phase": "await_g2", "reason": ""})
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "GATE:review" in content
+    assert "DONE" not in content
 
 
 def test_await_g2_mentions_review_cli_commands():
     irg.write_task_md({"phase": "await_g2", "reason": ""})
     content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "masuda review chat" in content
     assert "masuda review approve" in content
     assert "masuda review reject" in content
 

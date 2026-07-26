@@ -47,6 +47,7 @@ MAX_REVIEW_RETRIES = 2
 PLAN_MD = Path("PLAN.md")
 IMPLEMENTATION_RESULT_JSON = Path("implementation_result.json")
 DEVIATION_MD = Path("DEVIATION.md")
+APPROVED_DEVIATIONS_JSON = Path(".masuda-approved-deviations.json")
 PLAN_GATE_MARKER = Path(".masuda-gate/plan.json")
 REVIEW_GATE_MARKER = Path(".masuda-gate/review.json")
 REVIEW_STATE_JSON = Path(".masuda-review-state.json")
@@ -66,6 +67,7 @@ _MASUDA_INTERNAL_FILES = {
     ".masuda-plan-system-prompt.md",
     str(IMPLEMENTATION_RESULT_JSON),
     str(DEVIATION_MD),
+    str(APPROVED_DEVIATIONS_JSON),
     str(REVIEW_STATE_JSON),
     str(REVIEW_FEEDBACK_MD),
 }
@@ -127,17 +129,36 @@ def _actual_changed_files() -> set[str]:
     return files
 
 
+def _read_approved_deviations() -> set[str]:
+    if not APPROVED_DEVIATIONS_JSON.exists():
+        return set()
+    return set(json.loads(APPROVED_DEVIATIONS_JSON.read_text(encoding="utf-8")))
+
+
+def _write_approved_deviations(paths: set[str]) -> None:
+    APPROVED_DEVIATIONS_JSON.write_text(json.dumps(sorted(paths), ensure_ascii=False), encoding="utf-8")
+
+
+def _extra_changed_files() -> set[str]:
+    """Files touched outside PLAN.md's declared list, minus any deviation a
+    human has already approved through a prior G1 reopen -- without this
+    exclusion, an approved deviation would look identical to a brand new one
+    on the very next check and reopen the gate forever."""
+    planned = _extract_planned_files(_read_plan_md())
+    approved = _read_approved_deviations()
+    return _actual_changed_files() - planned - approved
+
+
 def _mechanical_deviation() -> str | None:
     """Returns a human-readable reason if files were touched outside PLAN.md's
-    declared list, or None if the diff stays within plan. LLM-free by design
-    (ADR-0010) -- this must not depend on the implementation subagent's own
-    judgment to be a real backstop.
+    declared list (and not already an approved deviation), or None otherwise.
+    LLM-free by design (ADR-0010) -- this must not depend on the
+    implementation subagent's own judgment to be a real backstop.
     """
-    planned = _extract_planned_files(_read_plan_md())
-    actual = _actual_changed_files()
-    extra = actual - planned
+    extra = _extra_changed_files()
     if not extra:
         return None
+    planned = _extract_planned_files(_read_plan_md())
     return (
         "計画外のファイルへの変更を検知しました（機械的バックストップ、ADR-0010）:\n"
         + "\n".join(f"- {f}" for f in sorted(extra))
@@ -283,12 +304,62 @@ def _detect_post_implementation_phase() -> State:
         return {"phase": "g2_approved", "reason": ""}
     if status == "rejected":
         feedback = marker.get("feedback", "")
+        reason = f"G2（レビュー承認ゲート）で却下されました（ADR-0013）:\n{feedback}\n\n修正後はレビューを最初の観点からやり直す。"
         REVIEW_GATE_MARKER.unlink()
         _clear_review_state()
         IMPLEMENTATION_RESULT_JSON.unlink()
-        REVIEW_FEEDBACK_MD.write_text(feedback, encoding="utf-8")
-        return {"phase": "implement_redo", "reason": feedback}
+        REVIEW_FEEDBACK_MD.write_text(reason, encoding="utf-8")
+        return {"phase": "implement_redo", "reason": reason}
     return {"phase": "await_g2", "reason": ""}
+
+
+def _resolve_plan_reopen(reason: str, mechanical: bool) -> State:
+    """Shared by all three G1-reopen triggers (self-reported deviation,
+    exhausted build/test retries, mechanical file-list mismatch, ADR-0009 /
+    ADR-0010): open the gate on first detection (no DEVIATION.md yet), then
+    branch on the eventual human decision once DEVIATION.md already exists --
+    meaning this call happened because the gate was just resolved (the
+    GATE:plan poll only re-invokes the orchestrator after that), not because
+    we're seeing something new.
+
+    Without branching on approve vs. reject here, an *approved* deviation
+    would still look identical to a brand new one on the very next mechanical
+    check and reopen the gate forever -- confirmed while wiring up GATE:plan's
+    auto-resume (roadmap step 5); the previous design only worked because a
+    human manually re-ran the right command instead of the loop resuming
+    itself.
+    """
+    if not DEVIATION_MD.exists():
+        return {"phase": "plan_reopened", "reason": reason}
+
+    marker = _read_gate_marker(PLAN_GATE_MARKER)
+    gate_status = (marker or {}).get("status", "pending")
+    if gate_status == "pending":
+        return {"phase": "plan_reopened", "reason": DEVIATION_MD.read_text(encoding="utf-8")}
+
+    feedback = (marker or {}).get("feedback", "")
+    DEVIATION_MD.unlink()
+    if PLAN_GATE_MARKER.exists():
+        PLAN_GATE_MARKER.unlink()
+
+    if gate_status == "approved" and mechanical:
+        # The deviation itself is accepted as-is; record it so future
+        # mechanical checks don't flag the same files again, and proceed as
+        # if implementation had been clean all along.
+        approved = _read_approved_deviations()
+        approved |= _extra_changed_files()
+        _write_approved_deviations(approved)
+        return _detect_post_implementation_phase()
+
+    # Either rejected, or approved-but-self-reported (the subagent stopped
+    # *before* acting, per its own instructions -- approval means "go do what
+    # you proposed", which still needs another implementation turn).
+    IMPLEMENTATION_RESULT_JSON.unlink()
+    if gate_status == "approved":
+        redo_reason = "G1再オープンが承認されました。提案した対応をそのまま進めてください。"
+    else:
+        redo_reason = f"G1再オープンが却下されました（ADR-0010）:\n{feedback}"
+    return {"phase": "implement_redo", "reason": redo_reason}
 
 
 def detect_phase(state: State) -> State:
@@ -297,13 +368,15 @@ def detect_phase(state: State) -> State:
     if result is not None:
         status = result.get("status")
         if status == "needs_plan_review":
-            return {"phase": "plan_reopened", "reason": "実装エージェントの自己申告（一次防御）:\n" + result.get("reason", "")}
+            reason = "実装エージェントの自己申告（一次防御）:\n" + result.get("reason", "")
+            return _resolve_plan_reopen(reason, mechanical=False)
         if status == "build_test_failed":
-            return {"phase": "plan_reopened", "reason": "ビルド/テストの自己修正が上限に達しました（ADR-0009）:\n" + result.get("details", "")}
+            reason = "ビルド/テストの自己修正が上限に達しました（ADR-0009）:\n" + result.get("details", "")
+            return _resolve_plan_reopen(reason, mechanical=False)
         if status == "done":
             deviation = _mechanical_deviation()
             if deviation:
-                return {"phase": "plan_reopened", "reason": deviation}
+                return _resolve_plan_reopen(deviation, mechanical=True)
             return _detect_post_implementation_phase()
         raise ValueError(f"unknown implementation_result.json status: {status!r}")
 
@@ -320,10 +393,10 @@ def _implement_task(redo_feedback: str | None = None) -> str:
     if redo_feedback:
         redo_section = f"""
 
-## G2（レビュー承認ゲート）で却下されました（ADR-0013）
+## 差し戻し・追加対応の指示
 {redo_feedback}
 
-上記フィードバックを踏まえて修正すること。修正後はレビューを最初の観点からやり直す。
+上記を踏まえて対応すること。
 """
     return f"""# TASK: 実装（フェーズ4）
 
@@ -356,17 +429,17 @@ write/Edit/Bash権限を持つ通常のサブエージェントでよい）。
 
 
 def _plan_reopened_task(reason: str) -> str:
-    return f"""# DONE (GATE: plan — reopened)
+    return f"""# GATE:plan
 
-G1（プラン承認ゲート）を再オープンしました（ADR-0010）。
+G1（プラン承認ゲート）を再オープンしました（ADR-0010）。セッションは終了せず、
+`.masuda-gate/plan.json`のstatusがpendingでなくなるまで待機してください。
 
 ## 理由
 {reason}
 
 人間は `masuda plan show <branch>` で理由（DEVIATION.md）とPLAN.mdを確認し、
+`masuda plan chat <branch>` で対話するか、
 `masuda plan approve <branch>` / `masuda plan reject <branch> "<feedback>"` で応答してください。
-承認・却下後は `masuda plan start <branch>` でフェーズ1-2に戻るか、
-`masuda sandbox start <branch>` で実装をやり直してください。
 """
 
 
@@ -584,16 +657,16 @@ def _synthesize_task() -> str:
 
 
 _TERMINAL = {
-    "await_g2": """# DONE (GATE: review)
+    "await_g2": """# GATE:review
 
-レビューが完了し、G2（最終承認ゲート）の判断待ちです。
+レビューが完了し、G2（最終承認ゲート）の判断待ちです。セッションは終了せず、
+`.masuda-gate/review.json`のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda review show <branch>` でfinal_report.mdを確認し、
+`masuda review chat <branch>` で対話するか、
 `masuda review approve <branch>` / `masuda review reject <branch> "<feedback>"` で応答してください。
 承認時はローカルmerge・worktree削除まで自動で行われます（ADR-0005）。
 却下時はフェーズ4に差し戻され、フィードバックを踏まえて再実装します（ADR-0013）。
-
-(`masuda review chat` によるセッション維持はロードマップ5番のGATE:<name>実装まで未対応です)
 """,
     "g2_approved": """# DONE (G2 approved)
 
@@ -609,11 +682,12 @@ def write_task_md(state: State) -> State:
     elif phase == "implement_redo":
         content = _implement_task(redo_feedback=state["reason"])
     elif phase == "plan_reopened":
+        # Only clearing/consuming the gate happens here on *resolution*
+        # (_resolve_plan_reopen, called from detect_phase) -- writing
+        # DEVIATION.md here is idempotent for the still-pending re-check case
+        # (same content already on disk) and is the actual first write on
+        # fresh detection.
         DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
-        if PLAN_GATE_MARKER.exists():
-            PLAN_GATE_MARKER.unlink()
-        if IMPLEMENTATION_RESULT_JSON.exists():
-            IMPLEMENTATION_RESULT_JSON.unlink()
         content = _plan_reopened_task(state["reason"])
     elif phase == "review_perspective":
         info = json.loads(state["reason"])

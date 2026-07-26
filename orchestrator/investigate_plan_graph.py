@@ -186,15 +186,14 @@ INVESTIGATION.mdの軽微な不足は自分で追加調査して自己解決し�
 
 
 _TERMINAL = {
-    "await_g1": """# DONE (GATE: plan)
+    "await_g1": """# GATE:plan
 
-PLAN.mdが完成し、G1（プラン承認ゲート）の判断待ちです。
+PLAN.mdが完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
+`.masuda-gate/plan.json`のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda plan show <branch>` でPLAN.mdを確認し、
+`masuda plan chat <branch>` で対話するか、
 `masuda plan approve <branch>` / `masuda plan reject <branch> "<feedback>"` で応答してください。
-承認・却下後は `masuda plan start <branch>` でこのループを再開してください。
-
-(`masuda plan chat` によるセッション維持はロードマップ5番のGATE:<name>実装まで未対応です)
 """,
     "g1_approved": """# DONE (G1 approved)
 

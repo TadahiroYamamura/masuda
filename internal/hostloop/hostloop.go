@@ -152,6 +152,14 @@ func IsRunning(branch string) bool {
 	return cmd.Run() == nil
 }
 
+// AttachArgs returns the argv for interactively attaching to the phase 1-2
+// tmux session (`masuda plan chat`) — a plain `tmux attach`, unlike
+// sandbox.AttachArgs' `docker exec -it ... tmux attach`, since this session
+// runs directly on the host, not in a container.
+func AttachArgs(branch string) []string {
+	return []string{"tmux", "attach", "-t", SessionName(branch)}
+}
+
 // Start launches the phase 1-2 tmux session for branch, writing the task
 // brief and system prompt into worktreeDir first if this is the first run.
 // It's a no-op (returns nil) if a session for branch is already running.

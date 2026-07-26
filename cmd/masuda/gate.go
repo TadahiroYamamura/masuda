@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/gate"
+	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -63,12 +64,21 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 func newGateChatCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
 		Use:   "chat <branch>",
-		Short: fmt.Sprintf("Attach interactively to the sandbox's tmux session to discuss the %s gate before deciding", n),
+		Short: fmt.Sprintf("Attach interactively to discuss the %s gate before deciding (ADR-0006)", n),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			branch := args[0]
 			if n == gate.Plan {
-				return fmt.Errorf("masuda plan chat isn't implemented yet — it needs the GATE:<name> keep-alive mechanism (roadmap step 5); the phase 1-2 host loop ends its session on reaching G1. Use `masuda plan show %s` and `masuda plan approve|reject %s` instead", branch, branch)
+				// G1 can be waiting in either place: the phase 1-2 host loop
+				// (first time through) or the phase 4-5 sandbox (reopened by
+				// a plan deviation, ADR-0010) — try both.
+				if hostloop.IsRunning(branch) {
+					return attach(hostloop.AttachArgs(branch))
+				}
+				if sandbox.IsRunning(branch) {
+					return attach(sandbox.AttachArgs(branch))
+				}
+				return fmt.Errorf("no plan session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", branch, branch, branch)
 			}
 			if !sandbox.IsRunning(branch) {
 				return fmt.Errorf("sandbox for %q is not running — run `masuda sandbox start %s` first", branch, branch)
