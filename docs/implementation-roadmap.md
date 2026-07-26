@@ -56,7 +56,7 @@ design doc「レビュー単体での再利用」参照。
 - フェーズ0〜5の機構を、新規ブランチではなく既存refのworktreeに対して使い回す
 - worktreeのパス・サンドボックスのコンテナ名は現状branch名だけをキーにしているため、同じbranchに対してフルパイプライン（`masuda plan/sandbox start`）が並行して動いていると衝突する。今回は「既存のPLAN.mdがある・既にセッションが動いている場合は拒否する」という安全策のみ実装し、根本解決（ワークスペースIDの導入）はステップ7に切り出した
 
-## 7. ワークスペースIDによる並列実行対応
+## 7. ワークスペースIDによる並列実行対応（完了）
 
 ステップ6（レビュー単体エントリーポイント）の実装中に見つかった課題。同じbranchに
 対して複数の作業（フルパイプラインと`review start`、あるいは同じbranchへの複数の
@@ -102,6 +102,20 @@ git管理下）の中に置くのをやめ、`~/.local/share/masuda/workspaces/<
   ディレクトリを指す絶対パスを受け取って使うよう作り直しが必要
 - git操作（`git status`・`git diff`・`git add`等）は引き続きworktreeに対して行う
   （cwdの使い分け、または`git -C <worktree>`への統一が必要）
+
+**実装結果**: 上記の通り`internal/workspace`パッケージを新設し、`worktree`/`sandbox`/
+`hostloop`・両オーケストレーター・`cmd/masuda`各コマンドをワークスペースID対応に
+書き換えた。副次効果として、masuda自身の制御ファイルがworktree外に出たことで
+`implement_review_graph.py`の内部ファイル除外ロジック（`_MASUDA_INTERNAL_FILES`等）
+と`masuda review start`の衝突拒否安全策が丸ごと不要になり削除できた。
+
+実機テストで、同一branchに対する2つの並行ワークスペースが衝突なくG1ゲートまで
+進むこと、成果物が状態ディレクトリ側にのみ生成されることを確認済み。途中で
+Claude Codeの許可ルール`Edit(/abs/path)`（先頭スラッシュ1つ）がworktree外の絶対パス
+に対して常に確認プロンプトを出し自動承認されない実装上の罠を発見し、
+`Edit(//abs/path)`（先頭スラッシュ2つ）に修正して解消した
+（[anthropics/claude-code#25137](https://github.com/anthropics/claude-code/issues/25137)、
+[#18200](https://github.com/anthropics/claude-code/issues/18200)）。
 
 ## 8. 横断的チェック（LSP経由の整合性検証）
 

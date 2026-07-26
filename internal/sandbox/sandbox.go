@@ -1,7 +1,13 @@
-// Package sandbox wraps `docker run` for masuda's per-worktree containers. Each
-// sandbox bind-mounts exactly one worktree at /workspace and gets its own
-// container name and host port, so multiple sandboxes can run side by side —
-// the /workspace path is fixed only from inside a given container.
+// Package sandbox wraps `docker run` for masuda's per-workspace containers. Each
+// sandbox bind-mounts exactly one worktree at /workspace and one workspace
+// state directory (masuda's own control files — see internal/workspace) at
+// /masuda-state, and gets its own container name and host port, so multiple
+// sandboxes can run side by side — the /workspace and /masuda-state paths
+// are fixed only from inside a given container.
+//
+// Everything here is keyed by workspace ID, not branch name: two workspaces
+// targeting the same branch (roadmap step 7) must get independent
+// containers, so the container name can't be derived from the branch alone.
 package sandbox
 
 import (
@@ -26,18 +32,19 @@ const (
 
 // Handle identifies a running sandbox container.
 type Handle struct {
-	Branch        string
+	ID            string
 	ContainerName string
 	HostPort      int
 }
 
 var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
-// ContainerName derives the docker container name for a branch. Docker container
-// names only allow [a-zA-Z0-9_.-], so anything else in the branch name (e.g. the
-// "/" in "feat/foo") is collapsed to "-".
-func ContainerName(branch string) string {
-	return "masuda-" + nameSanitizer.ReplaceAllString(branch, "-")
+// ContainerName derives the docker container name for a workspace id. Docker
+// container names only allow [a-zA-Z0-9_.-]; workspace IDs are already
+// sanitized to that set (internal/workspace.NewID), but this stays
+// defensive in case that ever changes.
+func ContainerName(id string) string {
+	return "masuda-" + nameSanitizer.ReplaceAllString(id, "-")
 }
 
 func runDocker(args ...string) (string, error) {
@@ -95,25 +102,27 @@ func hostCredentialMounts() ([]string, error) {
 	return mounts, nil
 }
 
-// Start launches a new sandbox container bind-mounting worktreeDir at /workspace,
-// places claudeMdPath at ~/.claude/CLAUDE.md inside the container before the
-// container's own entrypoint (and therefore Claude) starts, then starts it.
+// Start launches a new sandbox container for workspace id, bind-mounting
+// worktreeDir at /workspace and stateDir (masuda's own control files) at
+// /masuda-state, places claudeMdPath at ~/.claude/CLAUDE.md inside the
+// container before the container's own entrypoint (and therefore Claude)
+// starts, then starts it.
 //
 // A create → cp → start sequence is used instead of a single `docker run` so the
 // CLAUDE.md copy always lands before runtime/entrypoint.sh launches Claude —
 // `docker run` would start the entrypoint immediately, racing the copy.
-func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
+func Start(id, worktreeDir, stateDir, claudeMdPath, image string) (Handle, error) {
 	if image == "" {
 		image = DefaultImage
 	}
-	name := ContainerName(branch)
+	name := ContainerName(id)
 
-	if IsRunning(branch) {
+	if IsRunning(id) {
 		port, err := runningHostPort(name)
 		if err != nil {
 			return Handle{}, err
 		}
-		return Handle{Branch: branch, ContainerName: name, HostPort: port}, nil
+		return Handle{ID: id, ContainerName: name, HostPort: port}, nil
 	}
 
 	// A previous run's container may still exist in the "Exited" state (its
@@ -134,13 +143,13 @@ func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
 	}
 
 	// The loop protocol only re-invokes the orchestrator when TASK.md is
-	// *absent*. A worktree arriving here from the phase 1-2 host loop still
-	// has that loop's terminal "DONE (G1 approved)" TASK.md sitting in it —
-	// without clearing it, this container's fresh session would read that
-	// stale file, see "DONE", and exit immediately without ever invoking the
-	// phase 4 orchestrator. Same bug and same fix as hostloop.Start's resume
-	// case.
-	if err := os.Remove(filepath.Join(worktreeDir, "TASK.md")); err != nil && !os.IsNotExist(err) {
+	// *absent*. A workspace arriving here from the phase 1-2 host loop still
+	// has that loop's terminal "DONE (G1 approved)" TASK.md sitting in its
+	// state dir — without clearing it, this container's fresh session would
+	// read that stale file, see "DONE", and exit immediately without ever
+	// invoking the phase 4 orchestrator. Same bug and same fix as
+	// hostloop.Start's resume case.
+	if err := os.Remove(filepath.Join(stateDir, "TASK.md")); err != nil && !os.IsNotExist(err) {
 		return Handle{}, fmt.Errorf("clearing stale TASK.md before sandbox start: %w", err)
 	}
 
@@ -149,6 +158,7 @@ func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
 		"--name", name,
 		"-p", fmt.Sprintf("%d:%d", port, containerClaudePort),
 		"-v", worktreeDir + ":/workspace",
+		"-v", stateDir + ":/masuda-state",
 	}
 	createArgs = append(createArgs, credentialMounts...)
 	createArgs = append(createArgs, image)
@@ -167,13 +177,13 @@ func Start(branch, worktreeDir, claudeMdPath, image string) (Handle, error) {
 		return Handle{}, fmt.Errorf("docker start: %w", err)
 	}
 
-	return Handle{Branch: branch, ContainerName: name, HostPort: port}, nil
+	return Handle{ID: id, ContainerName: name, HostPort: port}, nil
 }
 
-// Stop stops and removes the sandbox container for branch. It's not an error for
-// the container to already be gone.
-func Stop(branch string) error {
-	name := ContainerName(branch)
+// Stop stops and removes the sandbox container for workspace id. It's not an
+// error for the container to already be gone.
+func Stop(id string) error {
+	name := ContainerName(id)
 	_, _ = runDocker("stop", name)
 	_, err := runDocker("rm", "-f", name)
 	return err
@@ -199,15 +209,16 @@ func runningHostPort(name string) (int, error) {
 	return port, nil
 }
 
-// IsRunning reports whether the sandbox container for branch is currently running.
-func IsRunning(branch string) bool {
-	out, err := runDocker("inspect", "--format", "{{.State.Running}}", ContainerName(branch))
+// IsRunning reports whether the sandbox container for workspace id is
+// currently running.
+func IsRunning(id string) bool {
+	out, err := runDocker("inspect", "--format", "{{.State.Running}}", ContainerName(id))
 	return err == nil && strings.TrimSpace(out) == "true"
 }
 
 // AttachArgs returns the argv for interactively attaching to the sandbox's tmux
 // session (`masuda plan/review chat`). Callers exec this directly (not via
 // exec.Command's Output/Run) so the user's terminal is wired straight through.
-func AttachArgs(branch string) []string {
-	return []string{"docker", "exec", "-it", ContainerName(branch), "tmux", "attach", "-t", tmuxSession}
+func AttachArgs(id string) []string {
+	return []string{"docker", "exec", "-it", ContainerName(id), "tmux", "attach", "-t", tmuxSession}
 }

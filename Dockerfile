@@ -21,9 +21,12 @@ RUN npm install -g @anthropic-ai/claude-code
 # /workspace: /workspace is reserved as the bind-mount point for the target repository's
 # worktree (masuda sandbox start mounts a different worktree there per run), and a bind
 # mount replaces the mount point's entire contents — anything baked in at /workspace would
-# be shadowed the moment a worktree is mounted over it.
-RUN mkdir -p /workspace /opt/masuda /home/ubuntu/.claude \
- && chown ubuntu:ubuntu /workspace /opt/masuda /home/ubuntu/.claude
+# be shadowed the moment a worktree is mounted over it. /masuda-state is a second,
+# separate bind-mount point for that workspace's state directory (roadmap step 7):
+# masuda's own TASK.md/PLAN.md/gate markers/etc. live there instead of in /workspace, so
+# they never show up in the target repository's own `git status`.
+RUN mkdir -p /workspace /masuda-state /opt/masuda /home/ubuntu/.claude \
+ && chown ubuntu:ubuntu /workspace /masuda-state /opt/masuda /home/ubuntu/.claude
 
 WORKDIR /opt/masuda
 

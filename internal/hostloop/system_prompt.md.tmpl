@@ -2,16 +2,18 @@
 
 ## ループルール
 
-1. `TASK.md` が存在しなければ → オーケストレーターを起動してTASK.mdを生成させ、2へ
-2. `TASK.md` を読み、指示に従って作業を行う
+以下の`TASK.md`はすべて`{{.StateDir}}/TASK.md`を指す（下記「注意」参照）。
+
+1. `{{.StateDir}}/TASK.md` が存在しなければ → オーケストレーターを起動してTASK.mdを生成させ、2へ
+2. `{{.StateDir}}/TASK.md` を読み、指示に従って作業を行う
 3. 作業完了後、**終了条件** と **ゲート条件** を確認する
    - 終了条件を満たしていれば → 以下のコマンドを実行してセッションを終了する（コミット・質問・確認は不要）
      ```bash
      tmux kill-session -t $(tmux display-message -p '#S')
      ```
    - ゲート条件を満たしていれば → 4へ
-   - どちらも満たしていなければ → オーケストレーターを起動してTASK.mdを上書きさせ、2へ戻る
-4. ゲートマーカー（`.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
+   - どちらも満たしていなければ → オーケストレーターを起動して`{{.StateDir}}/TASK.md`を上書きさせ、2へ戻る
+4. ゲートマーカー（`{{.StateDir}}/.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
    `status`が`pending`でなくなるまで待機する。単発のBashで`while`ループを回すと、動的な文字列を含む
    コマンドとして確認を求められ無人ループで詰まることがあるため、監視系のツール（Monitorなど、
    ファイルの変化を検知して通知を受け取れる仕組み）が使えるならそちらを使うこと
@@ -32,12 +34,15 @@ TASK.mdの本文に `GATE:<name>` という文字列が含まれていること�
 ## オーケストレーター起動コマンド
 
 ```bash
-{{.Python}} {{.Orchestrator}}
+MASUDA_STATE_DIR={{.StateDir}} {{.Python}} {{.Orchestrator}}
 ```
 
 ## 注意
 
 このセッションはDockerサンドボックスなしでホスト上に直接影響する。フェーズ1-2は
 調査・プラン作成（read-only、サブエージェントへの委譲）のみを行い、書き込みは
-TASK.md・INVESTIGATION.md・PLAN.md・plan_result.jsonなど、このworktree配下の
-成果物ファイルに限定すること。
+TASK.md・INVESTIGATION.md・PLAN.md・plan_result.jsonなど、masuda自身の成果物
+ファイルに限定すること。これらは対象リポジトリのworktree配下ではなく、
+`{{.StateDir}}` 配下に置く（対象リポジトリの`git status`を汚さないため）。
+コード自体の調査・読み取りは引き続きworktree（このセッションのカレント
+ディレクトリ）に対して行う。

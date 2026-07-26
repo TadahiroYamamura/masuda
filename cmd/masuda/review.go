@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
@@ -20,6 +20,12 @@ import (
 // entirely (no investigation, no plan, no G1, nothing to implement) and goes
 // straight into phase 5's review against the sandbox already built for the
 // full pipeline.
+//
+// Every invocation mints its own workspace ID (roadmap step 7), so unlike
+// the original version of this command, it never needs to refuse to run
+// against a branch that already has a full pipeline (or another review) in
+// flight — each workspace gets its own worktree, state directory, and
+// sandbox container, so nothing to collide over.
 func newReviewStartCommand() *cobra.Command {
 	var base, image string
 	cmd := &cobra.Command{
@@ -34,13 +40,8 @@ never exists here, so the ADR-0010 mechanical backstop is skipped (there is
 no plan to have deviated from) and the review diff is computed against
 --base directly, not an implementation's uncommitted changes.
 
-Isolation is per-branch, not per-command: the worktree path and sandbox
-container name are both derived from the branch name alone. Running this
-against a branch that already has a full pipeline in flight (masuda plan/
-sandbox start) would fight over the same worktree and container, and this
-command would overwrite that pipeline's implementation_result.json out from
-under it — so it refuses to run against a branch with a PLAN.md (a sign a
-full-pipeline worktree already owns it) or a live host/sandbox session.`,
+Prints a fresh workspace ID on success; use it with masuda review
+show|chat|approve|reject.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			branch := args[0]
@@ -51,26 +52,23 @@ full-pipeline worktree already owns it) or a live host/sandbox session.`,
 			if !worktree.BranchExists(root, branch) {
 				return fmt.Errorf("branch %q does not exist — masuda review start only reviews an existing branch (use `masuda plan start` to create a new one)", branch)
 			}
-			if hostloop.IsRunning(branch) || sandbox.IsRunning(branch) {
-				return fmt.Errorf("a session for %q is already running — masuda review start shares its worktree/container by branch name with the full pipeline and would clobber it; stop the existing session first if you're sure they don't overlap", branch)
-			}
-			worktreeDir := worktree.Dir(root, branch)
-			if _, err := os.Stat(filepath.Join(worktreeDir, "PLAN.md")); err == nil {
-				return fmt.Errorf("worktree for %q already has a PLAN.md — it looks like a full-pipeline worktree, not one masuda review start should reuse; remove it first (`masuda worktree remove %s`) if you really want a standalone review here", branch, branch)
-			}
-			worktreeDir, err = worktree.Create(root, branch, base)
+			info, worktreeDir, err := newWorkspace(root, branch, base)
 			if err != nil {
 				return err
 			}
-			if err := seedReviewOnly(worktreeDir); err != nil {
+			if err := seedReviewOnly(info.ID); err != nil {
+				return err
+			}
+			stateDir, err := workspace.StateDir(info.ID)
+			if err != nil {
 				return err
 			}
 			claudeMd := root + "/runtime/CLAUDE.md"
-			h, err := sandbox.Start(branch, worktreeDir, claudeMd, image)
+			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, claudeMd, image)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "container=%s host_port=%d\n", h.ContainerName, h.HostPort)
+			fmt.Fprintf(cmd.OutOrStdout(), "workspace=%s container=%s host_port=%d\n", info.ID, h.ContainerName, h.HostPort)
 			return nil
 		},
 	}
@@ -84,8 +82,12 @@ full-pipeline worktree already owns it) or a live host/sandbox session.`,
 // phase 5 on its first invocation — there is no implementation to run or
 // wait for here, the branch's commits already are the change under review.
 // A no-op if already seeded (idempotent resume after e.g. a dead container).
-func seedReviewOnly(worktreeDir string) error {
-	path := filepath.Join(worktreeDir, "implementation_result.json")
+func seedReviewOnly(id string) error {
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(stateDir, "implementation_result.json")
 	if _, err := os.Stat(path); err == nil {
 		return nil
 	}

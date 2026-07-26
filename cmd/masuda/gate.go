@@ -11,6 +11,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/gate"
 	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
@@ -20,7 +21,7 @@ import (
 func newGateCommand(n gate.Name) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   string(n),
-		Short: fmt.Sprintf("Operate on the %s gate for a branch's worktree", n),
+		Short: fmt.Sprintf("Operate on the %s gate for a workspace", n),
 	}
 	cmd.AddCommand(newGateShowCommand(n))
 	cmd.AddCommand(newGateChatCommand(n))
@@ -29,29 +30,35 @@ func newGateCommand(n gate.Name) *cobra.Command {
 	return cmd
 }
 
-func gateWorktreeDir(branch string) (root, dir string, err error) {
+// gateStateDir resolves a workspace ID to its state directory (where gate
+// markers and the artifacts they judge live, per roadmap step 7 — never the
+// worktree itself).
+func gateStateDir(id string) (root, stateDir string, err error) {
 	root, err = repoRoot()
 	if err != nil {
 		return "", "", err
 	}
-	dir = worktree.Dir(root, branch)
-	if _, err := os.Stat(dir); err != nil {
-		return "", "", fmt.Errorf("no worktree for %q", branch)
+	if !workspace.Exists(id) {
+		return "", "", fmt.Errorf("no workspace %q", id)
 	}
-	return root, dir, nil
+	stateDir, err = workspace.StateDir(id)
+	if err != nil {
+		return "", "", err
+	}
+	return root, stateDir, nil
 }
 
 func newGateShowCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <branch>",
+		Use:   "show <workspace-id>",
 		Short: fmt.Sprintf("Print the artifact the %s gate is judging", n),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, dir, err := gateWorktreeDir(args[0])
+			_, stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
-			content, err := gate.Show(dir, n)
+			content, err := gate.Show(stateDir, n)
 			if err != nil {
 				return err
 			}
@@ -63,38 +70,41 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 
 func newGateChatCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "chat <branch>",
+		Use:   "chat <workspace-id>",
 		Short: fmt.Sprintf("Attach interactively to discuss the %s gate before deciding (ADR-0006)", n),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			branch := args[0]
+			id := args[0]
+			if !workspace.Exists(id) {
+				return fmt.Errorf("no workspace %q", id)
+			}
 			if n == gate.Plan {
 				// G1 can be waiting in either place: the phase 1-2 host loop
 				// (first time through) or the phase 4-5 sandbox (reopened by
 				// a plan deviation, ADR-0010) — try both.
-				if hostloop.IsRunning(branch) {
-					return attach(hostloop.AttachArgs(branch))
+				if hostloop.IsRunning(id) {
+					return attach(hostloop.AttachArgs(id))
 				}
-				if sandbox.IsRunning(branch) {
-					return attach(sandbox.AttachArgs(branch))
+				if sandbox.IsRunning(id) {
+					return attach(sandbox.AttachArgs(id))
 				}
-				return fmt.Errorf("no plan session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", branch, branch, branch)
+				return fmt.Errorf("no plan session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", id, id, id)
 			}
-			if !sandbox.IsRunning(branch) {
-				return fmt.Errorf("sandbox for %q is not running — run `masuda sandbox start %s` first", branch, branch)
+			if !sandbox.IsRunning(id) {
+				return fmt.Errorf("sandbox for %q is not running — run `masuda sandbox start %s` first", id, id)
 			}
-			return attach(sandbox.AttachArgs(branch))
+			return attach(sandbox.AttachArgs(id))
 		},
 	}
 }
 
 func newGateApproveCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "approve <branch> [feedback]",
+		Use:   "approve <workspace-id> [feedback]",
 		Short: fmt.Sprintf("Approve the %s gate", n),
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, dir, err := gateWorktreeDir(args[0])
+			root, stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
@@ -102,7 +112,7 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 			if len(args) > 1 {
 				feedback = args[1]
 			}
-			if err := gate.Approve(dir, n, feedback); err != nil {
+			if err := gate.Approve(stateDir, n, feedback); err != nil {
 				return err
 			}
 			if n == gate.Review {
@@ -115,31 +125,39 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 
 func newGateRejectCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "reject <branch> <feedback>",
+		Use:   "reject <workspace-id> <feedback>",
 		Short: fmt.Sprintf("Reject the %s gate with feedback for the next pass", n),
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, dir, err := gateWorktreeDir(args[0])
+			_, stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
-			return gate.Reject(dir, n, args[1])
+			return gate.Reject(stateDir, n, args[1])
 		},
 	}
 }
 
-// finalizeReviewApproval implements ADR-0005: approving G2 merges the worktree's
-// branch locally and tears down the worktree/sandbox, all without ever pushing.
-func finalizeReviewApproval(root, branch string) error {
-	if sandbox.IsRunning(branch) {
-		if err := sandbox.Stop(branch); err != nil {
+// finalizeReviewApproval implements ADR-0005: approving G2 merges the
+// workspace's branch locally and tears down its worktree/sandbox/state
+// directory, all without ever pushing.
+func finalizeReviewApproval(root, id string) error {
+	info, err := workspace.Load(id)
+	if err != nil {
+		return err
+	}
+	if sandbox.IsRunning(id) {
+		if err := sandbox.Stop(id); err != nil {
 			return fmt.Errorf("stopping sandbox after approval: %w", err)
 		}
 	}
-	if err := worktree.Merge(root, branch, defaultBase); err != nil {
-		return fmt.Errorf("merging %s after approval: %w", branch, err)
+	if err := worktree.Merge(root, id, info.Branch, defaultBase); err != nil {
+		return fmt.Errorf("merging %s after approval: %w", info.Branch, err)
 	}
-	return worktree.Remove(root, branch, true)
+	if err := worktree.Remove(root, id, info.Branch, true); err != nil {
+		return err
+	}
+	return workspace.Remove(id)
 }
 
 // attach replaces the current process with an interactive docker exec, so the

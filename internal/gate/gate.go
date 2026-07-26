@@ -7,6 +7,11 @@
 // where Claude itself writes the marker mid-conversation) lives in
 // internal/sandbox — this package only defines the marker format both sides
 // agree on.
+//
+// All paths here are relative to a workspace's state directory (see
+// internal/workspace), not the git worktree: PLAN.md, final_report.md,
+// DEVIATION.md, and the gate markers themselves are masuda's own control
+// files and live outside the worktree entirely (roadmap step 7).
 package gate
 
 import (
@@ -25,8 +30,9 @@ const (
 	Review Name = "review"
 )
 
-// artifactPaths maps each gate to the file (relative to the worktree root) that
-// masuda plan/review show prints — the thing a human reviews before deciding.
+// artifactPaths maps each gate to the file (relative to the workspace state
+// directory) that masuda plan/review show prints — the thing a human
+// reviews before deciding.
 var artifactPaths = map[Name]string{
 	Plan:   "PLAN.md",
 	Review: "review_results/final_report.md",
@@ -40,8 +46,8 @@ func (n Name) artifactPath() (string, error) {
 	return p, nil
 }
 
-func (n Name) markerPath(worktreeDir string) string {
-	return filepath.Join(worktreeDir, ".masuda-gate", string(n)+".json")
+func (n Name) markerPath(stateDir string) string {
+	return filepath.Join(stateDir, ".masuda-gate", string(n)+".json")
 }
 
 // Status is one of the marker's possible states.
@@ -66,27 +72,27 @@ type Marker struct {
 // reason recorded in DEVIATION.md is prepended so `masuda plan show` explains
 // *why* the gate is open again, not just what the (still-approved-looking)
 // PLAN.md says.
-func Show(worktreeDir string, n Name) (string, error) {
+func Show(stateDir string, n Name) (string, error) {
 	rel, err := n.artifactPath()
 	if err != nil {
 		return "", err
 	}
-	content, err := os.ReadFile(filepath.Join(worktreeDir, rel))
+	content, err := os.ReadFile(filepath.Join(stateDir, rel))
 	if err != nil {
 		return "", fmt.Errorf("reading %s: %w", rel, err)
 	}
 	out := string(content)
 
 	if n == Plan {
-		if deviation, err := os.ReadFile(filepath.Join(worktreeDir, "DEVIATION.md")); err == nil {
+		if deviation, err := os.ReadFile(filepath.Join(stateDir, "DEVIATION.md")); err == nil {
 			out = "# G1 reopened — deviation reported (ADR-0010)\n\n" + string(deviation) + "\n\n---\n\n" + out
 		}
 	}
 	return out, nil
 }
 
-func writeMarker(worktreeDir string, n Name, m Marker) error {
-	path := n.markerPath(worktreeDir)
+func writeMarker(stateDir string, n Name, m Marker) error {
+	path := n.markerPath(stateDir)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -100,8 +106,8 @@ func writeMarker(worktreeDir string, n Name, m Marker) error {
 // clearDeviation removes DEVIATION.md if present — once a human has decided
 // on a reopened G1, the reason that reopened it no longer needs to keep
 // showing up on `masuda plan show`.
-func clearDeviation(worktreeDir string) error {
-	err := os.Remove(filepath.Join(worktreeDir, "DEVIATION.md"))
+func clearDeviation(stateDir string) error {
+	err := os.Remove(filepath.Join(stateDir, "DEVIATION.md"))
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -109,27 +115,27 @@ func clearDeviation(worktreeDir string) error {
 }
 
 // Approve writes an approved marker for gate n. feedback may be empty.
-func Approve(worktreeDir string, n Name, feedback string) error {
-	if err := clearDeviation(worktreeDir); err != nil {
+func Approve(stateDir string, n Name, feedback string) error {
+	if err := clearDeviation(stateDir); err != nil {
 		return err
 	}
-	return writeMarker(worktreeDir, n, Marker{Status: Approved, Feedback: feedback, DecidedAt: time.Now()})
+	return writeMarker(stateDir, n, Marker{Status: Approved, Feedback: feedback, DecidedAt: time.Now()})
 }
 
 // Reject writes a rejected marker for gate n. feedback should explain what needs
 // to change, since it's the only input the next investigation/implementation
 // pass gets.
-func Reject(worktreeDir string, n Name, feedback string) error {
-	if err := clearDeviation(worktreeDir); err != nil {
+func Reject(stateDir string, n Name, feedback string) error {
+	if err := clearDeviation(stateDir); err != nil {
 		return err
 	}
-	return writeMarker(worktreeDir, n, Marker{Status: Rejected, Feedback: feedback, DecidedAt: time.Now()})
+	return writeMarker(stateDir, n, Marker{Status: Rejected, Feedback: feedback, DecidedAt: time.Now()})
 }
 
 // Read returns the current marker for gate n, or a zero-value Pending Marker if
 // no decision has been recorded yet.
-func Read(worktreeDir string, n Name) (Marker, error) {
-	data, err := os.ReadFile(n.markerPath(worktreeDir))
+func Read(stateDir string, n Name) (Marker, error) {
+	data, err := os.ReadFile(n.markerPath(stateDir))
 	if os.IsNotExist(err) {
 		return Marker{Status: Pending}, nil
 	}
@@ -138,7 +144,7 @@ func Read(worktreeDir string, n Name) (Marker, error) {
 	}
 	var m Marker
 	if err := json.Unmarshal(data, &m); err != nil {
-		return Marker{}, fmt.Errorf("parsing marker %s: %w", n.markerPath(worktreeDir), err)
+		return Marker{}, fmt.Errorf("parsing marker %s: %w", n.markerPath(stateDir), err)
 	}
 	return m, nil
 }

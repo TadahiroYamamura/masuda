@@ -27,8 +27,17 @@ Responsibilities:
 
 No LLM calls happen in this process -- pure state machine over the
 filesystem, same design as investigate_plan_graph.py.
+
+All of masuda's own control files live under STATE_DIR (roadmap step 7's
+workspace state directory, `MASUDA_STATE_DIR` env var, bind-mounted at
+/masuda-state in the sandbox), never inside the worktree (/workspace) itself.
+This is why _actual_changed_files()/_compute_diff() no longer need to exclude
+a list of masuda-owned paths from `git status`/`git diff` output the way an
+earlier version of this file did: those files simply never exist inside the
+git-managed worktree in the first place, so there's nothing to filter out.
 """
 import json
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -44,36 +53,20 @@ TOTAL_PERSPECTIVES = len(PERSPECTIVES)
 # an independent, per-domain constant, not shared with phase 1-2's.
 MAX_REVIEW_RETRIES = 2
 
-PLAN_MD = Path("PLAN.md")
-BASE_REF_FILE = Path(".masuda-base-ref")
-IMPLEMENTATION_RESULT_JSON = Path("implementation_result.json")
-DEVIATION_MD = Path("DEVIATION.md")
-APPROVED_DEVIATIONS_JSON = Path(".masuda-approved-deviations.json")
-PLAN_GATE_MARKER = Path(".masuda-gate/plan.json")
-REVIEW_GATE_MARKER = Path(".masuda-gate/review.json")
-REVIEW_STATE_JSON = Path(".masuda-review-state.json")
-REVIEW_FEEDBACK_MD = Path(".masuda-review-feedback.md")
-REVIEW_RESULTS_DIR = Path("review_results")
-FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
-TASK_MD = Path("TASK.md")
+STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
-# Files masuda's own machinery writes into the worktree -- never part of what
-# the mechanical backstop (ADR-0010) judges as an "implementation change".
-_MASUDA_INTERNAL_FILES = {
-    "TASK.md",
-    "PLAN.md",
-    "INVESTIGATION.md",
-    "plan_result.json",
-    ".masuda-task.md",
-    ".masuda-plan-system-prompt.md",
-    str(IMPLEMENTATION_RESULT_JSON),
-    str(DEVIATION_MD),
-    str(APPROVED_DEVIATIONS_JSON),
-    str(BASE_REF_FILE),
-    str(REVIEW_STATE_JSON),
-    str(REVIEW_FEEDBACK_MD),
-}
-_MASUDA_INTERNAL_PREFIXES = (".masuda-gate/", str(REVIEW_RESULTS_DIR) + "/")
+PLAN_MD = STATE_DIR / "PLAN.md"
+BASE_REF_FILE = STATE_DIR / ".masuda-base-ref"
+IMPLEMENTATION_RESULT_JSON = STATE_DIR / "implementation_result.json"
+DEVIATION_MD = STATE_DIR / "DEVIATION.md"
+APPROVED_DEVIATIONS_JSON = STATE_DIR / ".masuda-approved-deviations.json"
+PLAN_GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
+REVIEW_GATE_MARKER = STATE_DIR / ".masuda-gate" / "review.json"
+REVIEW_STATE_JSON = STATE_DIR / ".masuda-review-state.json"
+REVIEW_FEEDBACK_MD = STATE_DIR / ".masuda-review-feedback.md"
+REVIEW_RESULTS_DIR = STATE_DIR / "review_results"
+FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
+TASK_MD = STATE_DIR / "TASK.md"
 
 
 class State(TypedDict):
@@ -136,10 +129,7 @@ def _actual_changed_files() -> set[str]:
         path = line[3:]
         if " -> " in path:  # rename: "old -> new"
             path = path.split(" -> ", 1)[1]
-        path = path.strip().strip('"')
-        if path in _MASUDA_INTERNAL_FILES or path.startswith(_MASUDA_INTERNAL_PREFIXES):
-            continue
-        files.add(path)
+        files.add(path.strip().strip('"'))
     return files
 
 
@@ -199,23 +189,14 @@ def _compute_diff() -> str:
     step 6) shows its real diff instead of nothing -- `git diff HEAD` on an
     already-committed branch has nothing to show since HEAD *is* the tip.
 
-    `git add -A` stages masuda's own scratch files too (.masuda-base-ref,
-    implementation_result.json, review_results/, ...) since they're new,
-    untracked paths just like real implementation files -- confirmed
-    empirically that without unstaging them again here, they show up
-    verbatim in what review subagents are asked to review. They're never
-    part of the change under review.
+    `git add -A` used to also stage masuda's own scratch files (they lived
+    inside the worktree, so `git status`/`git add -A` saw them as new,
+    untracked paths just like real implementation files) which had to be
+    unstaged again before diffing. Since roadmap step 7 moved all of masuda's
+    control files out to STATE_DIR, they're outside this git worktree
+    entirely and never appear here in the first place.
     """
     subprocess.run(["git", "add", "-A"], check=True)
-
-    internal_paths = [f for f in _MASUDA_INTERNAL_FILES if Path(f).exists()]
-    for prefix in _MASUDA_INTERNAL_PREFIXES:
-        d = Path(prefix.rstrip("/"))
-        if d.exists():
-            internal_paths.append(str(d))
-    if internal_paths:
-        subprocess.run(["git", "reset", "--"] + internal_paths, check=True)
-
     return subprocess.run(
         ["git", "diff", "--cached", _read_base_ref()], capture_output=True, text=True, check=True
     ).stdout
@@ -444,9 +425,10 @@ def _implement_task(redo_feedback: str | None = None) -> str:
 """
     return f"""# TASK: 実装（フェーズ4）
 
-新規コンテキストのサブエージェントにPLAN.mdに基づく実装を委譲せよ
+新規コンテキストのサブエージェントに以下のPLAN.mdに基づく実装を委譲せよ
 （Dockerサンドボックス内で完結するため、フェーズ1-2のようなBash制限は不要。
-write/Edit/Bash権限を持つ通常のサブエージェントでよい）。
+write/Edit/Bash権限を持つ通常のサブエージェントでよい。実装対象のコードは
+カレントディレクトリ＝`/workspace`に対して行うこと）。
 
 ## 実装前の準備
 環境が未セットアップの場合、CLAUDE.md・README等を参照して依存解決
@@ -457,17 +439,17 @@ write/Edit/Bash権限を持つ通常のサブエージェントでよい）。
 {redo_section}
 ## 逸脱時の対応（一次防御、ADR-0010）
 実装中に計画から外れる必要があると気づいた場合、勝手に進めず作業を止め、
-`implementation_result.json`に以下を書き出して終了せよ:
+`{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
 {{"status": "needs_plan_review", "reason": "<なぜ計画から外れる必要があるか>"}}
 
 ## ビルド/テストの自己修正ループ（ADR-0009）
 実装後、自分でビルド・テストを実行し、失敗したら自己修正して再実行せよ。
 最大3回まで試し、それでもグリーンにならない場合は
-`implementation_result.json`に以下を書き出して終了せよ:
+`{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
 {{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
 
 ## 完了条件
-ビルド・テストがグリーンになったら、`implementation_result.json`に
+ビルド・テストがグリーンになったら、`{IMPLEMENTATION_RESULT_JSON}`に
 {{"status": "done"}}を書き出すこと。
 """
 
@@ -476,14 +458,14 @@ def _plan_reopened_task(reason: str) -> str:
     return f"""# GATE:plan
 
 G1（プラン承認ゲート）を再オープンしました（ADR-0010）。セッションは終了せず、
-`.masuda-gate/plan.json`のstatusがpendingでなくなるまで待機してください。
+`{PLAN_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
 
 ## 理由
 {reason}
 
-人間は `masuda plan show <branch>` で理由（DEVIATION.md）とPLAN.mdを確認し、
-`masuda plan chat <branch>` で対話するか、
-`masuda plan approve <branch>` / `masuda plan reject <branch> "<feedback>"` で応答してください。
+人間は `masuda plan show <workspace-id>` で理由（{DEVIATION_MD.name}）とPLAN.mdを確認し、
+`masuda plan chat <workspace-id>` で対話するか、
+`masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """
 
 
@@ -502,7 +484,7 @@ def _review_perspective_task(idx: int, attempt: int) -> str:
 
 新規コンテキストのサブエージェント（Bash/Read/Grep等は不要、diffのみで判断する
 機械的チェック — 探索させないこと）に以下を委譲し、レビュー結果を
-`review_results/result_{idx}_attempt{attempt}.json`に書き出させよ。
+`{_result_path(idx, attempt)}`に書き出させよ。
 
 ## レビュー観点の指示
 {p["review_prompt"]}
@@ -522,7 +504,7 @@ def _review_perspective_task(idx: int, attempt: int) -> str:
 }}
 
 ## 完了条件
-`review_results/result_{idx}_attempt{attempt}.json` が存在すること
+`{_result_path(idx, attempt)}` が存在すること
 """
 
 
@@ -533,7 +515,7 @@ def _check_perspective_task(idx: int, attempt: int) -> str:
     return f"""# TASK: レビュー結果の検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェントに以下を委譲し、検証結果を
-`review_results/check_{idx}_attempt{attempt}.json`に書き出させよ。
+`{_check_path(idx, attempt)}`に書き出させよ。
 レビューした本人（同じコンテキスト）ではなく、独立した視点で検証すること。
 
 ## 検証観点の指示
@@ -557,7 +539,7 @@ def _check_perspective_task(idx: int, attempt: int) -> str:
 }}
 
 ## 完了条件
-`review_results/check_{idx}_attempt{attempt}.json` が存在すること
+`{_check_path(idx, attempt)}` が存在すること
 """
 
 
@@ -580,7 +562,7 @@ def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
 
 新規コンテキストのサブエージェント（指摘箇所のみ書き込み可、軽量な修正専用。
 指摘そのものを出したレビューア/checkerとは別コンテキストで実行すること）に
-以下の指摘を修正させ、完了したら`review_results/fix_{idx}_fixattempt{fix_attempt}.json`
+以下の指摘を修正させ、完了したら`{_fix_path(idx, fix_attempt)}`
 に`{{"status": "fixed"}}`を書き出させよ。
 
 ## 修正対象の指摘
@@ -592,7 +574,7 @@ def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
 指摘箇所（`issues[].location`）以外のファイルは変更しないこと。
 
 ## 完了条件
-`review_results/fix_{idx}_fixattempt{fix_attempt}.json` が存在すること
+`{_fix_path(idx, fix_attempt)}` が存在すること
 """
 
 
@@ -602,7 +584,7 @@ def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
     return f"""# TASK: 修正の再検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェントに以下を委譲し、検証結果を
-`review_results/recheck_{idx}_fixattempt{fix_attempt}.json`に書き出させよ。
+`{_recheck_path(idx, fix_attempt)}`に書き出させよ。
 修正した本人（fixer）ではなく、独立した視点で検証すること。
 
 ## 検証観点の指示
@@ -622,7 +604,7 @@ def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
 }}
 
 ## 完了条件
-`review_results/recheck_{idx}_fixattempt{fix_attempt}.json` が存在すること
+`{_recheck_path(idx, fix_attempt)}` が存在すること
 """
 
 
@@ -671,7 +653,7 @@ def _synthesize_task() -> str:
 
     return f"""# TASK: レビュー結果の統合（フェーズ5、最終レポート作成）
 
-新規コンテキストのサブエージェントに以下を委譲し、`review_results/final_report.md`
+新規コンテキストのサブエージェントに以下を委譲し、`{FINAL_REPORT_MD}`
 を生成させよ。
 
 ## 指示
@@ -696,19 +678,19 @@ def _synthesize_task() -> str:
 ```
 
 ## 完了条件
-`review_results/final_report.md` が存在すること
+`{FINAL_REPORT_MD}` が存在すること
 """
 
 
 _TERMINAL = {
-    "await_g2": """# GATE:review
+    "await_g2": f"""# GATE:review
 
 レビューが完了し、G2（最終承認ゲート）の判断待ちです。セッションは終了せず、
-`.masuda-gate/review.json`のstatusがpendingでなくなるまで待機してください。
+`{REVIEW_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
 
-人間は `masuda review show <branch>` でfinal_report.mdを確認し、
-`masuda review chat <branch>` で対話するか、
-`masuda review approve <branch>` / `masuda review reject <branch> "<feedback>"` で応答してください。
+人間は `masuda review show <workspace-id>` で{FINAL_REPORT_MD.name}を確認し、
+`masuda review chat <workspace-id>` で対話するか、
+`masuda review approve <workspace-id>` / `masuda review reject <workspace-id> "<feedback>"` で応答してください。
 承認時はローカルmerge・worktree削除まで自動で行われます（ADR-0005）。
 却下時はフェーズ4に差し戻され、フィードバックを踏まえて再実装します（ADR-0013）。
 """,

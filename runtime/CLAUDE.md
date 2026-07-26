@@ -2,16 +2,20 @@
 
 ## ループルール
 
-1. `TASK.md` が存在しなければ → LangGraph を起動して `TASK.md` を生成させ、2 へ
-2. `TASK.md` を読み、指示に従って作業を行う
+masuda自身の制御ファイル（`TASK.md`・ゲートマーカー等）は`/workspace`（対象リポジトリの
+worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」参照）。以下の`TASK.md`は
+すべて`/masuda-state/TASK.md`を指す。
+
+1. `/masuda-state/TASK.md` が存在しなければ → LangGraph を起動して生成させ、2 へ
+2. `/masuda-state/TASK.md` を読み、指示に従って作業を行う
 3. 作業完了後、**終了条件** と **ゲート条件** を確認する
    - 終了条件を満たしていれば → 以下のコマンドを実行してセッションを終了する（コミット・質問・確認は不要）
      ```bash
      tmux kill-session -t $(tmux display-message -p '#S')
      ```
    - ゲート条件を満たしていれば → 4へ
-   - どちらも満たしていなければ → LangGraph を起動して `TASK.md` を上書きさせ、2 へ戻る
-4. ゲートマーカー（`.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
+   - どちらも満たしていなければ → LangGraph を起動して `/masuda-state/TASK.md` を上書きさせ、2 へ戻る
+4. ゲートマーカー（`/masuda-state/.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
    `status`が`pending`でなくなるまで待機する。単発のBashで`while`ループを回すと、動的な文字列を含む
    コマンドとして確認を求められ無人ループで詰まることがあるため、監視系のツール（Monitorなど、
    ファイルの変化を検知して通知を受け取れる仕組み）が使えるならそちらを使うこと
@@ -32,5 +36,12 @@
 ## LangGraph 起動コマンド
 
 ```bash
-/opt/masuda/venv/bin/python /opt/masuda/orchestrator/implement_review_graph.py
+MASUDA_STATE_DIR=/masuda-state /opt/masuda/venv/bin/python /opt/masuda/orchestrator/implement_review_graph.py
 ```
+
+## 注意
+
+masuda自身の制御ファイル（TASK.md・PLAN.md・`.masuda-gate/`・`review_results/`等）は
+`/masuda-state`配下に置かれる（対象リポジトリ＝`/workspace`の`git status`を汚さない
+ため）。ゲートマーカーの`$GATE_FILE`もこの配下（例: `/masuda-state/.masuda-gate/review.json`）
+を指す。コード自体の実装・レビューはこれまで通り`/workspace`に対して行う。

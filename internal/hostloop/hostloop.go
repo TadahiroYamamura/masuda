@@ -5,6 +5,15 @@
 // rather than a CLAUDE.md file: there's no per-container ~/.claude to isolate
 // it in here, and writing to the real ~/.claude/CLAUDE.md would clobber the
 // user's own global config.
+//
+// Sessions and their artifacts are keyed by workspace ID (internal/workspace),
+// not branch name: two workspaces can target the same branch in parallel
+// (roadmap step 7), and masuda's own control files (TASK.md, INVESTIGATION.md,
+// PLAN.md, plan_result.json, gate markers, ...) live in that workspace's
+// state directory, never inside worktreeDir — worktreeDir is the target
+// repository's own git-managed checkout, and investigator/planner subagents
+// need its cwd to read repository content, but nothing masuda writes should
+// ever show up in that repository's `git status`.
 package hostloop
 
 import (
@@ -58,6 +67,16 @@ const tmuxSessionPrefix = "masuda-plan-"
 // bare "Edit" tool grant (agent-level = which tools exist at all,
 // session-level pattern = which paths those tools may touch).
 //
+// These artifacts now live in the workspace's state directory (an absolute
+// path outside worktreeDir, the session's cwd), which needs a DOUBLE leading
+// slash in the rule -- Edit(//abs/path), not Edit(/abs/path). Confirmed live
+// (roadmap step 7): a single-leading-slash rule silently never matched (the
+// permission prompt fired on every write despite the path being correct —
+// see github.com/anthropics/claude-code/issues/25137 and #18200), while the
+// double-slash form pre-approved cleanly. Single-leading-slash is apparently
+// interpreted as an anchor relative to the rule's own source, not a genuine
+// filesystem-root-anchored absolute path.
+//
 // This intentionally does not add masuda-specific deny rules for secrets
 // (.env and friends): --allowedTools only pre-approves tool use, it doesn't
 // bypass permission checks, so whatever `permissions.deny` rules the target
@@ -68,7 +87,14 @@ const tmuxSessionPrefix = "masuda-plan-"
 // note that guarantee is specifically for the Read/Grep/Glob tools; it's
 // exactly the kind of thing Bash's looser risk-based gating could bypass,
 // which is the other reason investigator/planner never get Bash.
-const allowedTools = "Bash,Task,Read,Edit(./INVESTIGATION.md),Edit(./PLAN.md),Edit(./plan_result.json)"
+func allowedTools(stateDir string) string {
+	return fmt.Sprintf(
+		"Bash,Task,Read,Edit(/%s),Edit(/%s),Edit(/%s)",
+		filepath.Join(stateDir, "INVESTIGATION.md"),
+		filepath.Join(stateDir, "PLAN.md"),
+		filepath.Join(stateDir, "plan_result.json"),
+	)
+}
 
 // investigatorAgentName and plannerAgentName are the subagent_type values
 // TASK.md instructions (orchestrator/investigate_plan_graph.py) tell the main
@@ -110,28 +136,30 @@ func customAgentsJSON() (string, error) {
 
 var sessionNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
-// SessionName derives the tmux session name for branch.
-func SessionName(branch string) string {
-	return tmuxSessionPrefix + sessionNameSanitizer.ReplaceAllString(branch, "-")
+// SessionName derives the tmux session name for workspace id.
+func SessionName(id string) string {
+	return tmuxSessionPrefix + sessionNameSanitizer.ReplaceAllString(id, "-")
 }
 
-// WriteTaskBrief writes the task description masuda plan start was given into
-// the worktree, for investigate_plan_graph.py to read as .masuda-task.md.
-func WriteTaskBrief(worktreeDir, task string) error {
-	return os.WriteFile(filepath.Join(worktreeDir, ".masuda-task.md"), []byte(task), 0o644)
+// WriteTaskBrief writes the task description masuda plan start was given
+// into the workspace's state directory, for investigate_plan_graph.py to
+// read as .masuda-task.md.
+func WriteTaskBrief(stateDir, task string) error {
+	return os.WriteFile(filepath.Join(stateDir, ".masuda-task.md"), []byte(task), 0o644)
 }
 
-func renderSystemPrompt(worktreeDir, repoRoot string) (string, error) {
+func renderSystemPrompt(repoRoot, stateDir string) (string, error) {
 	var buf []byte
 	w := &sliceWriter{buf: &buf}
-	err := systemPromptTemplate.Execute(w, struct{ Python, Orchestrator string }{
+	err := systemPromptTemplate.Execute(w, struct{ Python, Orchestrator, StateDir string }{
 		Python:       filepath.Join(repoRoot, "venv", "bin", "python"),
 		Orchestrator: filepath.Join(repoRoot, "orchestrator", "investigate_plan_graph.py"),
+		StateDir:     stateDir,
 	})
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(worktreeDir, ".masuda-plan-system-prompt.md")
+	path := filepath.Join(stateDir, ".masuda-plan-system-prompt.md")
 	if err := os.WriteFile(path, buf, 0o644); err != nil {
 		return "", err
 	}
@@ -146,9 +174,10 @@ func (w *sliceWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// IsRunning reports whether the phase 1-2 tmux session for branch is alive.
-func IsRunning(branch string) bool {
-	cmd := exec.Command("tmux", "has-session", "-t", SessionName(branch))
+// IsRunning reports whether the phase 1-2 tmux session for workspace id is
+// alive.
+func IsRunning(id string) bool {
+	cmd := exec.Command("tmux", "has-session", "-t", SessionName(id))
 	return cmd.Run() == nil
 }
 
@@ -156,28 +185,29 @@ func IsRunning(branch string) bool {
 // tmux session (`masuda plan chat`) — a plain `tmux attach`, unlike
 // sandbox.AttachArgs' `docker exec -it ... tmux attach`, since this session
 // runs directly on the host, not in a container.
-func AttachArgs(branch string) []string {
-	return []string{"tmux", "attach", "-t", SessionName(branch)}
+func AttachArgs(id string) []string {
+	return []string{"tmux", "attach", "-t", SessionName(id)}
 }
 
-// Start launches the phase 1-2 tmux session for branch, writing the task
-// brief and system prompt into worktreeDir first if this is the first run.
-// It's a no-op (returns nil) if a session for branch is already running.
+// Start launches the phase 1-2 tmux session for workspace id, writing the
+// task brief and system prompt into stateDir first if this is the first run.
+// It's a no-op (returns nil) if a session for id is already running.
 //
 // task may be empty on a resume (after a G1 approve/reject, `masuda plan
-// start <branch>` restarts the loop without needing the task description
-// again) but is required the first time, when no task brief exists yet.
-func Start(repoRoot, branch, worktreeDir, task string) error {
-	if IsRunning(branch) {
+// start <workspace-id>` restarts the loop without needing the task
+// description again) but is required the first time, when no task brief
+// exists yet.
+func Start(repoRoot, id, worktreeDir, stateDir, task string) error {
+	if IsRunning(id) {
 		return nil
 	}
 
-	briefPath := filepath.Join(worktreeDir, ".masuda-task.md")
+	briefPath := filepath.Join(stateDir, ".masuda-task.md")
 	if _, err := os.Stat(briefPath); os.IsNotExist(err) {
 		if task == "" {
-			return fmt.Errorf("no task description on file yet for %q — pass one: masuda plan start %s \"<task>\"", branch, branch)
+			return fmt.Errorf("no task description on file yet for workspace %q — pass one: masuda plan start %s \"<task>\"", id, id)
 		}
-		if err := WriteTaskBrief(worktreeDir, task); err != nil {
+		if err := WriteTaskBrief(stateDir, task); err != nil {
 			return fmt.Errorf("writing task brief: %w", err)
 		}
 	}
@@ -190,11 +220,11 @@ func Start(repoRoot, branch, worktreeDir, task string) error {
 	// the gate marker. Removing it here forces the new session to start by
 	// re-deriving phase from current on-disk state, which is the point of
 	// resuming at all.
-	if err := os.Remove(filepath.Join(worktreeDir, "TASK.md")); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(filepath.Join(stateDir, "TASK.md")); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("clearing stale TASK.md before resume: %w", err)
 	}
 
-	promptPath, err := renderSystemPrompt(worktreeDir, repoRoot)
+	promptPath, err := renderSystemPrompt(repoRoot, stateDir)
 	if err != nil {
 		return fmt.Errorf("rendering system prompt: %w", err)
 	}
@@ -206,10 +236,10 @@ func Start(repoRoot, branch, worktreeDir, task string) error {
 
 	claudeCmd := fmt.Sprintf(
 		"claude --allowedTools %s --agents %s --append-system-prompt-file %s '作業を開始せよ'",
-		shellQuote(allowedTools), shellQuote(agentsJSON), shellQuote(promptPath),
+		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath),
 	)
 
-	cmd := exec.Command("tmux", "new-session", "-d", "-s", SessionName(branch), "-c", worktreeDir, claudeCmd)
+	cmd := exec.Command("tmux", "new-session", "-d", "-s", SessionName(id), "-c", worktreeDir, claudeCmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux new-session: %w\n%s", err, out)
 	}

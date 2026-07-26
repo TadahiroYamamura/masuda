@@ -3,7 +3,9 @@ Layer 1 tests for implement_review_graph.py: pure state-machine +
 mechanical-backstop logic, no LLM calls, no Docker, no real Claude
 invocations.
 """
+import importlib
 import json
+import pathlib
 import subprocess
 
 import pytest
@@ -29,21 +31,38 @@ SAMPLE_PLAN = """# PLAN.md
 
 
 @pytest.fixture(autouse=True)
-def in_tmp_worktree(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    yield tmp_path
+def in_tmp_workspace(tmp_path, monkeypatch):
+    # Mirrors production's split (roadmap step 7): git commands run against
+    # worktree_dir (this process's cwd, same as before), while masuda's own
+    # control files (irg.PLAN_MD, irg.IMPLEMENTATION_RESULT_JSON, ...) resolve
+    # under a separate state_dir via MASUDA_STATE_DIR. irg reads that env var
+    # once at import time (STATE_DIR is a module-level constant), so it must
+    # be reload()ed after monkeypatching for each test to get its own
+    # isolated state directory.
+    worktree_dir = tmp_path / "worktree"
+    state_dir = tmp_path / "state"
+    worktree_dir.mkdir()
+    state_dir.mkdir()
+    monkeypatch.chdir(worktree_dir)
+    monkeypatch.setenv("MASUDA_STATE_DIR", str(state_dir))
+    importlib.reload(irg)
+    yield worktree_dir
 
 
 def init_git_repo():
     subprocess.run(["git", "init", "-q"], check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "test"], check=True)
-    # An initial commit so `git status --porcelain` / `git diff` report
+    # A baseline commit so `git status --porcelain` / `git diff` report
     # new/modified files relative to something, matching a real worktree
-    # (which always starts from a base branch commit).
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
-    subprocess.run(["git", "add", "PLAN.md"], check=True)
+    # (which always starts from a base branch commit). PLAN.md itself is
+    # masuda's own control file and lives in STATE_DIR (roadmap step 7), never
+    # inside the git-managed worktree, so it's written separately here rather
+    # than committed as part of the repo's baseline.
+    pathlib.Path("README.md").write_text("baseline", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "init"], check=True)
+    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
 
 
 def write_result(idx, attempt, has_issues=False):
@@ -97,7 +116,12 @@ def test_extract_planned_files_missing_section_returns_empty():
 
 # --- _actual_changed_files / _mechanical_deviation -------------------------
 
-def test_actual_changed_files_excludes_masuda_internal_files():
+def test_actual_changed_files_ignores_masuda_state_dir_files():
+    """masuda's own control files live in STATE_DIR (roadmap step 7), a
+    directory entirely separate from the git worktree this runs `git status`
+    in -- so writing them can never show up as a changed file, without any
+    explicit exclusion list (an earlier version of this file needed one,
+    back when these files lived inside the worktree itself)."""
     init_git_repo()
     irg.TASK_MD.write_text("...", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text('{"status": "done"}', encoding="utf-8")
@@ -175,14 +199,16 @@ def test_compute_diff_uses_recorded_base_ref_not_bare_head():
     assert "reviewed branch version" in diff
 
 
-def test_compute_diff_excludes_masuda_internal_files():
-    """`git add -A` stages masuda's own scratch files too, since they're new
-    untracked paths just like real implementation files -- confirmed live
-    that without unstaging them again, review subagents were shown
-    .masuda-base-ref and implementation_result.json verbatim as if they were
-    part of the change under review."""
+def test_compute_diff_never_includes_masuda_state_dir_files():
+    """`git add -A`/`git diff --cached` run against the worktree (cwd); since
+    STATE_DIR (roadmap step 7) is a separate directory, masuda's own scratch
+    files there are never staged in the first place -- unlike an earlier
+    version of this file, where they lived inside the worktree and had to be
+    explicitly unstaged again before diffing (confirmed live that without
+    that, review subagents were shown .masuda-base-ref and
+    implementation_result.json verbatim as if part of the change under
+    review)."""
     init_git_repo()
-    import pathlib
     pathlib.Path("README.md").write_text("a real change reviewers should see", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
     irg.BASE_REF_FILE.write_text("HEAD", encoding="utf-8")

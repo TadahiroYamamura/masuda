@@ -3,6 +3,7 @@ Layer 1 tests for investigate_plan_graph.py: pure state-machine logic, no LLM
 calls, no Docker, no real Claude invocations. Every case sets up on-disk state
 in a temp directory and asserts the resulting phase / TASK.md content.
 """
+import importlib
 import json
 
 import pytest
@@ -11,8 +12,14 @@ import investigate_plan_graph as ipg
 
 
 @pytest.fixture(autouse=True)
-def in_tmp_worktree(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def in_tmp_workspace(tmp_path, monkeypatch):
+    # ipg reads MASUDA_STATE_DIR once at import time (STATE_DIR is a module-level
+    # constant, not resolved lazily -- see the module docstring). reload() re-runs
+    # that top-level code with the freshly-set env var so every test gets its own
+    # isolated state directory instead of all tests sharing whatever STATE_DIR
+    # happened to be set when this module was first imported.
+    monkeypatch.setenv("MASUDA_STATE_DIR", str(tmp_path))
+    importlib.reload(ipg)
     yield tmp_path
 
 

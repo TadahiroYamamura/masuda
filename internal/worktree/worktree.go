@@ -1,5 +1,5 @@
-// Package worktree wraps the per-branch checkout operations masuda automates
-// on the user's behalf (create, local merge, remove). Per ADR-0005, these are
+// Package worktree wraps the per-checkout operations masuda automates on the
+// user's behalf (create, local merge, remove). Per ADR-0005, these are
 // local-only operations — none of them ever push to a remote.
 //
 // Despite the package name, checkouts are `git clone --local` copies, not
@@ -13,6 +13,15 @@
 // needing an explicit fetch to pull the clone's branch back into repoRoot
 // (a linked worktree shares repoRoot's object store and refs directly; a
 // clone does not).
+//
+// Checkouts are keyed by workspace ID (see internal/workspace), not by
+// branch name directly: roadmap step 7 introduced workspace IDs so that two
+// workspaces targeting the same git branch (a full pipeline run and a
+// `masuda review start` of that branch, or two parallel attempts at the same
+// task) get independent checkout directories and never collide. The branch
+// name a workspace targets is still an ordinary git branch and is what
+// Merge/Remove operate on in repoRoot; only the on-disk clone path is keyed
+// on id.
 package worktree
 
 import (
@@ -24,18 +33,11 @@ import (
 	"strings"
 )
 
-// Dir returns the on-disk path of the checkout for branch, rooted under repoRoot.
-func Dir(repoRoot, branch string) string {
-	return filepath.Join(repoRoot, ".masuda", "worktrees", branch)
+// Dir returns the on-disk path of the checkout for workspace id, rooted
+// under repoRoot.
+func Dir(repoRoot, id string) string {
+	return filepath.Join(repoRoot, ".masuda", "worktrees", id)
 }
-
-// BaseRefFileName is the marker file Create writes at the worktree root
-// recording which ref the branch was created from (or reviewed against, for
-// `masuda review start`). orchestrator/implement_review_graph.py reads it to
-// diff against the right point instead of a hardcoded "develop" — needed for
-// standalone review of an already-fully-committed branch, where diffing
-// against bare HEAD would show nothing (roadmap step 6).
-const BaseRefFileName = ".masuda-base-ref"
 
 func runGit(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
@@ -61,14 +63,14 @@ func BranchExists(repoRoot, branch string) bool {
 	return branchExists(repoRoot, branch)
 }
 
-// Create makes a new self-contained local clone for branch, rooted at
-// Dir(repoRoot, branch). If the branch doesn't exist yet it's created from
-// base inside the clone; if it already exists, base is ignored and the clone
-// checks it out directly. --local hardlinks objects when repoRoot and dir
-// share a filesystem, so this stays cheap despite being a full clone rather
-// than a linked worktree.
-func Create(repoRoot, branch, base string) (string, error) {
-	dir := Dir(repoRoot, branch)
+// Create makes a new self-contained local clone for branch under workspace
+// id, rooted at Dir(repoRoot, id). If the branch doesn't exist yet it's
+// created from base inside the clone; if it already exists, base is ignored
+// and the clone checks it out directly. --local hardlinks objects when
+// repoRoot and dir share a filesystem, so this stays cheap despite being a
+// full clone rather than a linked worktree.
+func Create(repoRoot, id, branch, base string) (string, error) {
+	dir := Dir(repoRoot, id)
 
 	if _, err := os.Stat(dir); err == nil {
 		return dir, nil
@@ -76,9 +78,6 @@ func Create(repoRoot, branch, base string) (string, error) {
 
 	if branchExists(repoRoot, branch) {
 		if _, err := runGit(repoRoot, "clone", "--local", "--branch", branch, repoRoot, dir); err != nil {
-			return "", err
-		}
-		if err := writeBaseRef(dir, base); err != nil {
 			return "", err
 		}
 		return dir, nil
@@ -90,24 +89,17 @@ func Create(repoRoot, branch, base string) (string, error) {
 	if _, err := runGit(dir, "checkout", "-b", branch); err != nil {
 		return "", err
 	}
-	if err := writeBaseRef(dir, base); err != nil {
-		return "", err
-	}
 	return dir, nil
-}
-
-func writeBaseRef(dir, base string) error {
-	return os.WriteFile(filepath.Join(dir, BaseRefFileName), []byte(base), 0o644)
 }
 
 // Merge fast-forwards or merges branch into into, entirely within repoRoot's
 // working tree. It refuses to run unless repoRoot already has into checked out —
 // masuda never switches the user's own checkout out from under them.
 //
-// branch lives only in its own clone (Dir(repoRoot, branch)) until this fetch
+// branch lives only in its own clone (Dir(repoRoot, id)) until this fetch
 // pulls it into repoRoot — unlike a linked worktree, a clone's branch isn't
 // automatically visible to repoRoot's own git commands.
-func Merge(repoRoot, branch, into string) error {
+func Merge(repoRoot, id, branch, into string) error {
 	current, err := runGit(repoRoot, "branch", "--show-current")
 	if err != nil {
 		return err
@@ -117,7 +109,7 @@ func Merge(repoRoot, branch, into string) error {
 		return fmt.Errorf("refusing to merge: %s has %q checked out, not %q (run `git checkout %s` first)", repoRoot, current, into, into)
 	}
 
-	cloneDir := Dir(repoRoot, branch)
+	cloneDir := Dir(repoRoot, id)
 	if _, err := runGit(repoRoot, "fetch", cloneDir, "+"+branch+":"+branch); err != nil {
 		return fmt.Errorf("fetching %s from its clone: %w", branch, err)
 	}
@@ -126,11 +118,11 @@ func Merge(repoRoot, branch, into string) error {
 	return err
 }
 
-// Remove deletes the clone directory for branch and, if deleteBranch is set,
-// the branch ref in repoRoot (a no-op if Merge never fetched it there — e.g.
-// an abandoned, never-merged task).
-func Remove(repoRoot, branch string, deleteBranch bool) error {
-	if err := os.RemoveAll(Dir(repoRoot, branch)); err != nil {
+// Remove deletes the clone directory for workspace id and, if deleteBranch
+// is set, the branch ref in repoRoot (a no-op if Merge never fetched it
+// there — e.g. an abandoned, never-merged task).
+func Remove(repoRoot, id, branch string, deleteBranch bool) error {
+	if err := os.RemoveAll(Dir(repoRoot, id)); err != nil {
 		return err
 	}
 	if deleteBranch {

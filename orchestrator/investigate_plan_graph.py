@@ -18,8 +18,17 @@ All state that needs to survive across invocations (the redo counter) is
 persisted to disk, not carried in the LangGraph state dict -- this script is
 re-invoked as a fresh process every loop iteration, so anything not on disk is
 lost. See ADR-0008 for the investigate<->plan redo protocol this implements.
+
+All of masuda's own control files live under STATE_DIR (roadmap step 7's
+workspace state directory, `MASUDA_STATE_DIR` env var), never inside the
+worktree itself -- the worktree is the target repository's own git-managed
+checkout, and nothing masuda writes should show up in its `git status`. The
+worktree is still this process's cwd (investigator/planner subagents need
+that to read repository content via relative paths), so every masuda-owned
+path below is built as an absolute path under STATE_DIR.
 """
 import json
+import os
 from pathlib import Path
 from typing import TypedDict
 
@@ -29,13 +38,15 @@ from langgraph.graph import END, StateGraph
 # ITERATION_BUDGET (roadmap step 4 / ADR-0011), which doesn't exist yet.
 MAX_RETRIES = 3
 
-TASK_BRIEF = Path(".masuda-task.md")
-INVESTIGATION_MD = Path("INVESTIGATION.md")
-PLAN_MD = Path("PLAN.md")
-PLAN_RESULT_JSON = Path("plan_result.json")
-RETRIES_FILE = Path(".masuda-plan-retries")
-GATE_MARKER = Path(".masuda-gate/plan.json")
-TASK_MD = Path("TASK.md")
+STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
+
+TASK_BRIEF = STATE_DIR / ".masuda-task.md"
+INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
+PLAN_MD = STATE_DIR / "PLAN.md"
+PLAN_RESULT_JSON = STATE_DIR / "plan_result.json"
+RETRIES_FILE = STATE_DIR / ".masuda-plan-retries"
+GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
+TASK_MD = STATE_DIR / "TASK.md"
 
 
 class State(TypedDict):
@@ -132,13 +143,14 @@ def _investigate_task(task: str, questions: list[str]) -> str:
     return f"""# TASK: 調査（フェーズ1）
 
 Task toolで `subagent_type: investigator` を指定し、新規コンテキストのサブエージェントに
-以下のタスクの調査を委譲し、`INVESTIGATION.md`を生成させよ。
+以下のタスクの調査を委譲し、`{INVESTIGATION_MD}`を生成させよ（コードの調査自体はカレント
+ディレクトリ＝worktreeに対して行うが、成果物はこの絶対パスに書き出すこと）。
 （investigatorはBashを持たないread-onlyエージェントとして定義済み。他のsubagent_typeは使わないこと）
 
 ## タスク内容
 {task}
 {extra}
-## INVESTIGATION.mdの構成
+## {INVESTIGATION_MD.name}の構成
 - タスクの要約
 - 関連ファイル・モジュール一覧（役割の説明付き）
 - 既存の類似実装・従うべきパターン
@@ -146,7 +158,7 @@ Task toolで `subagent_type: investigator` を指定し、新規コンテキス�
 - 未解決の疑問点
 
 ## 完了条件
-`INVESTIGATION.md` が存在すること
+`{INVESTIGATION_MD}` が存在すること
 """
 
 
@@ -163,16 +175,17 @@ def _plan_task(feedback: str | None) -> str:
     return f"""# TASK: プラン作成（フェーズ2）
 
 Task toolで `subagent_type: planner` を指定し、新規コンテキストのサブエージェントに
-`INVESTIGATION.md`を渡し、`PLAN.md`を生成させよ。
+`{INVESTIGATION_MD}`を渡し、`{PLAN_MD}`を生成させよ（コードの追加調査自体はカレント
+ディレクトリ＝worktreeに対して行うが、成果物はこの絶対パスに書き出すこと）。
 （plannerはBashを持たないread-onlyエージェントとして定義済み。他のsubagent_typeは使わないこと）
 プランエージェントはRead/Grep/Globアクセスを持つため、
-INVESTIGATION.mdの軽微な不足は自分で追加調査して自己解決してよい。
+{INVESTIGATION_MD.name}の軽微な不足は自分で追加調査して自己解決してよい。
 
 ただし調査の前提が崩れるような大きなギャップがある場合は、独自に調査をやり直さず
-`plan_result.json`に`{{"status": "needs_more_investigation", "questions": [...]}}`
-を書き出させること（この場合PLAN.mdは書かない）。
+`{PLAN_RESULT_JSON}`に`{{"status": "needs_more_investigation", "questions": [...]}}`
+を書き出させること（この場合{PLAN_MD.name}は書かない）。
 {redo_note}
-## PLAN.mdの構成
+## {PLAN_MD.name}の構成
 - アプローチの要約
 - 変更するファイル一覧（それぞれ何をどう変えるか、理由）
 - 実装のステップ分解
@@ -181,19 +194,19 @@ INVESTIGATION.mdの軽微な不足は自分で追加調査して自己解決し�
 - リスク・懸念事項
 
 ## 完了条件
-`PLAN.md` または `plan_result.json` が存在すること
+`{PLAN_MD}` または `{PLAN_RESULT_JSON}` が存在すること
 """
 
 
 _TERMINAL = {
-    "await_g1": """# GATE:plan
+    "await_g1": f"""# GATE:plan
 
-PLAN.mdが完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
-`.masuda-gate/plan.json`のstatusがpendingでなくなるまで待機してください。
+{PLAN_MD.name}が完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
+`{GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
 
-人間は `masuda plan show <branch>` でPLAN.mdを確認し、
-`masuda plan chat <branch>` で対話するか、
-`masuda plan approve <branch>` / `masuda plan reject <branch> "<feedback>"` で応答してください。
+人間は `masuda plan show <workspace-id>` で{PLAN_MD.name}を確認し、
+`masuda plan chat <workspace-id>` で対話するか、
+`masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """,
     "g1_approved": """# DONE (G1 approved)
 
