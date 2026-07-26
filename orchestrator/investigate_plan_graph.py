@@ -34,9 +34,19 @@ from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
 
-# ADR-0008: investigate<->plan redo budget. Independent of the broader
-# ITERATION_BUDGET (roadmap step 4 / ADR-0011), which doesn't exist yet.
+# ADR-0008: investigate<->plan redo budget -- bounds the investigate_redo
+# loop specifically. Independent of ITERATION_BUDGET below (ADR-0011), which
+# is a coarser, final-defense-line cap across every subagent invocation in
+# this phase (investigate/plan/their redos), the same role
+# feat/github-actions-langgraph-nodes's ITERATION_BUDGET played before this
+# project moved off direct API calls (ADR-0001) -- that branch derived its
+# 78 from "13 perspectives x up to 6 review/check calls each"; MAX_RETRIES
+# already keeps investigate_redo tightly bounded here, so this budget mainly
+# exists to cap plan_redo, which is gated by a human rejecting G1 repeatedly
+# (ADR-0006) rather than by MAX_RETRIES, and so isn't otherwise bounded at
+# all short of the human simply stopping.
 MAX_RETRIES = 3
+ITERATION_BUDGET = 20
 
 STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
@@ -45,8 +55,14 @@ INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
 PLAN_MD = STATE_DIR / "PLAN.md"
 PLAN_RESULT_JSON = STATE_DIR / "plan_result.json"
 RETRIES_FILE = STATE_DIR / ".masuda-plan-retries"
+ITERATION_COUNT_FILE = STATE_DIR / ".masuda-iteration-count"
 GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
 TASK_MD = STATE_DIR / "TASK.md"
+
+# Phases that write_task_md delegates to an actual subagent Task call --
+# every other phase (gate waits, terminal DONE states) doesn't invoke one,
+# so isn't counted against ITERATION_BUDGET.
+_SUBAGENT_PHASES = {"investigate", "investigate_redo", "plan", "plan_redo"}
 
 
 class State(TypedDict):
@@ -75,6 +91,22 @@ def _read_plan_result() -> dict | None:
     if not PLAN_RESULT_JSON.exists():
         return None
     return json.loads(PLAN_RESULT_JSON.read_text(encoding="utf-8"))
+
+
+def _read_iteration_count() -> int:
+    if not ITERATION_COUNT_FILE.exists():
+        return 0
+    return int(ITERATION_COUNT_FILE.read_text(encoding="utf-8").strip() or "0")
+
+
+def _record_iteration() -> int:
+    """Call exactly once per subagent-invoking phase write_task_md renders
+    (ADR-0011: the budget counts subagent invocations, not LLM calls -- one
+    write_task_md call for a _SUBAGENT_PHASES phase is exactly one Task
+    delegation the main session is about to make). Returns the new total."""
+    n = _read_iteration_count() + 1
+    ITERATION_COUNT_FILE.write_text(str(n), encoding="utf-8")
+    return n
 
 
 def _read_gate_marker() -> dict | None:
@@ -217,11 +249,20 @@ G1が承認されました。フェーズ3（プロジェクト初期化）以�
 調査とプラン作成の往復が上限（MAX_RETRIES={MAX_RETRIES}）に達しました。
 `plan_result.json`の内容を確認し、人間の判断が必要です。
 """,
+    "iteration_budget_exceeded": f"""# DONE (blocked)
+
+サブエージェント起動回数が上限（ITERATION_BUDGET={ITERATION_BUDGET}）に
+達しました（ADR-0011、無限ループ防止の最終防衛ライン）。個々のredoループ
+（MAX_RETRIES等）は正常に機能しているはずで、これはそれとは独立した
+全体の保険です。人間の判断が必要です。
+""",
 }
 
 
 def write_task_md(state: State) -> State:
     phase = state["phase"]
+    if phase in _SUBAGENT_PHASES and _record_iteration() > ITERATION_BUDGET:
+        phase = "iteration_budget_exceeded"
     if phase == "investigate":
         content = _investigate_task(_read_task_brief(), [])
     elif phase == "investigate_redo":

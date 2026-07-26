@@ -21,7 +21,7 @@ worktreeの作成はフェーズ1より前に行う。理由は後述の「workt
 | 1 | 調査 | サブエージェント（read-only、worktree全体にRead/Grep/LSP可） | 不要（メインのClaude CodeセッションがworktreeをホストOS上で直接読む） | タスク内容 | `INVESTIGATION.md` |
 | 2 | プラン作成 | サブエージェント | 不要 | INVESTIGATION.md | `PLAN.md` |
 | **G1** | **プラン承認ゲート** | 人間 | — | PLAN.md | 承認 or 差し戻し |
-| 3 | プロジェクト初期化 | Go CLI / entrypoint.sh | Docker起動 | worktree | 依存解決済み環境、LSP起動済み |
+| 3 | プロジェクト初期化 | Go CLI / entrypoint.sh | Docker起動 | worktree | 依存解決済み環境、LSP起動済み |（※独立したフェーズとしては未実装。依存解決は現状フェーズ4の実装サブエージェント・フェーズ5のexplorerサブエージェントがそれぞれ自分のタスク内で必要に応じて行う形になっている。詳細は`CLAUDE.md`の「現状」節参照）
 | 4 | 実装 | サブエージェント（write/Edit/Bash可） | Docker（フル） | PLAN.md | worktree上のコード変更 |
 | 5 | レビュー | サブエージェント群（後述） | Docker（フル、フェーズ3の環境を再利用） | worktreeのdiff | `review_results/final_report.md` |
 | **G2** | **最終承認ゲート** | 人間 | — | final_report.md + diff | 承認（マージ・後片付け） or 差し戻し |
@@ -110,10 +110,12 @@ scope-discipline（宣言した範囲を超えない、プランと異なる判�
 
 ### 整合性検証（横断的チェックの具体例）
 
-「ファイルAとファイルBで実装方法が違う」といった、diffだけでは検知できない一貫性の問題を検出したいという要望から、Go言語のLSPサーバー（gopls）をMCP経由でサブエージェントに持たせる案を採用。LSPはfind references/go to definition等でコードベースを正確に辿れるため、grepより精度が高い。
+「ファイルAとファイルBで実装方法が違う」といった、diffだけでは検知できない一貫性の問題を検出したいという要望から、Go言語のLSPサーバー（gopls）をサブエージェントに持たせる案を採用。LSPはfind references/go to definition等でコードベースを正確に辿れるため、grepより精度が高い。
+
+**（実装時の変更）** 当初はMCP経由の自前実装を想定していたが、実装時にClaude Code自体がネイティブLSPプラグイン機構（`gopls-lsp`等、公式マーケットプレイス`claude-plugins-official`経由）を持つことが判明し、そちらに切り替えた。Dockerイメージ側に言語ごとのツールチェーン＋LSPプラグインを同梱したバリアント（`docker/go`・`docker/python`・`docker/typescript`・`docker/full`）を用意し、対象repoが`.masuda.json`の`image`フィールドで選ぶ方式にした。設計判断の詳細は[[0015-native-lsp-plugins-and-repo-declared-image]]参照。
 
 - 探索範囲はdiffを起点にした限定的なものにする（無制限にリポジトリ全体を彷徨わせない）
-- LSPが正しく機能するには対象リポジトリが解決済み状態（`go mod download`済み等）である必要があり、これがフェーズ3（プロジェクト初期化）が実際に必要になる具体的な理由
+- LSPが正しく機能するには対象リポジトリが解決済み状態（`go mod download`済み等）である必要がある。独立したフェーズ3（プロジェクト初期化）は実装していないため、現状はexplorerサブエージェント自身のタスク内で必要なら依存解決を行う形にしている
 
 ### 失敗時（指摘があった場合）のハンドリング — 機械的/複雑で扱いを変える
 
@@ -167,6 +169,8 @@ G1（プラン承認）・G2（レビュー承認）自体はこの原則とは�
 masuda review <branch-or-ref>   # デフォルトは現在ブランチ vs develop
 ```
 
+**（実装時の変更）** 実装したコマンド名は`masuda review start <branch-or-ref> [--base develop]`（既存の`masuda review show|chat|approve|reject`サブコマンド構成に合わせて`start`を追加する形にした）。ワークスペースID（後述）の導入後は、実行のたびに一意なワークスペースIDを発行するため、同じrefに対して複数回実行しても衝突しない。
+
 内部的にはフェーズ0（worktree作成）〜フェーズ5（レビュー）と同じ機構を使う。「フェーズ0で決めた新規ブランチ」の代わりに「既存のref」からworktreeを作る違いのみで、LSPもfixerもそのまま使える。`--pr <PR番号>`によるGitHub PR指定は今回のスコープ外（ブランチ指定のみで十分と判断）。
 
 **`render_pr_context.py`はほぼ不要になる**: 直接API方式では1回のAPI呼び出しで完結させる必要があったためdiff+メタ情報を1つのテキストにまとめていたが、新方式ではエージェントが実際のworktree内で作業するため`git diff`やLSPをその場で叩ける。
@@ -177,27 +181,10 @@ masuda review <branch-or-ref>   # デフォルトは現在ブランチ vs develo
 
 判断軸は「masudaの動作に必要かどうか」ではなく「**誰がそのファイルを消費するか**」（masuda自身の制御プロセスか、サンドボックス内で動くエージェントセッションか、ホスト側のCLIか）。
 
-```
-masuda/
-  CLAUDE.md              # masuda自身を編集するAI/開発者向け（コンテナには焼き込まれない）
-  README.md
-  Dockerfile
-  cmd/masuda/             # Go製CLI（worktree管理・サンドボックス起動、ホスト側で動く）
-    main.go
-  runtime/                # コンテナに焼き込まれるもの一式
-    CLAUDE.md             # 作業ループ仕様。起動時 ~/.claude/CLAUDE.md に配置する
-    entrypoint.sh
-    start_claude.sh
-    mcp/lsp-config.json
-  orchestrator/            # masuda自身のPython制御ロジック
-    investigate_plan_graph.py  # フェーズ0-2、ホスト側で実行（コンテナには焼き込まない）
-    implement_review_graph.py  # フェーズ4-5、コンテナに焼き込んで実行（G2却下でフェーズ4に戻る）
-    perspectives/config.py
-  scripts/
-    local_review.sh
-```
+**実際のファイル一覧・各ファイルの役割は`CLAUDE.md`の「現状」節を参照**（本セクションに書いていたASCIIツリーは実装が進むにつれ`scripts/local_review.sh`・`runtime/mcp/lsp-config.json`のように実際には作られなかったファイルを含む形で古くなったため削除した）。以下は判断軸として現在も有効な原則のみ残す。
 
-**重要な制約**: `runtime/CLAUDE.md`（作業ループ仕様）は、対象リポジトリのworktreeの`CLAUDE.md`を上書きコピーしてはいけない。対象リポジトリには既にプロジェクト固有のCLAUDE.mdが存在しており、上書きするとそれが失われる。Claude Codeはユーザーレベル（`~/.claude/CLAUDE.md`）とプロジェクトレベルのCLAUDE.mdを両方読んで重ね合わせる仕組みを持っているため、ループ仕様はサンドボックスコンテナの`~/.claude/CLAUDE.md`（対象リポジトリとは独立した場所）に配置する。
+- masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は対象リポジトリのworktreeとは独立した場所に置く（Dockerサンドボックス内では`/opt/masuda`、ホスト側では`~/.local/share/masuda/workspaces/<workspace-id>/`という状態ディレクトリ。[[0014-workspace-id-and-external-state-directory]]参照）
+- **重要な制約**: `runtime/CLAUDE.md`（作業ループ仕様）は、対象リポジトリのworktreeの`CLAUDE.md`を上書きコピーしてはいけない。対象リポジトリには既にプロジェクト固有のCLAUDE.mdが存在しており、上書きするとそれが失われる。Claude Codeはユーザーレベル（`~/.claude/CLAUDE.md`）とプロジェクトレベルのCLAUDE.mdを両方読んで重ね合わせる仕組みを持っているため、ループ仕様はサンドボックスコンテナの`~/.claude/CLAUDE.md`（対象リポジトリとは独立した場所）に配置する
 
 ## 予算管理
 
@@ -206,3 +193,5 @@ masuda/
 `ITERATION_BUDGET`が数える単位は「1回のLLM API呼び出し」ではなく「**1回のサブエージェント起動**」に統一する。機械的チェックは元々1回の起動=1回のLLM呼び出しとほぼ同義なので挙動は変わらない。横断的チェックは1回の起動の中で内部的に何ターンLSPを叩こうが「1単位」として数える。
 
 サブエージェント単体の内部暴走は別レイヤーで止める。サブエージェント起動時にそれ自体の内部ターン数上限（LSP呼び出し回数の上限等）を持たせる。これはオーケストレーター側の`ITERATION_BUDGET`（起動回数の上限）とは独立した、エージェント単体の設定であり、「起動回数の上限」と「1起動内の内部探索の上限」の2層で無限ループを防ぐ。
+
+**（実装済み）** `investigate_plan_graph.py`・`implement_review_graph.py`それぞれに独立した`ITERATION_BUDGET`定数を持たせた（ホスト側・Docker側で別プロセス・別環境として動くため、1つのグローバルな値を共有する必要性がなかったため）。`write_task_md`が実際にサブエージェントへ委譲するフェーズでのみカウンタを1加算し、超過時はredoループ（`MAX_RETRIES`・`MAX_REVIEW_RETRIES`）とは独立した最終防衛ラインとして`DONE (blocked)`で停止する。エージェント単体の内部ターン数上限は、オーケストレーターからは可視でない（サブエージェントはメインセッションのTask tool経由で委譲されるため）ため、プロンプト内の指示（横断的チェックのexplorerタスクに「探索範囲を絞ること」等）による自主規制のみで実現している。

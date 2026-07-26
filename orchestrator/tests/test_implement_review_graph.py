@@ -822,6 +822,40 @@ def test_await_g2_mentions_review_cli_commands():
     assert "masuda review reject" in content
 
 
+# --- ITERATION_BUDGET (ADR-0011) -------------------------------------------
+
+def test_write_task_md_increments_iteration_count_for_subagent_phases():
+    init_git_repo()
+    assert irg._read_iteration_count() == 0
+    irg.write_task_md({"phase": "implement", "reason": ""})
+    assert irg._read_iteration_count() == 1
+    irg.write_task_md({"phase": "cross_cutting_explore", "reason": ""})
+    assert irg._read_iteration_count() == 2
+
+
+def test_write_task_md_does_not_increment_for_gate_or_terminal_phases():
+    """await_g2/g2_approved/plan_reopened don't delegate a subagent Task
+    call, so they must not count against the budget."""
+    irg.write_task_md({"phase": "await_g2", "reason": ""})
+    irg.write_task_md({"phase": "g2_approved", "reason": ""})
+    irg.write_task_md({"phase": "plan_reopened", "reason": "計画外の変更"})
+    assert irg._read_iteration_count() == 0
+
+
+def test_iteration_budget_exceeded_overrides_phase():
+    """Once the persisted count already exceeds ITERATION_BUDGET, write_task_md
+    must render the blocked message instead of another subagent delegation --
+    a final defense line independent of MAX_REVIEW_RETRIES (ADR-0011)."""
+    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
+    irg.ITERATION_COUNT_FILE.write_text(str(irg.ITERATION_BUDGET), encoding="utf-8")
+
+    irg.write_task_md({"phase": "implement", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "DONE" in content
+    assert "ITERATION_BUDGET" in content
+
+
 def test_full_graph_run_writes_task_md():
     irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
     app = irg.build_graph()

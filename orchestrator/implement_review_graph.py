@@ -54,6 +54,18 @@ TOTAL_PERSPECTIVES = len(PERSPECTIVES)
 # ported review graph's own MAX_RETRIES (2) for review<->check redo instead --
 # an independent, per-domain constant, not shared with phase 1-2's.
 MAX_REVIEW_RETRIES = 2
+# ADR-0011: a coarser, final-defense-line cap across every subagent
+# invocation in phase 4-5, independent of MAX_REVIEW_RETRIES above (which
+# only bounds the review<->check and fix<->recheck redo loops individually).
+# Mirrors feat/github-actions-langgraph-nodes's ITERATION_BUDGET, adapted to
+# this system's actual worst case: per perspective, up to 3 review+check
+# attempts (MAX_REVIEW_RETRIES=2 redos -> 3 attempts x 2 calls = 6) plus, if
+# an issue is confirmed, up to 3 fix+recheck attempts (6 more) = 12 x 13
+# perspectives = 156, plus cross-cutting explore+verify (2, no redo) plus
+# synthesize (1) plus a margin for implement/implement_redo (G1/G2 reopens
+# are human-gated the same way plan_redo is in phase 1-2, so not otherwise
+# bounded at all short of a human simply stopping).
+ITERATION_BUDGET = 200
 
 STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
@@ -66,8 +78,19 @@ PLAN_GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
 REVIEW_GATE_MARKER = STATE_DIR / ".masuda-gate" / "review.json"
 REVIEW_STATE_JSON = STATE_DIR / ".masuda-review-state.json"
 REVIEW_FEEDBACK_MD = STATE_DIR / ".masuda-review-feedback.md"
+ITERATION_COUNT_FILE = STATE_DIR / ".masuda-iteration-count"
 REVIEW_RESULTS_DIR = STATE_DIR / "review_results"
 FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
+
+# Phases that write_task_md delegates to an actual subagent Task call --
+# every other phase (gate waits, terminal DONE states) doesn't invoke one,
+# so isn't counted against ITERATION_BUDGET.
+_SUBAGENT_PHASES = {
+    "implement", "implement_redo",
+    "review_perspective", "check_perspective", "fix_perspective", "recheck_perspective",
+    "cross_cutting_explore", "cross_cutting_verify",
+    "synthesize",
+}
 CROSS_CUTTING_FINDINGS_JSON = REVIEW_RESULTS_DIR / "cross_cutting_findings.json"
 CROSS_CUTTING_VERIFIED_JSON = REVIEW_RESULTS_DIR / "cross_cutting_verified.json"
 TASK_MD = STATE_DIR / "TASK.md"
@@ -204,6 +227,22 @@ def _compute_diff() -> str:
     return subprocess.run(
         ["git", "diff", "--cached", _read_base_ref()], capture_output=True, text=True, check=True
     ).stdout
+
+
+def _read_iteration_count() -> int:
+    if not ITERATION_COUNT_FILE.exists():
+        return 0
+    return int(ITERATION_COUNT_FILE.read_text(encoding="utf-8").strip() or "0")
+
+
+def _record_iteration() -> int:
+    """Call exactly once per subagent-invoking phase write_task_md renders
+    (ADR-0011: the budget counts subagent invocations, not LLM calls -- one
+    write_task_md call for a _SUBAGENT_PHASES phase is exactly one Task
+    delegation the main session is about to make). Returns the new total."""
+    n = _read_iteration_count() + 1
+    ITERATION_COUNT_FILE.write_text(str(n), encoding="utf-8")
+    return n
 
 
 def _read_gate_marker(path: Path) -> dict | None:
@@ -823,11 +862,20 @@ _TERMINAL = {
 
 G2が承認されました。masuda review approveによるマージ・後片付けをお待ちください。
 """,
+    "iteration_budget_exceeded": f"""# DONE (blocked)
+
+サブエージェント起動回数が上限（ITERATION_BUDGET={ITERATION_BUDGET}）に
+達しました（ADR-0011、無限ループ防止の最終防衛ライン）。個々のredoループ
+（MAX_REVIEW_RETRIES等）は正常に機能しているはずで、これはそれとは独立した
+全体の保険です。人間の判断が必要です。
+""",
 }
 
 
 def write_task_md(state: State) -> State:
     phase = state["phase"]
+    if phase in _SUBAGENT_PHASES and _record_iteration() > ITERATION_BUDGET:
+        phase = "iteration_budget_exceeded"
     if phase == "implement":
         content = _implement_task()
     elif phase == "implement_redo":
