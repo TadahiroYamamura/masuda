@@ -29,7 +29,7 @@ func newRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
-	root.AddCommand(newWorktreeCommand())
+	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
 
 	planCmd := newGateCommand(gate.Plan)

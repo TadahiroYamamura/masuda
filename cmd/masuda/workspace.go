@@ -11,21 +11,30 @@ import (
 
 const defaultBase = "develop"
 
-func newWorktreeCommand() *cobra.Command {
+// newWorkspaceCommand builds `masuda workspace`, the CLI's home for
+// workspace lifecycle management. Named after the broader workspace concept
+// (internal/workspace: an ID plus its worktree, state directory, and
+// metadata) rather than "worktree" — "worktree" is git terminology for just
+// the checkout half of that, and having a git-flavored command group manage
+// a strictly larger, non-git-specific concept (merge/remove/list all key on
+// workspace ID, not a git worktree path) read as a naming mismatch once the
+// two were pulled apart. internal/worktree remains an implementation detail
+// this package calls into, not something exposed as its own CLI surface.
+func newWorkspaceCommand() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "worktree",
-		Short: "Manage per-workspace git worktrees (local-only: create, merge, remove, list)",
+		Use:   "workspace",
+		Short: "Manage workspaces (local-only: create, merge, remove, list)",
 	}
-	cmd.AddCommand(newWorktreeCreateCommand())
-	cmd.AddCommand(newWorktreeMergeCommand())
-	cmd.AddCommand(newWorktreeRemoveCommand())
-	cmd.AddCommand(newWorktreeListCommand())
+	cmd.AddCommand(newWorkspaceCreateCommand())
+	cmd.AddCommand(newWorkspaceMergeCommand())
+	cmd.AddCommand(newWorkspaceRemoveCommand())
+	cmd.AddCommand(newWorkspaceListCommand())
 	return cmd
 }
 
 // newWorkspace mints a fresh workspace ID for branch, persists its metadata,
 // and creates the git worktree keyed by that ID (roadmap step 7) — the
-// shared "start something new" sequence every entrypoint (worktree create,
+// shared "start something new" sequence every entrypoint (workspace create,
 // plan start, review start) that isn't resuming an existing workspace uses.
 func newWorkspace(root, branch, base string) (workspace.Info, string, error) {
 	id, err := workspace.NewID(branch)
@@ -43,7 +52,7 @@ func newWorkspace(root, branch, base string) (workspace.Info, string, error) {
 	return info, dir, nil
 }
 
-func newWorktreeCreateCommand() *cobra.Command {
+func newWorkspaceCreateCommand() *cobra.Command {
 	var base string
 	cmd := &cobra.Command{
 		Use:   "create <branch>",
@@ -66,7 +75,7 @@ func newWorktreeCreateCommand() *cobra.Command {
 	return cmd
 }
 
-func newWorktreeMergeCommand() *cobra.Command {
+func newWorkspaceMergeCommand() *cobra.Command {
 	var into string
 	cmd := &cobra.Command{
 		Use:   "merge <workspace-id>",
@@ -88,7 +97,7 @@ func newWorktreeMergeCommand() *cobra.Command {
 	return cmd
 }
 
-func newWorktreeRemoveCommand() *cobra.Command {
+func newWorkspaceRemoveCommand() *cobra.Command {
 	var keepBranch bool
 	cmd := &cobra.Command{
 		Use:   "remove <workspace-id>",
@@ -113,7 +122,7 @@ func newWorktreeRemoveCommand() *cobra.Command {
 	return cmd
 }
 
-func newWorktreeListCommand() *cobra.Command {
+func newWorkspaceListCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List workspaces for the current repository",

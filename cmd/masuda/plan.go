@@ -30,7 +30,7 @@ resuming an existing session must name the workspace, not the branch:
 The first form always mints a fresh workspace ID and worktree, even if one
 already exists for the same branch — that's what makes running two
 independent attempts against the same branch possible. The second form is
-recognized by <workspace-id> already existing on disk (masuda worktree
+recognized by <workspace-id> already existing on disk (masuda workspace
 list); task must be omitted there since the loop resumes from whatever
 on-disk state it left off at.`,
 		Args: cobra.RangeArgs(1, 2),

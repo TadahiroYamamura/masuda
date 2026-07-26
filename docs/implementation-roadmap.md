@@ -23,7 +23,7 @@ design doc「リポジトリ構造」「ゲート（G1/G2）のUX」、ADR-0005�
 
 design doc「全体構成」参照。
 
-- フェーズ0（worktree作成）は2番で作ったGo CLI（`masuda worktree create`）を呼び出す
+- フェーズ0（worktree作成）は2番で作ったGo CLI（`masuda workspace create`）を呼び出す
 - フェーズ1-2（調査・プラン、ADR-0008: エージェント分離+調査不足時のredo）
 - フェーズ4（実装、ADR-0009: ビルド/テスト自己修正ループ、ADR-0010: プラン逸脱検知とG1再オープン）
 - フェーズ5は既存の`feat/github-actions-langgraph-nodes`のレビューグラフ（review/checkの往復、13観点）を子グラフとして組み込む。フェーズ4と同一オーケストレーターにまとめ、G2却下時はフェーズ4に差し戻す（ADR-0013）
@@ -116,6 +116,14 @@ Claude Codeの許可ルール`Edit(/abs/path)`（先頭スラッシュ1つ）が
 `Edit(//abs/path)`（先頭スラッシュ2つ）に修正して解消した
 （[anthropics/claude-code#25137](https://github.com/anthropics/claude-code/issues/25137)、
 [#18200](https://github.com/anthropics/claude-code/issues/18200)）。
+
+**コマンド名の見直し（コミット後、レビューで指摘）**: 上記の実装当初は本節の記述通り
+`masuda worktree create|merge|remove|list`という名前だったが、「worktree」というgit
+用語のコマンドグループの下に、branch名だけでなく状態ディレクトリ・メタデータまで
+含む広い概念（workspace）の操作が混在しているのは違和感がある、との指摘を受けて
+`masuda workspace create|merge|remove|list`に改名した。`internal/worktree`パッケージ
+自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては表に出さない
+形に整理した。
 
 ## 8. 横断的チェック（LSP経由の整合性検証）
 
