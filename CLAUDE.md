@@ -31,7 +31,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`は対象worktree専用のbind mount先として空けてある。`git`を追加済み（対象repoがgit操作を必要とするため）
 - `webhook_server.py`: 設計ドキュメントの目標構造に存在しないため削除済み
 
-未着手: 横断的チェック（LSP経由の整合性検証、explorer→verifierの1パス構成、ロードマップ4番の残り）、`GATE:<name>`終了条件（ロードマップ5番）、`masuda review <branch-or-ref>`単体エントリーポイント（ロードマップ6番）。
+未着手: `GATE:<name>`終了条件（ロードマップ5番）、`masuda review <branch-or-ref>`単体エントリーポイント（ロードマップ6番）、横断的チェック（LSP経由の整合性検証、ロードマップ7番。Dockerサンドボックス内でのLSPプラグイン導入方法に追加調査が必要）。
 
 ## 開発環境
 
