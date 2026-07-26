@@ -58,6 +58,23 @@ USER ubuntu
 ENV PATH="/home/ubuntu/.local/bin:$PATH"
 RUN claude install
 
+# Register (but don't install anything from) the official plugin marketplace,
+# so language-variant images (Dockerfile.go, Dockerfile.python, ...) built
+# `FROM` this one only need a plain `claude plugin install <name>@claude-
+# plugins-official`, not a marketplace add too (roadmap step 8). Confirmed
+# empirically that both `marketplace add` and `plugin install` need no
+# Claude Code auth at all -- they're just a `git clone` of the (public)
+# marketplace repo and a copy out of its cache, so this is safe to bake in
+# at build time despite ADR-0001's no-API-billing constraint (nothing here
+# talks to the Anthropic API). Plugin/marketplace state lands in
+# ~/.claude/settings.json and ~/.claude/plugins/ -- neither is one of the
+# two files `sandbox.Start` bind-mounts from the host (~/.claude.json,
+# ~/.claude/.credentials.json), confirmed by inspecting ~/.claude.json's
+# contents after a real install: it holds only generic client metadata
+# (installMethod, machineID, ...), nothing plugin-related. So the bind
+# mount at container start can't shadow what's baked in here.
+RUN claude plugin marketplace add anthropics/claude-plugins-official
+
 # ttyd web terminal port (mapped to a per-container host port by masuda sandbox start,
 # since multiple sandboxes run in parallel)
 EXPOSE 7682

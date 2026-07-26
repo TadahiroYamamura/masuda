@@ -10,7 +10,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 これらは実装より前に固めた設計であり、現在のリポジトリの中身（後述）はまだこの設計に追随していない。
 
-## 現状（実装ロードマップ1〜3・4（機械的チェックのみ）・5・6・7完了）
+## 現状（実装ロードマップ1〜3・4（機械的チェックのみ）・5・6・7完了、8着手中）
 
 - `runtime/CLAUDE.md`: 作業ループ仕様。`GATE:<name>`終了条件（ADR-0006、ロードマップ5番）を実装済み——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`<state-dir>/.masuda-gate/<name>.json`のstatusがpendingでなくなるまで待機する。単発Bashの`while`ループは動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることを実機で確認したため、Monitorのような監視系ツールを使うよう指示している——ただしロードマップ7番の実機テストでも、フェーズ1-2の自己ループが指示に反して素のBash `while`ループを書いてしまい同じ確認プロンプトで詰まる場面を再確認した。Monitorツールの使用を徹底させる指示の強化は今回のスコープ外として未着手のまま残っている
 - `runtime/entrypoint.sh`・`runtime/start_claude.sh`: ルート直下から移動済み
@@ -47,7 +47,14 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - 実機で、同一branchに対する2つの並行ワークスペース（`masuda plan start`を同じbranch名で2回起動）がそれぞれ独立したworktree/状態ディレクトリ/tmuxセッションで衝突なく調査・プラン作成からG1ゲート到達まで進み、`INVESTIGATION.md`/`PLAN.md`等が状態ディレクトリ側にのみ生成されworktree側・互いのワークスペース間に一切漏れ出さないことを確認済み
 - 実機で、既存ブランチにコミット済みの変更を用意し`masuda review start`→フェーズ5直行→機密情報なしと正しく判定、まで確認済み
 
-未着手: 横断的チェック（LSP経由の整合性検証、ロードマップ8番。Dockerサンドボックス内でのLSPプラグイン導入方法に追加調査が必要）。
+- `Dockerfile`（base）: `claude plugin marketplace add anthropics/claude-plugins-official`を追加（ロードマップ8番）。公式マーケットプレイスは認証不要（公開GitHubリポジトリへの`git clone`のみ）でビルド時に問題なく登録できることを実機で確認済み。プラグイン状態（`extraKnownMarketplaces`・`enabledPlugins`）は`~/.claude/settings.json`（ビルド時にCOPYで焼き込み）・`~/.claude/plugins/`に保存され、コンテナ起動時にホストからbind mountされる`~/.claude.json`・`~/.claude/.credentials.json`（`~/.claude.json`の中身はinstallMethod・machineID等の汎用メタデータのみでプラグイン関連キーを含まないことを実機確認済み）とは別ファイルなので、起動時のbind mountで焼き込んだ設定が上書きされる心配はない
+- `docker/{go,python,typescript,full}/Dockerfile`（ロードマップ8番、新設）: `masuda-loop:latest`から派生する言語別バリアント。`.masuda.json`の`image`フィールド（`internal/config`）または`--image`でユーザーが選ぶ
+  - `docker/go/Dockerfile`: Goツールチェーン（1.26.5、sha256固定）＋`go install golang.org/x/tools/gopls@latest`＋`gopls-lsp`プラグイン。**注意**: リポジトリ直下に`Dockerfile.go`という名前で置くと、Goの`go build ./...`・`go vet ./...`がそれを`.go`ソースファイルとして誤認しビルドが壊れることを実機で発見したため、`docker/go/Dockerfile`という配置にした。また`go install`後の`rm -rf`によるモジュールキャッシュ削除は権限エラーで失敗する（Goがモジュールキャッシュを読み取り専用にするため）ことも実機で発見し、`go clean -modcache -cache`に変更した
+  - `docker/python/Dockerfile`・`docker/typescript/Dockerfile`: `pyright`・`typescript-language-server`はnpm配布のためbase imageに既にあるNode.jsに乗るだけで済み、新規システムトゥールチェーン不要。npmのグローバルインストール先（`/usr/lib/node_modules`）がroot所有のため、その1ステップだけ`USER root`に戻す必要があった（base imageの最後のUSERディレクティブは`ubuntu`のため）
+  - `docker/full/Dockerfile`: 上記3つを1つにまとめたkitchen sinkバリアント。複数言語混在repo向け
+  - 実機ビルドで確認したイメージサイズ: base 1.64GB → go +410MB → python +50MB → typescript +80MB → full（3つ合計）+550MB。各バリアントとも対応LSPバイナリの実行可能性と`claude plugin list`でのプラグイン有効化を確認済み
+
+未着手: ロードマップ8番のうち、explorer→verifierの1パス構成（ADR-0011）と予算管理（`ITERATION_BUDGET`）の実装本体。上記のDockerイメージ側の準備は完了。
 
 ## 開発環境
 

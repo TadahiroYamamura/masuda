@@ -128,12 +128,51 @@ Claude Codeの許可ルール`Edit(/abs/path)`（先頭スラッシュ1つ）が
 ## 8. 横断的チェック（LSP経由の整合性検証）
 
 design doc「フェーズ5（レビュー）の内部設計」、ADR-0003・0011参照。ステップ4から
-切り出し。着手前に以下を調査する必要がある。
+切り出し。着手前に以下を調査する必要があった。
 
 - Claude CodeのネイティブLSPプラグイン機構（MCP経由の自前実装ではなく）を使う場合、
   Dockerサンドボックス内でLSPプラグイン（gopls-lsp等）をどう導入するか
   （ビルド時にマーケットプレイス経由でインストールするか、gopls本体のみ入れて
-  別の方法でLSP登録するか）
-- explorer→verifierの1パス構成（redoなし、ADR-0011）
+  別の方法でLSP登録するか）→ **解決済み（下記）**
+- explorer→verifierの1パス構成（redoなし、ADR-0011）→ 未着手
 - 予算管理: `ITERATION_BUDGET`の単位を「サブエージェント起動1回」に統一、
-  サブエージェントごとの内部ターン数上限を追加
+  サブエージェントごとの内部ターン数上限を追加 → 未着手
+
+**Dockerイメージ側の準備（完了）**: 公式マーケットプレイス
+（`anthropics/claude-plugins-official`）を調査した結果、TypeScript・Python含む
+主要13言語すべてに公式LSPプラグインが存在し、Goの`gopls-lsp`と同じ
+`lspServers`スキーマ（`command`/`args`/`extensionToLanguage`）に従うことを確認した。
+「masudaが対象repoの言語をどう判定してプラグインを選ぶか」については、
+言語検出のヒューリスティックを持たず、ユーザー（またはrepoの保守者）が
+`.masuda.json`にDockerイメージ名を明示する方式に決定（`internal/config`、
+既にコミット済み）。
+
+これを受けて、Go・Python・TypeScriptそれぞれの言語ツール＋対応LSPプラグインを
+同梱したDockerイメージバリアントを実装した:
+
+- `Dockerfile`（base）: `claude plugin marketplace add anthropics/claude-plugins-official`
+  を追加。認証不要（公開GitHubリポジトリへの`git clone`のみ）でビルド時に問題なく
+  動作することを実機で確認済み。プラグイン状態は`~/.claude/settings.json`・
+  `~/.claude/plugins/`に保存され、コンテナ起動時にホストからbind mountされる
+  `~/.claude.json`・`~/.claude/.credentials.json`とは別ファイルなので、
+  ビルド時に焼き込んだ内容が起動時に上書きされる心配はない
+- `docker/go/Dockerfile`: Goツールチェーン（バージョン・sha256固定）＋`gopls`＋
+  `gopls-lsp`プラグイン。**注意**: リポジトリ直下に`Dockerfile.go`という名前で
+  置くと、Goの`go build ./...`・`go vet ./...`がそれを`.go`ソースファイルとして
+  誤認しビルドが壊れることを実機で発見したため、`docker/go/Dockerfile`という
+  配置にした
+- `docker/python/Dockerfile`・`docker/typescript/Dockerfile`: pyright／
+  typescript-language-serverはnpm配布のため新規システムトゥールチェーン不要
+  （base imageに既にNode.jsがあるため）。npmのグローバルインストール先が
+  root所有のため、その1ステップだけ`USER root`に戻す必要があった
+- `docker/full/Dockerfile`: 上記3つを1つのDockerfileにまとめたkitchen sink
+  バリアント。複数言語混在repo向け
+
+実機ビルドで確認したイメージサイズ: base 1.64GB → go +410MB（LSPだけでなく
+phase4実装エージェントの`go build`/`go test`にも必要） → python +50MB →
+typescript +80MB → full（3つ合計）+550MB。事前の見積もり通り、npm配布の
+Python・TypeScriptは軽量、Goツールチェーンが支配的という結果になった。
+
+各バリアントとも、対応するLSPバイナリの実行可能性（`gopls version`・
+`pyright --version`・`typescript-language-server --version`）と
+`claude plugin list`でのプラグイン有効化を実機で確認済み。
