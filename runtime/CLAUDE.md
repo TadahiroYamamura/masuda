@@ -16,9 +16,13 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
    - ゲート条件を満たしていれば → 4へ
    - どちらも満たしていなければ → LangGraph を起動して `/masuda-state/TASK.md` を上書きさせ、2 へ戻る
 4. ゲートマーカー（`/masuda-state/.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
-   `status`が`pending`でなくなるまで待機する。単発のBashで`while`ループを回すと、動的な文字列を含む
-   コマンドとして確認を求められ無人ループで詰まることがあるため、監視系のツール（Monitorなど、
-   ファイルの変化を検知して通知を受け取れる仕組み）が使えるならそちらを使うこと
+   `status`が`pending`でなくなるまで待機する。`while`ループ構文（Monitorツールの内部実装を含む）で
+   ポーリングすると、動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることが実機で
+   確認されているため、`while`ループもMonitorツールも使わないこと。代わりに`inotifywait`を
+   ループなしの単発ブロッキング呼び出しで使うこと（実機検証済み、確認プロンプトは発生しない）:
+   ```bash
+   inotifywait -e modify,close_write,move_self $GATE_FILE
+   ```
    - 待機中に人間が`docker exec -it ... tmux attach`（`masuda plan/review chat`）で接続し、対話の中で「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で`$GATE_FILE`に以下の形式で承認マーカーを書いてよい（却下の場合は`status`を`"rejected"`にする）
      ```json
      {"status": "approved", "feedback": "<対話の要約>", "decided_at": "<ISO8601形式の現在時刻>"}

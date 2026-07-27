@@ -14,7 +14,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 ### ループ機構・ゲート（ロードマップ5番）
 
-- `runtime/CLAUDE.md`: 作業ループ仕様。`GATE:<name>`終了条件（ADR-0006、ロードマップ5番）を実装済み——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`<state-dir>/.masuda-gate/<name>.json`のstatusがpendingでなくなるまで待機する。単発Bashの`while`ループは動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることを実機で確認したため、Monitorのような監視系ツールを使うよう指示している——ただしロードマップ7番の実機テストでも、フェーズ1-2の自己ループが指示に反して素のBash `while`ループを書いてしまい同じ確認プロンプトで詰まる場面を再確認した。Monitorツールの使用を徹底させる指示の強化は今回のスコープ外として未着手のまま残っている
+- `runtime/CLAUDE.md`: 作業ループ仕様。`GATE:<name>`終了条件（ADR-0006、ロードマップ5番）を実装済み——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`<state-dir>/.masuda-gate/<name>.json`のstatusがpendingでなくなるまで待機する。単発Bashの`while`ループは動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることを実機で確認したため、当初はMonitorのような監視系ツールを使うよう指示していたが、ロードマップ7番の実機テストで、Monitorツール自体も内部で同種のポーリング（`status=$(...)`のようなbash的な危険パターン）を組み立てるため同じ確認プロンプトで詰まる場面を確認した。切り分けのため、同一の`--allowedTools`設定で`claude --print`サブプロセスを起動し、単発ブロッキングの`inotifywait`呼び出し（動的な絶対パスを含む）を試したところ確認プロンプトは一切発生しなかった（`permission_denials: []`を実機確認）。問題の本質は「動的パスを含むコマンドだから」ではなく「`while`ループ構文（Monitorの内部実装含む）自体がリスク評価に引っかかる」ことだったと判明したため、ゲート待機の指示を`inotifywait`の単発ブロッキング呼び出しに置き換えた（`system_prompt.md.tmpl`・`runtime/CLAUDE.md`両方）。Dockerイメージに`inotify-tools`を追加し、ホスト側の前提条件にも追記済み
 - `runtime/entrypoint.sh`・`runtime/start_claude.sh`: ルート直下から移動済み
 - `runtime/claude-settings.json`: `~/.claude/settings.json`にビルド時焼き込み。テーマ未設定だと新規コンテナの初回`claude`起動が対話式のテーマ選択ウィザードで止まることが実機で判明したための対策
 

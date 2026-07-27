@@ -5,10 +5,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8
 
 # Node.js 22 (LTS) + system tools
+# inotify-tools: runtime/CLAUDE.md's gate-wait step uses a single blocking
+# `inotifywait` call instead of a `while` loop or the Monitor tool -- both of
+# those got flagged by Claude Code's own permission risk-evaluation and stalled
+# an unattended loop waiting on a confirmation that never comes (confirmed
+# live); a lone inotifywait call doesn't trigger that even with a dynamic
+# absolute path embedded in it.
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git inotify-tools \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI
