@@ -1,0 +1,61 @@
+name: Release
+
+# masuda currently only supports Linux (no Mac support yet), so the release
+# matrix is linux/amd64 and linux/arm64 only.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: go build -trimpath -o "masuda_${{ matrix.goos }}_${{ matrix.goarch }}" ./cmd/masuda
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # gh release create + upload --clobber (rather than failing outright)
+      # so a re-run of this workflow for the same tag (e.g. after a
+      # transient failure) doesn't need the tag deleted and re-pushed first.
+      - name: Publish release with binaries attached
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
+            gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes
+          gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
