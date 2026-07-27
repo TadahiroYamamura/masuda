@@ -53,7 +53,7 @@ on-disk state it left off at.`,
 					return err
 				}
 				worktreeDir := worktree.Dir(root, info.ID)
-				if err := hostloop.Start(root, info.ID, worktreeDir, stateDir, ""); err != nil {
+				if err := hostloop.Start(info.ID, worktreeDir, stateDir, ""); err != nil {
 					return err
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "workspace=%s session=%s worktree=%s\n", info.ID, hostloop.SessionName(info.ID), worktreeDir)
@@ -80,7 +80,7 @@ on-disk state it left off at.`,
 			if err != nil {
 				return err
 			}
-			if err := hostloop.Start(root, info.ID, worktreeDir, stateDir, task); err != nil {
+			if err := hostloop.Start(info.ID, worktreeDir, stateDir, task); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "workspace=%s session=%s worktree=%s\n", info.ID, hostloop.SessionName(info.ID), worktreeDir)

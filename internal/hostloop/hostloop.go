@@ -148,12 +148,16 @@ func WriteTaskBrief(stateDir, task string) error {
 	return os.WriteFile(filepath.Join(stateDir, ".masuda-task.md"), []byte(task), 0o644)
 }
 
-func renderSystemPrompt(repoRoot, stateDir string) (string, error) {
+func renderSystemPrompt(stateDir string) (string, error) {
+	pythonPath, scriptPath, err := ensureRuntime()
+	if err != nil {
+		return "", fmt.Errorf("preparing masuda's own host-side python runtime: %w", err)
+	}
 	var buf []byte
 	w := &sliceWriter{buf: &buf}
-	err := systemPromptTemplate.Execute(w, struct{ Python, Orchestrator, StateDir string }{
-		Python:       filepath.Join(repoRoot, "venv", "bin", "python"),
-		Orchestrator: filepath.Join(repoRoot, "orchestrator", "investigate_plan_graph.py"),
+	err = systemPromptTemplate.Execute(w, struct{ Python, Orchestrator, StateDir string }{
+		Python:       pythonPath,
+		Orchestrator: scriptPath,
 		StateDir:     stateDir,
 	})
 	if err != nil {
@@ -197,7 +201,7 @@ func AttachArgs(id string) []string {
 // start <workspace-id>` restarts the loop without needing the task
 // description again) but is required the first time, when no task brief
 // exists yet.
-func Start(repoRoot, id, worktreeDir, stateDir, task string) error {
+func Start(id, worktreeDir, stateDir, task string) error {
 	if IsRunning(id) {
 		return nil
 	}
@@ -224,7 +228,7 @@ func Start(repoRoot, id, worktreeDir, stateDir, task string) error {
 		return fmt.Errorf("clearing stale TASK.md before resume: %w", err)
 	}
 
-	promptPath, err := renderSystemPrompt(repoRoot, stateDir)
+	promptPath, err := renderSystemPrompt(stateDir)
 	if err != nil {
 		return fmt.Errorf("rendering system prompt: %w", err)
 	}

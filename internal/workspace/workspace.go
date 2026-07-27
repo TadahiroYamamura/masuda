@@ -48,7 +48,7 @@ const metadataFileName = "workspace.json"
 // Python side's dependency on this package minimal.
 const BaseRefFileName = ".masuda-base-ref"
 
-func dataHome() (string, error) {
+func xdgBase() (string, error) {
 	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
 		return v, nil
 	}
@@ -59,12 +59,25 @@ func dataHome() (string, error) {
 	return filepath.Join(home, ".local", "share"), nil
 }
 
-func rootDir() (string, error) {
-	dh, err := dataHome()
+// DataHome returns masuda's own XDG-based data directory
+// (<XDG_DATA_HOME or ~/.local/share>/masuda) — the single place that knows
+// masuda's data-dir name, shared by this package's workspaces/ subdirectory
+// and internal/hostloop's runtime/ subdirectory (host-side venv + extracted
+// orchestrator script), so neither depends on the target repository's root.
+func DataHome() (string, error) {
+	base, err := xdgBase()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dh, "masuda", "workspaces"), nil
+	return filepath.Join(base, "masuda"), nil
+}
+
+func rootDir() (string, error) {
+	dh, err := DataHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dh, "workspaces"), nil
 }
 
 // StateDir returns the on-disk directory masuda's own control files for

@@ -19,6 +19,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	masuda "github.com/TadahiroYamamura/masuda"
 )
 
 const (
@@ -104,14 +106,14 @@ func hostCredentialMounts() ([]string, error) {
 
 // Start launches a new sandbox container for workspace id, bind-mounting
 // worktreeDir at /workspace and stateDir (masuda's own control files) at
-// /masuda-state, places claudeMdPath at ~/.claude/CLAUDE.md inside the
-// container before the container's own entrypoint (and therefore Claude)
-// starts, then starts it.
+// /masuda-state, places masuda's own embedded CLAUDE.md (assets.go) at
+// ~/.claude/CLAUDE.md inside the container before the container's own
+// entrypoint (and therefore Claude) starts, then starts it.
 //
 // A create → cp → start sequence is used instead of a single `docker run` so the
 // CLAUDE.md copy always lands before runtime/entrypoint.sh launches Claude —
 // `docker run` would start the entrypoint immediately, racing the copy.
-func Start(id, worktreeDir, stateDir, claudeMdPath, image string) (Handle, error) {
+func Start(id, worktreeDir, stateDir, image string) (Handle, error) {
 	if image == "" {
 		image = DefaultImage
 	}
@@ -167,6 +169,13 @@ func Start(id, worktreeDir, stateDir, claudeMdPath, image string) (Handle, error
 		return Handle{}, fmt.Errorf("docker create: %w", err)
 	}
 
+	claudeMdPath, err := writeEmbeddedClaudeMd()
+	if err != nil {
+		_, _ = runDocker("rm", "-f", name)
+		return Handle{}, fmt.Errorf("extracting embedded CLAUDE.md: %w", err)
+	}
+	defer os.Remove(claudeMdPath)
+
 	if _, err := runDocker("cp", claudeMdPath, name+":/home/ubuntu/.claude/CLAUDE.md"); err != nil {
 		_, _ = runDocker("rm", "-f", name)
 		return Handle{}, fmt.Errorf("copying CLAUDE.md into container: %w", err)
@@ -178,6 +187,29 @@ func Start(id, worktreeDir, stateDir, claudeMdPath, image string) (Handle, error
 	}
 
 	return Handle{ID: id, ContainerName: name, HostPort: port}, nil
+}
+
+// writeEmbeddedClaudeMd writes masuda's own embedded CLAUDE.md (assets.go) to
+// a fresh temp file, so Start has a real host path to hand to `docker cp` --
+// the container's own ~/.claude/CLAUDE.md must come from this embedded copy,
+// never from the target repository's root, which has no such file at all.
+// Callers must remove the returned path once the docker cp completes.
+func writeEmbeddedClaudeMd() (string, error) {
+	f, err := os.CreateTemp("", "masuda-claude-md-*.md")
+	if err != nil {
+		return "", err
+	}
+	path := f.Name()
+	if _, err := f.Write(masuda.ClaudeMD); err != nil {
+		f.Close()
+		os.Remove(path)
+		return "", err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	return path, nil
 }
 
 // Stop stops and removes the sandbox container for workspace id. It's not an

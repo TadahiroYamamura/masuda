@@ -11,6 +11,7 @@ masudaはホスト側CLI（Go製）とDockerサンドボックスの2層構成�
 - **Docker**（フェーズ4-5用サンドボックスコンテナの起動に使用）
 - **git**（worktree操作。2.5以上、`git worktree`が使えるバージョン）
 - **tmux**（フェーズ1-2のホスト側自己ループ用セッション。`masuda plan chat`でのアタッチにも使用）
+- **Python 3**（`python3`コマンドと`venv`モジュールが使えること。Debian/Ubuntu系では`python3-venv`パッケージが別途必要な場合がある）。フェーズ1-2のオーケストレーターはホスト上で直接Pythonスクリプトとして動くため必要。オーケストレータースクリプトと依存関係定義は`masuda`バイナリ自体に埋め込まれており、初回の`masuda plan start`実行時に`~/.local/share/masuda/runtime/`配下へ自動でvenvを構築する（手動セットアップ不要。以後のPythonバージョンアップ時などrequirements変更時のみ自動で再構築される）
 - **Claude Code CLI**がホスト上にインストール済み、かつ`claude`でログイン済みであること
   - サブスクリプション認証をそのままDocker内のClaude Codeに引き継ぐ方式（ADR-0001、従量課金なし）のため、`~/.claude/.credentials.json`と`~/.claude.json`がホスト上に存在している必要がある。未ログインの場合、コンテナ起動時に`masuda sandbox start`がエラーで失敗する
 
@@ -34,6 +35,8 @@ sudo mv masuda /usr/local/bin/masuda
 # または
 go install ./cmd/masuda   # $(go env GOPATH)/bin/masuda に配置される
 ```
+
+masuda自身のオーケレータースクリプト・`CLAUDE.md`はこのバイナリにgo:embedで焼き込まれているため、ビルド後はこのリポジトリのチェックアウトを`masuda`コマンドの隣に置いておく必要はない（`masuda`コマンドを対象リポジトリ側から実行しても、masuda自身のファイルの場所が対象リポジトリのパスと混同されることはない）。
 
 ## 3. サンドボックスDockerイメージのビルド
 
