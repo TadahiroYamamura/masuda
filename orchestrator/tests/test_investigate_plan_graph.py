@@ -169,6 +169,23 @@ def test_investigate_redo_includes_questions():
     assert "未解決の疑問A" in content
 
 
+def test_investigate_task_fact_checks_pre_written_instructions_when_present():
+    write_task_brief()
+    ipg.INSTRUCTIONS_MD.write_text("既存の指示書の内容", encoding="utf-8")
+    ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "指示書の検証結果" in content
+    assert str(ipg.INSTRUCTIONS_MD) in content
+
+
+def test_investigate_task_omits_instructions_section_when_absent():
+    write_task_brief()
+    assert not ipg.INSTRUCTIONS_MD.exists()
+    ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "指示書の検証結果" not in content
+
+
 def test_plan_redo_includes_rejection_feedback():
     ipg.write_task_md({"phase": "plan_redo", "retries": 0, "questions": ["設計が複雑すぎる"]})
     content = ipg.TASK_MD.read_text(encoding="utf-8")

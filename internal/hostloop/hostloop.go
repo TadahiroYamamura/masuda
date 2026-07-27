@@ -148,6 +148,18 @@ func WriteTaskBrief(stateDir, task string) error {
 	return os.WriteFile(filepath.Join(stateDir, ".masuda-task.md"), []byte(task), 0o644)
 }
 
+// WriteInstructions copies a user-supplied instructions/investigation
+// document (masuda plan start --file) into the workspace's state directory
+// as INSTRUCTIONS.md, snapshotting it at start time -- the same convention
+// WriteTaskBrief already uses for the task description -- so a later edit,
+// move, or deletion of the original file can't affect an already-running
+// workspace. investigate_plan_graph.py's investigate prompt checks for this
+// file and, when present, instructs the investigator to fact-check it
+// against the actual codebase rather than blindly trust it (ADR-0016).
+func WriteInstructions(stateDir string, content []byte) error {
+	return os.WriteFile(filepath.Join(stateDir, "INSTRUCTIONS.md"), content, 0o644)
+}
+
 func renderSystemPrompt(stateDir string) (string, error) {
 	pythonPath, scriptPath, err := ensureRuntime()
 	if err != nil {

@@ -51,6 +51,11 @@ ITERATION_BUDGET = 20
 STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
 TASK_BRIEF = STATE_DIR / ".masuda-task.md"
+# Optional pre-written instructions/investigation document (masuda plan
+# start --file, ADR-0016). When present, _investigate_task tells the
+# investigator to fact-check it against the actual codebase rather than
+# follow it blindly.
+INSTRUCTIONS_MD = STATE_DIR / "INSTRUCTIONS.md"
 INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
 PLAN_MD = STATE_DIR / "PLAN.md"
 PLAN_RESULT_JSON = STATE_DIR / "plan_result.json"
@@ -172,6 +177,22 @@ def _investigate_task(task: str, questions: list[str]) -> str:
 以下の疑問点を追加で調査し、INVESTIGATION.mdに反映せよ:
 {qlist}
 """
+
+    instructions_section = ""
+    if INSTRUCTIONS_MD.exists():
+        instructions_section = f"""
+
+## 事前に用意された指示書の検証（`masuda plan start --file`で渡された）
+`{INSTRUCTIONS_MD}` にユーザーが事前に用意した指示書がある。まずこれを読み、
+記載内容（前提・指示している変更内容・参照しているファイルや関数など）が
+実際のコードベースと矛盾しないか、実現可能かを検証せよ。
+問題（事実誤認・矛盾・実現困難な点・不足している考慮事項など）が見つかった
+場合は、INVESTIGATION.mdに「指示書の検証結果」という節を設けて具体的に指摘
+すること。問題がなければその旨を明記した上で、指示書の内容を調査の前提として
+活用してよい。
+"""
+    verification_bullet = "\n- 指示書の検証結果（問題点の指摘、または問題なしの明記）" if INSTRUCTIONS_MD.exists() else ""
+
     return f"""# TASK: 調査（フェーズ1）
 
 Task toolで `subagent_type: investigator` を指定し、新規コンテキストのサブエージェントに
@@ -181,13 +202,13 @@ Task toolで `subagent_type: investigator` を指定し、新規コンテキス�
 
 ## タスク内容
 {task}
-{extra}
+{extra}{instructions_section}
 ## {INVESTIGATION_MD.name}の構成
 - タスクの要約
 - 関連ファイル・モジュール一覧（役割の説明付き）
 - 既存の類似実装・従うべきパターン
 - 制約・注意点
-- 未解決の疑問点
+- 未解決の疑問点{verification_bullet}
 
 ## 完了条件
 `{INVESTIGATION_MD}` が存在すること
