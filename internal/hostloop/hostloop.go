@@ -87,9 +87,19 @@ const tmuxSessionPrefix = "masuda-plan-"
 // note that guarantee is specifically for the Read/Grep/Glob tools; it's
 // exactly the kind of thing Bash's looser risk-based gating could bypass,
 // which is the other reason investigator/planner never get Bash.
+//
+// Grep/Glob are granted unscoped here for the same reason Read is: without
+// them, a Glob call against the state directory (outside worktreeDir, the
+// session's cwd) falls through to Claude Code's default interactive
+// confirmation instead of Edit's double-slash pre-approval above — confirmed
+// live, the planner stalling on an unanswered "Search(...) — Do you want to
+// proceed?" prompt against the state directory path (roadmap step 7's
+// external state dir made this reachable at all; investigator/planner both
+// already had Glob/Grep as agent-level tools, just never pre-approved at the
+// session-permission layer).
 func allowedTools(stateDir string) string {
 	return fmt.Sprintf(
-		"Bash,Task,Read,Edit(/%s),Edit(/%s),Edit(/%s)",
+		"Bash,Task,Read,Grep,Glob,Edit(/%s),Edit(/%s),Edit(/%s)",
 		filepath.Join(stateDir, "INVESTIGATION.md"),
 		filepath.Join(stateDir, "PLAN.md"),
 		filepath.Join(stateDir, "plan_result.json"),
