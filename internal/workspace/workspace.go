@@ -17,6 +17,7 @@
 package workspace
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"text/tabwriter"
 	"time"
 )
 
@@ -199,16 +201,56 @@ func Remove(id string) error {
 	return os.RemoveAll(dir)
 }
 
-// FormatList renders workspaces as a human-readable table for `masuda
-// worktree list`.
-func FormatList(infos []Info) string {
-	if len(infos) == 0 {
+// Status derives a short, human-readable progress summary for workspace id
+// straight from its TASK.md -- the same file masuda's orchestrators
+// (re)write on every loop iteration to instruct the self-looping Claude
+// session what to do next. This is already the single authoritative
+// "what's happening right now" statement (investigate/plan/gate-wait/
+// implement/review perspective N of TOTAL/done/blocked), so reading it here
+// avoids re-implementing orchestrator/*.py's phase-detection logic a second
+// time in Go, which could drift out of sync as those orchestrators evolve.
+func Status(id string) string {
+	dir, err := StateDir(id)
+	if err != nil {
+		return "(unknown)"
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "TASK.md"))
+	if err != nil {
+		return "(not started)"
+	}
+	line, _, _ := strings.Cut(string(data), "\n")
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "#"))
+}
+
+// EntryStatus adds live progress info to Info for `masuda workspace list`.
+// Running is computed by the caller (cmd/masuda), not this package: it
+// requires internal/hostloop and internal/sandbox, and internal/hostloop
+// already imports this package (DataHome), so importing either back here
+// would cycle.
+type EntryStatus struct {
+	Info
+	TaskStatus string
+	Running    bool
+}
+
+// FormatEntries renders workspaces as an aligned, headered table for `masuda
+// workspace list` (docker ps-style), via text/tabwriter -- the standard
+// library's own tool for exactly this kind of column alignment.
+func FormatEntries(entries []EntryStatus) string {
+	if len(entries) == 0 {
 		return "(no workspaces for this repo)\n"
 	}
-	var b strings.Builder
-	for _, info := range infos {
-		fmt.Fprintf(&b, "%s\tbranch=%s\tbase=%s\tcreated=%s\n",
-			info.ID, info.Branch, info.Base, info.CreatedAt.Format(time.RFC3339))
+	var buf bytes.Buffer
+	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "WORKSPACE ID\tBRANCH\tBASE\tSTATUS\tRUNNING\tCREATED")
+	for _, e := range entries {
+		running := "no"
+		if e.Running {
+			running = "yes"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+			e.ID, e.Branch, e.Base, e.TaskStatus, running, e.CreatedAt.Format(time.RFC3339))
 	}
-	return b.String()
+	w.Flush()
+	return buf.String()
 }
