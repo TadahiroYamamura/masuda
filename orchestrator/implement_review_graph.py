@@ -413,6 +413,18 @@ def _resolve_plan_reopen(reason: str, mechanical: bool) -> State:
     itself.
     """
     if not DEVIATION_MD.exists():
+        # A marker may still be sitting on disk from an earlier, unrelated
+        # decision -- the original G1 approval (investigate_plan_graph.py's
+        # detect_phase never unlinks an *approved* marker) or a previously
+        # resolved reopen. Left in place, the GATE:plan wait condition ("not
+        # pending") would already be satisfied before a human has looked at
+        # *this* deviation, letting stale history silently stand in for
+        # today's answer (confirmed on a live run: an "approved" marker from
+        # hours earlier, still sitting there the moment a fresh mechanical
+        # deviation opened the gate). Clear it so "not pending" can only mean
+        # a fresh decision on this reopen.
+        if PLAN_GATE_MARKER.exists():
+            PLAN_GATE_MARKER.unlink()
         return {"phase": "plan_reopened", "reason": reason}
 
     marker = _read_gate_marker(PLAN_GATE_MARKER)

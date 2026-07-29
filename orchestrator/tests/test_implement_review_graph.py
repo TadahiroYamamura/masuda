@@ -626,6 +626,27 @@ def test_mechanical_deviation_first_detection_opens_gate_without_clearing():
     assert not irg.DEVIATION_MD.exists(), "DEVIATION.md is written by write_task_md, not detect_phase"
 
 
+def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
+    """Confirmed on a live run: the original G1 approval's marker is never
+    unlinked on the "approved" path (investigate_plan_graph.py's
+    detect_phase), so it's still sitting on disk, "approved", the first time
+    a later mechanical deviation reopens the gate. Left alone, the GATE:plan
+    wait condition ("not pending") would already be satisfied before a human
+    has looked at *this* deviation -- stale history silently standing in for
+    today's answer."""
+    init_git_repo()
+    import pathlib
+    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert not irg.PLAN_GATE_MARKER.exists()
+
+
 def test_mechanical_deviation_still_pending_reflects_same_reason():
     init_git_repo()
     import pathlib
