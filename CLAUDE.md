@@ -23,17 +23,17 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 - `orchestrator/implement_review_graph.py`: フェーズ4-5（実装・レビュー）の状態遷移ロジック。ADR-0013により1つのオーケストレーターにまとめている。Dockerサンドボックス内で動く
   - フェーズ4: ADR-0009のビルド/テスト自己修正はサブエージェント内で完結させ、オーケストレーターは`implementation_result.json`の結果（done/needs_plan_review/build_test_failed）だけを見る。ADR-0010の機械的バックストップ（PLAN.mdの「変更するファイル一覧」と`git status --porcelain`の突き合わせ、LLM不使用）が計画外のファイル変更を検知すると`DEVIATION.md`を書き出しG1を再オープンする（GATE:planとして待機）
   - ゲートマーカーの消費（承認/却下の反映）は、再オープンを新規検知した瞬間ではなく、実際に人間の判断が下された解決時点でのみ行う（新規検知のたびに即座に消費すると、承認済みの逸脱が次回チェックで同一の逸脱として検知され無限に再オープンし続けるため）。新規検知時に古いゲートマーカーが残っていれば削除する——最初のG1承認時のマーカーは`investigate_plan_graph.py`側で削除されず残り続けるため、削除しないと過去の別の承認が今回の逸脱の判断として誤って消費されてしまう。承認済み逸脱は`.masuda-approved-deviations.json`に記録し、以後の機械的バックストップから除外する
-  - フェーズ5: 13観点review/checkループ（`perspectives/config.py`）をサブエージェント委譲（Task tool、diffのみを見せる機械的チェック）で実行する。G2到達（`await_g2`）はGATE:reviewとして待機する。G2却下時はフィードバックを持ってフェーズ4に差し戻し、レビューはperspective 0からやり直す（ADR-0013）
+  - フェーズ5: 14観点review/checkループ（`perspectives/config.py`）をサブエージェント委譲（Task tool、diffのみを見せる機械的チェック）で実行する。G2到達（`await_g2`）はGATE:reviewとして待機する。G2却下時はフィードバックを持ってフェーズ4に差し戻し、レビューはperspective 0からやり直す（ADR-0013）
   - checker/fixer自動修正ループ（ADR-0004）: checkがhas_issues=trueの指摘を確認すると、指摘箇所のみのfixerサブエージェントが修正し、新規のcheckerで再検証する。解決すればfixed一覧へ、MAX_RETRIES到達で未解決としてsynthesizeに引き継ぐ
-  - 横断的チェック（ADR-0003・ADR-0011）: 13観点収束後、explorer→verifierの1パス構成（redoなし）を実行する。explorerはBash/Read/Grep/Glob+ネイティブLSPツールへのフルアクセスを持つサブエージェントにdiff起点の多ターン探索を委譲し、`review_results/cross_cutting_findings.json`に書き出させる。findingsが空ならverifierをスキップしてsynthesizeへ直行、findingsがあれば独立したverifierサブエージェントが妥当性のみを検証し`cross_cutting_verified.json`に確認済み分だけ残す。確認済みの指摘は自動修正せず、常に最終レポートの「横断的チェックの指摘」セクションに上げてG2で人間が判断する
+  - 横断的チェック（ADR-0003・ADR-0011）: 14観点収束後、explorer→verifierの1パス構成（redoなし）を実行する。explorerはBash/Read/Grep/Glob+ネイティブLSPツールへのフルアクセスを持つサブエージェントにdiff起点の多ターン探索を委譲し、`review_results/cross_cutting_findings.json`に書き出させる。findingsが空ならverifierをスキップしてsynthesizeへ直行、findingsがあれば独立したverifierサブエージェントが妥当性のみを検証し`cross_cutting_verified.json`に確認済み分だけ残す。確認済みの指摘は自動修正せず、常に最終レポートの「横断的チェックの指摘」セクションに上げてG2で人間が判断する
     - **サブエージェント向けプロンプトで「探索の観点の例」を書く際の指針**: 列挙する項目のカテゴリ粒度が揃っているか（並列に見える項目が本当に同じ種類の判断か）を確認する。また、新しい（コストの高い）チェック機構向けの例が、既存の安価な機構（ビルドの型検査、既存のredoループ等）で既に検知されてしまわないか確認する（例: 静的型付け言語ではシグネチャの引数過不足はビルドエラーになりADR-0009の自己検証で既に弾かれる）
   - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`が既存通りマージ・後片付け、`review reject`がフェーズ4差し戻しをトリガーする
 - `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし）
-- `orchestrator/perspectives/`: 13観点の定義（`config.py`）。`implement_review_graph.py`のフェーズ5から参照
+- `orchestrator/perspectives/`: 14観点の定義（`config.py`）。`implement_review_graph.py`のフェーズ5から参照
 
 #### 予算管理（ADR-0011）
 
-`investigate_plan_graph.py`・`implement_review_graph.py`それぞれに独立した`ITERATION_BUDGET`定数（ホスト側・Docker側で別プロセス・別環境として動くため共有していない）。`write_task_md`が実際にサブエージェントへ委譲するフェーズ（`_SUBAGENT_PHASES`）でのみ`.masuda-iteration-count`を1加算し、超過時はredoループ（`MAX_RETRIES`・`MAX_REVIEW_RETRIES`）とは独立した最終防衛ラインとして`DONE (blocked)`で停止する。現在の設定値: フェーズ1-2は20（調査/プランの往復`MAX_RETRIES=3`に加えG1再オープンの余裕）、フェーズ4-5は200（13観点×review/check・fix/recheckの往復＋横断的チェック＋synthesize＋実装再オープンの余裕）。サブエージェント単体の内部ターン数上限（ADR-0011の2層目）はオーケストレーターから可視でないため、横断的チェックのexplorerタスクへのプロンプト指示（探索範囲を絞ること）による自主規制のみで対応している。
+`investigate_plan_graph.py`・`implement_review_graph.py`それぞれに独立した`ITERATION_BUDGET`定数（ホスト側・Docker側で別プロセス・別環境として動くため共有していない）。`write_task_md`が実際にサブエージェントへ委譲するフェーズ（`_SUBAGENT_PHASES`）でのみ`.masuda-iteration-count`を1加算し、超過時はredoループ（`MAX_RETRIES`・`MAX_REVIEW_RETRIES`）とは独立した最終防衛ラインとして`DONE (blocked)`で停止する。現在の設定値: フェーズ1-2は20（調査/プランの往復`MAX_RETRIES=3`に加えG1再オープンの余裕）、フェーズ4-5は200（14観点×review/check・fix/recheckの往復＋横断的チェック＋synthesize＋実装再オープンの余裕）。サブエージェント単体の内部ターン数上限（ADR-0011の2層目）はオーケストレーターから可視でないため、横断的チェックのexplorerタスクへのプロンプト指示（探索範囲を絞ること）による自主規制のみで対応している。
 
 ### ワークスペースID・リポジトリ設定ファイル（ADR-0014・0015）
 

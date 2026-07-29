@@ -60,8 +60,8 @@ MAX_REVIEW_RETRIES = 2
 # Mirrors feat/github-actions-langgraph-nodes's ITERATION_BUDGET, adapted to
 # this system's actual worst case: per perspective, up to 3 review+check
 # attempts (MAX_REVIEW_RETRIES=2 redos -> 3 attempts x 2 calls = 6) plus, if
-# an issue is confirmed, up to 3 fix+recheck attempts (6 more) = 12 x 13
-# perspectives = 156, plus cross-cutting explore+verify (2, no redo) plus
+# an issue is confirmed, up to 3 fix+recheck attempts (6 more) = 12 x 14
+# perspectives = 168, plus cross-cutting explore+verify (2, no redo) plus
 # synthesize (1) plus a margin for implement/implement_redo (G1/G2 reopens
 # are human-gated the same way plan_redo is in phase 1-2, so not otherwise
 # bounded at all short of a human simply stopping).
@@ -507,6 +507,14 @@ write/Edit/Bash権限を持つ通常のサブエージェントでよい。実�
 ## 参照するPLAN.md
 {plan}
 {redo_section}
+## コメントの書き方
+コードコメントは現在のコードの意図（コードからは読み取れない背景情報・複数の選択肢の中で
+なぜこの実装を選んだか・トレードオフ）だけを説明すること。上記の差し戻し・追加対応の指示に
+応答する形で「〜ではなく」「〜しない」「当初は〜だったが」のように、過去の実装や却下した
+代替案、指摘の文言を書き残さないこと。それらは今後の読者に何も伝えず、コードから読み取れない
+意図を追加もしない。修正した理由を記録したい場合は、コードコメントではなくこのタスクの完了
+報告に書くこと。
+
 ## 逸脱時の対応（一次防御、ADR-0010）
 実装中に計画から外れる必要があると気づいた場合、勝手に進めず作業を止め、
 `{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
@@ -642,6 +650,8 @@ def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
 {retry_note}
 ## 注意
 指摘箇所（`issues[].location`）以外のファイルは変更しないこと。
+修正の理由や却下した代替案、上記指摘の文言をコメントとして書き残さないこと。コードコメントは
+現在のコードの意図だけを説明するものであり、この修正が何にどう応答したかを説明する場所ではない。
 
 ## 完了条件
 `{_fix_path(idx, fix_attempt)}` が存在すること
@@ -685,7 +695,7 @@ def _cross_cutting_explore_task() -> str:
 新規コンテキストのサブエージェントに以下を委譲し、コードベース横断的な一貫性の
 問題を探索させ、結果を`{CROSS_CUTTING_FINDINGS_JSON}`に書き出させよ。
 
-これは13観点の機械的チェックとは異なる種類のチェックである。機械的チェックは
+これは14観点の機械的チェックとは異なる種類のチェックである。機械的チェックは
 diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Glob、および
 利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を
 使い、diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
