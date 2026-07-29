@@ -33,6 +33,7 @@ func newRootCommand() *cobra.Command {
 	}
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
+	root.AddCommand(newChatCommand())
 
 	planCmd := newGateCommand(gate.Plan)
 	planCmd.AddCommand(newPlanStartCommand())

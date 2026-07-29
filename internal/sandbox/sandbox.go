@@ -249,7 +249,7 @@ func IsRunning(id string) bool {
 }
 
 // AttachArgs returns the argv for interactively attaching to the sandbox's tmux
-// session (`masuda plan/review chat`). Callers exec this directly (not via
+// session (`masuda chat`). Callers exec this directly (not via
 // exec.Command's Output/Run) so the user's terminal is wired straight through.
 func AttachArgs(id string) []string {
 	return []string{"docker", "exec", "-it", ContainerName(id), "tmux", "attach", "-t", tmuxSession}

@@ -23,7 +23,7 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
    ```bash
    inotifywait -e modify,close_write,move_self $GATE_FILE
    ```
-   - 待機中に人間が`docker exec -it ... tmux attach`（`masuda plan/review chat`）で接続し、対話の中で「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で`$GATE_FILE`に以下の形式で承認マーカーを書いてよい（却下の場合は`status`を`"rejected"`にする）
+   - 待機中に人間が`docker exec -it ... tmux attach`（`masuda chat`）で接続し、対話の中で「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で`$GATE_FILE`に以下の形式で承認マーカーを書いてよい（却下の場合は`status`を`"rejected"`にする）
      ```json
      {"status": "approved", "feedback": "<対話の要約>", "decided_at": "<ISO8601形式の現在時刻>"}
      ```

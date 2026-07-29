@@ -208,7 +208,7 @@ func IsRunning(id string) bool {
 }
 
 // AttachArgs returns the argv for interactively attaching to the phase 1-2
-// tmux session (`masuda plan chat`) — a plain `tmux attach`, unlike
+// tmux session (`masuda chat`) — a plain `tmux attach`, unlike
 // sandbox.AttachArgs' `docker exec -it ... tmux attach`, since this session
 // runs directly on the host, not in a container.
 func AttachArgs(id string) []string {

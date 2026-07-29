@@ -10,7 +10,7 @@ masudaはホスト側CLI（Go製）とDockerサンドボックスの2層構成�
 - **Go 1.26.3以上**（`go.mod`が要求するバージョン。CLIのビルドに使用）
 - **Docker**（フェーズ4-5用サンドボックスコンテナの起動に使用）
 - **git**（worktree操作。2.5以上、`git worktree`が使えるバージョン）
-- **tmux**（フェーズ1-2のホスト側自己ループ用セッション。`masuda plan chat`でのアタッチにも使用）
+- **tmux**（フェーズ1-2のホスト側自己ループ用セッション。`masuda chat`でのアタッチにも使用）
 - **inotify-tools**（`inotifywait`コマンド。Debian/Ubuntu系は`apt install inotify-tools`）。フェーズ1-2のホストループがG1ゲート待機で使用する。`while`ループやMonitorツールでのポーリングはClaude Code自身の許可リスク評価に引っかかり無人ループが確認プロンプトで詰まることが実機で確認されているため、単発のブロッキング`inotifywait`呼び出しに置き換えている
 - **Python 3**（`python3`コマンドと`venv`モジュールが使えること。Debian/Ubuntu系では`python3-venv`パッケージが別途必要な場合がある）。フェーズ1-2のオーケストレーターはホスト上で直接Pythonスクリプトとして動くため必要。オーケストレータースクリプトと依存関係定義は`masuda`バイナリ自体に埋め込まれており、初回の`masuda plan start`実行時に`~/.local/share/masuda/runtime/`配下へ自動でvenvを構築する（手動セットアップ不要。以後のPythonバージョンアップ時などrequirements変更時のみ自動で再構築される）
 - **Claude Code CLI**がホスト上にインストール済み、かつ`claude`でログイン済みであること
@@ -93,7 +93,7 @@ masuda plan start <branch> "実装したいタスクの説明"
 masuda plan show <workspace-id>
 masuda plan approve <workspace-id>
 # もしくは対話で相談したい場合
-masuda plan chat <workspace-id>
+masuda chat <workspace-id>
 
 # 3. G1承認後、実装・レビュー用サンドボックスを起動（フェーズ4-5が自動で進む)
 masuda sandbox start <workspace-id>
@@ -101,6 +101,8 @@ masuda sandbox start <workspace-id>
 # 4. 最終レポート(final_report.md)を確認し、承認 or 差し戻し
 masuda review show <workspace-id>
 masuda review approve <workspace-id>   # ローカルマージ + worktree/コンテナ/状態ディレクトリの後片付け（push はしない)
+# もしくは対話で相談したい場合
+masuda chat <workspace-id>
 ```
 
 既存ブランチをレビューだけしたい場合は、フェーズ0-4を全てスキップして直接フェーズ5に入る`masuda review start <branch>`が使える。

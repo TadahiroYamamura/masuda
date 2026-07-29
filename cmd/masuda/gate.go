@@ -9,22 +9,22 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/gate"
-	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
 // newGateCommand builds the `masuda plan ...` / `masuda review ...` command
-// group for gate n. Both gates share the same show/chat/approve/reject shape
+// group for gate n. Both gates share the same show/approve/reject shape
 // (ADR-0006); only the artifact they show and what approval triggers differ.
+// Attaching to chat with the session (`masuda chat`) doesn't need a gate name
+// at all — see newChatCommand — so it isn't part of this group.
 func newGateCommand(n gate.Name) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   string(n),
 		Short: fmt.Sprintf("Operate on the %s gate for a workspace", n),
 	}
 	cmd.AddCommand(newGateShowCommand(n))
-	cmd.AddCommand(newGateChatCommand(n))
 	cmd.AddCommand(newGateApproveCommand(n))
 	cmd.AddCommand(newGateRejectCommand(n))
 	return cmd
@@ -64,36 +64,6 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 			}
 			fmt.Fprintln(cmd.OutOrStdout(), content)
 			return nil
-		},
-	}
-}
-
-func newGateChatCommand(n gate.Name) *cobra.Command {
-	return &cobra.Command{
-		Use:   "chat <workspace-id>",
-		Short: fmt.Sprintf("Attach interactively to discuss the %s gate before deciding (ADR-0006)", n),
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-			if !workspace.Exists(id) {
-				return fmt.Errorf("no workspace %q", id)
-			}
-			if n == gate.Plan {
-				// G1 can be waiting in either place: the phase 1-2 host loop
-				// (first time through) or the phase 4-5 sandbox (reopened by
-				// a plan deviation, ADR-0010) — try both.
-				if hostloop.IsRunning(id) {
-					return attach(hostloop.AttachArgs(id))
-				}
-				if sandbox.IsRunning(id) {
-					return attach(sandbox.AttachArgs(id))
-				}
-				return fmt.Errorf("no plan session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", id, id, id)
-			}
-			if !sandbox.IsRunning(id) {
-				return fmt.Errorf("sandbox for %q is not running — run `masuda sandbox start %s` first", id, id)
-			}
-			return attach(sandbox.AttachArgs(id))
 		},
 	}
 }

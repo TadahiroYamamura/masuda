@@ -3,7 +3,7 @@
 // orchestrator loop consumes to resume.
 //
 // This is the CLI-side half of ADR-0006's file-based fast path
-// (`masuda plan/review approve|reject`). The chat path (`masuda plan/review chat`,
+// (`masuda plan/review approve|reject`). The chat path (`masuda chat`,
 // where Claude itself writes the marker mid-conversation) lives in
 // internal/sandbox — this package only defines the marker format both sides
 // agree on.
