@@ -577,9 +577,10 @@ def _review_perspective_task(idx: int, attempt: int) -> str:
   "perspective_id": {idx},
   "perspective_name": "{p["name"]}",
   "has_issues": <bool>,
-  "issues": [{{"severity": "高|中|低", "location": "...", "description": "...", "suggestion": "..."}}],
+  "issues": [{{"severity": "高|中|低", "file": "<diffに現れるパス>", "startLine": <int>, "endLine": <int>, "description": "...", "suggestion": "..."}}],
   "summary": "<1〜2文の要約>"
 }}
+`startLine`/`endLine`はdiffの`@@ -a,b +c,d @@`ハンクヘッダーから数えられる、新ファイル側の行番号を書くこと。単一行の指摘は`startLine`と`endLine`を同じ値にする。
 
 ## 完了条件
 `{_result_path(idx, attempt)}` が存在すること
@@ -649,7 +650,7 @@ def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
 ```
 {retry_note}
 ## 注意
-指摘箇所（`issues[].location`）以外のファイルは変更しないこと。
+指摘箇所（`issues[].file`）以外のファイルは変更しないこと。
 修正の理由や却下した代替案、上記指摘の文言をコメントとして書き残さないこと。コードコメントは
 現在のコードの意図だけを説明するものであり、この修正が何にどう応答したかを説明する場所ではない。
 
@@ -728,8 +729,9 @@ LSPが正しく機能するには依存解決が必要な場合がある。`go m
 
 ## 出力するJSONのスキーマ（配列。指摘がなければ空配列でよい）
 [
-  {{"description": "<問題の説明>", "location": "<ファイル:行等>", "severity": "高|中|低"}}
+  {{"description": "<問題の説明>", "file": "<ファイルパス>", "startLine": <int>, "endLine": <int>, "severity": "高|中|低"}}
 ]
+`startLine`/`endLine`は実際にファイルを読んで確認した行番号を書くこと。
 
 ## 完了条件
 `{CROSS_CUTTING_FINDINGS_JSON}` が存在すること（指摘なしなら`[]`）
@@ -766,8 +768,9 @@ LSP（find references・go to definition等）や実際のコードを確認し�
 
 ## 出力するJSONのスキーマ（配列。確認できたものだけ抽出、全て誤検知なら空配列）
 [
-  {{"description": "<問題の説明>", "location": "<ファイル:行等>", "severity": "高|中|低"}}
+  {{"description": "<問題の説明>", "file": "<ファイルパス>", "startLine": <int>, "endLine": <int>, "severity": "高|中|低"}}
 ]
+`startLine`/`endLine`は実際にファイルを読んで確認した行番号を書くこと。
 
 ## 完了条件
 `{CROSS_CUTTING_VERIFIED_JSON}` が存在すること（確認できたものがなければ`[]`）
@@ -820,7 +823,7 @@ def _cross_cutting_section() -> str:
         "verifierによる検証を経たものです。複雑な指摘のため自動修正はしていません。\n",
     ]
     for f in findings:
-        lines.append(f"- **{f.get('severity', '?')}**: {f.get('description', '')}（{f.get('location', '')}）")
+        lines.append(f"- **{f.get('severity', '?')}**: {f.get('description', '')}（{f.get('file', '')}:{f.get('startLine', '')}）")
     return "\n".join(lines) + "\n"
 
 

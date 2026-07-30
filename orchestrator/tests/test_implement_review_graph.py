@@ -364,7 +364,7 @@ def test_cross_cutting_explore_with_no_findings_skips_verify():
 def test_cross_cutting_explore_with_findings_advances_to_verify():
     mark_implementation_done_and_clean()
     write_all_perspectives_clean()
-    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+    write_cross_cutting_findings([{"description": "不整合あり", "file": "a.go", "startLine": 10, "endLine": 10, "severity": "中"}])
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -374,7 +374,7 @@ def test_cross_cutting_explore_with_findings_advances_to_verify():
 def test_cross_cutting_verify_done_means_synthesize():
     mark_implementation_done_and_clean()
     write_all_perspectives_clean()
-    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+    write_cross_cutting_findings([{"description": "不整合あり", "file": "a.go", "startLine": 10, "endLine": 10, "severity": "中"}])
     write_cross_cutting_verified([])
 
     state = irg.detect_phase({"phase": "", "reason": ""})
@@ -396,7 +396,7 @@ def test_cross_cutting_explore_task_includes_diff():
 def test_cross_cutting_verify_task_includes_findings_and_diff():
     init_git_repo()
     pathlib.Path("README.md").write_text("updated content", encoding="utf-8")
-    write_cross_cutting_findings([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+    write_cross_cutting_findings([{"description": "不整合あり", "file": "a.go", "startLine": 10, "endLine": 10, "severity": "中"}])
 
     irg.write_task_md({"phase": "cross_cutting_verify", "reason": ""})
 
@@ -408,7 +408,7 @@ def test_cross_cutting_verify_task_includes_findings_and_diff():
 def test_synthesize_includes_cross_cutting_section_when_verified_nonempty():
     init_git_repo()
     write_all_perspectives_clean()
-    write_cross_cutting_verified([{"description": "不整合あり", "location": "a.go:10", "severity": "中"}])
+    write_cross_cutting_verified([{"description": "不整合あり", "file": "a.go", "startLine": 10, "endLine": 10, "severity": "中"}])
 
     irg.write_task_md({"phase": "synthesize", "reason": ""})
 
@@ -435,8 +435,8 @@ def test_g2_rejection_clears_cross_cutting_files_too():
     wipe in _clear_review_state() already covers it; this pins that down."""
     mark_implementation_done_and_clean()
     write_all_perspectives_clean()
-    write_cross_cutting_findings([{"description": "x", "location": "y", "severity": "低"}])
-    write_cross_cutting_verified([{"description": "x", "location": "y", "severity": "低"}])
+    write_cross_cutting_findings([{"description": "x", "file": "y", "startLine": 1, "endLine": 1, "severity": "低"}])
+    write_cross_cutting_verified([{"description": "x", "file": "y", "startLine": 1, "endLine": 1, "severity": "低"}])
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
     irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)

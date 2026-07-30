@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/TadahiroYamamura/masuda/internal/hunkcontext"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
@@ -82,6 +83,37 @@ show|chat|approve|reject.`,
 	cmd.Flags().StringVar(&base, "base", defaultBase, "ref to diff and review against")
 	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to run")
 	return cmd
+}
+
+// newReviewHunkCommand builds `masuda review hunk`, an alternative to
+// `masuda review show` (ADR-0019): instead of printing final_report.md as
+// text, it converts the confirmed findings in review_results/ into Hunk's
+// --agent-context sidecar format (internal/hunkcontext, ADR-0020's
+// structured file/startLine/endLine schema) and opens the reviewed diff in
+// Hunk with those findings annotated inline. Requires the hunk CLI
+// (https://hunk.dev) on the host's PATH; masuda review show keeps working
+// without it.
+func newReviewHunkCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "hunk <workspace-id>",
+		Short: "Open the reviewed diff in Hunk with masuda's findings annotated",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+			root, stateDir, err := gateStateDir(id)
+			if err != nil {
+				return err
+			}
+			contextPath, err := hunkcontext.Build(stateDir)
+			if err != nil {
+				return err
+			}
+			if err := os.Chdir(worktree.Dir(root, id)); err != nil {
+				return fmt.Errorf("cd into worktree for %s: %w", id, err)
+			}
+			return attach([]string{"hunk", "diff", "--agent-context", contextPath})
+		},
+	}
 }
 
 // seedReviewOnly marks phase 4 as already "done" so

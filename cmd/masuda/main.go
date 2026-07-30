@@ -41,6 +41,7 @@ func newRootCommand() *cobra.Command {
 
 	reviewCmd := newGateCommand(gate.Review)
 	reviewCmd.AddCommand(newReviewStartCommand())
+	reviewCmd.AddCommand(newReviewHunkCommand())
 	root.AddCommand(reviewCmd)
 	return root
 }
