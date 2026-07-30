@@ -1,5 +1,7 @@
 .PHONY: build vet test test-go test-py install docker-images
 
+PREFIX ?= /usr/local
+
 build:
 	go build -o masuda ./cmd/masuda
 
@@ -15,7 +17,7 @@ test-py:
 test: test-go test-py
 
 install: build
-	install -m 0755 masuda /usr/local/bin/masuda
+	install -m 0755 masuda $(PREFIX)/bin/masuda
 
 docker-images:
 	docker build -t masuda-loop:latest .
