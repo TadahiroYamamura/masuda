@@ -21,9 +21,10 @@ import (
 // have to supply.
 func newChatCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "chat <workspace-id>",
-		Short: "Attach interactively to whichever session is running for a workspace",
-		Args:  cobra.ExactArgs(1),
+		Use:               "chat <workspace-id>",
+		Short:             "Attach interactively to whichever session is running for a workspace",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			if !workspace.Exists(id) {

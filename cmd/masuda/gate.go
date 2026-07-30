@@ -50,9 +50,10 @@ func gateStateDir(id string) (root, stateDir string, err error) {
 
 func newGateShowCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <workspace-id>",
-		Short: fmt.Sprintf("Print the artifact the %s gate is judging", n),
-		Args:  cobra.ExactArgs(1),
+		Use:               "show <workspace-id>",
+		Short:             fmt.Sprintf("Print the artifact the %s gate is judging", n),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, stateDir, err := gateStateDir(args[0])
 			if err != nil {
@@ -70,9 +71,10 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 
 func newGateApproveCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "approve <workspace-id> [feedback]",
-		Short: fmt.Sprintf("Approve the %s gate", n),
-		Args:  cobra.RangeArgs(1, 2),
+		Use:               "approve <workspace-id> [feedback]",
+		Short:             fmt.Sprintf("Approve the %s gate", n),
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, stateDir, err := gateStateDir(args[0])
 			if err != nil {
@@ -95,9 +97,10 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 
 func newGateRejectCommand(n gate.Name) *cobra.Command {
 	return &cobra.Command{
-		Use:   "reject <workspace-id> <feedback>",
-		Short: fmt.Sprintf("Reject the %s gate with feedback for the next pass", n),
-		Args:  cobra.ExactArgs(2),
+		Use:               "reject <workspace-id> <feedback>",
+		Short:             fmt.Sprintf("Reject the %s gate with feedback for the next pass", n),
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			_, stateDir, err := gateStateDir(args[0])
 			if err != nil {

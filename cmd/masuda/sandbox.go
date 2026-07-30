@@ -23,9 +23,10 @@ func newSandboxCommand() *cobra.Command {
 func newSandboxStartCommand() *cobra.Command {
 	var image string
 	cmd := &cobra.Command{
-		Use:   "start <workspace-id>",
-		Short: "Start a sandbox container for an existing workspace",
-		Args:  cobra.ExactArgs(1),
+		Use:               "start <workspace-id>",
+		Short:             "Start a sandbox container for an existing workspace",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
 			if err != nil {
@@ -58,9 +59,10 @@ func newSandboxStartCommand() *cobra.Command {
 
 func newSandboxStopCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "stop <workspace-id>",
-		Short: "Stop and remove a workspace's sandbox container",
-		Args:  cobra.ExactArgs(1),
+		Use:               "stop <workspace-id>",
+		Short:             "Stop and remove a workspace's sandbox container",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return sandbox.Stop(args[0])
 		},

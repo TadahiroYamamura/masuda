@@ -16,6 +16,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/gate"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 func main() {
@@ -84,6 +85,36 @@ func resolveImage(cmd *cobra.Command, root, flagImage, fall string) (string, err
 		return cfg.Image, nil
 	}
 	return fall, nil
+}
+
+// completeWorkspaceIDs is a shared cobra.Command.ValidArgsFunction for every
+// subcommand whose first positional argument is a <workspace-id> (chat,
+// plan/review show|approve|reject, review hunk, sandbox start|stop,
+// workspace merge|remove, plan start's resume form): it looks up every
+// workspace known to the current repo (internal/workspace.List, the same
+// source `masuda workspace list` prints) instead of leaving the user to
+// copy-paste an ID from that command's output. Errors (not in a git repo,
+// no workspaces yet) just fall back to no suggestions rather than surfacing
+// a completion-time error to the shell.
+func completeWorkspaceIDs(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	root, err := repoRoot()
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	infos, err := workspace.List(root)
+	if err != nil {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	ids := make([]string, 0, len(infos))
+	for _, info := range infos {
+		if strings.HasPrefix(info.ID, toComplete) {
+			ids = append(ids, info.ID)
+		}
+	}
+	return ids, cobra.ShellCompDirectiveNoFileComp
 }
 
 // resolveBase returns the branch a --base/--into flag should default to:

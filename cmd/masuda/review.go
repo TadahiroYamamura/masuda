@@ -95,9 +95,10 @@ show|chat|approve|reject.`,
 // without it.
 func newReviewHunkCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "hunk <workspace-id>",
-		Short: "Open the reviewed diff in Hunk with masuda's findings annotated",
-		Args:  cobra.ExactArgs(1),
+		Use:               "hunk <workspace-id>",
+		Short:             "Open the reviewed diff in Hunk with masuda's findings annotated",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			root, stateDir, err := gateStateDir(id)

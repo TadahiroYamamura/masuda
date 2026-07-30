@@ -84,9 +84,10 @@ func newWorkspaceCreateCommand() *cobra.Command {
 func newWorkspaceMergeCommand() *cobra.Command {
 	var into string
 	cmd := &cobra.Command{
-		Use:   "merge <workspace-id>",
-		Short: "Locally merge a workspace's branch into --into (never pushes)",
-		Args:  cobra.ExactArgs(1),
+		Use:               "merge <workspace-id>",
+		Short:             "Locally merge a workspace's branch into --into (never pushes)",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
 			if err != nil {
@@ -110,9 +111,10 @@ func newWorkspaceMergeCommand() *cobra.Command {
 func newWorkspaceRemoveCommand() *cobra.Command {
 	var keepBranch bool
 	cmd := &cobra.Command{
-		Use:   "remove <workspace-id>",
-		Short: "Remove a workspace's worktree, state directory, and (unless --keep-branch) its branch",
-		Args:  cobra.ExactArgs(1),
+		Use:               "remove <workspace-id>",
+		Short:             "Remove a workspace's worktree, state directory, and (unless --keep-branch) its branch",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
 			if err != nil {

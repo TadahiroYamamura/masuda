@@ -41,7 +41,8 @@ on-disk state it left off at.
 against the actual codebase before producing INVESTIGATION.md, instead of
 following it blindly (ADR-0016) — useful when you've already done some
 investigation yourself and want it verified before a plan is drafted from it.`,
-		Args: cobra.RangeArgs(1, 2),
+		Args:              cobra.RangeArgs(1, 2),
+		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
 			if err != nil {
