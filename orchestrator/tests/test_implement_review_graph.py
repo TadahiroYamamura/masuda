@@ -108,6 +108,24 @@ def write_cross_cutting_verified(findings):
     irg.CROSS_CUTTING_VERIFIED_JSON.write_text(json.dumps(findings, ensure_ascii=False), encoding="utf-8")
 
 
+def resolve_other_perspectives_as_clean(skip):
+    """ADR-0021: _detect_review_phase scans every perspective each round, not
+    just one idx cursor, so a test isolating one perspective's transition
+    must resolve every other perspective first (as clean/no-issues) or they
+    show up alongside it in the batch. `skip` is the idx (or set of idxs)
+    under test, left untouched."""
+    skip_idxs = {skip} if isinstance(skip, int) else set(skip)
+    for idx in range(irg.TOTAL_PERSPECTIVES):
+        if idx in skip_idxs:
+            continue
+        write_result(idx, 1, has_issues=False)
+        write_check(idx, 1, ok=True)
+
+
+def batch_state(*tasks):
+    return {"phase": "review_batch", "reason": json.dumps({"tasks": list(tasks)})}
+
+
 def mark_implementation_done_and_clean():
     init_git_repo()
     import pathlib
@@ -175,10 +193,12 @@ def test_mechanical_deviation_skipped_without_a_plan_md():
     import pathlib
     pathlib.Path("anything.txt").write_text("whatever", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    resolve_other_perspectives_as_clean(skip=0)
 
     assert irg._mechanical_deviation() is None
     state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "review_perspective"
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "review", "attempt": 1}]
 
 
 # --- _read_base_ref / _compute_diff ---------------------------------------
@@ -247,10 +267,10 @@ def test_no_result_means_implement():
 
 def test_done_with_no_deviation_enters_review():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "review_perspective"
-    info = json.loads(state["reason"])
-    assert info == {"idx": 0, "attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "review", "attempt": 1}]
 
 
 def test_done_with_unplanned_file_reopens_plan():
@@ -293,33 +313,38 @@ def test_unknown_status_raises():
 
 def test_review_advances_to_check_once_result_written():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1)
     state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "check_perspective"
-    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "check", "attempt": 1}]
 
 
-def test_review_ok_no_issues_advances_to_next_perspective():
+def test_review_ok_no_issues_dropped_from_next_batch():
+    """A clean perspective (no issues, check passed) drops out of future
+    rounds' batches -- ADR-0021 replaces the old single-idx "advance to next
+    perspective" cursor with "recompute the remaining set every round"."""
     mark_implementation_done_and_clean()
-    write_result(0, 1, has_issues=False)
-    write_check(0, 1, ok=True)
+    resolve_other_perspectives_as_clean(skip=1)  # marks 0 (and 2..13) clean, leaves 1 pending
     state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "review_perspective"
-    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 1, "kind": "review", "attempt": 1}]
 
 
 def test_review_failed_check_redoes_same_perspective():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1)
     write_check(0, 1, ok=False, feedback="見落としがある")
     state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "review_perspective"
-    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 2}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "review", "attempt": 2}]
 
 
-def test_review_exhausted_retries_marks_unresolved_and_advances():
+def test_review_exhausted_retries_marks_unresolved():
     mark_implementation_done_and_clean()
-    # attempt 1 and 2 both fail -> MAX_REVIEW_RETRIES (2) reached -> perspective 0 unresolved, move to 1
+    resolve_other_perspectives_as_clean(skip=0)
+    # attempt 1 and 2 both fail -> MAX_REVIEW_RETRIES (2) reached -> perspective 0 unresolved
     write_result(0, 1)
     write_check(0, 1, ok=False, feedback="ng1")
     write_result(0, 2)
@@ -329,10 +354,30 @@ def test_review_exhausted_retries_marks_unresolved_and_advances():
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "review_perspective"
-    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    # perspective 0 is now the only one left unresolved -- nothing left to
+    # batch, so review moves on to cross-cutting.
+    assert state["phase"] == "cross_cutting_explore"
     rs = irg._read_review_state()
     assert rs["unresolved"] == [{"idx": 0, "reason": "review_check_not_converged"}]
+
+
+def test_multiple_pending_perspectives_at_different_stages_batch_together():
+    """ADR-0021's actual point: independent perspectives sitting at different
+    stages (one fresh, one awaiting check, one confirmed-issue awaiting fix)
+    all land in the same round's batch instead of being processed one at a
+    time."""
+    mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip={0, 1, 2})
+    # idx 0: needs its first review (nothing written)
+    write_result(1, 1)  # idx 1: needs check
+    write_result(2, 1, has_issues=True)
+    write_check(2, 1, ok=True)  # idx 2: confirmed issue, needs fix
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "review_batch"
+    tasks = json.loads(state["reason"])["tasks"]
+    assert {t["idx"]: t["kind"] for t in tasks} == {0: "review", 1: "check", 2: "fix"}
 
 
 def test_all_perspectives_done_means_cross_cutting_explore():
@@ -452,29 +497,32 @@ def test_g2_rejection_clears_cross_cutting_files_too():
 
 def test_confirmed_issue_enters_fix_loop():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1, has_issues=True)
     write_check(0, 1, ok=True)
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "fix_perspective"
-    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1, "fix_attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "fix", "attempt": 1, "fix_attempt": 1}]
 
 
 def test_fix_written_advances_to_recheck():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1, has_issues=True)
     write_check(0, 1, ok=True)
     write_fix(0, 1)
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "recheck_perspective"
-    assert json.loads(state["reason"]) == {"idx": 0, "fix_attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "recheck", "attempt": 1, "fix_attempt": 1}]
 
 
-def test_recheck_resolved_advances_to_next_perspective_and_records_fixed():
+def test_recheck_resolved_dropped_from_next_batch_and_records_fixed():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip={0, 1})  # leave 1 pending; 0 is driven through fix/recheck below, not "clean"
     write_result(0, 1, has_issues=True)
     write_check(0, 1, ok=True)
     write_fix(0, 1)
@@ -482,13 +530,14 @@ def test_recheck_resolved_advances_to_next_perspective_and_records_fixed():
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "review_perspective"
-    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 1, "kind": "review", "attempt": 1}]
     assert irg._read_review_state()["fixed"] == [0]
 
 
 def test_recheck_unresolved_redoes_fix():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1, has_issues=True)
     write_check(0, 1, ok=True)
     write_fix(0, 1)
@@ -496,12 +545,13 @@ def test_recheck_unresolved_redoes_fix():
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "fix_perspective"
-    assert json.loads(state["reason"]) == {"idx": 0, "attempt": 1, "fix_attempt": 2}
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "fix", "attempt": 1, "fix_attempt": 2}]
 
 
-def test_fix_exhausted_retries_marks_unresolved_and_advances():
+def test_fix_exhausted_retries_marks_unresolved():
     mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip=0)
     write_result(0, 1, has_issues=True)
     write_check(0, 1, ok=True)
     for fix_attempt in (1, 2, 3):
@@ -510,8 +560,9 @@ def test_fix_exhausted_retries_marks_unresolved_and_advances():
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "review_perspective"
-    assert json.loads(state["reason"]) == {"idx": 1, "attempt": 1}
+    # perspective 0 is now the only one left unresolved -- nothing left to
+    # batch, so review moves on to cross-cutting.
+    assert state["phase"] == "cross_cutting_explore"
     rs = irg._read_review_state()
     assert rs["unresolved"] == [{"idx": 0, "reason": "fix_not_resolved"}]
     assert rs["fixed"] == []
@@ -668,6 +719,7 @@ def test_mechanical_deviation_approved_is_recorded_and_review_proceeds():
     irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
     irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
     irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    resolve_other_perspectives_as_clean(skip=0)
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -677,7 +729,8 @@ def test_mechanical_deviation_approved_is_recorded_and_review_proceeds():
     # Approval means "accept the deviation as-is" -- implementation_result.json
     # must survive so the next check treats it as already done, not redone.
     assert irg.IMPLEMENTATION_RESULT_JSON.exists()
-    assert state["phase"] == "review_perspective"
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"idx": 0, "kind": "review", "attempt": 1}]
 
 
 def test_mechanical_deviation_approved_does_not_reflag_on_next_check():
@@ -738,7 +791,7 @@ def test_review_perspective_task_includes_diff_and_perspective_prompt():
     import pathlib
     pathlib.Path("README.md").write_text("updated content", encoding="utf-8")
 
-    irg.write_task_md({"phase": "review_perspective", "reason": json.dumps({"idx": 0, "attempt": 1})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "review", "attempt": 1}))
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "updated content" in content
@@ -751,7 +804,7 @@ def test_review_perspective_task_includes_prior_feedback_on_redo():
     write_result(0, 1)
     write_check(0, 1, ok=False, feedback="前回の見落とし")
 
-    irg.write_task_md({"phase": "review_perspective", "reason": json.dumps({"idx": 0, "attempt": 2})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "review", "attempt": 2}))
 
     assert "前回の見落とし" in irg.TASK_MD.read_text(encoding="utf-8")
 
@@ -760,7 +813,7 @@ def test_check_perspective_task_includes_review_result():
     init_git_repo()
     write_result(0, 1, has_issues=True)
 
-    irg.write_task_md({"phase": "check_perspective", "reason": json.dumps({"idx": 0, "attempt": 1})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "check", "attempt": 1}))
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "has_issues" in content
@@ -771,7 +824,7 @@ def test_fix_perspective_task_includes_flagged_issue():
     init_git_repo()
     write_result(0, 1, has_issues=True)
 
-    irg.write_task_md({"phase": "fix_perspective", "reason": json.dumps({"idx": 0, "attempt": 1, "fix_attempt": 1})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "fix", "attempt": 1, "fix_attempt": 1}))
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "has_issues" in content
@@ -783,7 +836,7 @@ def test_fix_perspective_task_includes_prior_recheck_feedback_on_retry():
     write_result(0, 1, has_issues=True)
     write_recheck(0, 1, resolved=False, feedback="まだ直っていない")
 
-    irg.write_task_md({"phase": "fix_perspective", "reason": json.dumps({"idx": 0, "attempt": 1, "fix_attempt": 2})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "fix", "attempt": 1, "fix_attempt": 2}))
 
     assert "まだ直っていない" in irg.TASK_MD.read_text(encoding="utf-8")
 
@@ -793,22 +846,54 @@ def test_recheck_perspective_task_includes_diff_and_checker_prompt():
     import pathlib
     pathlib.Path("README.md").write_text("fixed content", encoding="utf-8")
 
-    irg.write_task_md({"phase": "recheck_perspective", "reason": json.dumps({"idx": 0, "fix_attempt": 1})})
+    irg.write_task_md(batch_state({"idx": 0, "kind": "recheck", "fix_attempt": 1}))
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "fixed content" in content
-    assert irg.PERSPECTIVES[0]["checker_prompt"][:20] in content
+
+
+def test_review_batch_task_delegates_multiple_independent_tasks_in_parallel():
+    """ADR-0021: a round with several independent perspectives at different
+    stages renders all of them into one TASK.md instructing the main
+    session to delegate every one as a separate, parallel Task tool call."""
+    init_git_repo()
+    write_result(1, 1, has_issues=True)
+
+    irg.write_task_md(
+        batch_state(
+            {"idx": 0, "kind": "review", "attempt": 1},
+            {"idx": 1, "kind": "check", "attempt": 1},
+        )
+    )
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "並列に" in content
+    assert irg.PERSPECTIVES[0]["review_prompt"][:20] in content
+    assert irg.PERSPECTIVES[1]["checker_prompt"][:20] in content
+    assert str(irg._result_path(0, 1)) in content
+    assert str(irg._check_path(1, 1)) in content
+
+
+def test_review_batch_iteration_budget_counts_every_task_in_the_batch():
+    """ADR-0021/ADR-0011: the budget still counts one unit per subagent
+    invocation, so a batch of N tasks must advance the counter by N, not by
+    1 per write_task_md call."""
+    init_git_repo()
+
+    irg.write_task_md(batch_state(*({"idx": i, "kind": "review", "attempt": 1} for i in range(5))))
+
+    assert irg._read_iteration_count() == 5
 
 
 def test_synthesize_task_includes_fixed_and_unresolved_sections():
     init_git_repo()
     irg._write_review_state(
         {
-            "idx": irg.TOTAL_PERSPECTIVES,
             "redo_counts": {},
             "fix_counts": {},
             "unresolved": [{"idx": 1, "reason": "fix_not_resolved"}],
             "fixed": [0],
+            "clean": list(range(2, irg.TOTAL_PERSPECTIVES)),
         }
     )
     for idx in range(irg.TOTAL_PERSPECTIVES):

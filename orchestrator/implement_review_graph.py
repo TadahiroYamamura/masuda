@@ -87,7 +87,7 @@ FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
 # so isn't counted against ITERATION_BUDGET.
 _SUBAGENT_PHASES = {
     "implement", "implement_redo",
-    "review_perspective", "check_perspective", "fix_perspective", "recheck_perspective",
+    "review_batch",
     "cross_cutting_explore", "cross_cutting_verify",
     "synthesize",
 }
@@ -235,14 +235,15 @@ def _read_iteration_count() -> int:
     return int(ITERATION_COUNT_FILE.read_text(encoding="utf-8").strip() or "0")
 
 
-def _record_iteration() -> int:
-    """Call exactly once per subagent-invoking phase write_task_md renders
-    (ADR-0011: the budget counts subagent invocations, not LLM calls -- one
-    write_task_md call for a _SUBAGENT_PHASES phase is exactly one Task
-    delegation the main session is about to make). Returns the new total."""
-    n = _read_iteration_count() + 1
-    ITERATION_COUNT_FILE.write_text(str(n), encoding="utf-8")
-    return n
+def _record_iteration(n: int = 1) -> int:
+    """Call exactly once per _SUBAGENT_PHASES phase write_task_md renders,
+    with n set to how many subagents that phase is about to delegate to in
+    this round (ADR-0011: the budget counts subagent invocations, not LLM
+    calls; ADR-0021's review_batch phase delegates to n at once instead of
+    the usual 1). Returns the new total."""
+    total = _read_iteration_count() + n
+    ITERATION_COUNT_FILE.write_text(str(total), encoding="utf-8")
+    return total
 
 
 def _read_gate_marker(path: Path) -> dict | None:
@@ -255,7 +256,7 @@ def _read_gate_marker(path: Path) -> dict | None:
 
 def _read_review_state() -> dict:
     if not REVIEW_STATE_JSON.exists():
-        return {"idx": 0, "redo_counts": {}, "fix_counts": {}, "unresolved": [], "fixed": []}
+        return {"redo_counts": {}, "fix_counts": {}, "unresolved": [], "fixed": [], "clean": []}
     return json.loads(REVIEW_STATE_JSON.read_text(encoding="utf-8"))
 
 
@@ -290,81 +291,88 @@ def _recheck_path(idx: int, fix_attempt: int) -> Path:
     return REVIEW_RESULTS_DIR / f"recheck_{idx}_fixattempt{fix_attempt}.json"
 
 
-def _detect_review_phase() -> State:
-    """Advances the perspective/redo/fix bookkeeping (pure, no LLM) until it
-    lands on a phase that actually needs a subagent round.
+def _advance_and_next_task(idx: int, rs: dict) -> dict | None:
+    """Runs one perspective's review<->check / fix<->recheck transition logic
+    (ADR-0021) as far as it can go using only what's already on disk --
+    bumping redo/fix counters and settling into "clean"/"fixed"/"unresolved"
+    need no subagent and so never belong in a round's batch. Stops and
+    returns a task descriptor the instant a subagent call actually is
+    needed. Mutates rs's counters/lists in place; the caller persists once
+    after scanning every still-open perspective.
 
-    Two nested loops, mirroring two different ADRs:
-      - review <-> check redo (ADR-0008-style, ported from the original
-        review_node/check_node): is the review's *assessment* accurate?
-      - fix <-> recheck redo (ADR-0004): once an issue is confirmed real,
-        can a narrow-write fixer resolve it? checker and fixer stay separate
-        roles so the fix is verified independently, not self-graded.
-
-    Once all 13 mechanical perspectives are done, runs the cross-cutting
-    explorer/verifier pass (ADR-0003 / ADR-0011) before synthesize -- a
-    single pass with no redo loop, unlike the mechanical perspectives above:
-    ADR-0011 deliberately keeps complex/cross-cutting findings out of the
-    auto-fix loop (they always need a human's judgment at G2), so there's
-    no "assessment accuracy" to converge on the way review<->check redo
-    exists for. explorer runs once; if it found nothing, verify is skipped
-    entirely (nothing to independently confirm).
+    This is _detect_review_phase's old single-idx while-loop body, factored
+    out so ADR-0021 can run it over every remaining perspective per round
+    instead of stopping at the first that needs work.
     """
-    rs = _read_review_state()
-    idx = rs["idx"]
-    redo_counts = rs["redo_counts"]
-    fix_counts = rs["fix_counts"]
-    unresolved = rs["unresolved"]
-    fixed = rs["fixed"]
-
-    def persist():
-        _write_review_state(
-            {"idx": idx, "redo_counts": redo_counts, "fix_counts": fix_counts, "unresolved": unresolved, "fixed": fixed}
-        )
-
-    while idx < TOTAL_PERSPECTIVES:
-        attempt = redo_counts.get(str(idx), 0) + 1
+    while True:
+        attempt = rs["redo_counts"].get(str(idx), 0) + 1
         if not _result_path(idx, attempt).exists():
-            return {"phase": "review_perspective", "reason": json.dumps({"idx": idx, "attempt": attempt})}
+            return {"idx": idx, "kind": "review", "attempt": attempt}
         if not _check_path(idx, attempt).exists():
-            return {"phase": "check_perspective", "reason": json.dumps({"idx": idx, "attempt": attempt})}
+            return {"idx": idx, "kind": "check", "attempt": attempt}
 
         check = json.loads(_check_path(idx, attempt).read_text(encoding="utf-8"))
         if not check.get("ok"):
-            if redo_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
-                redo_counts[str(idx)] = redo_counts.get(str(idx), 0) + 1
-            else:
-                unresolved.append({"idx": idx, "reason": "review_check_not_converged"})
-                idx += 1
-            persist()
-            continue
+            if rs["redo_counts"].get(str(idx), 0) < MAX_REVIEW_RETRIES:
+                rs["redo_counts"][str(idx)] = rs["redo_counts"].get(str(idx), 0) + 1
+                continue
+            rs["unresolved"].append({"idx": idx, "reason": "review_check_not_converged"})
+            return None
 
         result = json.loads(_result_path(idx, attempt).read_text(encoding="utf-8"))
         if not result.get("has_issues"):
-            idx += 1
-            persist()
-            continue
+            rs["clean"].append(idx)
+            return None
 
         # Confirmed real issue(s) -- ADR-0004's fix <-> recheck loop.
-        fix_attempt = fix_counts.get(str(idx), 0) + 1
+        fix_attempt = rs["fix_counts"].get(str(idx), 0) + 1
         if not _fix_path(idx, fix_attempt).exists():
-            return {
-                "phase": "fix_perspective",
-                "reason": json.dumps({"idx": idx, "attempt": attempt, "fix_attempt": fix_attempt}),
-            }
+            return {"idx": idx, "kind": "fix", "attempt": attempt, "fix_attempt": fix_attempt}
         if not _recheck_path(idx, fix_attempt).exists():
-            return {"phase": "recheck_perspective", "reason": json.dumps({"idx": idx, "fix_attempt": fix_attempt})}
+            return {"idx": idx, "kind": "recheck", "attempt": attempt, "fix_attempt": fix_attempt}
 
         recheck = json.loads(_recheck_path(idx, fix_attempt).read_text(encoding="utf-8"))
         if recheck.get("resolved"):
-            fixed.append(idx)
-            idx += 1
-        elif fix_counts.get(str(idx), 0) < MAX_REVIEW_RETRIES:
-            fix_counts[str(idx)] = fix_counts.get(str(idx), 0) + 1
-        else:
-            unresolved.append({"idx": idx, "reason": "fix_not_resolved"})
-            idx += 1
-        persist()
+            rs["fixed"].append(idx)
+            return None
+        if rs["fix_counts"].get(str(idx), 0) < MAX_REVIEW_RETRIES:
+            rs["fix_counts"][str(idx)] = rs["fix_counts"].get(str(idx), 0) + 1
+            continue
+        rs["unresolved"].append({"idx": idx, "reason": "fix_not_resolved"})
+        return None
+
+
+def _detect_review_phase() -> State:
+    """Scans every not-yet-resolved perspective (ADR-0021) and batches
+    whichever of them need a subagent this round into a single
+    "review_batch" phase, so independent perspectives at different stages
+    (one needing its first review, another needing a recheck) can all be
+    delegated in parallel within one round instead of one perspective at a
+    time.
+
+    Once every perspective has settled into "clean", "fixed", or
+    "unresolved", runs the cross-cutting explorer/verifier pass (ADR-0003 /
+    ADR-0011) before synthesize -- a single pass with no redo loop, unlike
+    the mechanical perspectives above: ADR-0011 deliberately keeps
+    complex/cross-cutting findings out of the auto-fix loop (they always
+    need a human's judgment at G2), so there's no "assessment accuracy" to
+    converge on the way review<->check redo exists for. explorer runs once;
+    if it found nothing, verify is skipped entirely (nothing to
+    independently confirm).
+    """
+    rs = _read_review_state()
+    resolved = set(rs["clean"]) | set(rs["fixed"]) | {u["idx"] for u in rs["unresolved"]}
+    batch = []
+    for idx in range(TOTAL_PERSPECTIVES):
+        if idx in resolved:
+            continue
+        task = _advance_and_next_task(idx, rs)
+        if task is not None:
+            batch.append(task)
+    _write_review_state(rs)
+
+    if batch:
+        return {"phase": "review_batch", "reason": json.dumps({"tasks": batch})}
 
     if not CROSS_CUTTING_FINDINGS_JSON.exists():
         return {"phase": "cross_cutting_explore", "reason": ""}
@@ -689,6 +697,44 @@ def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
 """
 
 
+_TASK_RENDERERS_AND_PATHS = {
+    "review": lambda t: (_review_perspective_task(t["idx"], t["attempt"]), _result_path(t["idx"], t["attempt"])),
+    "check": lambda t: (_check_perspective_task(t["idx"], t["attempt"]), _check_path(t["idx"], t["attempt"])),
+    "fix": lambda t: (
+        _fix_perspective_task(t["idx"], t["attempt"], t["fix_attempt"]),
+        _fix_path(t["idx"], t["fix_attempt"]),
+    ),
+    "recheck": lambda t: (
+        _recheck_perspective_task(t["idx"], t["fix_attempt"]),
+        _recheck_path(t["idx"], t["fix_attempt"]),
+    ),
+}
+
+
+def _review_batch_task(tasks: list[dict]) -> str:
+    """ADR-0021: renders every independent (idx, kind) task in this round's
+    batch by reusing the existing single-item renderers unchanged, then
+    wraps them with an instruction to delegate all of them as separate Task
+    tool calls within one message instead of one at a time."""
+    bodies = []
+    completion_files = []
+    for t in tasks:
+        body, path = _TASK_RENDERERS_AND_PATHS[t["kind"]](t)
+        bodies.append(body)
+        completion_files.append(str(path))
+
+    header = f"""# TASK: レビュー（フェーズ5、{len(tasks)}件を並列委譲、ADR-0021）
+
+以下の{len(tasks)}件は互いに独立した観点/ステップです。それぞれ新規コンテキストの
+サブエージェントへのTask tool呼び出しとして、**この1メッセージの中で並列に**
+委譲すること（1件ずつ順番に委譲しない）。全ての完了条件（下記ファイル一覧）が
+揃うまで待ってから、次のTASK.mdのためにLangGraphを再度起動すること。
+
+"""
+    footer = "## このラウンドの完了条件\n以下が全て存在すること:\n" + "\n".join(f"- `{f}`" for f in completion_files)
+    return header + "\n\n---\n\n".join(bodies) + "\n\n" + footer
+
+
 def _cross_cutting_explore_task() -> str:
     diff = _compute_diff()
     return f"""# TASK: 横断的チェック（フェーズ5、explorer、ADR-0003・ADR-0011）
@@ -899,7 +945,8 @@ G2が承認されました。masuda review approveによるマージ・後片付
 
 def write_task_md(state: State) -> State:
     phase = state["phase"]
-    if phase in _SUBAGENT_PHASES and _record_iteration() > ITERATION_BUDGET:
+    batch_size = len(json.loads(state["reason"])["tasks"]) if phase == "review_batch" else 1
+    if phase in _SUBAGENT_PHASES and _record_iteration(batch_size) > ITERATION_BUDGET:
         phase = "iteration_budget_exceeded"
     if phase == "implement":
         content = _implement_task()
@@ -913,18 +960,8 @@ def write_task_md(state: State) -> State:
         # fresh detection.
         DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
         content = _plan_reopened_task(state["reason"])
-    elif phase == "review_perspective":
-        info = json.loads(state["reason"])
-        content = _review_perspective_task(info["idx"], info["attempt"])
-    elif phase == "check_perspective":
-        info = json.loads(state["reason"])
-        content = _check_perspective_task(info["idx"], info["attempt"])
-    elif phase == "fix_perspective":
-        info = json.loads(state["reason"])
-        content = _fix_perspective_task(info["idx"], info["attempt"], info["fix_attempt"])
-    elif phase == "recheck_perspective":
-        info = json.loads(state["reason"])
-        content = _recheck_perspective_task(info["idx"], info["fix_attempt"])
+    elif phase == "review_batch":
+        content = _review_batch_task(json.loads(state["reason"])["tasks"])
     elif phase == "cross_cutting_explore":
         content = _cross_cutting_explore_task()
     elif phase == "cross_cutting_verify":
