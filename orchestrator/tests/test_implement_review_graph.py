@@ -484,6 +484,7 @@ def test_g2_rejection_clears_cross_cutting_files_too():
     write_cross_cutting_verified([{"description": "x", "file": "y", "startLine": 1, "endLine": 1, "severity": "低"}])
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
     irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
     irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "却下"}), encoding="utf-8")
 
@@ -572,14 +573,32 @@ def test_final_report_no_marker_means_await_g2():
     mark_implementation_done_and_clean()
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "await_g2"
+
+
+def test_final_report_without_commit_message_reruns_synthesize():
+    """The synthesize subagent is instructed to write both files in one
+    delegation (ADR-0023 follow-up); if only the report landed, treat
+    synthesize as unfinished rather than proceeding to await_g2 without a
+    commit message for finalizeReviewApproval to use."""
+    mark_implementation_done_and_clean()
+    write_all_perspectives_clean()
+    write_cross_cutting_findings([])
+    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
+    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "synthesize"
 
 
 def test_final_report_approved_means_g2_approved():
     mark_implementation_done_and_clean()
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
     irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
     irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
 
@@ -592,6 +611,7 @@ def test_final_report_rejected_reopens_implementation():
     mark_implementation_done_and_clean()
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
     write_result(0, 1)
     write_check(0, 1, ok=True)
     irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
@@ -605,6 +625,7 @@ def test_final_report_rejected_reopens_implementation():
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists(), "must force a fresh implementation round"
     assert not irg.REVIEW_STATE_JSON.exists(), "review must restart from perspective 0 (ADR-0013)"
     assert not irg.REVIEW_RESULTS_DIR.exists(), "stale review results must not be reused (ADR-0013)"
+    assert not irg.COMMIT_MESSAGE_FILE.exists(), "stale commit message must not be reused for the redo's changes"
 
 
 def test_implement_redo_detected_on_fresh_process_via_feedback_file():

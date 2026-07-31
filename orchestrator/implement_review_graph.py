@@ -71,6 +71,7 @@ STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
 PLAN_MD = STATE_DIR / "PLAN.md"
 BASE_REF_FILE = STATE_DIR / ".masuda-base-ref"
+COMMIT_MESSAGE_FILE = STATE_DIR / ".masuda-commit-message"
 IMPLEMENTATION_RESULT_JSON = STATE_DIR / "implementation_result.json"
 DEVIATION_MD = STATE_DIR / "DEVIATION.md"
 APPROVED_DEVIATIONS_JSON = STATE_DIR / ".masuda-approved-deviations.json"
@@ -386,7 +387,7 @@ def _detect_review_phase() -> State:
 def _detect_post_implementation_phase() -> State:
     """Implementation is clean (or already was) -- figure out where phase 5 /
     G2 currently stands."""
-    if not FINAL_REPORT_MD.exists():
+    if not FINAL_REPORT_MD.exists() or not COMMIT_MESSAGE_FILE.exists():
         return _detect_review_phase()
 
     marker = _read_gate_marker(REVIEW_GATE_MARKER)
@@ -399,6 +400,8 @@ def _detect_post_implementation_phase() -> State:
         REVIEW_GATE_MARKER.unlink()
         _clear_review_state()
         IMPLEMENTATION_RESULT_JSON.unlink()
+        if COMMIT_MESSAGE_FILE.exists():
+            COMMIT_MESSAGE_FILE.unlink()
         REVIEW_FEEDBACK_MD.write_text(reason, encoding="utf-8")
         return {"phase": "implement_redo", "reason": reason}
     return {"phase": "await_g2", "reason": ""}
@@ -887,10 +890,10 @@ def _synthesize_task() -> str:
 
     return f"""# TASK: レビュー結果の統合（フェーズ5、最終レポート作成）
 
-新規コンテキストのサブエージェントに以下を委譲し、`{FINAL_REPORT_MD}`
-を生成させよ。
+新規コンテキストのサブエージェントに以下を委譲し、`{FINAL_REPORT_MD}`と
+`{COMMIT_MESSAGE_FILE}`を生成させよ。
 
-## 指示
+## 指示（レポート作成）
 複数の観点からのレビュー結果を統合し、開発者向けの分かりやすいレポートをMarkdown
 形式で作成すること。機械的な指摘で自動修正・解決が確認できたものは
 「自動修正済みの指摘」セクションに記載済みのため、別途「問題一覧」のような
@@ -912,8 +915,22 @@ def _synthesize_task() -> str:
 {results_json}
 ```
 
+## 指示（コミットメッセージ作成）
+このワークスペースでの実装内容（`git diff --cached {_read_base_ref()}`で
+確認できる、フェーズ4以降の全変更）に対する、git commitメッセージを
+`{COMMIT_MESSAGE_FILE}`にプレーンテキストで書き出すこと（レポートとは別ファイル）。
+
+- このリポジトリに独自のコミットメッセージ規約がないか確認すること
+  （CLAUDE.md・CONTRIBUTING.md等のドキュメント、無ければ
+  `git log --oneline -20 {_read_base_ref()}`で実際の直近コミットの書式）。
+  見つかればそれに従うこと。見つからなければ一般的な規約（要約1行＋詳細）で書くこと
+- masuda自身の承認フローに関する文言（「masudaによる自動commit」等）は含めないこと。
+  このコミットは`masuda review approve`実行時にこのワークスペースの成果を
+  そのまま1つのコミットとして記録するためのものであり、通常の開発者コミットと
+  区別する情報を書く理由がない
+
 ## 完了条件
-`{FINAL_REPORT_MD}` が存在すること
+`{FINAL_REPORT_MD}` と `{COMMIT_MESSAGE_FILE}` の両方が存在すること
 """
 
 

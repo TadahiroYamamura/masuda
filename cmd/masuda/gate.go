@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
@@ -125,6 +127,9 @@ func finalizeReviewApproval(root, id string) error {
 			return fmt.Errorf("stopping sandbox after approval: %w", err)
 		}
 	}
+	if err := worktree.Commit(root, id, commitMessage(id)); err != nil {
+		return fmt.Errorf("committing %s's work before approval: %w", info.Branch, err)
+	}
 	if err := worktree.Pull(root, id, info.Branch); err != nil {
 		return fmt.Errorf("pulling %s after approval: %w", info.Branch, err)
 	}
@@ -132,6 +137,22 @@ func finalizeReviewApproval(root, id string) error {
 		return err
 	}
 	return workspace.Remove(id)
+}
+
+// commitMessage reads the message orchestrator/*.py's synthesize phase wrote
+// (workspace.CommitMessageFileName), falling back to a generic message for
+// workspaces created before that file existed — data preservation (commit
+// something) matters more here than message quality.
+func commitMessage(id string) string {
+	stateDir, err := workspace.StateDir(id)
+	if err == nil {
+		if data, err := os.ReadFile(filepath.Join(stateDir, workspace.CommitMessageFileName)); err == nil {
+			if msg := strings.TrimSpace(string(data)); msg != "" {
+				return msg
+			}
+		}
+	}
+	return fmt.Sprintf("masuda: workspace %sの変更を反映する", id)
 }
 
 // attach replaces the current process with an interactive docker exec, so the

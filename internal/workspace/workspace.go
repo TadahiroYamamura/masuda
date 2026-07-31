@@ -50,6 +50,16 @@ const metadataFileName = "workspace.json"
 // Python side's dependency on this package minimal.
 const BaseRefFileName = ".masuda-base-ref"
 
+// CommitMessageFileName is the plain-text commit message orchestrator/*.py's
+// synthesize phase writes (ADR-0023's follow-up fix): masuda's phase 4/5
+// never runs `git commit` itself (review diffs are computed from staged,
+// uncommitted changes throughout), so without this the only record of a
+// workspace's work is its clone's uncommitted working tree — which
+// `review approve` then deletes. The synthesize subagent, which already has
+// full context on what changed, writes the message here; `finalizeReviewApproval`
+// reads it and commits in the clone right before pulling it into repoRoot.
+const CommitMessageFileName = ".masuda-commit-message"
+
 func xdgBase() (string, error) {
 	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
 		return v, nil

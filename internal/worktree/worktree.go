@@ -26,6 +26,7 @@ package worktree
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -116,6 +117,72 @@ func Merge(repoRoot, id, branch, into string) error {
 
 	_, err = runGit(repoRoot, "merge", "--no-ff", branch, "-m", fmt.Sprintf("merge: %s into %s", branch, into))
 	return err
+}
+
+// hasStagedChanges reports whether dir's index differs from HEAD, via `git
+// diff --cached --quiet`'s exit code (0 = clean, 1 = staged changes, other =
+// a real error worth surfacing).
+func hasStagedChanges(dir string) (bool, error) {
+	cmd := exec.Command("git", "-C", dir, "diff", "--cached", "--quiet")
+	err := cmd.Run()
+	if err == nil {
+		return false, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+	return false, err
+}
+
+// Commit stages and commits everything currently sitting in workspace id's
+// clone, if anything has changed. masuda's phase 4/5 (orchestrator/*.py's
+// _compute_diff) deliberately never commits on its own — it diffs staged,
+// uncommitted changes throughout implementation and review — so without
+// this, the only record of the work is the clone's uncommitted working
+// tree, which Remove deletes right after Pull runs. Called from
+// finalizeReviewApproval before Pull, so the work becomes part of the
+// branch's history before it's brought home.
+func Commit(repoRoot, id, message string) error {
+	dir := Dir(repoRoot, id)
+	if _, err := runGit(dir, "add", "-A"); err != nil {
+		return err
+	}
+	dirty, err := hasStagedChanges(dir)
+	if err != nil {
+		return err
+	}
+	if !dirty {
+		return nil
+	}
+	args := append(identityOverride(repoRoot), "commit", "-m", message)
+	_, err = runGit(dir, args...)
+	return err
+}
+
+// identityOverride returns `-c user.name=... -c user.email=...` git global
+// options for any of repoRoot's *local* (not global) user.name/user.email
+// config -- `git clone` never copies the source's local config, so a commit
+// made in the clone would otherwise silently fall back to the global
+// identity even when repoRoot deliberately overrides it per-project (e.g. a
+// work email distinct from a personal one). Passed as -c rather than written
+// into the clone's own config, since it should apply to just this commit.
+func identityOverride(repoRoot string) []string {
+	var args []string
+	for _, key := range []string{"user.name", "user.email"} {
+		if v := localConfig(repoRoot, key); v != "" {
+			args = append(args, "-c", key+"="+v)
+		}
+	}
+	return args
+}
+
+func localConfig(repoRoot, key string) string {
+	out, err := exec.Command("git", "-C", repoRoot, "config", "--local", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // Pull fast-forwards repoRoot's own branch ref to match its clone's tip —

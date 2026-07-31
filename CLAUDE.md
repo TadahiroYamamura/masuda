@@ -27,7 +27,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
   - checker/fixer自動修正ループ（ADR-0004）: checkがhas_issues=trueの指摘を確認すると、指摘箇所のみのfixerサブエージェントが修正し、新規のcheckerで再検証する。解決すればfixed一覧へ、MAX_RETRIES到達で未解決としてsynthesizeに引き継ぐ
   - 横断的チェック（ADR-0003・ADR-0011）: 14観点収束後、explorer→verifierの1パス構成（redoなし）を実行する。explorerはBash/Read/Grep/Glob+ネイティブLSPツールへのフルアクセスを持つサブエージェントにdiff起点の多ターン探索を委譲し、`review_results/cross_cutting_findings.json`に書き出させる。findingsが空ならverifierをスキップしてsynthesizeへ直行、findingsがあれば独立したverifierサブエージェントが妥当性のみを検証し`cross_cutting_verified.json`に確認済み分だけ残す。確認済みの指摘は自動修正せず、常に最終レポートの「横断的チェックの指摘」セクションに上げてG2で人間が判断する
     - **サブエージェント向けプロンプトで「探索の観点の例」を書く際の指針**: 列挙する項目のカテゴリ粒度が揃っているか（並列に見える項目が本当に同じ種類の判断か）を確認する。また、新しい（コストの高い）チェック機構向けの例が、既存の安価な機構（ビルドの型検査、既存のredoループ等）で既に検知されてしまわないか確認する（例: 静的型付け言語ではシグネチャの引数過不足はビルドエラーになりADR-0009の自己検証で既に弾かれる）
-  - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`がブランチのfast-forward反映・後片付け（ADR-0023、develop等へのローカルmergeはしない）、`review reject`がフェーズ4差し戻しをトリガーする
+  - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`はまずclone内で`git commit`してから（フェーズ4-5は終始未コミットのstaged diffで動くため、synthesizeが`.masuda-commit-message`に書き出したメッセージを使う）ブランチのfast-forward反映・後片付け（ADR-0023、develop等へのローカルmergeはしない）、`review reject`がフェーズ4差し戻しをトリガーする
   - `masuda review hunk <workspace-id>`: `review show`の代替として、`review_results/`の未解決指摘をHunk（外部ツール、要ホスト側インストール）の`--agent-context`サイドカー形式に変換しdiff上へ注釈表示する（ADR-0019、変換スキーマはADR-0020、`internal/hunkcontext`）
 - `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし）
 - `orchestrator/perspectives/`: 14観点の定義（`config.py`）。`implement_review_graph.py`のフェーズ5から参照
