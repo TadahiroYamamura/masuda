@@ -27,7 +27,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
   - checker/fixer自動修正ループ（ADR-0004）: checkがhas_issues=trueの指摘を確認すると、指摘箇所のみのfixerサブエージェントが修正し、新規のcheckerで再検証する。解決すればfixed一覧へ、MAX_RETRIES到達で未解決としてsynthesizeに引き継ぐ
   - 横断的チェック（ADR-0003・ADR-0011）: 14観点収束後、explorer→verifierの1パス構成（redoなし）を実行する。explorerはBash/Read/Grep/Glob+ネイティブLSPツールへのフルアクセスを持つサブエージェントにdiff起点の多ターン探索を委譲し、`review_results/cross_cutting_findings.json`に書き出させる。findingsが空ならverifierをスキップしてsynthesizeへ直行、findingsがあれば独立したverifierサブエージェントが妥当性のみを検証し`cross_cutting_verified.json`に確認済み分だけ残す。確認済みの指摘は自動修正せず、常に最終レポートの「横断的チェックの指摘」セクションに上げてG2で人間が判断する
     - **サブエージェント向けプロンプトで「探索の観点の例」を書く際の指針**: 列挙する項目のカテゴリ粒度が揃っているか（並列に見える項目が本当に同じ種類の判断か）を確認する。また、新しい（コストの高い）チェック機構向けの例が、既存の安価な機構（ビルドの型検査、既存のredoループ等）で既に検知されてしまわないか確認する（例: 静的型付け言語ではシグネチャの引数過不足はビルドエラーになりADR-0009の自己検証で既に弾かれる）
-  - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`が既存通りマージ・後片付け、`review reject`がフェーズ4差し戻しをトリガーする
+  - `masuda plan show`はDEVIATION.mdがあれば表示、`masuda plan approve/reject`が消費する。`masuda review show`はfinal_report.md、`review approve`がブランチのfast-forward反映・後片付け（ADR-0023、develop等へのローカルmergeはしない）、`review reject`がフェーズ4差し戻しをトリガーする
   - `masuda review hunk <workspace-id>`: `review show`の代替として、`review_results/`の未解決指摘をHunk（外部ツール、要ホスト側インストール）の`--agent-context`サイドカー形式に変換しdiff上へ注釈表示する（ADR-0019、変換スキーマはADR-0020、`internal/hunkcontext`）
 - `orchestrator/tests/`: 上記2つのLayer 1テスト（pytest、ファイルシステム状態を模擬、LLM呼び出しなし）
 - `orchestrator/perspectives/`: 14観点の定義（`config.py`）。`implement_review_graph.py`のフェーズ5から参照
@@ -49,7 +49,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 - `masuda workspace create|merge|remove|list`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
   - `create <branch> [--base]`: 新規ワークスペースID発行＋`git clone --local`によるローカルクローン方式（ADR-0018、`git worktree add`ではない）
-  - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する。`remove`はworktree削除に続けて状態ディレクトリも削除する
+  - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する（ユーザーが明示的に叩く手動のローカル統合。`review approve`が自動で行うfast-forward限定の反映＝ADR-0023の`worktree.Pull`とは別物）。`remove`はworktree削除に続けて状態ディレクトリも削除する
   - `list`: 現在のリポジトリに紐づく全ワークスペースの一覧
 - `masuda sandbox start|stop <workspace-id>`: worktreeのbind mountに加え、状態ディレクトリを`/masuda-state`に、ホストの`~/.claude/.credentials.json`・`~/.claude.json`をbind mountしてサブスク認証を引き継ぐ（ADR-0001）。前回のコンテナが（tmuxセッション終了により）Exited状態で残っていると`docker create`が名前衝突で失敗するため、`start`は同名の既存コンテナを`docker rm -f`してから作り直す
 - `masuda plan start <branch> "<task>"`（新規）/ `masuda plan start <workspace-id>`（再開）: 引数が既存ワークスペースIDかどうか（`workspace.Exists`）で新規/再開を判別する。新規はワークスペースID発行＋worktree作成＋フェーズ1-2のホスト側自己ループ起動（`internal/hostloop`）。メインセッションは`Bash,Task,Read,Edit`（成果物3ファイルのみ、状態ディレクトリの絶対パス）だけを持ち、実際にリポジトリ内容を読み回る調査・プラン作成はBashなしのカスタムエージェント（`investigator`/`planner`、`Read,Grep,Glob,Edit`のみ）にTask委譲する（ADR-0002の具体化）

@@ -118,6 +118,38 @@ func Merge(repoRoot, id, branch, into string) error {
 	return err
 }
 
+// Pull fast-forwards repoRoot's own branch ref to match its clone's tip —
+// the ADR-0023 replacement for Merge in the automatic `review approve` flow.
+// Unlike Merge, it never merges into a separate integration branch (that's a
+// PR's job in a real GitHub workflow, not masuda's); it just brings the
+// clone's commits back into repoRoot, creating branch there if it doesn't
+// exist yet. Fast-forward only: a diverged history is rejected by git itself
+// (non-zero exit, no partial state), never force-resolved.
+func Pull(repoRoot, id, branch string) error {
+	cloneDir := Dir(repoRoot, id)
+
+	current, err := runGit(repoRoot, "branch", "--show-current")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(current) == branch {
+		// git refuses to fetch straight into the ref of the currently
+		// checked-out branch, so go through FETCH_HEAD and a working-tree
+		// fast-forward merge instead.
+		if _, err := runGit(repoRoot, "fetch", cloneDir, branch); err != nil {
+			return fmt.Errorf("fetching %s from its clone: %w", branch, err)
+		}
+		_, err := runGit(repoRoot, "merge", "--ff-only", "FETCH_HEAD")
+		return err
+	}
+
+	// branch is either absent from repoRoot or checked out nowhere: a plain
+	// (non-force) refspec creates it if new, fast-forwards it if not, and
+	// git itself rejects a non-fast-forward update.
+	_, err = runGit(repoRoot, "fetch", cloneDir, branch+":"+branch)
+	return err
+}
+
 // Remove deletes the clone directory for workspace id and, if deleteBranch
 // is set, the branch ref in repoRoot (a no-op if Merge never fetched it
 // there — e.g. an abandoned, never-merged task).

@@ -111,9 +111,10 @@ func newGateRejectCommand(n gate.Name) *cobra.Command {
 	}
 }
 
-// finalizeReviewApproval implements ADR-0005: approving G2 merges the
-// workspace's branch locally and tears down its worktree/sandbox/state
-// directory, all without ever pushing.
+// finalizeReviewApproval implements ADR-0005 and ADR-0023: approving G2
+// pulls the workspace's branch back into repoRoot (fast-forward only — see
+// worktree.Pull) and tears down its worktree/sandbox/state directory, all
+// without ever pushing or merging into a separate integration branch.
 func finalizeReviewApproval(root, id string) error {
 	info, err := workspace.Load(id)
 	if err != nil {
@@ -124,8 +125,8 @@ func finalizeReviewApproval(root, id string) error {
 			return fmt.Errorf("stopping sandbox after approval: %w", err)
 		}
 	}
-	if err := worktree.Merge(root, id, info.Branch, defaultBase); err != nil {
-		return fmt.Errorf("merging %s after approval: %w", info.Branch, err)
+	if err := worktree.Pull(root, id, info.Branch); err != nil {
+		return fmt.Errorf("pulling %s after approval: %w", info.Branch, err)
 	}
 	if err := worktree.Remove(root, id, info.Branch, true); err != nil {
 		return err
