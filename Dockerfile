@@ -11,8 +11,13 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # an unattended loop waiting on a confirmation that never comes (confirmed
 # live); a lone inotifywait call doesn't trigger that even with a dynamic
 # absolute path embedded in it.
+# build-essential: a C toolchain is needed across all language variants, not
+# just one -- Go's `go test -race`/cgo, Python packages without prebuilt
+# wheels, and Node native addons (node-gyp) all fall back to compiling from
+# source. Baking it in here once (ADR-0022) avoids repeating the same RUN
+# line in docker/{go,python,typescript}/Dockerfile.
 RUN apt-get update \
- && apt-get install -y ca-certificates curl gnupg \
+ && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
  && apt-get install -y nodejs python3 python3-venv tmux ttyd git inotify-tools \
  && rm -rf /var/lib/apt/lists/*
