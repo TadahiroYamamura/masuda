@@ -133,7 +133,11 @@ func finalizeReviewApproval(root, id string) error {
 	if err := worktree.Pull(root, id, info.Branch); err != nil {
 		return fmt.Errorf("pulling %s after approval: %w", info.Branch, err)
 	}
-	if err := worktree.Remove(root, id, info.Branch, true); err != nil {
+	// deleteBranch=false: unlike the old Merge-into-develop model, branch
+	// itself is now the landed deliverable (ADR-0023) — the user still
+	// needs it to push and open a PR, so only the clone/state directory
+	// are torn down here.
+	if err := worktree.Remove(root, id, info.Branch, false); err != nil {
 		return err
 	}
 	return workspace.Remove(id)
