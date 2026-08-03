@@ -32,6 +32,7 @@ func newRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
+	root.AddCommand(newInitCommand())
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
 	root.AddCommand(newChatCommand())
@@ -60,14 +61,14 @@ func repoRoot() (string, error) {
 func loadConfig(root string) (config.Config, error) {
 	cfg, err := config.Load(root)
 	if err != nil {
-		return config.Config{}, fmt.Errorf("reading %s: %w", config.FileName, err)
+		return config.Config{}, fmt.Errorf("reading %s: %w", config.SettingsPath(root), err)
 	}
 	return cfg, nil
 }
 
 // resolveImage returns the Docker image a sandbox-starting command should
 // use: the --image flag if the user passed it explicitly, otherwise
-// .masuda.json's declared image (internal/config), otherwise fall.
+// .masuda/settings.json's declared image (internal/config), otherwise fall.
 // Letting the target repository commit its own default here means masuda
 // doesn't need any language-detection logic of its own to pick an image
 // with the right LSP tooling baked in — that choice is the repo's, same as
@@ -119,7 +120,7 @@ func completeWorkspaceIDs(cmd *cobra.Command, args []string, toComplete string) 
 
 // resolveBase returns the branch a --base/--into flag should default to:
 // the flag's value if the user passed flagName explicitly, otherwise
-// .masuda.json's declared base (internal/config), otherwise fall. flagName
+// .masuda/settings.json's declared base (internal/config), otherwise fall. flagName
 // is "base" or "into" — the two flags share one config field since they're
 // almost always the same branch (what work starts from is what it merges
 // back into).

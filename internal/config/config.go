@@ -1,8 +1,14 @@
-// Package config reads .masuda.json, an optional, user-edited file
+// Package config reads .masuda/settings.json, an optional, user-edited file
 // committed at a target repository's root. It lets a repo declare defaults
 // for masuda's own CLI flags — which Docker image to run, and which branch
 // is the repo's trunk — so a user working in that repo doesn't have to
 // repeat the same flags on every invocation.
+//
+// .masuda/settings.json supersedes the older single-file .masuda.json
+// (ADR-0024): masuda init now populates a .masuda/ directory (this file
+// plus .masuda/reviews/, internal/perspectives), and reading .masuda.json
+// was deliberately dropped rather than kept as a fallback — a breaking
+// change, not a migration.
 package config
 
 import (
@@ -12,12 +18,20 @@ import (
 	"path/filepath"
 )
 
-// FileName is the config file's name, expected at a repository's root.
-const FileName = ".masuda.json"
+// DirName is the config directory's name, expected at a repository's root.
+const DirName = ".masuda"
 
-// Config is the on-disk shape of .masuda.json. All fields are optional —
-// an absent file, or an absent field within one, means "use masuda's
-// built-in default."
+// SettingsFileName is the settings file's name within DirName.
+const SettingsFileName = "settings.json"
+
+// SettingsPath returns the absolute path to repoRoot's settings file.
+func SettingsPath(repoRoot string) string {
+	return filepath.Join(repoRoot, DirName, SettingsFileName)
+}
+
+// Config is the on-disk shape of .masuda/settings.json. All fields are
+// optional — an absent file, or an absent field within one, means "use
+// masuda's built-in default."
 type Config struct {
 	// Image is the Docker image `masuda sandbox start` / `masuda review
 	// start` run when --image isn't passed explicitly.
@@ -29,11 +43,12 @@ type Config struct {
 	Base string `json:"base,omitempty"`
 }
 
-// Load reads .masuda.json from repoRoot. A missing file is not an error —
-// it returns a zero-value Config, so callers can treat every field as
-// "unset, fall back to the built-in default."
+// Load reads .masuda/settings.json from repoRoot. A missing file is not an
+// error — it returns a zero-value Config, so callers can treat every field
+// as "unset, fall back to the built-in default."
 func Load(repoRoot string) (Config, error) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, FileName))
+	path := SettingsPath(repoRoot)
+	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return Config{}, nil
 	}
@@ -42,7 +57,7 @@ func Load(repoRoot string) (Config, error) {
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("parsing %s: %w", FileName, err)
+		return Config{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return cfg, nil
 }

@@ -39,7 +39,8 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 ### ワークスペースID・リポジトリ設定ファイル（ADR-0014・0015）
 
 - `internal/workspace/`: ワークスペースID（`<sanitized-branch>-<ランダム6桁hex>`形式、`NewID`）とその状態ディレクトリ（`~/.local/share/masuda/workspaces/<id>/`、XDG_DATA_HOME尊重）を管理するパッケージ。`Create`/`Load`/`Exists`/`List`/`Remove`を提供する。branch名ではなくこのIDが以後すべてのCLIサブコマンドの引数・worktree/コンテナ/tmuxセッションのアドレッシングキーになる——同じbranchに対して複数のワークスペースが並行して存在できるようにするため
-- `internal/config/`: 対象リポジトリのルート直下に置く`.masuda.json`（ユーザーが手で編集してコミットする、任意ファイル）を読む。`image`（使うDockerイメージ）と`base`（trunk branch名）の2フィールドを定義する。`resolveImage`/`resolveBase`（`cmd/masuda/main.go`）が`--image`フラグ/`--base`・`--into`フラグ＞`.masuda.json`の値＞デフォルトの優先順位で解決する。`image`フィールドの設計判断（masuda側で言語検出ヒューリスティックを持たずrepo側に委ねる理由）はADR-0015を参照
+- `internal/config/`: 対象リポジトリのルート直下の`.masuda/settings.json`（ユーザーが手で編集してコミットする、任意ファイル。`masuda init`が生成する）を読む。`image`（使うDockerイメージ）と`base`（trunk branch名）の2フィールドを定義する。`resolveImage`/`resolveBase`（`cmd/masuda/main.go`）が`--image`フラグ/`--base`・`--into`フラグ＞`.masuda/settings.json`の値＞デフォルトの優先順位で解決する。`image`フィールドの設計判断（masuda側で言語検出ヒューリスティックを持たずrepo側に委ねる理由）はADR-0015を参照。単一ファイル`.masuda.json`からの再編（破壊的変更、後方互換なし）はADR-0024
+- `internal/perspectives/`: masuda内蔵の14レビュー観点を`builtin/*.md`（Markdown + YAML frontmatter、`go:embed`）として保持し、`WriteBuiltins`で対象リポジトリの`.masuda/reviews/`へ書き出す。観点の識別はファイル名（拡張子除く）をIDとする。詳細はADR-0024
 
 ### 既知の課題（未修正）
 
@@ -47,6 +48,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 ### Go CLI（cmd/masuda）
 
+- `masuda init [--image] [--base]`: 対象リポジトリに`.masuda/`（`settings.json`＋内蔵14観点を書き出す`reviews/`）を展開する一度きりの操作（ADR-0024）。`.masuda/`が既に存在する場合はエラーで再実行を拒否する——ユーザーが`.masuda/reviews/`から削除した観点ファイルの復活や、masuda自体に新規追加された組み込み観点の後追い取り込み（Issue #8）はこのコマンドの責務ではない
 - `masuda workspace create|merge|remove|list|info|rebase`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
   - `create <branch> [--base]`: 新規ワークスペースID発行＋`git clone --local`によるローカルクローン方式（ADR-0018、`git worktree add`ではない）
   - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する（ユーザーが明示的に叩く手動のローカル統合。`review approve`が自動で行うfast-forward限定の反映＝ADR-0023の`worktree.Pull`とは別物）。`remove`はworktree削除に続けて状態ディレクトリも削除する
@@ -70,7 +72,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 ### Dockerイメージ・LSPプラグイン（ADR-0015）
 
 - `Dockerfile`（base）: `claude plugin marketplace add anthropics/claude-plugins-official`で公式マーケットプレイスを登録する（認証不要、公開GitHubリポジトリへの`git clone`のみ）。プラグイン状態（`extraKnownMarketplaces`・`enabledPlugins`）は`~/.claude/settings.json`（ビルド時にCOPYで焼き込み）・`~/.claude/plugins/`に保存され、コンテナ起動時にホストからbind mountされる`~/.claude.json`・`~/.claude/.credentials.json`とは別ファイルなので上書きされない
-- `docker/{go,python,typescript,full}/Dockerfile`: `masuda-loop:latest`から派生する言語別バリアント。`.masuda.json`の`image`フィールドまたは`--image`でユーザーが選ぶ
+- `docker/{go,python,typescript,full}/Dockerfile`: `masuda-loop:latest`から派生する言語別バリアント。`.masuda/settings.json`の`image`フィールドまたは`--image`でユーザーが選ぶ
   - `docker/go/Dockerfile`: Goツールチェーン＋`gopls`＋`gopls-lsp`プラグイン。リポジトリ直下に`Dockerfile.go`という名前で置くと、Goの`go build ./...`・`go vet ./...`がそれを`.go`ソースファイルとして誤認しビルドが壊れるため、`docker/go/Dockerfile`という配置にしている。`go install`後のモジュールキャッシュ削除は`rm -rf`だと権限エラーになる（Goがモジュールキャッシュを読み取り専用にするため）ため`go clean -modcache -cache`を使う
   - `docker/python/Dockerfile`・`docker/typescript/Dockerfile`: `pyright`・`typescript-language-server`はnpm配布のためbase imageのNode.jsに乗るだけで済むが、npmのグローバルインストール先（`/usr/lib/node_modules`）がroot所有のため、そのステップだけ`USER root`に戻す必要がある
   - `docker/full/Dockerfile`: 上記3つを1つにまとめたkitchen sinkバリアント。複数言語混在repo向け
