@@ -32,6 +32,7 @@ func newWorkspaceCommand() *cobra.Command {
 	cmd.AddCommand(newWorkspaceRemoveCommand())
 	cmd.AddCommand(newWorkspaceListCommand())
 	cmd.AddCommand(newWorkspaceInfoCommand())
+	cmd.AddCommand(newWorkspaceRebaseCommand())
 	return cmd
 }
 
@@ -164,6 +165,35 @@ func newWorkspaceInfoCommand() *cobra.Command {
 			fmt.Fprintf(cmd.OutOrStdout(), "id=%s\nbranch=%s\nbase=%s\nworktree=%s\nstate_dir=%s\nstatus=%s\nrunning=%t\n",
 				info.ID, info.Branch, info.Base, worktree.Dir(root, info.ID), stateDir, workspace.Status(info.ID), running)
 			return nil
+		},
+	}
+}
+
+// newWorkspaceRebaseCommand builds `masuda workspace rebase`, a manual,
+// explicitly-invoked counterpart to `review approve`'s automatic Pull: when
+// repoRoot's branch has moved on since this workspace's clone was created
+// (e.g. another workspace targeting the same branch already landed first)
+// and `review approve` refuses the resulting non-fast-forward, this replays
+// the clone's commits on top of repoRoot's current tip so approve can retry
+// as a clean fast-forward. Never wired into approve itself (ADR-0023): a
+// real divergence needs a human to judge whether the two histories are
+// still compatible, not an automatic rebase.
+func newWorkspaceRebaseCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:               "rebase <workspace-id>",
+		Short:             "Rebase a workspace's clone onto repoRoot's current branch tip",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			info, err := workspace.Load(args[0])
+			if err != nil {
+				return err
+			}
+			return worktree.Rebase(root, info.ID, info.Branch)
 		},
 	}
 }

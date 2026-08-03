@@ -229,3 +229,36 @@ func Remove(repoRoot, id, branch string, deleteBranch bool) error {
 	}
 	return nil
 }
+
+// Rebase replays workspace id's clone on top of repoRoot's current tip for
+// branch — the inverse direction of Pull, for the case Pull's fast-forward
+// rejects: repoRoot moved on (e.g. another workspace already landed) while
+// this one was still in flight, so their histories diverged. This is always
+// a human-invoked, separate step (never run automatically from `review
+// approve`, per ADR-0023's explicit rejection of that) since resolving a
+// real divergence -- as opposed to fast-forwarding a clean history -- means
+// judging whether two independent changes are still compatible together,
+// which isn't masuda's call to make silently.
+//
+// The clone's `origin` remote is repoRoot's own path (set by `git clone` at
+// Create time), so this is a plain local fetch, not a network operation.
+//
+// On a rebase conflict, this returns git's own error as-is and leaves the
+// clone exactly as `git rebase` left it (mid-conflict, nothing auto-resolved
+// or aborted) -- the caller is expected to point the human at the clone
+// (`masuda workspace info <id>`) to resolve it there.
+func Rebase(repoRoot, id, branch string) error {
+	dir := Dir(repoRoot, id)
+	if _, err := runGit(dir, "fetch", "origin", branch); err != nil {
+		return fmt.Errorf("fetching %s from repoRoot: %w", branch, err)
+	}
+	if _, err := runGit(dir, "rebase", "FETCH_HEAD"); err != nil {
+		return fmt.Errorf(
+			"rebase onto repoRoot's current %s stopped, likely on a conflict: %w\n\n"+
+				"resolve it directly in the clone (see `masuda workspace info %s` for its path), "+
+				"then `git rebase --continue` (or `--abort` to give up) and retry",
+			branch, err, id,
+		)
+	}
+	return nil
+}
