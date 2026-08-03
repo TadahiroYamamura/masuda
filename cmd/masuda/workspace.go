@@ -33,6 +33,7 @@ func newWorkspaceCommand() *cobra.Command {
 	cmd.AddCommand(newWorkspaceListCommand())
 	cmd.AddCommand(newWorkspaceInfoCommand())
 	cmd.AddCommand(newWorkspaceRebaseCommand())
+	cmd.AddCommand(newWorkspaceRenameCommand())
 	return cmd
 }
 
@@ -40,12 +41,13 @@ func newWorkspaceCommand() *cobra.Command {
 // and creates the git worktree keyed by that ID (roadmap step 7) — the
 // shared "start something new" sequence every entrypoint (workspace create,
 // plan start, review start) that isn't resuming an existing workspace uses.
-func newWorkspace(root, branch, base string) (workspace.Info, string, error) {
+// name is an optional display label (see workspace.Create) and may be empty.
+func newWorkspace(root, branch, base, name string) (workspace.Info, string, error) {
 	id, err := workspace.NewID(branch)
 	if err != nil {
 		return workspace.Info{}, "", err
 	}
-	info, err := workspace.Create(root, id, branch, base)
+	info, err := workspace.Create(root, id, branch, base, name)
 	if err != nil {
 		return workspace.Info{}, "", err
 	}
@@ -57,7 +59,7 @@ func newWorkspace(root, branch, base string) (workspace.Info, string, error) {
 }
 
 func newWorkspaceCreateCommand() *cobra.Command {
-	var base string
+	var base, name string
 	cmd := &cobra.Command{
 		Use:   "create <branch>",
 		Short: "Create a new workspace for branch, creating the branch from --base if it doesn't exist yet",
@@ -71,7 +73,7 @@ func newWorkspaceCreateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			info, dir, err := newWorkspace(root, args[0], resolvedBase)
+			info, dir, err := newWorkspace(root, args[0], resolvedBase, name)
 			if err != nil {
 				return err
 			}
@@ -80,6 +82,7 @@ func newWorkspaceCreateCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&base, "base", defaultBase, "branch to create the worktree's branch from, if it doesn't exist yet")
+	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only, shown in `workspace list`/`info`)")
 	return cmd
 }
 
@@ -162,9 +165,26 @@ func newWorkspaceInfoCommand() *cobra.Command {
 				return err
 			}
 			running := hostloop.IsRunning(info.ID) || sandbox.IsRunning(info.ID)
-			fmt.Fprintf(cmd.OutOrStdout(), "id=%s\nbranch=%s\nbase=%s\nworktree=%s\nstate_dir=%s\nstatus=%s\nrunning=%t\n",
-				info.ID, info.Branch, info.Base, worktree.Dir(root, info.ID), stateDir, workspace.Status(info.ID), running)
+			fmt.Fprintf(cmd.OutOrStdout(), "id=%s\nname=%s\nbranch=%s\nbase=%s\nworktree=%s\nstate_dir=%s\nstatus=%s\nrunning=%t\n",
+				info.ID, info.Name, info.Branch, info.Base, worktree.Dir(root, info.ID), stateDir, workspace.Status(info.ID), running)
 			return nil
+		},
+	}
+}
+
+// newWorkspaceRenameCommand builds `masuda workspace rename`, the only way
+// to set or change a workspace's display name after creation (`create`/`plan
+// start`/`review start`'s --name only covers creation time). Name is purely
+// a label (workspace.Rename) — it plays no part in resolving a workspace, so
+// renaming has no effect beyond `workspace list`/`info` output.
+func newWorkspaceRenameCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:               "rename <workspace-id> <name>",
+		Short:             "Set or change a workspace's display name",
+		Args:              cobra.ExactArgs(2),
+		ValidArgsFunction: completeWorkspaceIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return workspace.Rename(args[0], args[1])
 		},
 	}
 }

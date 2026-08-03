@@ -36,6 +36,7 @@ import (
 // repo even though the state directory is global, not per-repo).
 type Info struct {
 	ID        string    `json:"id"`
+	Name      string    `json:"name,omitempty"`
 	Branch    string    `json:"branch"`
 	Base      string    `json:"base"`
 	RepoRoot  string    `json:"repo_root"`
@@ -119,9 +120,11 @@ func NewID(branch string) (string, error) {
 // Create persists a new workspace's metadata and returns it. Call once per
 // masuda invocation that starts a genuinely new piece of work — `masuda
 // worktree create`, `masuda plan start <branch> <task>`, `masuda review
-// start <branch-or-ref>`.
-func Create(repoRoot, id, branch, base string) (Info, error) {
-	info := Info{ID: id, Branch: branch, Base: base, RepoRoot: repoRoot, CreatedAt: time.Now()}
+// start <branch-or-ref>`. name is an optional human-readable label (display
+// only — it plays no part in resolving a workspace, unlike id) and may be
+// empty.
+func Create(repoRoot, id, branch, base, name string) (Info, error) {
+	info := Info{ID: id, Name: name, Branch: branch, Base: base, RepoRoot: repoRoot, CreatedAt: time.Now()}
 	dir, err := StateDir(id)
 	if err != nil {
 		return Info{}, err
@@ -157,6 +160,26 @@ func Load(id string) (Info, error) {
 		return Info{}, fmt.Errorf("parsing metadata for workspace %q: %w", id, err)
 	}
 	return info, nil
+}
+
+// Rename overwrites workspace id's display name (Info.Name) — the one field
+// on Info a user can change after creation, since unlike id/branch/base it's
+// purely a label carrying no resolution or git meaning.
+func Rename(id, name string) error {
+	info, err := Load(id)
+	if err != nil {
+		return err
+	}
+	info.Name = name
+	dir, err := StateDir(id)
+	if err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(info, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, metadataFileName), data, 0o644)
 }
 
 // Exists reports whether id refers to an already-created workspace — used
@@ -252,14 +275,18 @@ func FormatEntries(entries []EntryStatus) string {
 	}
 	var buf bytes.Buffer
 	w := tabwriter.NewWriter(&buf, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "WORKSPACE ID\tBRANCH\tBASE\tSTATUS\tRUNNING\tCREATED")
+	fmt.Fprintln(w, "WORKSPACE ID\tNAME\tBRANCH\tBASE\tSTATUS\tRUNNING\tCREATED")
 	for _, e := range entries {
 		running := "no"
 		if e.Running {
 			running = "yes"
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-			e.ID, e.Branch, e.Base, e.TaskStatus, running, e.CreatedAt.Format(time.RFC3339))
+		name := e.Name
+		if name == "" {
+			name = "-"
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			e.ID, name, e.Branch, e.Base, e.TaskStatus, running, e.CreatedAt.Format(time.RFC3339))
 	}
 	w.Flush()
 	return buf.String()

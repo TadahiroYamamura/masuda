@@ -28,7 +28,7 @@ import (
 // flight — each workspace gets its own worktree, state directory, and
 // sandbox container, so nothing to collide over.
 func newReviewStartCommand() *cobra.Command {
-	var base, image string
+	var base, image, name string
 	cmd := &cobra.Command{
 		Use:   "start <branch-or-ref> [--base develop]",
 		Short: "Review an existing branch standalone, skipping investigate/plan/implement",
@@ -57,7 +57,7 @@ show|chat|approve|reject.`,
 			if err != nil {
 				return err
 			}
-			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase)
+			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase, name)
 			if err != nil {
 				return err
 			}
@@ -82,6 +82,7 @@ show|chat|approve|reject.`,
 	}
 	cmd.Flags().StringVar(&base, "base", defaultBase, "ref to diff and review against")
 	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to run")
+	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only, shown in `workspace list`/`info`)")
 	return cmd
 }
 

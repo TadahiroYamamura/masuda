@@ -18,6 +18,7 @@ import (
 func newPlanStartCommand() *cobra.Command {
 	var base string
 	var instructionsFile string
+	var name string
 	cmd := &cobra.Command{
 		Use:   "start <branch-or-workspace-id> [task]",
 		Short: "Start a new workspace, or resume an existing one's phase 1-2 (investigate -> plan -> G1) host loop",
@@ -56,6 +57,9 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 				if instructionsFile != "" {
 					return fmt.Errorf("workspace %q already exists — --file is only accepted when starting a new workspace from a branch name", args[0])
 				}
+				if name != "" {
+					return fmt.Errorf("workspace %q already exists — --name is only accepted when starting a new workspace from a branch name (use `masuda workspace rename` to relabel it)", args[0])
+				}
 				info, err := workspace.Load(args[0])
 				if err != nil {
 					return err
@@ -84,7 +88,7 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 			if err != nil {
 				return err
 			}
-			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase)
+			info, worktreeDir, err := newWorkspace(root, branch, resolvedBase, name)
 			if err != nil {
 				return err
 			}
@@ -110,5 +114,6 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 	}
 	cmd.Flags().StringVar(&base, "base", defaultBase, "branch to create the worktree's branch from, if it doesn't exist yet")
 	cmd.Flags().StringVar(&instructionsFile, "file", "", "path to a pre-written instructions/investigation document; the investigator will fact-check it against the codebase before producing INVESTIGATION.md (only valid when starting a new workspace)")
+	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only; only valid when starting a new workspace)")
 	return cmd
 }
