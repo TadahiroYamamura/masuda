@@ -2,9 +2,10 @@
 // same 14 checks that used to live hardcoded in
 // orchestrator/perspectives/config.py — as the canonical source `masuda
 // init` copies into a target repository's .masuda/reviews/ (ADR-0024). Each
-// file is Markdown with YAML frontmatter (name/category/severity) plus a
-// free-text body that becomes the perspective's review_prompt verbatim; the
-// filename (minus extension) is the perspective's stable ID.
+// file is Markdown with YAML frontmatter (name only — ADR-0025 dropped
+// category/severity, both unused dead data) plus a free-text body that
+// becomes the perspective's review_prompt verbatim; the filename (minus
+// extension) is the perspective's stable ID.
 package perspectives
 
 import (

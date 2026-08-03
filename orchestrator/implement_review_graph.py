@@ -82,11 +82,12 @@ def _checker_prompt(name: str, review_prompt: str) -> str:
 
 
 def _parse_perspective_file(path: Path) -> dict:
-    """Parses one .masuda/reviews/*.md file: YAML frontmatter
-    (name/category/severity) delimited by '---' lines, then a free-text body
-    that becomes review_prompt verbatim (ADR-0024 -- project authors write
-    only this; checker_prompt is never read from the file, always
-    generated)."""
+    """Parses one .masuda/reviews/*.md file: YAML frontmatter (name only --
+    ADR-0025 dropped category/severity, which were carried over unread from
+    the original hardcoded PERSPECTIVES list and never actually consumed
+    anywhere) delimited by '---' lines, then a free-text body that becomes
+    review_prompt verbatim (ADR-0024 -- project authors write only this;
+    checker_prompt is never read from the file, always generated)."""
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---\n"):
         raise ValueError(f"{path}: expected to start with a '---' YAML frontmatter delimiter")
@@ -95,8 +96,6 @@ def _parse_perspective_file(path: Path) -> dict:
     name = frontmatter.get("name") or path.stem
     return {
         "name": name,
-        "category": frontmatter.get("category", ""),
-        "severity": frontmatter.get("severity", ""),
         "review_prompt": body,
         "checker_prompt": _checker_prompt(name, body),
     }

@@ -44,8 +44,7 @@ def _write_test_perspectives(reviews_dir):
     reviews_dir.mkdir(parents=True, exist_ok=True)
     for pid in TEST_PERSPECTIVE_IDS:
         (reviews_dir / f"{pid}.md").write_text(
-            f'---\nname: "テスト観点{pid}"\ncategory: "テスト"\nseverity: "中"\n---\n'
-            f"テスト観点{pid}のreview_prompt本文。\n",
+            f'---\nname: "テスト観点{pid}"\n---\n' f"テスト観点{pid}のreview_prompt本文。\n",
             encoding="utf-8",
         )
 
