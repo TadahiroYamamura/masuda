@@ -45,11 +45,92 @@ import subprocess
 from pathlib import Path
 from typing import TypedDict
 
+import yaml
 from langgraph.graph import END, StateGraph
 
-from perspectives.config import PERSPECTIVES
+# ADR-0024: perspectives are no longer hardcoded here. They're read from the
+# target repository's own .masuda/reviews/ (one Markdown file per
+# perspective, `masuda init` seeds it with masuda's 14 built-ins --
+# internal/perspectives/builtin on the Go side is the canonical source for
+# that seed). This runs with cwd == the worktree (/workspace, same as every
+# git command in this file), so the path is relative, not STATE_DIR-based.
+REVIEWS_DIR = Path(".masuda/reviews")
 
+
+def _checker_prompt(name: str, review_prompt: str) -> str:
+    """Mechanically assembles a checker_prompt from a perspective's name and
+    review_prompt body (ADR-0024) -- no LLM call, so this is deterministic
+    and free at review time. Every one of masuda's 14 built-in perspectives
+    used to hand-write a checker_prompt with this exact skeleton (intro +
+    見落とし/誤検知/説明の具体性 checklist + closing line); the only part
+    that varied per perspective was the specific 見落とし/誤検知 criteria,
+    which this template generalizes into a reference back to review_prompt
+    itself instead of asking project authors to write a second prompt."""
+    return f"""あなたはレビュー品質を検証するエージェントです。
+以下のPR内容と、それに対する{name}に関するレビュー結果を確認してください。
+
+この観点の定義:
+{review_prompt}
+
+チェック観点:
+1. 見落とし: 上記の定義に該当する問題があるのに指摘していない
+2. 誤検知: 上記の定義に該当しないものを誤って問題と判断している
+3. 説明の具体性: 問題箇所と修正方法が明確に示されているか
+
+レビューが適切であれば ok=true、問題があれば ok=false とフィードバックを返してください。
+"""
+
+
+def _parse_perspective_file(path: Path) -> dict:
+    """Parses one .masuda/reviews/*.md file: YAML frontmatter
+    (name/category/severity) delimited by '---' lines, then a free-text body
+    that becomes review_prompt verbatim (ADR-0024 -- project authors write
+    only this; checker_prompt is never read from the file, always
+    generated)."""
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---\n"):
+        raise ValueError(f"{path}: expected to start with a '---' YAML frontmatter delimiter")
+    _, frontmatter_text, body = text.split("---\n", 2)
+    frontmatter = yaml.safe_load(frontmatter_text) or {}
+    name = frontmatter.get("name") or path.stem
+    return {
+        "name": name,
+        "category": frontmatter.get("category", ""),
+        "severity": frontmatter.get("severity", ""),
+        "review_prompt": body,
+        "checker_prompt": _checker_prompt(name, body),
+    }
+
+
+def _load_perspectives() -> dict[str, dict]:
+    """Loads every perspective in REVIEWS_DIR, keyed by filename minus
+    extension (ADR-0024's stable ID -- addition/removal/renaming of files
+    between runs never shifts another perspective's identity, unlike the
+    sorted-enumeration-as-integer-index alternative ADR-0024 rejected).
+
+    Tolerates a missing/empty REVIEWS_DIR here -- this runs at *module
+    import* time, which for this process's actual entrypoint always has cwd
+    == the worktree (REVIEWS_DIR exists there once `masuda init` has run),
+    but a bare `import implement_review_graph` (e.g. pytest collecting this
+    package before any test's fixture has chdir'd into a prepared worktree)
+    has no such guarantee. The real "you forgot masuda init" failure is
+    raised from _detect_review_phase instead, the one place a genuinely
+    empty perspective set would otherwise silently mean "nothing to
+    review" rather than a clear error."""
+    if not REVIEWS_DIR.is_dir():
+        return {}
+    return {path.stem: _parse_perspective_file(path) for path in sorted(REVIEWS_DIR.glob("*.md"))}
+
+
+PERSPECTIVES = _load_perspectives()
+# Identity is the id (dict key) itself; this ordering exists only to give
+# subagent-facing prompts a stable "観点 N/TOTAL" position to display.
+PERSPECTIVE_IDS = sorted(PERSPECTIVES)
 TOTAL_PERSPECTIVES = len(PERSPECTIVES)
+
+
+def _perspective_position(pid: str) -> int:
+    return PERSPECTIVE_IDS.index(pid) + 1
 # ADR-0008 used 3 for the investigate<->plan redo; this mirrors the original
 # ported review graph's own MAX_RETRIES (2) for review<->check redo instead --
 # an independent, per-domain constant, not shared with phase 1-2's.
@@ -276,23 +357,23 @@ def _clear_review_state() -> None:
         REVIEW_RESULTS_DIR.rmdir()
 
 
-def _result_path(idx: int, attempt: int) -> Path:
-    return REVIEW_RESULTS_DIR / f"result_{idx}_attempt{attempt}.json"
+def _result_path(pid: str, attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"result_{pid}_attempt{attempt}.json"
 
 
-def _check_path(idx: int, attempt: int) -> Path:
-    return REVIEW_RESULTS_DIR / f"check_{idx}_attempt{attempt}.json"
+def _check_path(pid: str, attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"check_{pid}_attempt{attempt}.json"
 
 
-def _fix_path(idx: int, fix_attempt: int) -> Path:
-    return REVIEW_RESULTS_DIR / f"fix_{idx}_fixattempt{fix_attempt}.json"
+def _fix_path(pid: str, fix_attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"fix_{pid}_fixattempt{fix_attempt}.json"
 
 
-def _recheck_path(idx: int, fix_attempt: int) -> Path:
-    return REVIEW_RESULTS_DIR / f"recheck_{idx}_fixattempt{fix_attempt}.json"
+def _recheck_path(pid: str, fix_attempt: int) -> Path:
+    return REVIEW_RESULTS_DIR / f"recheck_{pid}_fixattempt{fix_attempt}.json"
 
 
-def _advance_and_next_task(idx: int, rs: dict) -> dict | None:
+def _advance_and_next_task(pid: str, rs: dict) -> dict | None:
     """Runs one perspective's review<->check / fix<->recheck transition logic
     (ADR-0021) as far as it can go using only what's already on disk --
     bumping redo/fix counters and settling into "clean"/"fixed"/"unresolved"
@@ -306,40 +387,40 @@ def _advance_and_next_task(idx: int, rs: dict) -> dict | None:
     instead of stopping at the first that needs work.
     """
     while True:
-        attempt = rs["redo_counts"].get(str(idx), 0) + 1
-        if not _result_path(idx, attempt).exists():
-            return {"idx": idx, "kind": "review", "attempt": attempt}
-        if not _check_path(idx, attempt).exists():
-            return {"idx": idx, "kind": "check", "attempt": attempt}
+        attempt = rs["redo_counts"].get(pid, 0) + 1
+        if not _result_path(pid, attempt).exists():
+            return {"id": pid, "kind": "review", "attempt": attempt}
+        if not _check_path(pid, attempt).exists():
+            return {"id": pid, "kind": "check", "attempt": attempt}
 
-        check = json.loads(_check_path(idx, attempt).read_text(encoding="utf-8"))
+        check = json.loads(_check_path(pid, attempt).read_text(encoding="utf-8"))
         if not check.get("ok"):
-            if rs["redo_counts"].get(str(idx), 0) < MAX_REVIEW_RETRIES:
-                rs["redo_counts"][str(idx)] = rs["redo_counts"].get(str(idx), 0) + 1
+            if rs["redo_counts"].get(pid, 0) < MAX_REVIEW_RETRIES:
+                rs["redo_counts"][pid] = rs["redo_counts"].get(pid, 0) + 1
                 continue
-            rs["unresolved"].append({"idx": idx, "reason": "review_check_not_converged"})
+            rs["unresolved"].append({"id": pid, "reason": "review_check_not_converged"})
             return None
 
-        result = json.loads(_result_path(idx, attempt).read_text(encoding="utf-8"))
+        result = json.loads(_result_path(pid, attempt).read_text(encoding="utf-8"))
         if not result.get("has_issues"):
-            rs["clean"].append(idx)
+            rs["clean"].append(pid)
             return None
 
         # Confirmed real issue(s) -- ADR-0004's fix <-> recheck loop.
-        fix_attempt = rs["fix_counts"].get(str(idx), 0) + 1
-        if not _fix_path(idx, fix_attempt).exists():
-            return {"idx": idx, "kind": "fix", "attempt": attempt, "fix_attempt": fix_attempt}
-        if not _recheck_path(idx, fix_attempt).exists():
-            return {"idx": idx, "kind": "recheck", "attempt": attempt, "fix_attempt": fix_attempt}
+        fix_attempt = rs["fix_counts"].get(pid, 0) + 1
+        if not _fix_path(pid, fix_attempt).exists():
+            return {"id": pid, "kind": "fix", "attempt": attempt, "fix_attempt": fix_attempt}
+        if not _recheck_path(pid, fix_attempt).exists():
+            return {"id": pid, "kind": "recheck", "attempt": attempt, "fix_attempt": fix_attempt}
 
-        recheck = json.loads(_recheck_path(idx, fix_attempt).read_text(encoding="utf-8"))
+        recheck = json.loads(_recheck_path(pid, fix_attempt).read_text(encoding="utf-8"))
         if recheck.get("resolved"):
-            rs["fixed"].append(idx)
+            rs["fixed"].append(pid)
             return None
-        if rs["fix_counts"].get(str(idx), 0) < MAX_REVIEW_RETRIES:
-            rs["fix_counts"][str(idx)] = rs["fix_counts"].get(str(idx), 0) + 1
+        if rs["fix_counts"].get(pid, 0) < MAX_REVIEW_RETRIES:
+            rs["fix_counts"][pid] = rs["fix_counts"].get(pid, 0) + 1
             continue
-        rs["unresolved"].append({"idx": idx, "reason": "fix_not_resolved"})
+        rs["unresolved"].append({"id": pid, "reason": "fix_not_resolved"})
         return None
 
 
@@ -361,13 +442,17 @@ def _detect_review_phase() -> State:
     if it found nothing, verify is skipped entirely (nothing to
     independently confirm).
     """
+    if TOTAL_PERSPECTIVES == 0:
+        raise FileNotFoundError(
+            f"{REVIEWS_DIR} not found or empty — run `masuda init` in this repository first (ADR-0024)"
+        )
     rs = _read_review_state()
-    resolved = set(rs["clean"]) | set(rs["fixed"]) | {u["idx"] for u in rs["unresolved"]}
+    resolved = set(rs["clean"]) | set(rs["fixed"]) | {u["id"] for u in rs["unresolved"]}
     batch = []
-    for idx in range(TOTAL_PERSPECTIVES):
-        if idx in resolved:
+    for pid in PERSPECTIVE_IDS:
+        if pid in resolved:
             continue
-        task = _advance_and_next_task(idx, rs)
+        task = _advance_and_next_task(pid, rs)
         if task is not None:
             batch.append(task)
     _write_review_state(rs)
@@ -558,22 +643,22 @@ G1（プラン承認ゲート）を再オープンしました（ADR-0010）。�
 """
 
 
-def _review_perspective_task(idx: int, attempt: int) -> str:
-    p = PERSPECTIVES[idx]
+def _review_perspective_task(pid: str, attempt: int) -> str:
+    p = PERSPECTIVES[pid]
     diff = _compute_diff()
     feedback_section = ""
     if attempt > 1:
-        prev_check = json.loads(_check_path(idx, attempt - 1).read_text(encoding="utf-8"))
+        prev_check = json.loads(_check_path(pid, attempt - 1).read_text(encoding="utf-8"))
         feedback_section = f"""
 
 ## 前回レビューへのフィードバック（要反映）
 {prev_check.get("feedback", "")}
 """
-    return f"""# TASK: レビュー（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+    return f"""# TASK: レビュー（フェーズ5、観点 {_perspective_position(pid)}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェント（Bash/Read/Grep等は不要、diffのみで判断する
 機械的チェック — 探索させないこと）に以下を委譲し、レビュー結果を
-`{_result_path(idx, attempt)}`に書き出させよ。
+`{_result_path(pid, attempt)}`に書き出させよ。
 
 ## レビュー観点の指示
 {p["review_prompt"]}
@@ -585,7 +670,7 @@ def _review_perspective_task(idx: int, attempt: int) -> str:
 
 ## 出力するJSONのスキーマ
 {{
-  "perspective_id": {idx},
+  "perspective_id": "{pid}",
   "perspective_name": "{p["name"]}",
   "has_issues": <bool>,
   "issues": [{{"severity": "高|中|低", "file": "<diffに現れるパス>", "startLine": <int>, "endLine": <int>, "description": "...", "suggestion": "..."}}],
@@ -594,18 +679,18 @@ def _review_perspective_task(idx: int, attempt: int) -> str:
 `startLine`/`endLine`はdiffの`@@ -a,b +c,d @@`ハンクヘッダーから数えられる、新ファイル側の行番号を書くこと。単一行の指摘は`startLine`と`endLine`を同じ値にする。
 
 ## 完了条件
-`{_result_path(idx, attempt)}` が存在すること
+`{_result_path(pid, attempt)}` が存在すること
 """
 
 
-def _check_perspective_task(idx: int, attempt: int) -> str:
-    p = PERSPECTIVES[idx]
+def _check_perspective_task(pid: str, attempt: int) -> str:
+    p = PERSPECTIVES[pid]
     diff = _compute_diff()
-    result = _result_path(idx, attempt).read_text(encoding="utf-8")
-    return f"""# TASK: レビュー結果の検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+    result = _result_path(pid, attempt).read_text(encoding="utf-8")
+    return f"""# TASK: レビュー結果の検証（フェーズ5、観点 {_perspective_position(pid)}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェントに以下を委譲し、検証結果を
-`{_check_path(idx, attempt)}`に書き出させよ。
+`{_check_path(pid, attempt)}`に書き出させよ。
 レビューした本人（同じコンテキスト）ではなく、独立した視点で検証すること。
 
 ## 検証観点の指示
@@ -623,36 +708,36 @@ def _check_perspective_task(idx: int, attempt: int) -> str:
 
 ## 出力するJSONのスキーマ
 {{
-  "perspective_id": {idx},
+  "perspective_id": "{pid}",
   "ok": <bool、レビュー結果が妥当なら true>,
   "feedback": "<ok=falseの場合、見落とし・誤検知の具体的な説明。ok=trueなら空文字>"
 }}
 
 ## 完了条件
-`{_check_path(idx, attempt)}` が存在すること
+`{_check_path(pid, attempt)}` が存在すること
 """
 
 
-def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
+def _fix_perspective_task(pid: str, attempt: int, fix_attempt: int) -> str:
     """ADR-0004: the fixer is a fresh, narrow-write subagent -- never the
     checker that flagged the issue (checking one's own fix isn't independent),
     and never the full phase-4 implementation subagent (too heavy for what's
     usually a small, localized fix)."""
-    p = PERSPECTIVES[idx]
-    result = _result_path(idx, attempt).read_text(encoding="utf-8")
+    p = PERSPECTIVES[pid]
+    result = _result_path(pid, attempt).read_text(encoding="utf-8")
     retry_note = ""
     if fix_attempt > 1:
-        prev_recheck = json.loads(_recheck_path(idx, fix_attempt - 1).read_text(encoding="utf-8"))
+        prev_recheck = json.loads(_recheck_path(pid, fix_attempt - 1).read_text(encoding="utf-8"))
         retry_note = f"""
 
 ## 前回の修正では解決しませんでした
 {prev_recheck.get("feedback", "")}
 """
-    return f"""# TASK: 指摘の自動修正（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+    return f"""# TASK: 指摘の自動修正（フェーズ5、観点 {_perspective_position(pid)}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェント（指摘箇所のみ書き込み可、軽量な修正専用。
 指摘そのものを出したレビューア/checkerとは別コンテキストで実行すること）に
-以下の指摘を修正させ、完了したら`{_fix_path(idx, fix_attempt)}`
+以下の指摘を修正させ、完了したら`{_fix_path(pid, fix_attempt)}`
 に`{{"status": "fixed"}}`を書き出させよ。
 
 ## 修正対象の指摘
@@ -666,17 +751,17 @@ def _fix_perspective_task(idx: int, attempt: int, fix_attempt: int) -> str:
 現在のコードの意図だけを説明するものであり、この修正が何にどう応答したかを説明する場所ではない。
 
 ## 完了条件
-`{_fix_path(idx, fix_attempt)}` が存在すること
+`{_fix_path(pid, fix_attempt)}` が存在すること
 """
 
 
-def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
-    p = PERSPECTIVES[idx]
+def _recheck_perspective_task(pid: str, fix_attempt: int) -> str:
+    p = PERSPECTIVES[pid]
     diff = _compute_diff()
-    return f"""# TASK: 修正の再検証（フェーズ5、観点 {idx + 1}/{TOTAL_PERSPECTIVES}: {p["name"]}）
+    return f"""# TASK: 修正の再検証（フェーズ5、観点 {_perspective_position(pid)}/{TOTAL_PERSPECTIVES}: {p["name"]}）
 
 新規コンテキストのサブエージェントに以下を委譲し、検証結果を
-`{_recheck_path(idx, fix_attempt)}`に書き出させよ。
+`{_recheck_path(pid, fix_attempt)}`に書き出させよ。
 修正した本人（fixer）ではなく、独立した視点で検証すること。
 
 ## 検証観点の指示
@@ -696,26 +781,26 @@ def _recheck_perspective_task(idx: int, fix_attempt: int) -> str:
 }}
 
 ## 完了条件
-`{_recheck_path(idx, fix_attempt)}` が存在すること
+`{_recheck_path(pid, fix_attempt)}` が存在すること
 """
 
 
 _TASK_RENDERERS_AND_PATHS = {
-    "review": lambda t: (_review_perspective_task(t["idx"], t["attempt"]), _result_path(t["idx"], t["attempt"])),
-    "check": lambda t: (_check_perspective_task(t["idx"], t["attempt"]), _check_path(t["idx"], t["attempt"])),
+    "review": lambda t: (_review_perspective_task(t["id"], t["attempt"]), _result_path(t["id"], t["attempt"])),
+    "check": lambda t: (_check_perspective_task(t["id"], t["attempt"]), _check_path(t["id"], t["attempt"])),
     "fix": lambda t: (
-        _fix_perspective_task(t["idx"], t["attempt"], t["fix_attempt"]),
-        _fix_path(t["idx"], t["fix_attempt"]),
+        _fix_perspective_task(t["id"], t["attempt"], t["fix_attempt"]),
+        _fix_path(t["id"], t["fix_attempt"]),
     ),
     "recheck": lambda t: (
-        _recheck_perspective_task(t["idx"], t["fix_attempt"]),
-        _recheck_path(t["idx"], t["fix_attempt"]),
+        _recheck_perspective_task(t["id"], t["fix_attempt"]),
+        _recheck_path(t["id"], t["fix_attempt"]),
     ),
 }
 
 
 def _review_batch_task(tasks: list[dict]) -> str:
-    """ADR-0021: renders every independent (idx, kind) task in this round's
+    """ADR-0021: renders every independent (id, kind) task in this round's
     batch by reusing the existing single-item renderers unchanged, then
     wraps them with an instruction to delegate all of them as separate Task
     tool calls within one message instead of one at a time."""
@@ -841,19 +926,19 @@ def _unresolved_section(unresolved: list[dict]) -> str:
         "以下の観点は自動では解決できませんでした。AIの判定を鵜呑みにせず、人間が直接確認してください。\n",
     ]
     for entry in unresolved:
-        p = PERSPECTIVES[entry["idx"]]
+        p = PERSPECTIVES[entry["id"]]
         lines.append(f"- **{p['name']}**: {reason_labels.get(entry['reason'], entry['reason'])}")
     return "\n".join(lines) + "\n"
 
 
-def _fixed_section(fixed_ids: list[int]) -> str:
+def _fixed_section(fixed_ids: list[str]) -> str:
     """自動修正できた観点も、透明性のため確定的にレポートへ追記する
     （ADR-0004: 機械的な指摘はG2を経由せず自動的に解決できる）。"""
     if not fixed_ids:
         return ""
     lines = ["\n\n---\n\n## 自動修正済みの指摘\n", "以下の観点は指摘後、自動修正・再検証により解決を確認済みです。\n"]
-    for idx in fixed_ids:
-        p = PERSPECTIVES[idx]
+    for pid in fixed_ids:
+        p = PERSPECTIVES[pid]
         lines.append(f"- **{p['name']}**")
     return "\n".join(lines) + "\n"
 
@@ -880,9 +965,9 @@ def _synthesize_task() -> str:
     rs = _read_review_state()
     redo_counts = rs["redo_counts"]
     results = []
-    for idx in range(TOTAL_PERSPECTIVES):
-        attempt = redo_counts.get(str(idx), 0) + 1
-        results.append(json.loads(_result_path(idx, attempt).read_text(encoding="utf-8")))
+    for pid in PERSPECTIVE_IDS:
+        attempt = redo_counts.get(pid, 0) + 1
+        results.append(json.loads(_result_path(pid, attempt).read_text(encoding="utf-8")))
     results_json = json.dumps(results, ensure_ascii=False, indent=2)
     fixed_note = _fixed_section(rs["fixed"])
     unresolved_note = _unresolved_section(rs["unresolved"])
