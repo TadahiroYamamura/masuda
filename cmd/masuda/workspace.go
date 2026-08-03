@@ -31,6 +31,7 @@ func newWorkspaceCommand() *cobra.Command {
 	cmd.AddCommand(newWorkspaceMergeCommand())
 	cmd.AddCommand(newWorkspaceRemoveCommand())
 	cmd.AddCommand(newWorkspaceListCommand())
+	cmd.AddCommand(newWorkspaceInfoCommand())
 	return cmd
 }
 
@@ -132,6 +133,39 @@ func newWorkspaceRemoveCommand() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&keepBranch, "keep-branch", false, "remove only the worktree checkout, keep the branch ref")
 	return cmd
+}
+
+// newWorkspaceInfoCommand builds `masuda workspace info`, a lookup for the
+// one thing `list`'s table doesn't have room for: the absolute host paths of
+// a workspace's clone and state directory. `create` prints the clone path
+// once at creation time and nowhere else, so there was previously no way to
+// look it back up -- needed, for instance, to know where to manually resolve
+// a conflict `masuda workspace rebase` stopped on.
+func newWorkspaceInfoCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:               "info <workspace-id>",
+		Short:             "Show a workspace's paths and status",
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completeWorkspaceIDs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			root, err := repoRoot()
+			if err != nil {
+				return err
+			}
+			info, err := workspace.Load(args[0])
+			if err != nil {
+				return err
+			}
+			stateDir, err := workspace.StateDir(info.ID)
+			if err != nil {
+				return err
+			}
+			running := hostloop.IsRunning(info.ID) || sandbox.IsRunning(info.ID)
+			fmt.Fprintf(cmd.OutOrStdout(), "id=%s\nbranch=%s\nbase=%s\nworktree=%s\nstate_dir=%s\nstatus=%s\nrunning=%t\n",
+				info.ID, info.Branch, info.Base, worktree.Dir(root, info.ID), stateDir, workspace.Status(info.ID), running)
+			return nil
+		},
+	}
 }
 
 func newWorkspaceListCommand() *cobra.Command {
