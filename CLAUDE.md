@@ -47,10 +47,12 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 ### Go CLI（cmd/masuda）
 
-- `masuda workspace create|merge|remove|list`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
+- `masuda workspace create|merge|remove|list|info|rebase`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
   - `create <branch> [--base]`: 新規ワークスペースID発行＋`git clone --local`によるローカルクローン方式（ADR-0018、`git worktree add`ではない）
   - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する（ユーザーが明示的に叩く手動のローカル統合。`review approve`が自動で行うfast-forward限定の反映＝ADR-0023の`worktree.Pull`とは別物）。`remove`はworktree削除に続けて状態ディレクトリも削除する
   - `list`: 現在のリポジトリに紐づく全ワークスペースの一覧
+  - `info <workspace-id>`: clone・状態ディレクトリの絶対パスとstatus/runningを表示する。`create`は作成時に一度だけworktreeパスを出力するが、後から調べる手段が無かったため追加
+  - `rebase <workspace-id>`: `review approve`のfast-forwardが非fast-forwardで失敗した場合に、cloneをrepoRootの現在のブランチtipにfetch+rebaseする（`review approve`には組み込まない、常に人間が明示的に呼ぶ別コマンド。理由はADR-0023）
 - `masuda sandbox start|stop <workspace-id>`: worktreeのbind mountに加え、状態ディレクトリを`/masuda-state`に、ホストの`~/.claude/.credentials.json`・`~/.claude.json`をbind mountしてサブスク認証を引き継ぐ（ADR-0001）。前回のコンテナが（tmuxセッション終了により）Exited状態で残っていると`docker create`が名前衝突で失敗するため、`start`は同名の既存コンテナを`docker rm -f`してから作り直す
 - `masuda plan start <branch> "<task>"`（新規）/ `masuda plan start <workspace-id>`（再開）: 引数が既存ワークスペースIDかどうか（`workspace.Exists`）で新規/再開を判別する。新規はワークスペースID発行＋worktree作成＋フェーズ1-2のホスト側自己ループ起動（`internal/hostloop`）。メインセッションは`Bash,Task,Read,Edit`（成果物3ファイルのみ、状態ディレクトリの絶対パス）だけを持ち、実際にリポジトリ内容を読み回る調査・プラン作成はBashなしのカスタムエージェント（`investigator`/`planner`、`Read,Grep,Glob,Edit`のみ）にTask委譲する（ADR-0002の具体化）
   - **Claude Codeの許可ルールの罠**: 状態ディレクトリ（worktree外の絶対パス）への書き込みを事前承認する`Edit(/abs/path)`ルールは、単一の先頭スラッシュが「ルール自身が置かれた場所からの相対アンカー」と解釈されるため、パスが完全一致していても常に確認プロンプトが出る。真に絶対パスとして固定するには`Edit(//abs/path)`のように先頭スラッシュを2つ重ねる必要がある（既知のアップストリーム課題: [anthropics/claude-code#25137](https://github.com/anthropics/claude-code/issues/25137)、[#18200](https://github.com/anthropics/claude-code/issues/18200)）
