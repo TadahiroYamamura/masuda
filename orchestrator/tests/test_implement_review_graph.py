@@ -82,15 +82,18 @@ def in_tmp_workspace(tmp_path, monkeypatch):
     yield worktree_dir
 
 
-def write_plan(steps=None, summary="テスト用のプラン。"):
+def write_plan(steps=None, summary="テスト用のプラン。", expected_byproducts=None):
+    """ADR-0028 wraps steps.json's content in {"steps": [...],
+    "expected_byproducts": [...]}."""
     if steps is None:
         steps = SAMPLE_STEPS
     irg.PLAN_DIR.mkdir(parents=True, exist_ok=True)
     irg.PLAN_SUMMARY_MD.write_text(summary, encoding="utf-8")
-    irg.PLAN_STEPS_JSON.write_text(json.dumps(steps), encoding="utf-8")
+    data = {"steps": steps, "expected_byproducts": expected_byproducts or []}
+    irg.PLAN_STEPS_JSON.write_text(json.dumps(data), encoding="utf-8")
 
 
-def init_git_repo(steps=None):
+def init_git_repo(steps=None, expected_byproducts=None):
     subprocess.run(["git", "init", "-q"], check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "test"], check=True)
@@ -117,7 +120,7 @@ def init_git_repo(steps=None):
         ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
     ).stdout.strip()
     irg.BASE_REF_FILE.write_text(base_sha, encoding="utf-8")
-    write_plan(steps=steps)
+    write_plan(steps=steps, expected_byproducts=expected_byproducts)
 
 
 def mark_step_done(changed_files, commit_message="update"):
@@ -278,6 +281,115 @@ def test_standalone_review_skips_backstop_without_a_plan():
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "review_batch"
     assert json.loads(state["reason"])["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
+
+
+# --- expected_byproducts (ADR-0028) -----------------------------------------
+
+def test_read_expected_byproducts_returns_empty_without_a_plan():
+    assert irg._read_expected_byproducts() == []
+
+
+def test_read_expected_byproducts_reads_plan_data():
+    init_git_repo(expected_byproducts=["**/__pycache__/**", "**/*.pyc"])
+    assert irg._read_expected_byproducts() == ["**/__pycache__/**", "**/*.pyc"]
+
+
+# --- _glob_to_regex / _is_expected_byproduct: standard glob, not fnmatch ---
+# (ADR-0028: a lone `*` must not cross `/`, unlike fnmatch -- pinned down
+# explicitly since an fnmatch-based first version silently matched far more
+# broadly than its patterns implied.)
+
+def test_single_star_does_not_cross_path_separator():
+    assert irg._is_expected_byproduct("a.pyc", ["*.pyc"])
+    assert not irg._is_expected_byproduct("dir/a.pyc", ["*.pyc"])
+
+
+def test_double_star_crosses_path_separators():
+    patterns = ["**/*.pyc"]
+    assert irg._is_expected_byproduct("a.pyc", patterns), "**/ must also match zero directories"
+    assert irg._is_expected_byproduct("dir/a.pyc", patterns)
+    assert irg._is_expected_byproduct("dir/sub/a.pyc", patterns)
+
+
+def test_double_star_directory_pattern_matches_root_and_nested():
+    patterns = ["**/__pycache__/**"]
+    assert irg._is_expected_byproduct("__pycache__/mod.cpython-312.pyc", patterns)
+    assert irg._is_expected_byproduct("mathutils/__pycache__/ops.cpython-312.pyc", patterns)
+    assert not irg._is_expected_byproduct("mathutils/ops.py", patterns)
+
+
+def test_literal_pattern_without_wildcards_matches_only_that_exact_path():
+    assert irg._is_expected_byproduct("merged.yaml", ["merged.yaml"])
+    assert not irg._is_expected_byproduct("api/merged.yaml", ["merged.yaml"])
+
+
+def test_question_mark_matches_exactly_one_non_separator_character():
+    assert irg._is_expected_byproduct("a1c", ["a?c"])
+    assert not irg._is_expected_byproduct("ac", ["a?c"])
+    assert not irg._is_expected_byproduct("a/c", ["a?c"])
+
+
+def test_literal_regex_metacharacters_are_not_treated_as_regex():
+    """The dot in "merged.yaml" must match a literal dot, not "any character"
+    -- otherwise "mergedXyaml" would incorrectly count as a match too."""
+    assert not irg._is_expected_byproduct("mergedXyaml", ["merged.yaml"])
+
+
+def test_mechanical_deviation_exempts_predicted_byproducts():
+    """The exact scenario found on a live run: pytest, executed by the
+    implementation subagent's own self-verification loop (ADR-0009), leaves
+    __pycache__ behind. A pattern the planner predicted at G1 must not
+    reopen the gate for it."""
+    init_git_repo(expected_byproducts=["**/__pycache__/**"])
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
+    pathlib.Path("__pycache__").mkdir()
+    pathlib.Path("__pycache__/mod.cpython-312.pyc").write_text("bytecode", encoding="utf-8")
+
+    assert irg._mechanical_deviation({"README.md"}) is None
+
+
+def test_mechanical_deviation_still_flags_unpredicted_files():
+    """A predicted pattern only exempts what it matches -- an unrelated
+    unplanned file must still be caught."""
+    init_git_repo(expected_byproducts=["**/__pycache__/**"])
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
+    pathlib.Path("secrets.txt").write_text("oops", encoding="utf-8")
+
+    reason = irg._mechanical_deviation({"README.md"})
+
+    assert reason is not None
+    assert "secrets.txt" in reason
+
+
+def test_step_with_predicted_byproduct_lands_without_gate_reopen():
+    """End-to-end: a step whose only "extra" change matches a predicted
+    byproduct pattern commits cleanly, no G1 reopen at all -- unlike the
+    approved-deviation path, which still requires one human round-trip."""
+    init_git_repo(expected_byproducts=["**/__pycache__/**"])
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
+    pathlib.Path("__pycache__").mkdir()
+    pathlib.Path("__pycache__/mod.cpython-312.pyc").write_text("bytecode", encoding="utf-8")
+    mark_step_done(["README.md"])
+    resolve_other_perspectives_as_clean(skip="p00")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 1
+    assert state["phase"] == "review_batch"
+    assert json.loads(state["reason"])["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
+
+
+def test_render_plan_text_includes_expected_byproducts_section():
+    init_git_repo(expected_byproducts=["**/__pycache__/**"])
+    content = irg._render_plan_text()
+    assert "生成される可能性のある副産物ファイル" in content
+    assert "**/__pycache__/**" in content
+
+
+def test_render_plan_text_omits_expected_byproducts_section_when_empty():
+    init_git_repo()
+    content = irg._render_plan_text()
+    assert "生成される可能性のある副産物ファイル" not in content
 
 
 # --- _read_base_ref / _compute_diff / _compute_step_diff -------------------

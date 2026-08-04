@@ -49,6 +49,7 @@ git-managed worktree in the first place, so there's nothing to filter out.
 """
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import TypedDict
@@ -222,21 +223,86 @@ def _read_plan_summary() -> str:
     return PLAN_SUMMARY_MD.read_text(encoding="utf-8")
 
 
-def _read_plan_steps() -> list[dict]:
+def _read_plan_data() -> dict:
+    """Raw parse of plan/steps.json's top-level object -- {"steps": [...],
+    "expected_byproducts": [...]} (ADR-0028 wrapped what used to be a bare
+    step array so it could also carry the planner's predicted byproduct
+    patterns alongside the steps, both equally G1-approved data)."""
     if not PLAN_STEPS_JSON.exists():
         raise FileNotFoundError(f"{PLAN_STEPS_JSON} not found — phase 4 requires an approved plan from G1")
     return json.loads(PLAN_STEPS_JSON.read_text(encoding="utf-8"))
 
 
+def _read_plan_steps() -> list[dict]:
+    return _read_plan_data().get("steps", [])
+
+
+def _read_expected_byproducts() -> list[str]:
+    """Glob patterns the planner predicted the build/test toolchain may
+    generate as a side effect (ADR-0028) -- e.g. "**/__pycache__/**". Unlike
+    the implementation subagent's own changed_files self-report, this is
+    fixed at G1 approval time, before any implementation happens, so the
+    mechanical backstop can safely exempt matches from deviation detection
+    without weakening ADR-0010's "don't trust self-report" guarantee.
+    Returns [] if there's no plan at all (standalone review, roadmap step 6)
+    rather than raising, since callers reach this from contexts that already
+    tolerate a planless workspace."""
+    if not PLAN_STEPS_JSON.exists():
+        return []
+    return _read_plan_data().get("expected_byproducts", [])
+
+
+def _glob_to_regex(pattern: str) -> re.Pattern:
+    """Standard glob semantics, not fnmatch's: a lone `*` matches within one
+    path segment only (never `/`), `**` matches across segments (zero or
+    more, so `**/foo` also matches `foo` at the root and `foo/**` matches
+    everything under `foo`), `?` matches a single non-separator character.
+    Everything else -- including regex metacharacters like `.` -- is matched
+    literally. fnmatch's `*` matching `/` too is a common source of surprise
+    (confirmed: an earlier version of this function used fnmatch, and
+    `*__pycache__*` silently behaved like a much broader `**/__pycache__/**`
+    than its author intended)."""
+    i, n = 0, len(pattern)
+    parts = []
+    while i < n:
+        c = pattern[i]
+        if c == "*":
+            j = i
+            while j < n and pattern[j] == "*":
+                j += 1
+            if j - i >= 2:
+                if j < n and pattern[j] == "/":
+                    parts.append(r"(?:.*/)?")
+                    j += 1
+                else:
+                    parts.append(r".*")
+            else:
+                parts.append(r"[^/]*")
+            i = j
+        elif c == "?":
+            parts.append(r"[^/]")
+            i += 1
+        else:
+            parts.append(re.escape(c))
+            i += 1
+    return re.compile("".join(parts))
+
+
+def _is_expected_byproduct(path: str, patterns: list[str]) -> bool:
+    return any(_glob_to_regex(pattern).fullmatch(path) for pattern in patterns)
+
+
 def _render_plan_text() -> str:
     """Assembles the same human-facing Markdown internal/gate/gate.go's
-    renderPlan builds on the Go side (ADR-0026) -- summary.md's prose, then a
-    dedup union of every step's files as "変更するファイル一覧", then each
-    step's own description + files as "実装のステップ分解". Deliberately not
-    shared code with the Go side (a ~15 line mechanical formatter isn't worth
-    a cross-language abstraction); used to give implementation subagents the
-    same plan-wide context `masuda plan show` gives a human."""
-    steps = _read_plan_steps()
+    renderPlan builds on the Go side (ADR-0026, ADR-0028) -- summary.md's
+    prose, then a dedup union of every step's files as "変更するファイル一覧",
+    then each step's own description + files as "実装のステップ分解", then
+    any predicted byproduct patterns. Deliberately not shared code with the
+    Go side (a ~20 line mechanical formatter isn't worth a cross-language
+    abstraction); used to give implementation subagents the same plan-wide
+    context `masuda plan show` gives a human."""
+    data = _read_plan_data()
+    steps = data.get("steps", [])
     lines = [_read_plan_summary(), "", "## 変更するファイル一覧", ""]
     seen: set[str] = set()
     for step in steps:
@@ -250,6 +316,11 @@ def _render_plan_text() -> str:
         lines.append(f"{i}. {step.get('description', '')}")
         for f in step.get("files", []):
             lines.append(f"   - `{f['path']}`: {f.get('description', '')}")
+    byproducts = data.get("expected_byproducts", [])
+    if byproducts:
+        lines += ["", "## 生成される可能性のある副産物ファイル（機械的バックストップの除外対象）", ""]
+        for pattern in byproducts:
+            lines.append(f"- `{pattern}`")
     return "\n".join(lines)
 
 
@@ -331,16 +402,23 @@ def _write_approved_deviations(paths: set[str]) -> None:
 
 def _extra_changed_files(planned: set[str]) -> set[str]:
     """Files touched outside `planned`, minus any deviation a human has
-    already approved through a prior G1 reopen -- without this exclusion, an
-    approved deviation would look identical to a brand new one on the very
-    next check and reopen the gate forever.
+    already approved through a prior G1 reopen, minus anything matching a
+    G1-approved expected_byproducts pattern (ADR-0028) -- without the first
+    exclusion, an approved deviation would look identical to a brand new one
+    on the very next check and reopen the gate forever; the second lets
+    predicted build/test side effects (e.g. `__pycache__`) through without
+    ever reopening the gate for them at all.
 
     `planned` is the file set to check against -- the current step's own
     declared files during normal phase 4 progress, or the whole plan's union
     during implement_g2_redo (ADR-0027, see _step_planned_files /
     _all_planned_files)."""
     approved = _read_approved_deviations()
-    return _actual_changed_files() - planned - approved
+    byproducts = _read_expected_byproducts()
+    return {
+        f for f in _actual_changed_files() - planned - approved
+        if not _is_expected_byproduct(f, byproducts)
+    }
 
 
 def _mechanical_deviation(planned: set[str]) -> str | None:

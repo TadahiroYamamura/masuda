@@ -27,14 +27,16 @@ def write_task_brief(text="タスクの説明"):
     ipg.TASK_BRIEF.write_text(text, encoding="utf-8")
 
 
-def write_plan(summary="...", steps=None):
+def write_plan(summary="...", steps=None, expected_byproducts=None):
     """ADR-0026: the plan is plan/summary.md (prose) + plan/steps.json
-    (structured), not a single PLAN.md file."""
+    (structured), not a single PLAN.md file. ADR-0028 wraps steps.json's
+    content in {"steps": [...], "expected_byproducts": [...]}."""
     if steps is None:
         steps = [{"description": "step 1", "files": []}]
     ipg.PLAN_DIR.mkdir(parents=True, exist_ok=True)
     ipg.PLAN_SUMMARY_MD.write_text(summary, encoding="utf-8")
-    ipg.PLAN_STEPS_JSON.write_text(json.dumps(steps), encoding="utf-8")
+    data = {"steps": steps, "expected_byproducts": expected_byproducts or []}
+    ipg.PLAN_STEPS_JSON.write_text(json.dumps(data), encoding="utf-8")
 
 
 # --- detect_phase -------------------------------------------------------

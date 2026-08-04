@@ -5,7 +5,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 ## 作業を始める前に読むもの
 
 - `docs/design/sandbox-workflow.md`: 全体アーキテクチャ（6フェーズ+2ゲート、メインエージェント/サブエージェントの役割分担、レビューフェーズの内部設計、リポジトリの目標構造等）
-- `docs/adr/0001`〜`0027`: 個々の設計判断とその理由・却下した代替案。番号順に読むと議論の経緯が追える
+- `docs/adr/0001`〜`0028`: 個々の設計判断とその理由・却下した代替案。番号順に読むと議論の経緯が追える
 - 「何を実装したか・実機で何が起きたか」というログは、実装ロードマップという形では保持していない。各コミットメッセージ（`意図`・`設計上の考慮点`・`懸念事項`を含む）が実質的にその役割を担っているため、`git log`を参照すること
 
 設計ドキュメント・ADRで定義された範囲は実装済み（ロードマップ1〜8番完了）。今後の拡張（横断的チェックの観点追加、他言語イメージバリアントの追加等）は都度ADRを起票して進める。
@@ -21,7 +21,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 - `orchestrator/investigate_plan_graph.py`: フェーズ0-2（worktree作成→調査→プラン作成→G1）の状態遷移ロジック。ADR-0012によりDockerサンドボックスなしでホスト上で動く。G1到達（`await_g1`）はGATE:planとして待機する
 - `orchestrator/implement_review_graph.py`: フェーズ4-5（実装・レビュー）の状態遷移ロジック。ADR-0013により1つのオーケストレーターにまとめている。Dockerサンドボックス内で動く
-  - フェーズ4（ADR-0027）: `plan/steps.json`（ADR-0026）のステップを1つずつ「実装→機械的バックストップ→トリガー該当観点の軽量途中レビュー→そのステップだけをcommit」の順で処理する。ステップ位置は`git rev-list --count <base_ref>..HEAD`から導出し、専用のカウンターファイルは持たない。ADR-0009のビルド/テスト自己修正はサブエージェント内で完結させ、オーケストレーターは`implementation_result.json`の結果（done/needs_plan_review/build_test_failed、doneには自己申告の`changed_files`を含む）だけを見る。ADR-0010の機械的バックストップ（そのステップの`files`と`git status --porcelain`の突き合わせ、LLM不使用）が計画外のファイル変更を検知すると`DEVIATION.md`を書き出しG1を再オープンする（GATE:planとして待機）。commitは`changed_files`で申告されたファイルだけを`git add --`でstageして行う（`-A`は使わない——ビルド/テストの副作用で生成される中間ファイルを巻き込まないため）
+  - フェーズ4（ADR-0027）: `plan/steps.json`（ADR-0026）のステップを1つずつ「実装→機械的バックストップ→トリガー該当観点の軽量途中レビュー→そのステップだけをcommit」の順で処理する。ステップ位置は`git rev-list --count <base_ref>..HEAD`から導出し、専用のカウンターファイルは持たない。ADR-0009のビルド/テスト自己修正はサブエージェント内で完結させ、オーケストレーターは`implementation_result.json`の結果（done/needs_plan_review/build_test_failed、doneには自己申告の`changed_files`を含む）だけを見る。ADR-0010の機械的バックストップ（そのステップの`files`と`git status --porcelain`の突き合わせ、LLM不使用）が計画外のファイル変更を検知すると`DEVIATION.md`を書き出しG1を再オープンする（GATE:planとして待機）。commitは`changed_files`で申告されたファイルだけを`git add --`でstageして行う（`-A`は使わない——ビルド/テストの副作用で生成される中間ファイルを巻き込まないため）。`plan/steps.json`の`expected_byproducts`（プランナーがG1承認前に予想する標準的なglobパターン——シェルや`.gitignore`と同じ`*`/`**`の意味、`fnmatch`ではなく自前の`_glob_to_regex()`で評価）にマッチするファイルは、機械的バックストップの逸脱判定からも除外される（ADR-0028。実装エージェントの事後申告ではなく人間がG1で承認済みのデータのみを使うため、ADR-0010の「自己申告に頼り切らない」原則を壊さない）
   - トリガー式軽量途中レビュー（ADR-0027）: `.masuda/reviews/*.md`のfrontmatターに`trigger`（自然言語、Claude Skillsの`description`と同じ書き方）を持つ観点だけが対象。ステップごとに1回のサブエージェント呼び出しで該当観点idを判定し（`trigger_match`フェーズ）、該当した観点だけをフェーズ5と同じreview/check/fix/recheckループ（`interim_review/step{N}/`に結果を書く、`review_results/`とは別ディレクトリ）で解決する。自動修正で収束しない指摘は、専用のエスカレーション体系が未着手なため暫定的にG1再オープンを流用する（承認→`.masuda-interim-carried-findings.json`に積んでそのままcommit、却下→同じステップを差し戻し）
   - G2却下時の再実装（ADR-0013）は、全ステップがcommit済みの状態からの単発修正（`implement_g2_redo`、プラン全体スコープ、ステップ分解を経由しない）として扱う。バックストップは全ステップの`files`をunionした集合と突き合わせる
   - ゲートマーカーの消費（承認/却下の反映）は、再オープンを新規検知した瞬間ではなく、実際に人間の判断が下された解決時点でのみ行う（新規検知のたびに即座に消費すると、承認済みの逸脱が次回チェックで同一の逸脱として検知され無限に再オープンし続けるため）。新規検知時に古いゲートマーカーが残っていれば削除する——最初のG1承認時のマーカーは`investigate_plan_graph.py`側で削除されず残り続けるため、削除しないと過去の別の承認が今回の逸脱の判断として誤って消費されてしまう。承認済み逸脱は`.masuda-approved-deviations.json`に記録し、以後の機械的バックストップから除外する

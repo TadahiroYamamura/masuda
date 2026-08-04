@@ -59,16 +59,27 @@ type planStepFile struct {
 	Description string `json:"description"`
 }
 
-// planStep is one element of plan/steps.json.
+// planStep is one element of planData.Steps.
 type planStep struct {
 	Description string         `json:"description"`
 	Files       []planStepFile `json:"files"`
 }
 
+// planData is the top-level shape of plan/steps.json (ADR-0028 wrapped it in
+// an object, from a bare step array, to also carry ExpectedByproducts —
+// glob patterns the planner predicts the build/test toolchain may generate
+// as a side effect, e.g. "*__pycache__*"). Both fields are
+// planner-authored and human-approved at G1, unlike anything the
+// implementation subagent self-reports later.
+type planData struct {
+	Steps              []planStep `json:"steps"`
+	ExpectedByproducts []string   `json:"expected_byproducts"`
+}
+
 // renderPlan assembles the human-facing Markdown `masuda plan show` prints
-// from plan/summary.md's free prose and plan/steps.json's structured step
-// list (ADR-0026) — deterministic string concatenation, no LLM involved,
-// mirroring _render_plan_text() on the Python side
+// from plan/summary.md's free prose and plan/steps.json's structured data
+// (ADR-0026, ADR-0028) — deterministic string concatenation, no LLM
+// involved, mirroring _render_plan_text() on the Python side
 // (orchestrator/implement_review_graph.py).
 func renderPlan(stateDir string) (string, error) {
 	summary, err := os.ReadFile(filepath.Join(stateDir, planDir, "summary.md"))
@@ -79,10 +90,11 @@ func renderPlan(stateDir string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("reading plan steps: %w", err)
 	}
-	var steps []planStep
-	if err := json.Unmarshal(stepsData, &steps); err != nil {
+	var data planData
+	if err := json.Unmarshal(stepsData, &data); err != nil {
 		return "", fmt.Errorf("parsing plan steps: %w", err)
 	}
+	steps := data.Steps
 
 	var b strings.Builder
 	b.Write(summary)
@@ -108,6 +120,17 @@ func renderPlan(stateDir string) (string, error) {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, step.Description)
 		for _, f := range step.Files {
 			fmt.Fprintf(&b, "   - `%s`: %s\n", f.Path, f.Description)
+		}
+	}
+
+	// ADR-0028: shown so a human can sanity-check the prediction at G1,
+	// same as the file list above — omitted entirely when the planner
+	// didn't predict any (the common case for projects with no build/test
+	// side effects worth calling out).
+	if len(data.ExpectedByproducts) > 0 {
+		b.WriteString("\n## 生成される可能性のある副産物ファイル（機械的バックストップの除外対象）\n\n")
+		for _, pattern := range data.ExpectedByproducts {
+			fmt.Fprintf(&b, "- `%s`\n", pattern)
 		}
 	}
 	return b.String(), nil

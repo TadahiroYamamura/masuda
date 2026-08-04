@@ -23,10 +23,10 @@ func writePlan(t *testing.T, stateDir, summary, stepsJSON string) {
 
 func TestShowPlanRendersSummaryAndSteps(t *testing.T) {
 	stateDir := t.TempDir()
-	writePlan(t, stateDir, "アプローチの要約。", `[
+	writePlan(t, stateDir, "アプローチの要約。", `{"steps": [
 		{"description": "ステップ1", "files": [{"path": "a.go", "description": "aを追加"}]},
 		{"description": "ステップ2", "files": [{"path": "b.go", "description": "bを追加"}]}
-	]`)
+	]}`)
 
 	out, err := Show(stateDir, Plan)
 	if err != nil {
@@ -50,10 +50,10 @@ func TestShowPlanRendersSummaryAndSteps(t *testing.T) {
 
 func TestShowPlanDedupsFilesSharedAcrossSteps(t *testing.T) {
 	stateDir := t.TempDir()
-	writePlan(t, stateDir, "summary", `[
+	writePlan(t, stateDir, "summary", `{"steps": [
 		{"description": "ステップ1", "files": [{"path": "shared.go", "description": "1回目"}]},
 		{"description": "ステップ2", "files": [{"path": "shared.go", "description": "2回目"}]}
-	]`)
+	]}`)
 
 	out, err := Show(stateDir, Plan)
 	if err != nil {
@@ -72,7 +72,7 @@ func TestShowPlanDedupsFilesSharedAcrossSteps(t *testing.T) {
 
 func TestShowPlanPrependsDeviationWhenG1Reopened(t *testing.T) {
 	stateDir := t.TempDir()
-	writePlan(t, stateDir, "summary", `[{"description": "ステップ1", "files": []}]`)
+	writePlan(t, stateDir, "summary", `{"steps": [{"description": "ステップ1", "files": []}]}`)
 	if err := os.WriteFile(filepath.Join(stateDir, "DEVIATION.md"), []byte("計画外の変更があった"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -87,6 +87,43 @@ func TestShowPlanPrependsDeviationWhenG1Reopened(t *testing.T) {
 	}
 	if !strings.Contains(out, "G1 reopened") {
 		t.Fatalf("Show() must label the reopened state, got:\n%s", out)
+	}
+}
+
+func TestShowPlanRendersExpectedByproductsWhenPresent(t *testing.T) {
+	stateDir := t.TempDir()
+	writePlan(t, stateDir, "summary", `{
+		"steps": [{"description": "ステップ1", "files": []}],
+		"expected_byproducts": ["**/__pycache__/**", "**/*.pyc"]
+	}`)
+
+	out, err := Show(stateDir, Plan)
+	if err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+
+	for _, want := range []string{
+		"## 生成される可能性のある副産物ファイル",
+		"`**/__pycache__/**`",
+		"`**/*.pyc`",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Show() output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+}
+
+func TestShowPlanOmitsExpectedByproductsSectionWhenAbsent(t *testing.T) {
+	stateDir := t.TempDir()
+	writePlan(t, stateDir, "summary", `{"steps": [{"description": "ステップ1", "files": []}]}`)
+
+	out, err := Show(stateDir, Plan)
+	if err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+
+	if strings.Contains(out, "副産物ファイル") {
+		t.Fatalf("Show() must omit the byproducts section when the plan predicted none, got:\n%s", out)
 	}
 }
 
