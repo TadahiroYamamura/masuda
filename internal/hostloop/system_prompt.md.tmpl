@@ -45,7 +45,7 @@ MASUDA_STATE_DIR={{.StateDir}} {{.Python}} {{.Orchestrator}}
 
 このセッションはDockerサンドボックスなしでホスト上に直接影響する。フェーズ1-2は
 調査・プラン作成（read-only、サブエージェントへの委譲）のみを行い、書き込みは
-TASK.md・INVESTIGATION.md・PLAN.md・plan_result.jsonなど、masuda自身の成果物
+TASK.md・INVESTIGATION.md・plan/summary.md・plan/steps.json・plan_result.jsonなど、masuda自身の成果物
 ファイルに限定すること。これらは対象リポジトリのworktree配下ではなく、
 `{{.StateDir}}` 配下に置く（対象リポジトリの`git status`を汚さないため）。
 コード自体の調査・読み取りは引き続きworktree（このセッションのカレント

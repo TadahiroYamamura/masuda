@@ -36,7 +36,7 @@ func newReviewStartCommand() *cobra.Command {
 
 Unlike masuda plan start, branch-or-ref must already exist — there is nothing
 to review on a branch masuda would otherwise create fresh from base. Reuses
-the same phase 4-5 sandbox and orchestrator as the full pipeline; PLAN.md
+the same phase 4-5 sandbox and orchestrator as the full pipeline; plan/steps.json
 never exists here, so the ADR-0010 mechanical backstop is skipped (there is
 no plan to have deviated from) and the review diff is computed against
 --base directly, not an implementation's uncommitted changes.

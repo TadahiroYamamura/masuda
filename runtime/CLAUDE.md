@@ -45,7 +45,7 @@ MASUDA_STATE_DIR=/masuda-state /opt/masuda/venv/bin/python /opt/masuda/orchestra
 
 ## 注意
 
-masuda自身の制御ファイル（TASK.md・PLAN.md・`.masuda-gate/`・`review_results/`等）は
+masuda自身の制御ファイル（TASK.md・`plan/`・`.masuda-gate/`・`review_results/`等）は
 `/masuda-state`配下に置かれる（対象リポジトリ＝`/workspace`の`git status`を汚さない
 ため）。ゲートマーカーの`$GATE_FILE`もこの配下（例: `/masuda-state/.masuda-gate/review.json`）
 を指す。コード自体の実装・レビューはこれまで通り`/workspace`に対して行う。

@@ -9,7 +9,7 @@
 // two parallel attempts at the same task) would fight over the same
 // worktree directory and container. Workspace IDs make every masuda
 // invocation independent, and moving masuda's control files (TASK.md,
-// PLAN.md, gate markers, review results, ...) into a directory the target
+// plan/, gate markers, review results, ...) into a directory the target
 // repository's git never sees also fixes a real bug found along the way:
 // `git add -A` inside the worktree was picking up masuda's own scratch
 // files and showing them to review subagents as if they were part of the

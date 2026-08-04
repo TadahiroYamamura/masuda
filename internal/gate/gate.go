@@ -9,7 +9,7 @@
 // agree on.
 //
 // All paths here are relative to a workspace's state directory (see
-// internal/workspace), not the git worktree: PLAN.md, final_report.md,
+// internal/workspace), not the git worktree: plan/, final_report.md,
 // DEVIATION.md, and the gate markers themselves are masuda's own control
 // files and live outside the worktree entirely (roadmap step 7).
 package gate
@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -30,11 +31,11 @@ const (
 	Review Name = "review"
 )
 
-// artifactPaths maps each gate to the file (relative to the workspace state
-// directory) that masuda plan/review show prints — the thing a human
-// reviews before deciding.
+// artifactPaths maps the review gate to the file (relative to the workspace
+// state directory) that masuda review show prints verbatim. The plan gate
+// has no single-file equivalent (ADR-0026 split it into plan/summary.md +
+// plan/steps.json) and is rendered by renderPlan instead.
 var artifactPaths = map[Name]string{
-	Plan:   "PLAN.md",
 	Review: "review_results/final_report.md",
 }
 
@@ -44,6 +45,72 @@ func (n Name) artifactPath() (string, error) {
 		return "", fmt.Errorf("unknown gate %q", n)
 	}
 	return p, nil
+}
+
+// planDir is the subdirectory (relative to a workspace's state directory)
+// holding the plan artifacts (ADR-0026).
+const planDir = "plan"
+
+// planStepFile is one file plan/steps.json declares a step will touch —
+// mirrors what phase 4's mechanical backstop (ADR-0010, scoped per-step by
+// ADR-0027) reads on the Python side.
+type planStepFile struct {
+	Path        string `json:"path"`
+	Description string `json:"description"`
+}
+
+// planStep is one element of plan/steps.json.
+type planStep struct {
+	Description string         `json:"description"`
+	Files       []planStepFile `json:"files"`
+}
+
+// renderPlan assembles the human-facing Markdown `masuda plan show` prints
+// from plan/summary.md's free prose and plan/steps.json's structured step
+// list (ADR-0026) — deterministic string concatenation, no LLM involved,
+// mirroring _render_plan_text() on the Python side
+// (orchestrator/implement_review_graph.py).
+func renderPlan(stateDir string) (string, error) {
+	summary, err := os.ReadFile(filepath.Join(stateDir, planDir, "summary.md"))
+	if err != nil {
+		return "", fmt.Errorf("reading plan summary: %w", err)
+	}
+	stepsData, err := os.ReadFile(filepath.Join(stateDir, planDir, "steps.json"))
+	if err != nil {
+		return "", fmt.Errorf("reading plan steps: %w", err)
+	}
+	var steps []planStep
+	if err := json.Unmarshal(stepsData, &steps); err != nil {
+		return "", fmt.Errorf("parsing plan steps: %w", err)
+	}
+
+	var b strings.Builder
+	b.Write(summary)
+
+	// "変更するファイル一覧" is the dedup union of every step's files
+	// (ADR-0026) rather than a separately-authored list, so it can never
+	// drift out of sync with the per-step lists the backstop actually
+	// checks against.
+	b.WriteString("\n\n## 変更するファイル一覧\n\n")
+	seen := make(map[string]bool)
+	for _, step := range steps {
+		for _, f := range step.Files {
+			if seen[f.Path] {
+				continue
+			}
+			seen[f.Path] = true
+			fmt.Fprintf(&b, "- `%s`: %s\n", f.Path, f.Description)
+		}
+	}
+
+	b.WriteString("\n## 実装のステップ分解\n\n")
+	for i, step := range steps {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, step.Description)
+		for _, f := range step.Files {
+			fmt.Fprintf(&b, "   - `%s`: %s\n", f.Path, f.Description)
+		}
+	}
+	return b.String(), nil
 }
 
 func (n Name) markerPath(stateDir string) string {
@@ -71,17 +138,26 @@ type Marker struct {
 // exhausted build/test retry, or the mechanical file-list backstop), the
 // reason recorded in DEVIATION.md is prepended so `masuda plan show` explains
 // *why* the gate is open again, not just what the (still-approved-looking)
-// PLAN.md says.
+// plan says.
 func Show(stateDir string, n Name) (string, error) {
-	rel, err := n.artifactPath()
-	if err != nil {
-		return "", err
+	var out string
+	if n == Plan {
+		rendered, err := renderPlan(stateDir)
+		if err != nil {
+			return "", err
+		}
+		out = rendered
+	} else {
+		rel, err := n.artifactPath()
+		if err != nil {
+			return "", err
+		}
+		content, err := os.ReadFile(filepath.Join(stateDir, rel))
+		if err != nil {
+			return "", fmt.Errorf("reading %s: %w", rel, err)
+		}
+		out = string(content)
 	}
-	content, err := os.ReadFile(filepath.Join(stateDir, rel))
-	if err != nil {
-		return "", fmt.Errorf("reading %s: %w", rel, err)
-	}
-	out := string(content)
 
 	if n == Plan {
 		if deviation, err := os.ReadFile(filepath.Join(stateDir, "DEVIATION.md")); err == nil {

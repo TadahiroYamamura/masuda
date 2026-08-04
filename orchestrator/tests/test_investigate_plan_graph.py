@@ -27,6 +27,16 @@ def write_task_brief(text="タスクの説明"):
     ipg.TASK_BRIEF.write_text(text, encoding="utf-8")
 
 
+def write_plan(summary="...", steps=None):
+    """ADR-0026: the plan is plan/summary.md (prose) + plan/steps.json
+    (structured), not a single PLAN.md file."""
+    if steps is None:
+        steps = [{"description": "step 1", "files": []}]
+    ipg.PLAN_DIR.mkdir(parents=True, exist_ok=True)
+    ipg.PLAN_SUMMARY_MD.write_text(summary, encoding="utf-8")
+    ipg.PLAN_STEPS_JSON.write_text(json.dumps(steps), encoding="utf-8")
+
+
 # --- detect_phase -------------------------------------------------------
 
 def test_no_files_means_investigate():
@@ -71,13 +81,13 @@ def test_retries_exhausted_stops_and_preserves_plan_result_for_inspection():
 
 
 def test_plan_done_no_marker_means_await_g1():
-    ipg.PLAN_MD.write_text("...", encoding="utf-8")
+    write_plan()
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "await_g1"
 
 
 def test_plan_done_pending_marker_means_await_g1():
-    ipg.PLAN_MD.write_text("...", encoding="utf-8")
+    write_plan()
     ipg.GATE_MARKER.parent.mkdir(parents=True)
     ipg.GATE_MARKER.write_text(json.dumps({"status": "pending"}), encoding="utf-8")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
@@ -85,7 +95,7 @@ def test_plan_done_pending_marker_means_await_g1():
 
 
 def test_plan_approved_means_g1_approved():
-    ipg.PLAN_MD.write_text("...", encoding="utf-8")
+    write_plan()
     ipg.GATE_MARKER.parent.mkdir(parents=True)
     ipg.GATE_MARKER.write_text(json.dumps({"status": "approved", "feedback": "lgtm"}), encoding="utf-8")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
@@ -93,7 +103,7 @@ def test_plan_approved_means_g1_approved():
 
 
 def test_plan_rejected_triggers_redo_and_consumes_marker():
-    ipg.PLAN_MD.write_text("...", encoding="utf-8")
+    write_plan()
     ipg.GATE_MARKER.parent.mkdir(parents=True)
     ipg.GATE_MARKER.write_text(
         json.dumps({"status": "rejected", "feedback": "この案は却下"}), encoding="utf-8"
@@ -117,7 +127,7 @@ def test_gate_marker_schema_matches_go_cli():
   "feedback": "looks good",
   "decided_at": "2026-07-25T15:30:25.532891232+09:00"
 }"""
-    ipg.PLAN_MD.write_text("...", encoding="utf-8")
+    write_plan()
     ipg.GATE_MARKER.parent.mkdir(parents=True)
     ipg.GATE_MARKER.write_text(go_cli_output, encoding="utf-8")
 

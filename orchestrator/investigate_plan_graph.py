@@ -4,9 +4,9 @@ Phase 1-2 (investigate -> plan -> G1) orchestrator.
 Runs on the HOST (no Docker — see docs/adr/0012) against a worktree that
 `masuda plan start` already created. Responsibilities:
 
-  - Inspect on-disk state (INVESTIGATION.md / PLAN.md / plan_result.json / the
-    G1 gate marker `masuda plan approve|reject` writes) to derive the current
-    phase
+  - Inspect on-disk state (INVESTIGATION.md / plan/summary.md+plan/steps.json
+    (ADR-0026) / plan_result.json / the G1 gate marker
+    `masuda plan approve|reject` writes) to derive the current phase
   - Overwrite TASK.md with instructions delegating the next step to a subagent
   - Exit -- the self-looping Claude session picks TASK.md up from there
 
@@ -57,7 +57,14 @@ TASK_BRIEF = STATE_DIR / ".masuda-task.md"
 # follow it blindly.
 INSTRUCTIONS_MD = STATE_DIR / "INSTRUCTIONS.md"
 INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
-PLAN_MD = STATE_DIR / "PLAN.md"
+# ADR-0026: PLAN.md is no longer one Markdown file. Prose lives in
+# summary.md; the mechanically-consumed step/file breakdown lives in
+# steps.json (one JSON array, each element a {"description", "files"} step --
+# `internal/gate/gate.go`'s renderPlan assembles both into the Markdown
+# `masuda plan show` prints).
+PLAN_DIR = STATE_DIR / "plan"
+PLAN_SUMMARY_MD = PLAN_DIR / "summary.md"
+PLAN_STEPS_JSON = PLAN_DIR / "steps.json"
 PLAN_RESULT_JSON = STATE_DIR / "plan_result.json"
 RETRIES_FILE = STATE_DIR / ".masuda-plan-retries"
 ITERATION_COUNT_FILE = STATE_DIR / ".masuda-iteration-count"
@@ -140,7 +147,7 @@ def detect_phase(state: State) -> State:
       - a needs_more_investigation plan_result.json is deleted once folded
         into an investigate_redo
     """
-    if PLAN_MD.exists():
+    if PLAN_SUMMARY_MD.exists() and PLAN_STEPS_JSON.exists():
         marker = _read_gate_marker()
         status = (marker or {}).get("status", "pending")
         if status == "approved":
@@ -216,6 +223,12 @@ Task toolで `subagent_type: investigator` を指定し、新規コンテキス�
 
 
 def _plan_task(feedback: str | None) -> str:
+    # PLAN_DIR is created here (idempotent) rather than left to the planner
+    # subagent's Edit tool -- this process runs unsandboxed on the host, so
+    # there's no reason to gamble on Edit's own parent-directory handling for
+    # a brand new subdirectory (ADR-0026).
+    PLAN_DIR.mkdir(parents=True, exist_ok=True)
+
     redo_note = ""
     if feedback:
         redo_note = f"""
@@ -228,36 +241,57 @@ def _plan_task(feedback: str | None) -> str:
     return f"""# TASK: プラン作成（フェーズ2）
 
 Task toolで `subagent_type: planner` を指定し、新規コンテキストのサブエージェントに
-`{INVESTIGATION_MD}`を渡し、`{PLAN_MD}`を生成させよ（コードの追加調査自体はカレント
-ディレクトリ＝worktreeに対して行うが、成果物はこの絶対パスに書き出すこと）。
+`{INVESTIGATION_MD}`を渡し、`{PLAN_SUMMARY_MD}`と`{PLAN_STEPS_JSON}`を生成させよ
+（コードの追加調査自体はカレントディレクトリ＝worktreeに対して行うが、成果物は
+この絶対パスに書き出すこと）。
 （plannerはBashを持たないread-onlyエージェントとして定義済み。他のsubagent_typeは使わないこと）
 プランエージェントはRead/Grep/Globアクセスを持つため、
 {INVESTIGATION_MD.name}の軽微な不足は自分で追加調査して自己解決してよい。
 
 ただし調査の前提が崩れるような大きなギャップがある場合は、独自に調査をやり直さず
 `{PLAN_RESULT_JSON}`に`{{"status": "needs_more_investigation", "questions": [...]}}`
-を書き出させること（この場合{PLAN_MD.name}は書かない）。
+を書き出させること（この場合{PLAN_SUMMARY_MD.name}・{PLAN_STEPS_JSON.name}は書かない）。
 {redo_note}
-## {PLAN_MD.name}の構成
+## {PLAN_SUMMARY_MD.name}の構成（自由記述のprose、人間向け）
 - アプローチの要約
-- 変更するファイル一覧（それぞれ何をどう変えるか、理由）
-- 実装のステップ分解
 - テスト方針
 - 検討したが採用しなかった代替案
 - リスク・懸念事項
 
+## {PLAN_STEPS_JSON.name}の構成（機械的にパースされるJSON。有効なJSON配列を1個だけ書くこと）
+実装のステップ分解を、ステップごとに「そのステップで変更するファイル一覧」まで含めて
+以下の形で書くこと。ファイルの追加・変更理由は各ファイルの`description`に書く
+（{PLAN_SUMMARY_MD.name}側には書かない）。
+
+```json
+[
+  {{
+    "description": "ステップ1の説明（このステップで何を実装するか）",
+    "files": [
+      {{"path": "internal/foo/bar.go", "description": "〜のため〜を追加"}},
+      {{"path": "internal/foo/bar_test.go", "description": "上記のテスト"}}
+    ]
+  }},
+  {{"description": "ステップ2の説明", "files": [...]}}
+]
+```
+
+ステップは実装を安全に区切れる単位（1コミットとして意味を持つまとまり）に分けること。
+各ステップの`files`はそのステップで実際に変更するファイルに絞り、他のステップで扱う
+ファイルを含めないこと（フェーズ4の機械的バックストップがステップ単位で検証するため）。
+
 ## 完了条件
-`{PLAN_MD}` または `{PLAN_RESULT_JSON}` が存在すること
+（`{PLAN_SUMMARY_MD}` と `{PLAN_STEPS_JSON}` の両方）または `{PLAN_RESULT_JSON}` が存在すること
 """
 
 
 _TERMINAL = {
     "await_g1": f"""# GATE:plan
 
-{PLAN_MD.name}が完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
+プランが完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
 `{GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
 
-人間は `masuda plan show <workspace-id>` で{PLAN_MD.name}を確認し、
+人間は `masuda plan show <workspace-id>` でプランを確認し、
 `masuda plan chat <workspace-id>` で対話するか、
 `masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """,

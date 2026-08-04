@@ -9,11 +9,11 @@
 // Sessions and their artifacts are keyed by workspace ID (internal/workspace),
 // not branch name: two workspaces can target the same branch in parallel
 // (roadmap step 7), and masuda's own control files (TASK.md, INVESTIGATION.md,
-// PLAN.md, plan_result.json, gate markers, ...) live in that workspace's
-// state directory, never inside worktreeDir — worktreeDir is the target
-// repository's own git-managed checkout, and investigator/planner subagents
-// need its cwd to read repository content, but nothing masuda writes should
-// ever show up in that repository's `git status`.
+// plan/summary.md, plan/steps.json, plan_result.json, gate markers, ...) live
+// in that workspace's state directory, never inside worktreeDir — worktreeDir
+// is the target repository's own git-managed checkout, and investigator/planner
+// subagents need its cwd to read repository content, but nothing masuda writes
+// should ever show up in that repository's `git status`.
 package hostloop
 
 import (
@@ -99,9 +99,10 @@ const tmuxSessionPrefix = "masuda-plan-"
 // session-permission layer).
 func allowedTools(stateDir string) string {
 	return fmt.Sprintf(
-		"Bash,Task,Read,Grep,Glob,Edit(/%s),Edit(/%s),Edit(/%s)",
+		"Bash,Task,Read,Grep,Glob,Edit(/%s),Edit(/%s),Edit(/%s),Edit(/%s)",
 		filepath.Join(stateDir, "INVESTIGATION.md"),
-		filepath.Join(stateDir, "PLAN.md"),
+		filepath.Join(stateDir, "plan", "summary.md"),
+		filepath.Join(stateDir, "plan", "steps.json"),
 		filepath.Join(stateDir, "plan_result.json"),
 	)
 }
@@ -133,7 +134,8 @@ func customAgentsJSON() (string, error) {
 		plannerAgentName: {
 			Description: "Read-only planner (masuda phase 2). No Bash access.",
 			Prompt: "あなたは調査結果からプランを作成するサブエージェントです。Bashツールを持たないため、" +
-				"Read・Grep・Globのみで自己解決可能な範囲の追加調査を行い、指示されたファイル（PLAN.mdまたはplan_result.json）をEditツールで書き出してください。",
+				"Read・Grep・Globのみで自己解決可能な範囲の追加調査を行い、指示されたファイル（plan/summary.md・" +
+				"plan/steps.jsonの組、またはplan_result.json）をEditツールで書き出してください。",
 			Tools: []string{"Read", "Grep", "Glob", "Edit"},
 		},
 	}

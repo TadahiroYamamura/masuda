@@ -12,22 +12,26 @@ import pytest
 
 import implement_review_graph as irg
 
-SAMPLE_PLAN = """# PLAN.md
+# ADR-0026/0027: the plan is plan/summary.md (prose) + plan/steps.json
+# (structured, machine-parseable), with each step declaring its own file
+# list rather than one flat plan-wide list.
+SAMPLE_STEPS = [
+    {
+        "description": "README.mdを直す",
+        "files": [{"path": "README.md", "description": "1行追記する"}],
+    },
+]
 
-## アプローチの要約
-テスト用のプラン。
-
-## 変更するファイル一覧
-
-- `README.md`
-  - 変更内容: 1行追記する。インラインコード例: `echo hello`
-- `cmd/masuda/main.go`
-  - 変更内容: フラグを1つ追加する
-
-## 実装のステップ分解
-1. README.mdを直す
-2. main.goを直す
-"""
+TWO_STEP_PLAN = [
+    {
+        "description": "README.mdを直す",
+        "files": [{"path": "README.md", "description": "1行追記する"}],
+    },
+    {
+        "description": "main.goを直す",
+        "files": [{"path": "cmd/masuda/main.go", "description": "フラグを1つ追加する"}],
+    },
+]
 
 
 TEST_PERSPECTIVE_COUNT = 14
@@ -36,15 +40,20 @@ TEST_PERSPECTIVE_COUNT = 14
 TEST_PERSPECTIVE_IDS = [f"p{i:02d}" for i in range(TEST_PERSPECTIVE_COUNT)]
 
 
-def _write_test_perspectives(reviews_dir):
+def _write_test_perspectives(reviews_dir, triggered_ids=()):
     """Seeds .masuda/reviews/ (ADR-0024) with a minimal synthetic set of
     perspectives for tests -- production's real 14 built-ins live in
     internal/perspectives/builtin (Go side) and shouldn't be duplicated into
-    this Python test suite; only the id scheme and count matter here."""
+    this Python test suite; only the id scheme and count matter here.
+    `triggered_ids` (ADR-0027) adds a `trigger` frontmatter field to the
+    named perspectives so tests can exercise phase 4's interim review;
+    perspectives are otherwise untriggered by default (mirrors most of
+    masuda's real built-ins, which are trigger-less at seed time)."""
     reviews_dir.mkdir(parents=True, exist_ok=True)
     for pid in TEST_PERSPECTIVE_IDS:
+        trigger_line = f'trigger: "{pid}に関する変更"\n' if pid in triggered_ids else ""
         (reviews_dir / f"{pid}.md").write_text(
-            f'---\nname: "テスト観点{pid}"\n---\n' f"テスト観点{pid}のreview_prompt本文。\n",
+            f'---\nname: "テスト観点{pid}"\n{trigger_line}---\n' f"テスト観点{pid}のreview_prompt本文。\n",
             encoding="utf-8",
         )
 
@@ -53,10 +62,10 @@ def _write_test_perspectives(reviews_dir):
 def in_tmp_workspace(tmp_path, monkeypatch):
     # Mirrors production's split (roadmap step 7): git commands run against
     # worktree_dir (this process's cwd, same as before), while masuda's own
-    # control files (irg.PLAN_MD, irg.IMPLEMENTATION_RESULT_JSON, ...) resolve
-    # under a separate state_dir via MASUDA_STATE_DIR. irg reads that env var
-    # once at import time (STATE_DIR is a module-level constant), so it must
-    # be reload()ed after monkeypatching for each test to get its own
+    # control files (irg.PLAN_STEPS_JSON, irg.IMPLEMENTATION_RESULT_JSON, ...)
+    # resolve under a separate state_dir via MASUDA_STATE_DIR. irg reads that
+    # env var once at import time (STATE_DIR is a module-level constant), so
+    # it must be reload()ed after monkeypatching for each test to get its own
     # isolated state directory.
     #
     # Perspectives (ADR-0024) are now also read at import time, from
@@ -73,14 +82,22 @@ def in_tmp_workspace(tmp_path, monkeypatch):
     yield worktree_dir
 
 
-def init_git_repo():
+def write_plan(steps=None, summary="テスト用のプラン。"):
+    if steps is None:
+        steps = SAMPLE_STEPS
+    irg.PLAN_DIR.mkdir(parents=True, exist_ok=True)
+    irg.PLAN_SUMMARY_MD.write_text(summary, encoding="utf-8")
+    irg.PLAN_STEPS_JSON.write_text(json.dumps(steps), encoding="utf-8")
+
+
+def init_git_repo(steps=None):
     subprocess.run(["git", "init", "-q"], check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "test"], check=True)
     # A baseline commit so `git status --porcelain` / `git diff` report
     # new/modified files relative to something, matching a real worktree
-    # (which always starts from a base branch commit). PLAN.md itself is
-    # masuda's own control file and lives in STATE_DIR (roadmap step 7), never
+    # (which always starts from a base branch commit). The plan itself is
+    # masuda's own control data and lives in STATE_DIR (roadmap step 7), never
     # inside the git-managed worktree, so it's written separately here rather
     # than committed as part of the repo's baseline. .masuda/reviews/ (ADR-0024)
     # is committed here, though -- it's part of the target repo proper (like
@@ -90,32 +107,66 @@ def init_git_repo():
     pathlib.Path("README.md").write_text("baseline", encoding="utf-8")
     subprocess.run(["git", "add", "README.md", ".masuda"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "init"], check=True)
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
+    # Pin BASE_REF_FILE to this exact commit rather than relying on
+    # _read_base_ref()'s "develop" fallback string -- some environments'
+    # `git init` defaults new repos to a branch literally named "develop",
+    # which would make `develop..HEAD` always empty (develop *is* HEAD) and
+    # silently break _completed_step_count()/_compute_diff() for any test
+    # that commits further steps.
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    irg.BASE_REF_FILE.write_text(base_sha, encoding="utf-8")
+    write_plan(steps=steps)
 
 
-def write_result(pid, attempt, has_issues=False):
-    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
-    irg._result_path(pid, attempt).write_text(
+def mark_step_done(changed_files, commit_message="update"):
+    """ADR-0027: the implementation subagent self-reports both a commit
+    message and the files it intentionally changed, so _finalize_step's
+    eventual `git commit` has something to stage/land."""
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(
+        json.dumps({"status": "done", "changed_files": changed_files}), encoding="utf-8"
+    )
+    irg.STEP_COMMIT_MESSAGE_FILE.write_text(commit_message, encoding="utf-8")
+
+
+def mark_implementation_done_and_clean():
+    """A single-step plan (SAMPLE_STEPS) whose one step is implemented,
+    self-reported done, and ready to cleanly land -- the baseline most phase
+    5 (G2 review) tests build on, since detect_phase will commit this step
+    and fall straight through to phase 5 the moment it's invoked."""
+    init_git_repo()
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
+    mark_step_done(["README.md"])
+
+
+def write_result(pid, attempt, has_issues=False, results_dir=None):
+    results_dir = results_dir or irg.REVIEW_RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
+    irg._result_path(results_dir, pid, attempt).write_text(
         json.dumps({"perspective_id": pid, "has_issues": has_issues, "issues": [], "summary": "ok"}),
         encoding="utf-8",
     )
 
 
-def write_check(pid, attempt, ok, feedback=""):
-    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
-    irg._check_path(pid, attempt).write_text(
+def write_check(pid, attempt, ok, feedback="", results_dir=None):
+    results_dir = results_dir or irg.REVIEW_RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
+    irg._check_path(results_dir, pid, attempt).write_text(
         json.dumps({"perspective_id": pid, "ok": ok, "feedback": feedback}), encoding="utf-8"
     )
 
 
-def write_fix(pid, fix_attempt):
-    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
-    irg._fix_path(pid, fix_attempt).write_text(json.dumps({"status": "fixed"}), encoding="utf-8")
+def write_fix(pid, fix_attempt, results_dir=None):
+    results_dir = results_dir or irg.REVIEW_RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
+    irg._fix_path(results_dir, pid, fix_attempt).write_text(json.dumps({"status": "fixed"}), encoding="utf-8")
 
 
-def write_recheck(pid, fix_attempt, resolved, feedback=""):
-    irg.REVIEW_RESULTS_DIR.mkdir(exist_ok=True)
-    irg._recheck_path(pid, fix_attempt).write_text(
+def write_recheck(pid, fix_attempt, resolved, feedback="", results_dir=None):
+    results_dir = results_dir or irg.REVIEW_RESULTS_DIR
+    results_dir.mkdir(parents=True, exist_ok=True)
+    irg._recheck_path(results_dir, pid, fix_attempt).write_text(
         json.dumps({"resolved": resolved, "feedback": feedback}), encoding="utf-8"
     )
 
@@ -154,26 +205,28 @@ def batch_state(*tasks):
     return {"phase": "review_batch", "reason": json.dumps({"tasks": list(tasks)})}
 
 
-def mark_implementation_done_and_clean():
+# --- _step_planned_files / _all_planned_files / _completed_step_count -----
+
+def test_step_planned_files_reads_this_steps_files_only():
+    assert irg._step_planned_files(TWO_STEP_PLAN[0]) == {"README.md"}
+    assert irg._step_planned_files(TWO_STEP_PLAN[1]) == {"cmd/masuda/main.go"}
+
+
+def test_all_planned_files_unions_every_step():
+    assert irg._all_planned_files(TWO_STEP_PLAN) == {"README.md", "cmd/masuda/main.go"}
+
+
+def test_completed_step_count_is_zero_before_any_step_commit():
     init_git_repo()
-    import pathlib
-    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
-    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    assert irg._completed_step_count() == 0
 
 
-# --- _extract_planned_files ------------------------------------------------
-
-def test_extract_planned_files_reads_top_level_bullets_only():
-    files = irg._extract_planned_files(SAMPLE_PLAN)
-    assert files == {"README.md", "cmd/masuda/main.go"}
-
-
-def test_extract_planned_files_ignores_inline_code_in_sub_bullets():
-    assert "echo hello" not in irg._extract_planned_files(SAMPLE_PLAN)
-
-
-def test_extract_planned_files_missing_section_returns_empty():
-    assert irg._extract_planned_files("# PLAN.md\n\nno such section here\n") == set()
+def test_completed_step_count_reflects_commits_ahead_of_base_ref():
+    init_git_repo()
+    pathlib.Path("extra.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "extra.txt"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "one step landed"], check=True)
+    assert irg._completed_step_count() == 1
 
 
 # --- _actual_changed_files / _mechanical_deviation -------------------------
@@ -195,41 +248,39 @@ def test_actual_changed_files_ignores_masuda_state_dir_files():
 
 def test_mechanical_deviation_none_when_changes_within_plan():
     init_git_repo()
-    import pathlib
     pathlib.Path("README.md").write_text("updated", encoding="utf-8")
-    assert irg._mechanical_deviation() is None
+    assert irg._mechanical_deviation({"README.md"}) is None
 
 
 def test_mechanical_deviation_detects_unplanned_file():
     init_git_repo()
-    import pathlib
     pathlib.Path("README.md").write_text("updated", encoding="utf-8")
     pathlib.Path("secrets.txt").write_text("oops", encoding="utf-8")
 
-    reason = irg._mechanical_deviation()
+    reason = irg._mechanical_deviation({"README.md"})
 
     assert reason is not None
     assert "secrets.txt" in reason
 
 
-def test_mechanical_deviation_skipped_without_a_plan_md():
+def test_standalone_review_skips_backstop_without_a_plan():
     """Standalone review (`masuda review start`, roadmap step 6) never goes
-    through G1, so there's no PLAN.md and nothing to have deviated from —
-    the backstop must not raise FileNotFoundError trying to read one."""
+    through G1, so there's no plan/steps.json and nothing to have deviated
+    from -- detect_phase must skip the backstop entirely rather than raise
+    trying to read a plan that doesn't exist."""
     init_git_repo()
-    irg.PLAN_MD.unlink()
-    import pathlib
+    irg.PLAN_STEPS_JSON.unlink()
+    irg.PLAN_SUMMARY_MD.unlink()
     pathlib.Path("anything.txt").write_text("whatever", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
     resolve_other_perspectives_as_clean(skip="p00")
 
-    assert irg._mechanical_deviation() is None
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "review_batch"
     assert json.loads(state["reason"])["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
 
 
-# --- _read_base_ref / _compute_diff ---------------------------------------
+# --- _read_base_ref / _compute_diff / _compute_step_diff -------------------
 
 def test_read_base_ref_defaults_to_develop_when_file_absent():
     assert irg._read_base_ref() == "develop"
@@ -248,7 +299,6 @@ def test_compute_diff_uses_recorded_base_ref_not_bare_head():
     subprocess.run(["git", "init", "-q"], check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "test"], check=True)
-    import pathlib
     pathlib.Path("README.md").write_text("base version\n", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "base"], check=True)
@@ -287,30 +337,121 @@ def test_compute_diff_never_includes_masuda_state_dir_files():
     assert "result_p00_attempt1.json" not in diff
 
 
-# --- detect_phase: phase 4 -----------------------------------------------
+def test_compute_step_diff_diffs_against_head_not_base_ref():
+    """ADR-0027: once a prior step is already committed, the step diff must
+    show only the new, not-yet-committed change -- not the cumulative diff
+    since the branch's base ref, which _compute_diff() still reports."""
+    init_git_repo()
+    pathlib.Path("already-landed.txt").write_text("committed in a prior step", encoding="utf-8")
+    subprocess.run(["git", "add", "already-landed.txt"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "step 1 landed"], check=True)
 
-def test_no_result_means_implement():
-    assert irg.detect_phase({"phase": "", "reason": ""})["phase"] == "implement"
+    pathlib.Path("README.md").write_text("this step's change", encoding="utf-8")
+    diff = irg._compute_step_diff()
+
+    assert "this step's change" in diff
+    assert "already-landed.txt" not in diff
 
 
-def test_done_with_no_deviation_enters_review():
+# --- commit scoping (ADR-0027) ---------------------------------------------
+
+def test_commit_scoped_stages_only_declared_files():
+    """The core fix ADR-0027 makes over blind `git add -A`: a build/test
+    byproduct left in the working tree (e.g. `merged.yaml`-style codegen
+    output) must not ride along in the step's commit just because it exists
+    on disk."""
+    init_git_repo()
+    pathlib.Path("README.md").write_text("intentional change", encoding="utf-8")
+    pathlib.Path("byproduct.txt").write_text("accidental codegen output", encoding="utf-8")
+    irg.STEP_COMMIT_MESSAGE_FILE.write_text("update readme", encoding="utf-8")
+
+    irg._commit_scoped(["README.md"], irg.STEP_COMMIT_MESSAGE_FILE)
+
+    committed = subprocess.run(
+        ["git", "show", "--stat", "--format=", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout
+    assert "README.md" in committed
+    assert "byproduct.txt" not in committed
+    # left uncommitted in the working tree -- a known limitation (ADR-0027),
+    # not silently discarded.
+    assert "byproduct.txt" in irg._actual_changed_files()
+    assert not irg.STEP_COMMIT_MESSAGE_FILE.exists()
+
+
+def test_commit_scoped_survives_a_prior_add_dash_a_staging_everything():
+    """_compute_step_diff() (used by trigger_match/interim review earlier in
+    the same round) stages everything via `git add -A` for diffing purposes;
+    _commit_scoped must not let that leftover staged byproduct ride into the
+    commit just because it's already in the index."""
+    init_git_repo()
+    pathlib.Path("README.md").write_text("intentional change", encoding="utf-8")
+    pathlib.Path("byproduct.txt").write_text("accidental codegen output", encoding="utf-8")
+    irg._compute_step_diff()  # stages everything, including byproduct.txt
+    irg.STEP_COMMIT_MESSAGE_FILE.write_text("update readme", encoding="utf-8")
+
+    irg._commit_scoped(["README.md"], irg.STEP_COMMIT_MESSAGE_FILE)
+
+    committed = subprocess.run(
+        ["git", "show", "--stat", "--format=", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout
+    assert "byproduct.txt" not in committed
+
+
+# --- detect_phase: phase 4 step progression (ADR-0027) ---------------------
+
+def test_no_result_means_implement_step():
+    init_git_repo()
+    assert irg.detect_phase({"phase": "", "reason": ""})["phase"] == "implement_step"
+
+
+def test_step_done_with_no_deviation_and_no_triggers_lands_and_enters_review():
+    """No perspective in the test fixture declares a `trigger` by default, so
+    a clean step commits immediately and falls straight through to phase 5."""
     mark_implementation_done_and_clean()
     resolve_other_perspectives_as_clean(skip="p00")
+
     state = irg.detect_phase({"phase": "", "reason": ""})
+
     assert state["phase"] == "review_batch"
     assert json.loads(state["reason"])["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
+    assert irg._completed_step_count() == 1
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
 
 
-def test_done_with_unplanned_file_reopens_plan():
-    init_git_repo()
-    import pathlib
-    pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
-    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+def test_second_step_only_reviews_its_own_diff_after_first_lands():
+    init_git_repo(steps=TWO_STEP_PLAN)
+    pathlib.Path("README.md").write_text("step 1 change", encoding="utf-8")
+    mark_step_done(["README.md"], "step 1")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})  # lands step 1, moves on to step 2
+
+    assert irg._completed_step_count() == 1
+    assert state["phase"] == "implement_step"
+
+    pathlib.Path("cmd/masuda").mkdir(parents=True)
+    pathlib.Path("cmd/masuda/main.go").write_text("step 2 change", encoding="utf-8")
+    mark_step_done(["cmd/masuda/main.go"], "step 2")
+    resolve_other_perspectives_as_clean(skip="p00")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 2
+    assert state["phase"] == "review_batch"  # both steps landed -> phase 5 starts
+
+
+def test_step_deviation_outside_this_steps_files_reopens_plan():
+    """ADR-0027: the backstop compares against *this step's* declared files,
+    not the whole plan's -- touching a file that belongs to a later step is
+    still a deviation."""
+    init_git_repo(steps=TWO_STEP_PLAN)
+    pathlib.Path("cmd/masuda").mkdir(parents=True)
+    pathlib.Path("cmd/masuda/main.go").write_text("touched a later step's file early", encoding="utf-8")
+    mark_step_done(["cmd/masuda/main.go"])
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert state["phase"] == "plan_reopened"
-    assert "unplanned.txt" in state["reason"]
+    assert "cmd/masuda/main.go" in state["reason"]
 
 
 def test_needs_plan_review_reopens_plan():
@@ -335,6 +476,248 @@ def test_unknown_status_raises():
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "???"}), encoding="utf-8")
     with pytest.raises(ValueError):
         irg.detect_phase({"phase": "", "reason": ""})
+
+
+# --- detect_phase: trigger_match / interim review (ADR-0027) ---------------
+
+def test_no_triggered_perspectives_by_default():
+    """Already exercised by
+    test_step_done_with_no_deviation_and_no_triggers_lands_and_enters_review
+    above, but pinned down explicitly: the default test fixture seeds no
+    perspective with a `trigger`, mirroring how most of masuda's real
+    built-ins may never opt into interim review at all."""
+    assert irg.TRIGGERED_PERSPECTIVE_IDS == []
+
+
+def test_trigger_match_phase_requested_when_a_perspective_declares_trigger(tmp_path, monkeypatch):
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+
+    mark_implementation_done_and_clean()
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "trigger_match"
+    assert json.loads(state["reason"]) == {"step": 0}
+
+
+def test_trigger_match_task_lists_only_triggered_perspectives(tmp_path, monkeypatch):
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+
+    irg.write_task_md({"phase": "trigger_match", "reason": json.dumps({"step": 0})})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert 'id: "p00"' in content
+    assert 'id: "p01"' not in content
+
+
+def test_trigger_match_result_with_no_matches_lands_the_step(tmp_path, monkeypatch):
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    irg._interim_step_dir(0).mkdir(parents=True)
+    irg._trigger_match_path(0).write_text("[]", encoding="utf-8")
+    write_all_perspectives_clean()  # nothing under test needs a phase 5 batch
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 1
+    assert state["phase"] in ("review_batch", "cross_cutting_explore")
+
+
+def test_trigger_match_result_with_a_match_starts_interim_review(tmp_path, monkeypatch):
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    irg._interim_step_dir(0).mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "interim_review_batch"
+    payload = json.loads(state["reason"])
+    assert payload["step"] == 0
+    assert payload["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
+    # the step must not have landed yet -- interim review still pending
+    assert irg._completed_step_count() == 0
+
+
+def test_interim_review_clean_lands_the_step():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    irg._interim_step_dir(0).mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    write_result("p00", 1, has_issues=False, results_dir=irg._interim_step_dir(0))
+    write_check("p00", 1, ok=True, results_dir=irg._interim_step_dir(0))
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 1
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+
+
+def test_interim_review_confirmed_issue_enters_fix_loop():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    irg._interim_step_dir(0).mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    write_result("p00", 1, has_issues=True, results_dir=irg._interim_step_dir(0))
+    write_check("p00", 1, ok=True, results_dir=irg._interim_step_dir(0))
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "interim_review_batch"
+    payload = json.loads(state["reason"])
+    assert payload["tasks"] == [{"id": "p00", "kind": "fix", "attempt": 1, "fix_attempt": 1}]
+    assert irg._completed_step_count() == 0
+
+
+def test_interim_review_unresolved_reopens_plan_gate():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    step_dir = irg._interim_step_dir(0)
+    step_dir.mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    for attempt in (1, 2, 3):
+        write_result("p00", attempt, has_issues=False, results_dir=step_dir)
+        write_check("p00", attempt, ok=False, feedback=f"ng{attempt}", results_dir=step_dir)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert "p00" in irg.PERSPECTIVES["p00"]["name"] or irg.PERSPECTIVES["p00"]["name"] in state["reason"]
+    assert irg._completed_step_count() == 0
+
+
+def test_interim_review_unresolved_approved_carries_finding_and_lands_step():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    step_dir = irg._interim_step_dir(0)
+    step_dir.mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    for attempt in (1, 2, 3):
+        write_result("p00", attempt, has_issues=False, results_dir=step_dir)
+        write_check("p00", attempt, ok=False, feedback=f"ng{attempt}", results_dir=step_dir)
+    # DEVIATION.md is only written by write_task_md's "plan_reopened" branch,
+    # not by detect_phase itself (same split ADR-0010 established) -- write
+    # it directly here to simulate "the gate was already opened in a prior
+    # round," same pattern the mechanical-deviation tests above use.
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    write_all_perspectives_clean()
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 1, "approval lets the step land as-is"
+    carried = json.loads(irg.INTERIM_CARRIED_FINDINGS_JSON.read_text(encoding="utf-8"))
+    assert carried == [{"step": 0, "id": "p00", "reason": "review_check_not_converged"}]
+    assert state["phase"] in ("review_batch", "cross_cutting_explore")
+
+
+def test_interim_review_unresolved_rejected_redoes_step():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    step_dir = irg._interim_step_dir(0)
+    step_dir.mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    for attempt in (1, 2, 3):
+        write_result("p00", attempt, has_issues=False, results_dir=step_dir)
+        write_check("p00", attempt, ok=False, feedback=f"ng{attempt}", results_dir=step_dir)
+    # DEVIATION.md is only written by write_task_md's "plan_reopened" branch,
+    # not by detect_phase itself (same split ADR-0010 established) -- write
+    # it directly here to simulate "the gate was already opened in a prior
+    # round," same pattern the mechanical-deviation tests above use.
+    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "直して"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "implement_step"
+    assert "直して" in state["reason"]
+    assert irg._completed_step_count() == 0
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert not step_dir.exists(), "interim review state must be wiped so the redo starts fresh"
+
+
+# --- detect_phase: G2 rejection -> implement_g2_redo (ADR-0013/0027) -------
+
+def test_final_report_rejected_reopens_as_g2_redo_not_step_flow():
+    mark_implementation_done_and_clean()
+    resolve_other_perspectives_as_clean(skip="p00")
+    irg.detect_phase({"phase": "", "reason": ""})  # lands the step, enters phase 5
+    write_result("p00", 1)
+    write_check("p00", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})  # settles p00 clean
+
+    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
+    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
+    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "セキュリティ観点を見直して"}), encoding="utf-8")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "implement_g2_redo"
+    assert "セキュリティ観点を見直して" in state["reason"]
+    assert not irg.REVIEW_GATE_MARKER.exists(), "rejection must be consumed"
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists(), "must force a fresh implementation round"
+    assert not irg.REVIEW_STATE_JSON.exists(), "review must restart from perspective 0 (ADR-0013)"
+    assert not irg.REVIEW_RESULTS_DIR.exists(), "stale review results must not be reused (ADR-0013)"
+    assert not irg.COMMIT_MESSAGE_FILE.exists(), "stale commit message must not be reused for the redo's changes"
+
+
+def test_g2_redo_detected_on_fresh_process_via_feedback_file():
+    """detect_phase is re-invoked as a fresh process each loop iteration --
+    the reopened-implementation instruction must survive that, not just live
+    in the in-memory state dict."""
+    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "implement_g2_redo"
+    assert state["reason"] == "直して"
+
+
+def test_g2_redo_backstop_uses_whole_plan_union_not_a_single_step():
+    init_git_repo(steps=TWO_STEP_PLAN)
+    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    # cmd/masuda/main.go belongs to step 2, not step 1 -- but implement_g2_redo
+    # isn't decomposed into steps, so touching it must be fine.
+    pathlib.Path("cmd/masuda").mkdir(parents=True)
+    pathlib.Path("cmd/masuda/main.go").write_text("g2 redo touches step 2's file", encoding="utf-8")
+    mark_step_done(["cmd/masuda/main.go"], "g2 redo")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] != "plan_reopened"
+    assert not irg.REVIEW_FEEDBACK_MD.exists()
+
+
+def test_g2_redo_backstop_still_flags_a_file_outside_the_whole_plan():
+    init_git_repo(steps=TWO_STEP_PLAN)
+    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    pathlib.Path("totally-unplanned.txt").write_text("oops", encoding="utf-8")
+    mark_step_done(["totally-unplanned.txt"], "g2 redo")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert "totally-unplanned.txt" in state["reason"]
 
 
 # --- detect_phase: phase 5 (review) ---------------------------------------
@@ -501,6 +884,30 @@ def test_synthesize_omits_cross_cutting_section_when_no_findings():
     assert "横断的チェックの指摘なし" in content
 
 
+def test_synthesize_includes_interim_carried_section_when_present():
+    init_git_repo()
+    write_all_perspectives_clean()
+    irg.INTERIM_CARRIED_FINDINGS_JSON.write_text(
+        json.dumps([{"step": 0, "id": "p00", "reason": "review_check_not_converged"}]), encoding="utf-8"
+    )
+
+    irg.write_task_md({"phase": "synthesize", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "途中レビューで持ち越された指摘" in content
+    assert irg.PERSPECTIVES["p00"]["name"] in content
+
+
+def test_synthesize_omits_interim_carried_section_when_absent():
+    init_git_repo()
+    write_all_perspectives_clean()
+
+    irg.write_task_md({"phase": "synthesize", "reason": ""})
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "途中レビューで持ち越された指摘なし" in content
+
+
 def test_g2_rejection_clears_cross_cutting_files_too():
     """ADR-0013: G2 rejection restarts review from perspective 0, so a stale
     cross-cutting explore/verify result from the rejected round must not
@@ -635,64 +1042,48 @@ def test_final_report_approved_means_g2_approved():
     assert state["phase"] == "g2_approved"
 
 
-def test_final_report_rejected_reopens_implementation():
-    mark_implementation_done_and_clean()
-    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
-    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
-    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
-    write_result("p00", 1)
-    write_check("p00", 1, ok=True)
-    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "セキュリティ観点を見直して"}), encoding="utf-8")
-
-    state = irg.detect_phase({"phase": "", "reason": ""})
-
-    assert state["phase"] == "implement_redo"
-    assert "セキュリティ観点を見直して" in state["reason"]
-    assert not irg.REVIEW_GATE_MARKER.exists(), "rejection must be consumed"
-    assert not irg.IMPLEMENTATION_RESULT_JSON.exists(), "must force a fresh implementation round"
-    assert not irg.REVIEW_STATE_JSON.exists(), "review must restart from perspective 0 (ADR-0013)"
-    assert not irg.REVIEW_RESULTS_DIR.exists(), "stale review results must not be reused (ADR-0013)"
-    assert not irg.COMMIT_MESSAGE_FILE.exists(), "stale commit message must not be reused for the redo's changes"
-
-
-def test_implement_redo_detected_on_fresh_process_via_feedback_file():
-    """detect_phase is re-invoked as a fresh process each loop iteration --
-    the reopened-implementation instruction must survive that, not just live
-    in the in-memory state dict."""
-    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
-    state = irg.detect_phase({"phase": "", "reason": ""})
-    assert state["phase"] == "implement_redo"
-    assert state["reason"] == "直して"
-
-
 # --- write_task_md -----------------------------------------------------------
 
-def test_implement_task_includes_plan_content():
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
-    irg.write_task_md({"phase": "implement", "reason": ""})
+def test_implement_step_task_includes_plan_and_step_content():
+    init_git_repo()
+    irg.write_task_md({"phase": "implement_step", "reason": ""})
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "変更するファイル一覧" in content
+    assert "README.mdを直す" in content
     assert "DONE" not in content
 
 
-def test_implement_redo_includes_g2_feedback():
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
-    irg.write_task_md({"phase": "implement_redo", "reason": "セキュリティ観点を見直して"})
+def test_implement_step_redo_includes_feedback():
+    init_git_repo()
+    irg.write_task_md({"phase": "implement_step", "reason": "セキュリティ観点を見直して"})
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "セキュリティ観点を見直して" in content
 
 
-def test_implement_missing_plan_raises():
+def test_implement_g2_redo_task_includes_feedback_and_plan():
+    init_git_repo()
+    irg.write_task_md({"phase": "implement_g2_redo", "reason": "セキュリティ観点を見直して"})
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "セキュリティ観点を見直して" in content
+    assert "変更するファイル一覧" in content
+
+
+def test_implement_step_missing_plan_raises():
+    subprocess.run(["git", "init", "-q"], check=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
+    subprocess.run(["git", "config", "user.name", "test"], check=True)
+    pathlib.Path("README.md").write_text("baseline", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "init"], check=True)
     with pytest.raises(FileNotFoundError):
-        irg.write_task_md({"phase": "implement", "reason": ""})
+        irg.write_task_md({"phase": "implement_step", "reason": ""})
 
 
 def test_plan_reopened_writes_deviation_as_a_gate_not_a_terminal_done():
     """write_task_md's job here is only to open the gate (write DEVIATION.md,
     render the GATE:plan message) -- it must NOT also clear the gate marker or
     implementation_result.json anymore. That clearing now happens in
-    detect_phase/_resolve_plan_reopen, only once the gate is actually
+    detect_phase/_resolve_gate_reopen, only once the gate is actually
     resolved; doing it eagerly here was the bug that made an *approved*
     deviation reopen the gate forever once the loop could auto-resume
     (GATE:plan, roadmap step 5) instead of a human always restarting by hand.
@@ -712,11 +1103,10 @@ def test_plan_reopened_writes_deviation_as_a_gate_not_a_terminal_done():
     assert "計画外のファイル変更" in content
 
 
-# --- detect_phase: resolving a reopened G1 (ADR-0010, ADR-0013) ----------
+# --- detect_phase: resolving a reopened G1 (ADR-0010, ADR-0013, ADR-0027) --
 
 def test_mechanical_deviation_first_detection_opens_gate_without_clearing():
     init_git_repo()
-    import pathlib
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
 
@@ -735,7 +1125,6 @@ def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
     has looked at *this* deviation -- stale history silently standing in for
     today's answer."""
     init_git_repo()
-    import pathlib
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
     irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
@@ -749,7 +1138,6 @@ def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
 
 def test_mechanical_deviation_still_pending_reflects_same_reason():
     init_git_repo()
-    import pathlib
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
     irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
@@ -760,11 +1148,16 @@ def test_mechanical_deviation_still_pending_reflects_same_reason():
     assert state["reason"] == "既存の理由"
 
 
-def test_mechanical_deviation_approved_is_recorded_and_review_proceeds():
+def test_mechanical_deviation_approved_is_recorded_and_step_lands():
+    """Unlike a self-reported deviation, the agent already finished acting --
+    approval means "accept the extra file as-is" and continue forward. The
+    step's own declared changed_files still land normally; the approved
+    extra file (not part of any step's self-report) stays uncommitted, a
+    known limitation noted in ADR-0027."""
     init_git_repo()
-    import pathlib
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
-    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    mark_step_done(["README.md"])
     irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
     irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
     irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
@@ -775,9 +1168,7 @@ def test_mechanical_deviation_approved_is_recorded_and_review_proceeds():
     assert not irg.DEVIATION_MD.exists()
     assert not irg.PLAN_GATE_MARKER.exists()
     assert "unplanned.txt" in irg._read_approved_deviations()
-    # Approval means "accept the deviation as-is" -- implementation_result.json
-    # must survive so the next check treats it as already done, not redone.
-    assert irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert irg._completed_step_count() == 1, "approval must not force a redo -- the step lands"
     assert state["phase"] == "review_batch"
     assert json.loads(state["reason"])["tasks"] == [{"id": "p00", "kind": "review", "attempt": 1}]
 
@@ -787,20 +1178,20 @@ def test_mechanical_deviation_approved_does_not_reflag_on_next_check():
     approval, the very next mechanical check would see the same extra file
     and reopen the gate forever."""
     init_git_repo()
-    import pathlib
+    pathlib.Path("README.md").write_text("updated", encoding="utf-8")
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
-    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
+    mark_step_done(["README.md"])
     irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
     irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
     irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
-    irg.detect_phase({"phase": "", "reason": ""})  # resolves the approval
 
-    assert irg._mechanical_deviation() is None
+    irg.detect_phase({"phase": "", "reason": ""})  # resolves the approval, lands the step
+
+    assert irg._mechanical_deviation({"README.md"}) is None
 
 
 def test_mechanical_deviation_rejected_forces_fresh_implementation():
     init_git_repo()
-    import pathlib
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
     irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
@@ -813,7 +1204,7 @@ def test_mechanical_deviation_rejected_forces_fresh_implementation():
     assert not irg.PLAN_GATE_MARKER.exists()
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
     assert irg._read_approved_deviations() == set()
-    assert state["phase"] == "implement_redo"
+    assert state["phase"] == "implement_step"
     assert "計画通りにして" in state["reason"]
 
 
@@ -831,13 +1222,12 @@ def test_self_reported_deviation_approved_still_needs_a_redo_turn():
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert state["phase"] == "implement_redo"
+    assert state["phase"] == "implement_step"
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
 
 
 def test_review_perspective_task_includes_diff_and_perspective_prompt():
     init_git_repo()
-    import pathlib
     pathlib.Path("README.md").write_text("updated content", encoding="utf-8")
 
     irg.write_task_md(batch_state({"id": "p00", "kind": "review", "attempt": 1}))
@@ -892,7 +1282,6 @@ def test_fix_perspective_task_includes_prior_recheck_feedback_on_retry():
 
 def test_recheck_perspective_task_includes_diff_and_checker_prompt():
     init_git_repo()
-    import pathlib
     pathlib.Path("README.md").write_text("fixed content", encoding="utf-8")
 
     irg.write_task_md(batch_state({"id": "p00", "kind": "recheck", "fix_attempt": 1}))
@@ -919,8 +1308,24 @@ def test_review_batch_task_delegates_multiple_independent_tasks_in_parallel():
     assert "並列に" in content
     assert irg.PERSPECTIVES["p00"]["review_prompt"][:20] in content
     assert irg.PERSPECTIVES["p01"]["checker_prompt"][:20] in content
-    assert str(irg._result_path("p00", 1)) in content
-    assert str(irg._check_path("p01", 1)) in content
+    assert str(irg._result_path(irg.REVIEW_RESULTS_DIR, "p00", 1)) in content
+    assert str(irg._check_path(irg.REVIEW_RESULTS_DIR, "p01", 1)) in content
+
+
+def test_interim_review_batch_task_uses_step_diff_and_results_dir():
+    init_git_repo(steps=TWO_STEP_PLAN)
+    pathlib.Path("README.md").write_text("this step's change", encoding="utf-8")
+
+    irg.write_task_md(
+        {
+            "phase": "interim_review_batch",
+            "reason": json.dumps({"step": 0, "tasks": [{"id": "p00", "kind": "review", "attempt": 1}]}),
+        }
+    )
+
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "this step's change" in content
+    assert str(irg._interim_step_dir(0)) in content
 
 
 def test_review_batch_iteration_budget_counts_every_task_in_the_batch():
@@ -979,12 +1384,12 @@ def test_await_g2_mentions_review_cli_commands():
     assert "masuda review reject" in content
 
 
-# --- ITERATION_BUDGET (ADR-0011) -------------------------------------------
+# --- ITERATION_BUDGET (ADR-0011/ADR-0027) ----------------------------------
 
 def test_write_task_md_increments_iteration_count_for_subagent_phases():
     init_git_repo()
     assert irg._read_iteration_count() == 0
-    irg.write_task_md({"phase": "implement", "reason": ""})
+    irg.write_task_md({"phase": "implement_step", "reason": ""})
     assert irg._read_iteration_count() == 1
     irg.write_task_md({"phase": "cross_cutting_explore", "reason": ""})
     assert irg._read_iteration_count() == 2
@@ -999,14 +1404,33 @@ def test_write_task_md_does_not_increment_for_gate_or_terminal_phases():
     assert irg._read_iteration_count() == 0
 
 
-def test_iteration_budget_exceeded_overrides_phase():
-    """Once the persisted count already exceeds ITERATION_BUDGET, write_task_md
-    must render the blocked message instead of another subagent delegation --
-    a final defense line independent of MAX_REVIEW_RETRIES (ADR-0011)."""
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
-    irg.ITERATION_COUNT_FILE.write_text(str(irg.ITERATION_BUDGET), encoding="utf-8")
+def test_iteration_budget_scales_with_step_count():
+    """ADR-0027: the fixed 200 no longer holds once phase 4 walks a
+    variable-length list of steps. _iteration_budget() only reads
+    plan/steps.json, so no git repo is needed here."""
+    write_plan(steps=SAMPLE_STEPS)
+    one_step_budget = irg._iteration_budget()
 
-    irg.write_task_md({"phase": "implement", "reason": ""})
+    write_plan(steps=TWO_STEP_PLAN)
+    two_step_budget = irg._iteration_budget()
+
+    assert two_step_budget > one_step_budget
+    assert two_step_budget - one_step_budget == irg.PER_STEP_BUDGET
+
+
+def test_iteration_budget_falls_back_to_base_without_a_plan():
+    assert irg._iteration_budget() == irg.BASE_BUDGET
+
+
+def test_iteration_budget_exceeded_overrides_phase():
+    """Once the persisted count already exceeds the iteration budget,
+    write_task_md must render the blocked message instead of another
+    subagent delegation -- a final defense line independent of
+    MAX_REVIEW_RETRIES (ADR-0011)."""
+    init_git_repo()
+    irg.ITERATION_COUNT_FILE.write_text(str(irg._iteration_budget()), encoding="utf-8")
+
+    irg.write_task_md({"phase": "implement_step", "reason": ""})
 
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "DONE" in content
@@ -1014,7 +1438,7 @@ def test_iteration_budget_exceeded_overrides_phase():
 
 
 def test_full_graph_run_writes_task_md():
-    irg.PLAN_MD.write_text(SAMPLE_PLAN, encoding="utf-8")
+    init_git_repo()
     app = irg.build_graph()
     app.invoke({"phase": "", "reason": ""})
     assert irg.TASK_MD.exists()

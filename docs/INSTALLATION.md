@@ -93,7 +93,7 @@ masuda workspace list
 # 1. 新しいタスクを開始（worktree作成 + フェーズ1-2の自己ループ起動）
 masuda plan start <branch> "実装したいタスクの説明"
 
-# 2. プラン(PLAN.md)を確認し、承認 or 差し戻し
+# 2. プランを確認し、承認 or 差し戻し
 masuda plan show <workspace-id>
 masuda plan approve <workspace-id>
 # もしくは対話で相談したい場合
