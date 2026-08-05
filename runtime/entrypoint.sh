@@ -4,9 +4,17 @@ set -euo pipefail
 SESSION="claude-work"
 PROMPT="CLAUDE.mdのルールに従い作業を開始せよ"
 
+# --settings overrides every other settings source, including the target
+# repo's own .claude/settings.json (needed to reliably suppress e.g. the MCP
+# trust prompt regardless of what the repo declares) -- so this merges in
+# the build-time-baked plugin marketplace state first (see
+# merge_claude_settings.py) rather than letting --settings silently drop it.
+MERGED_SETTINGS=/tmp/masuda-claude-settings.json
+python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
+
 # Pass the initial prompt as a positional argument so Claude starts working immediately
 tmux new-session -d -s "$SESSION" \
-    "claude --dangerously-skip-permissions '$PROMPT'"
+    "claude --dangerously-skip-permissions --settings '$MERGED_SETTINGS' '$PROMPT'"
 
 # Poll for the bypass permissions dialog (up to 10s) and accept it if shown
 for i in $(seq 1 10); do

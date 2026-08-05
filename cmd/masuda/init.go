@@ -12,12 +12,33 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 )
 
+// defaultClaudeSettings is the starting value `masuda init` writes into
+// .masuda/settings.json's claudeSettings field. masuda itself carries no
+// implicit Claude Code defaults at runtime (see internal/config.Config's
+// ClaudeSettings doc) — this is the one place such a default exists, and
+// only as literal, user-editable/deletable content, the same materialize-
+// don't-embed pattern .masuda/reviews/ already uses for built-in review
+// perspectives.
+//
+// theme sidesteps the interactive first-run theme-selection wizard and
+// carries no security implication, so masuda suggesting it by default is
+// fine. enableAllProjectMcpServers/enabledMcpjsonServers are seeded at
+// their own inert values (false/empty — matching Claude Code's own
+// no-trust-by-default behavior, granting nothing) rather than left out
+// entirely: the point isn't to pre-approve anything, it's to put the
+// selective-trust escape hatch for Issue #10's MCP prompt (approve
+// specific servers by name in enabledMcpjsonServers, or flip
+// enableAllProjectMcpServers if a repo's servers are all trusted) in front
+// of the user instead of requiring them to know Claude Code's settings
+// schema to discover it.
+const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": []}`
+
 // newInitCommand builds `masuda init` (ADR-0024): a one-shot setup step that
 // populates a target repository's .masuda/ directory — .masuda/settings.json
 // (the image/base fields .masuda.json used to hold, now read exclusively
-// from here) and .masuda/reviews/ (masuda's 14 built-in review perspectives,
-// written out as individually editable/deletable files — see
-// internal/perspectives).
+// from here, plus a claudeSettings default) and .masuda/reviews/ (masuda's
+// 14 built-in review perspectives, written out as individually
+// editable/deletable files — see internal/perspectives).
 //
 // Deliberately refuses to run again once .masuda/ already exists, rather
 // than trying to reconcile it: ADR-0024 treats this as a one-time seed, not
@@ -42,7 +63,7 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			cfg := config.Config{Image: image, Base: base}
+			cfg := config.Config{Image: image, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
 			data, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
 				return err

@@ -10,8 +10,12 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     exit 0
 fi
 
+# See runtime/entrypoint.sh for why this merge happens before --settings.
+MERGED_SETTINGS=/tmp/masuda-claude-settings.json
+python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
+
 tmux new-session -d -s "$SESSION" -c "$WORKDIR" \
-    "claude --dangerously-skip-permissions"
+    "claude --dangerously-skip-permissions --settings '$MERGED_SETTINGS'"
 
 # Poll until the dialog appears or Claude is already at the prompt (no dialog).
 for i in $(seq 1 10); do

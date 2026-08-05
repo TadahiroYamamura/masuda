@@ -52,16 +52,8 @@ RUN python3 -m venv venv \
 # job, not the image build), so it can be iterated on without rebuilding the image.
 # See docs/adr/0007-loop-protocol-claude-md-in-user-scope.md
 COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
-COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/
-RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh
-
-# Pre-set the theme so a fresh container's first `claude` launch doesn't stop
-# at the interactive first-run theme-selection wizard (confirmed empirically —
-# --dangerously-skip-permissions does not skip this, only the separate
-# bypass-permissions dialog entrypoint.sh already handles). This is a fixed
-# onboarding-bypass setting, unlike runtime/CLAUDE.md, so it's fine to bake
-# into the image rather than place at container start.
-COPY --chown=ubuntu:ubuntu runtime/claude-settings.json /home/ubuntu/.claude/settings.json
+COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/
+RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh runtime/merge_claude_settings.py
 
 USER ubuntu
 

@@ -17,6 +17,9 @@ func TestLoadMissingFileReturnsZeroValue(t *testing.T) {
 	if cfg.Base != "" {
 		t.Fatalf("Base = %q, want empty", cfg.Base)
 	}
+	if cfg.ClaudeSettings != nil {
+		t.Fatalf("ClaudeSettings = %q, want nil", cfg.ClaudeSettings)
+	}
 }
 
 func TestLoadReadsImage(t *testing.T) {
@@ -42,6 +45,20 @@ func TestLoadReadsBase(t *testing.T) {
 	}
 	if cfg.Base != "main" {
 		t.Fatalf("Base = %q, want %q", cfg.Base, "main")
+	}
+}
+
+func TestLoadReadsClaudeSettings(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, `{"claudeSettings": {"theme": "dark-ansi"}}`)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	want := `{"theme": "dark-ansi"}`
+	if string(cfg.ClaudeSettings) != want {
+		t.Fatalf("ClaudeSettings = %q, want %q", cfg.ClaudeSettings, want)
 	}
 }
 

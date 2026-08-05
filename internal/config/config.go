@@ -41,6 +41,17 @@ type Config struct {
 	// lands on) when neither is passed explicitly — the two are almost
 	// always the same branch in practice.
 	Base string `json:"base,omitempty"`
+	// ClaudeSettings is passed verbatim to the `claude` CLI's --settings
+	// flag for every session masuda launches (phase 1-2 on the host, phase
+	// 3-5 in the sandbox). Unlike Image/Base, this has no masuda-side
+	// built-in default: masuda itself must not carry implicit Claude Code
+	// settings, so an absent field means no --settings flag is added at
+	// all, not "fall back to some default." `masuda init` populates it
+	// with a starting value the user can freely edit (see cmd/masuda
+	// init.go), the same way it materializes .masuda/reviews/ instead of
+	// keeping built-in content implicit. masuda never interprets this
+	// value — it's an opaque payload for Claude Code, not masuda.
+	ClaudeSettings json.RawMessage `json:"claudeSettings,omitempty"`
 }
 
 // Load reads .masuda/settings.json from repoRoot. A missing file is not an

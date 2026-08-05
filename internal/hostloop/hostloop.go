@@ -26,6 +26,8 @@ import (
 	"regexp"
 	"strings"
 	"text/template"
+
+	"github.com/TadahiroYamamura/masuda/internal/config"
 )
 
 //go:embed system_prompt.md.tmpl
@@ -264,10 +266,24 @@ func Start(id, worktreeDir, stateDir, task string) error {
 		return fmt.Errorf("building --agents JSON: %w", err)
 	}
 
+	// worktreeDir is the target repository's own checkout, so it's also
+	// where .masuda/settings.json lives. A missing file or field is fine
+	// (Load returns a zero-value Config) — masuda carries no fallback
+	// settings of its own, so --settings is simply omitted in that case
+	// rather than falling back to some masuda-side default (see
+	// internal/config.Config's ClaudeSettings doc).
+	cfg, err := config.Load(worktreeDir)
+	if err != nil {
+		return fmt.Errorf("loading .masuda/settings.json: %w", err)
+	}
 	claudeCmd := fmt.Sprintf(
-		"claude --allowedTools %s --agents %s --append-system-prompt-file %s '作業を開始せよ'",
+		"claude --allowedTools %s --agents %s --append-system-prompt-file %s",
 		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath),
 	)
+	if len(cfg.ClaudeSettings) > 0 {
+		claudeCmd += " --settings " + shellQuote(string(cfg.ClaudeSettings))
+	}
+	claudeCmd += " '作業を開始せよ'"
 
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", SessionName(id), "-c", worktreeDir, claudeCmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
