@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -104,6 +105,19 @@ func DownloadAndReplace(execPath, url string) error {
 	}
 	if err := os.Rename(tmpPath, execPath); err != nil {
 		return fmt.Errorf("replacing %s: %w", execPath, err)
+	}
+	return nil
+}
+
+// RebuildDockerfile builds dockerfilePath (typically <repo>/.masuda/Dockerfile)
+// against contextDir with --pull, so FROM always resolves to the latest
+// published base image, and tags the result as tag.
+func RebuildDockerfile(dockerfilePath, contextDir, tag string, stdout, stderr io.Writer) error {
+	cmd := exec.Command("docker", "build", "--pull", "-t", tag, "-f", dockerfilePath, contextDir)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker build -f %s: %w", dockerfilePath, err)
 	}
 	return nil
 }

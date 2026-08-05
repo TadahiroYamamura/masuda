@@ -33,6 +33,21 @@ import (
 // schema to discover it.
 const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": []}`
 
+// dockerfileTemplate is .masuda/Dockerfile's starting content (ADR-0032):
+// FROM the publicly published masuda base image, so `masuda update` can
+// refresh it with `docker build --pull` without the user needing to know
+// where that image lives. Same materialize-don't-embed pattern as
+// .masuda/reviews/ -- the user is free to add language toolchains, LSP
+// plugins, etc. on top, same as docker/{go,python,typescript,full}/Dockerfile
+// already do against the old locally-built masuda-loop tag.
+const dockerfileTemplate = `# Sandbox image for this project (ADR-0032). Customize freely -- add
+# language toolchains, LSP plugins, etc. "masuda update" rebuilds this file
+# with "docker build --pull" and tags the result as .masuda/settings.json's
+# "image" field (or masuda-loop if that field is unset), so FROM below
+# always picks up the latest published base on update.
+FROM tadahiroyamamura/masuda:latest
+`
+
 // newInitCommand builds `masuda init` (ADR-0024): a one-shot setup step that
 // populates a target repository's .masuda/ directory — .masuda/settings.json
 // (the image/base fields .masuda.json used to hold, now read exclusively
@@ -79,7 +94,11 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/)\n", dir)
+			if err := os.WriteFile(config.DockerfilePath(root), []byte(dockerfileTemplate), 0o644); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, Dockerfile)\n", dir)
 			return nil
 		},
 	}

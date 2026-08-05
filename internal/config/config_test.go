@@ -71,6 +71,14 @@ func TestLoadMalformedJSONErrors(t *testing.T) {
 	}
 }
 
+func TestDockerfilePath(t *testing.T) {
+	got := DockerfilePath("/repo")
+	want := filepath.Join("/repo", DirName, DockerfileName)
+	if got != want {
+		t.Fatalf("DockerfilePath() = %q, want %q", got, want)
+	}
+}
+
 func write(t *testing.T, dir, content string) {
 	t.Helper()
 	settingsDir := filepath.Join(dir, DirName)

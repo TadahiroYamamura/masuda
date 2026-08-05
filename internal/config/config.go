@@ -29,6 +29,16 @@ func SettingsPath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, SettingsFileName)
 }
 
+// DockerfileName is the optional per-project sandbox Dockerfile's name
+// within DirName (ADR-0032). masuda init materializes a starting template
+// here (mirroring .masuda/reviews/); masuda update rebuilds it if present.
+const DockerfileName = "Dockerfile"
+
+// DockerfilePath returns the absolute path to repoRoot's .masuda/Dockerfile.
+func DockerfilePath(repoRoot string) string {
+	return filepath.Join(repoRoot, DirName, DockerfileName)
+}
+
 // Config is the on-disk shape of .masuda/settings.json. All fields are
 // optional — an absent file, or an absent field within one, means "use
 // masuda's built-in default."
