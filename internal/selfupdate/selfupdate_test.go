@@ -1,6 +1,8 @@
 package selfupdate
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -35,6 +37,25 @@ func TestFetchLatestRelease(t *testing.T) {
 	}
 	if len(got.Assets) != 1 || got.Assets[0].Name != "masuda_linux_amd64" {
 		t.Fatalf("Assets = %+v, want one masuda_linux_amd64 asset", got.Assets)
+	}
+}
+
+func TestFetchReleaseByTag(t *testing.T) {
+	release := Release{TagName: "v0.1.0"}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/owner/repo/releases/tags/v0.1.0" {
+			t.Fatalf("unexpected path %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(release)
+	}))
+	defer server.Close()
+
+	got, err := FetchReleaseByTag(server.URL, "owner/repo", "v0.1.0")
+	if err != nil {
+		t.Fatalf("FetchReleaseByTag() error = %v", err)
+	}
+	if got.TagName != release.TagName {
+		t.Fatalf("TagName = %q, want %q", got.TagName, release.TagName)
 	}
 }
 
@@ -221,5 +242,81 @@ func TestUpdateDockerfileFromTagNoMatchLeavesFileUnchanged(t *testing.T) {
 	}
 	if string(got) != original {
 		t.Fatalf("Dockerfile = %q, want unchanged %q", got, original)
+	}
+}
+
+func zipFiles(t *testing.T, files map[string]string) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	for name, content := range files {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("zip.Create(%q): %v", name, err)
+		}
+		if _, err := w.Write([]byte(content)); err != nil {
+			t.Fatalf("writing %q into zip: %v", name, err)
+		}
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatalf("closing zip: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func TestSyncReviewsWritesOnlyNewFiles(t *testing.T) {
+	data := zipFiles(t, map[string]string{
+		"dead-code.md":       "---\nname: \"dead code\"\n---\nbody\n",
+		"secret-hardcode.md": "---\nname: \"secret\"\n---\nbody\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	added, err := SyncReviews(server.URL, dir)
+	if err != nil {
+		t.Fatalf("SyncReviews() error = %v", err)
+	}
+	if len(added) != 2 {
+		t.Fatalf("added = %v, want 2 entries", added)
+	}
+	for _, name := range []string{"dead-code.md", "secret-hardcode.md"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("expected %s to be written: %v", name, err)
+		}
+	}
+}
+
+func TestSyncReviewsNeverOverwritesExistingFile(t *testing.T) {
+	data := zipFiles(t, map[string]string{
+		"dead-code.md": "---\nname: \"dead code\"\n---\nfresh body from release\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	customized := "---\nname: \"dead code\"\nenable: false\n---\nuser-customized body\n"
+	if err := os.WriteFile(filepath.Join(dir, "dead-code.md"), []byte(customized), 0o644); err != nil {
+		t.Fatalf("seeding existing file: %v", err)
+	}
+
+	added, err := SyncReviews(server.URL, dir)
+	if err != nil {
+		t.Fatalf("SyncReviews() error = %v", err)
+	}
+	if len(added) != 0 {
+		t.Fatalf("added = %v, want none (file already existed)", added)
+	}
+
+	got, err := os.ReadFile(filepath.Join(dir, "dead-code.md"))
+	if err != nil {
+		t.Fatalf("reading dead-code.md: %v", err)
+	}
+	if string(got) != customized {
+		t.Fatalf("dead-code.md = %q, want unchanged %q", got, customized)
 	}
 }

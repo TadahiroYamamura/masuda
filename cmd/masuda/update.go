@@ -11,19 +11,22 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/hostloop"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// newUpdateCommand implements `masuda update` (ADR-0032): replace the
-// running CLI binary with the latest GitHub Release build, then (if the
-// current directory is inside a project with a .masuda/Dockerfile) rebuild
-// that project's sandbox image against the freshly published base. The
+// newUpdateCommand implements `masuda update` (ADR-0032/ADR-0033): replace
+// the running CLI binary with the latest GitHub Release build, then (if the
+// current directory is inside an initialized project) rebuild its
+// .masuda/Dockerfile against the freshly published base and add any newly
+// introduced built-in review perspectives to .masuda/reviews/. The
 // binary-replace step deliberately does not use repoRoot() — it updates
 // masuda itself, not something scoped to the project the CLI happens to be
-// invoked from — but the Dockerfile-refresh step does, since .masuda/Dockerfile
-// belongs to that project, not to masuda's own source tree.
+// invoked from — but the Dockerfile-refresh and reviews-sync steps do,
+// since .masuda/Dockerfile and .masuda/reviews/ belong to that project, not
+// to masuda's own source tree.
 func newUpdateCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "update",
@@ -52,7 +55,10 @@ func newUpdateCommand() *cobra.Command {
 			if err := updateBinary(cmd, release); err != nil {
 				return err
 			}
-			return refreshProjectDockerfile(cmd, release)
+			if err := refreshProjectDockerfile(cmd, release); err != nil {
+				return err
+			}
+			return syncProjectReviews(cmd, release)
 		},
 	}
 }
@@ -123,5 +129,41 @@ func refreshProjectDockerfile(cmd *cobra.Command, release selfupdate.Release) er
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "rebuilt %s -> %s\n", dockerfilePath, tag)
+	return nil
+}
+
+// syncProjectReviews adds any built-in review perspectives (ADR-0033) not
+// already present in the current project's .masuda/reviews/, without
+// touching existing files — a perspective a user customized or disabled
+// (frontmatter enable: false) stays exactly as they left it. A no-op
+// outside a project checkout, or inside one that was never `masuda init`'d.
+// A missing reviews asset on the release is reported but doesn't fail the
+// whole command — the binary/Dockerfile updates above may have already
+// succeeded.
+func syncProjectReviews(cmd *cobra.Command, release selfupdate.Release) error {
+	root, err := repoRoot()
+	if err != nil {
+		return nil
+	}
+	reviewsDir := perspectives.ReviewsDir(root)
+	if _, err := os.Stat(reviewsDir); os.IsNotExist(err) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	asset, ok := selfupdate.FindAsset(release, selfupdate.ReviewsAssetName)
+	if !ok {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: release %s has no reviews asset (%s), skipping perspective sync\n", release.TagName, selfupdate.ReviewsAssetName)
+		return nil
+	}
+
+	added, err := selfupdate.SyncReviews(asset.BrowserDownloadURL, reviewsDir)
+	if err != nil {
+		return err
+	}
+	if len(added) > 0 {
+		fmt.Fprintf(cmd.OutOrStdout(), "added %d new review perspective(s): %s\n", len(added), strings.Join(added, ", "))
+	}
 	return nil
 }

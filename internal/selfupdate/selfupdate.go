@@ -5,6 +5,7 @@
 package selfupdate
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -42,23 +43,34 @@ type Release struct {
 	Assets  []Asset `json:"assets"`
 }
 
-// FetchLatestRelease fetches repo's latest release from apiBase, unauthenticated
-// — masuda's own repository is public, so no token is required.
-func FetchLatestRelease(apiBase, repo string) (Release, error) {
-	url := fmt.Sprintf("%s/repos/%s/releases/latest", apiBase, repo)
+func fetchRelease(url string) (Release, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return Release{}, fmt.Errorf("fetching latest release: %w", err)
+		return Release{}, fmt.Errorf("fetching release: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return Release{}, fmt.Errorf("fetching latest release: %s returned %s", url, resp.Status)
+		return Release{}, fmt.Errorf("fetching release: %s returned %s", url, resp.Status)
 	}
 	var release Release
 	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
-		return Release{}, fmt.Errorf("parsing latest release response: %w", err)
+		return Release{}, fmt.Errorf("parsing release response: %w", err)
 	}
 	return release, nil
+}
+
+// FetchLatestRelease fetches repo's latest release from apiBase, unauthenticated
+// — masuda's own repository is public, so no token is required.
+func FetchLatestRelease(apiBase, repo string) (Release, error) {
+	return fetchRelease(fmt.Sprintf("%s/repos/%s/releases/latest", apiBase, repo))
+}
+
+// FetchReleaseByTag fetches repo's release tagged tag from apiBase,
+// unauthenticated. Used by `masuda init` (ADR-0033) to pin what it
+// materializes to the release matching its own embedded version, rather
+// than always tracking whatever is newest.
+func FetchReleaseByTag(apiBase, repo, tag string) (Release, error) {
+	return fetchRelease(fmt.Sprintf("%s/repos/%s/releases/tags/%s", apiBase, repo, tag))
 }
 
 // AssetName returns the release asset name for goos/goarch, matching
@@ -66,6 +78,11 @@ func FetchLatestRelease(apiBase, repo string) (Release, error) {
 func AssetName(goos, goarch string) string {
 	return fmt.Sprintf("masuda_%s_%s", goos, goarch)
 }
+
+// ReviewsAssetName is the release asset containing masuda's built-in review
+// perspectives (internal/perspectives/builtin/*.md, zipped by CI's `reviews`
+// job — ADR-0033).
+const ReviewsAssetName = "masuda_reviews.zip"
 
 // FindAsset returns the asset named name within release, if present.
 func FindAsset(release Release, name string) (Asset, bool) {
@@ -148,6 +165,65 @@ func UpdateDockerfileFromTag(dockerfilePath, newTag string) error {
 		return nil
 	}
 	return os.WriteFile(dockerfilePath, updated, 0o644)
+}
+
+// SyncReviews downloads url (a zip of built-in perspective .md files,
+// ReviewsAssetName within a Release), creates reviewsDir if needed, and
+// writes every entry that doesn't already exist there. Existing files
+// (customized, or intentionally disabled via "enable: false" — ADR-0033)
+// are never touched, so this is safe to run repeatedly: it only ever adds
+// perspectives newly introduced since reviewsDir was last synced. Returns
+// the filenames actually written.
+func SyncReviews(url, reviewsDir string) ([]string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("downloading %s: returned %s", url, resp.Status)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", url, err)
+	}
+
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return nil, fmt.Errorf("reading %s as zip: %w", url, err)
+	}
+	if err := os.MkdirAll(reviewsDir, 0o755); err != nil {
+		return nil, err
+	}
+
+	var added []string
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		name := filepath.Base(f.Name)
+		dest := filepath.Join(reviewsDir, name)
+		if _, err := os.Stat(dest); err == nil {
+			continue // already present -- never overwrite
+		} else if !os.IsNotExist(err) {
+			return nil, err
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return nil, fmt.Errorf("reading %s from %s: %w", f.Name, url, err)
+		}
+		content, err := io.ReadAll(rc)
+		rc.Close()
+		if err != nil {
+			return nil, fmt.Errorf("reading %s from %s: %w", f.Name, url, err)
+		}
+		if err := os.WriteFile(dest, content, 0o644); err != nil {
+			return nil, err
+		}
+		added = append(added, name)
+	}
+	return added, nil
 }
 
 // BlockingWorkspaces returns the subset of infos isRunning reports as still

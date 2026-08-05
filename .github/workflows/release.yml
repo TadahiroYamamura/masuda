@@ -43,8 +43,27 @@ jobs:
           path: masuda_${{ matrix.goos }}_${{ matrix.goarch }}
           if-no-files-found: error
 
+  # Zips internal/perspectives/builtin/*.md as a release asset (ADR-0033):
+  # masuda no longer go:embeds these into the CLI binary, since a `masuda
+  # update` in the same process that just replaced the binary on disk still
+  # runs on the *old* binary's embedded set (Unix rename doesn't touch a
+  # running process's memory) -- fetching from the release avoids that lag.
+  reviews:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip built-in review perspectives
+        run: (cd internal/perspectives/builtin && zip -r ../../../masuda_reviews.zip .)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: masuda_reviews
+          path: masuda_reviews.zip
+          if-no-files-found: error
+
   release:
-    needs: build
+    needs: [build, reviews]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4

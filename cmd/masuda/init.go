@@ -54,15 +54,22 @@ FROM %s:%s
 // newInitCommand builds `masuda init` (ADR-0024): a one-shot setup step that
 // populates a target repository's .masuda/ directory — .masuda/settings.json
 // (the image/base fields .masuda.json used to hold, now read exclusively
-// from here, plus a claudeSettings default) and .masuda/reviews/ (masuda's
-// 14 built-in review perspectives, written out as individually
-// editable/deletable files — see internal/perspectives).
+// from here, plus a claudeSettings default), .masuda/reviews/ (masuda's 14
+// built-in review perspectives, written out as individually
+// editable/deletable files — see internal/perspectives), and .masuda/Dockerfile.
+//
+// ADR-0033: the review perspectives and the Dockerfile's pinned FROM tag
+// both come from the same GitHub Release (internal/selfupdate), pinned to
+// this CLI build's own version when known, or the latest release for local
+// "dev" builds — so `masuda init` now requires network access, unlike
+// before ADR-0033.
 //
 // Deliberately refuses to run again once .masuda/ already exists, rather
 // than trying to reconcile it: ADR-0024 treats this as a one-time seed, not
 // a sync — re-running must never resurrect a perspective file the user
-// deleted. Picking up newly-introduced built-in perspectives into an
-// already-initialized project is left to GitHub Issue #8, not this command.
+// disabled. Picking up newly-introduced built-in perspectives into an
+// already-initialized project is `masuda update`'s job (ADR-0033), not this
+// command's.
 func newInitCommand() *cobra.Command {
 	var image, base string
 	cmd := &cobra.Command{
@@ -81,6 +88,20 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
+			var release selfupdate.Release
+			if version == "dev" {
+				release, err = selfupdate.FetchLatestRelease(selfupdate.DefaultAPIBase, selfupdate.DefaultRepo)
+			} else {
+				release, err = selfupdate.FetchReleaseByTag(selfupdate.DefaultAPIBase, selfupdate.DefaultRepo, version)
+			}
+			if err != nil {
+				return err
+			}
+			reviewsAsset, ok := selfupdate.FindAsset(release, selfupdate.ReviewsAssetName)
+			if !ok {
+				return fmt.Errorf("release %s has no reviews asset (%s)", release.TagName, selfupdate.ReviewsAssetName)
+			}
+
 			cfg := config.Config{Image: image, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
 			data, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
@@ -93,19 +114,15 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			if err := perspectives.WriteBuiltins(perspectives.ReviewsDir(root)); err != nil {
+			if _, err := selfupdate.SyncReviews(reviewsAsset.BrowserDownloadURL, perspectives.ReviewsDir(root)); err != nil {
 				return err
 			}
 
-			dockerTag := version
-			if dockerTag == "dev" {
-				dockerTag = "latest"
-			}
-			if err := os.WriteFile(config.DockerfilePath(root), []byte(dockerfileTemplate(dockerTag)), 0o644); err != nil {
+			if err := os.WriteFile(config.DockerfilePath(root), []byte(dockerfileTemplate(release.TagName)), 0o644); err != nil {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, Dockerfile)\n", dir)
+			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, Dockerfile) from release %s\n", dir, release.TagName)
 			return nil
 		},
 	}
