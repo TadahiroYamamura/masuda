@@ -45,6 +45,8 @@ func newRootCommand() *cobra.Command {
 	reviewCmd.AddCommand(newReviewStartCommand())
 	reviewCmd.AddCommand(newReviewHunkCommand())
 	root.AddCommand(reviewCmd)
+
+	root.AddCommand(newTriageCommand())
 	return root
 }
 

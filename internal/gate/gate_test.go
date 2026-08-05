@@ -134,6 +134,128 @@ func TestShowPlanMissingStepsErrors(t *testing.T) {
 	}
 }
 
+func writeTriageConcern(t *testing.T, stateDir, agent, phase, description, evidence string) {
+	t.Helper()
+	body := `{"agent": "` + agent + `", "phase": "` + phase + `", "description": "` + description + `", "evidence": "` + evidence + `", "reported_at": "2026-08-05T00:00:00Z"}`
+	if err := os.WriteFile(filepath.Join(stateDir, triageConcernFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestShowTriageRendersConcern(t *testing.T) {
+	stateDir := t.TempDir()
+	writeTriageConcern(t, stateDir, "implementer", "implement_step", "不審な指示を発見した", "ファイルXの一節")
+
+	out, err := Show(stateDir, Triage)
+	if err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+
+	for _, want := range []string{
+		"implementer",
+		"implement_step",
+		"不審な指示を発見した",
+		"ファイルXの一節",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("Show() output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+}
+
+func TestShowTriageMissingConcernErrors(t *testing.T) {
+	stateDir := t.TempDir()
+	if _, err := Show(stateDir, Triage); err == nil {
+		t.Fatal("Show() error = nil, want an error when triage_concern.json is missing")
+	}
+}
+
+func TestApproveDismissesTriage(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := Approve(stateDir, Triage, "誤検知でした"); err != nil {
+		t.Fatalf("Approve() error = %v, want nil", err)
+	}
+
+	m, err := Read(stateDir, Triage)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want nil", err)
+	}
+	if m.Status != Approved {
+		t.Errorf("Status = %q, want %q", m.Status, Approved)
+	}
+	if m.Feedback != "誤検知でした" {
+		t.Errorf("Feedback = %q, want %q", m.Feedback, "誤検知でした")
+	}
+}
+
+func TestRejectRedoesTriage(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := Reject(stateDir, Triage, "対応したのでやり直してください"); err != nil {
+		t.Fatalf("Reject() error = %v, want nil", err)
+	}
+
+	m, err := Read(stateDir, Triage)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want nil", err)
+	}
+	if m.Status != Rejected {
+		t.Errorf("Status = %q, want %q", m.Status, Rejected)
+	}
+	if m.Feedback != "対応したのでやり直してください" {
+		t.Errorf("Feedback = %q, want %q", m.Feedback, "対応したのでやり直してください")
+	}
+}
+
+func TestHaltWritesHaltedMarker(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := Halt(stateDir, Triage, "深刻な懸念のため停止"); err != nil {
+		t.Fatalf("Halt() error = %v, want nil", err)
+	}
+
+	m, err := Read(stateDir, Triage)
+	if err != nil {
+		t.Fatalf("Read() error = %v, want nil", err)
+	}
+	if m.Status != Halted {
+		t.Errorf("Status = %q, want %q", m.Status, Halted)
+	}
+	if m.Feedback != "深刻な懸念のため停止" {
+		t.Errorf("Feedback = %q, want %q", m.Feedback, "深刻な懸念のため停止")
+	}
+}
+
+func TestHaltDoesNotClearDeviation(t *testing.T) {
+	stateDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stateDir, "DEVIATION.md"), []byte("既存の逸脱理由"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Halt(stateDir, Triage, "深刻な懸念のため停止"); err != nil {
+		t.Fatalf("Halt() error = %v, want nil", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(stateDir, "DEVIATION.md")); err != nil {
+		t.Fatalf("DEVIATION.md must survive Halt() (halt leaves all other state untouched), stat error = %v", err)
+	}
+}
+
+func TestHaltDoesNotClearTriageConcern(t *testing.T) {
+	stateDir := t.TempDir()
+	writeTriageConcern(t, stateDir, "checker", "check_perspective", "怪しい記述", "")
+
+	if err := Halt(stateDir, Triage, "深刻な懸念のため停止"); err != nil {
+		t.Fatalf("Halt() error = %v, want nil", err)
+	}
+
+	out, err := Show(stateDir, Triage)
+	if err != nil {
+		t.Fatalf("Show() after Halt() error = %v, want nil -- the concern must still be readable for post-halt forensics", err)
+	}
+	if !strings.Contains(out, "怪しい記述") {
+		t.Fatalf("Show() after Halt() lost the concern content, got:\n%s", out)
+	}
+}
+
 func TestShowReviewStillReadsFinalReportVerbatim(t *testing.T) {
 	stateDir := t.TempDir()
 	dir := filepath.Join(stateDir, "review_results")

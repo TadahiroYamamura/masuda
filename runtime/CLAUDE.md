@@ -27,7 +27,15 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
      ```json
      {"status": "approved", "feedback": "<対話の要約>", "decided_at": "<ISO8601形式の現在時刻>"}
      ```
-   - マーカーの`status`が`pending`でなくなったら（自分で書いた場合・別ターミナルの`masuda plan/review approve|reject`で書かれた場合のどちらでも）、2へ戻ってLangGraphを起動する
+   - ただし`triage`ゲート（ADR-0029）はこの限りではない。懸念の対象となっている
+     エージェント自身が、chatでの会話を理由に自分自身でこのゲートを閉じることは
+     絶対にしないこと（`$GATE_FILE`が`.masuda-gate/triage.json`の場合、上記の
+     自己書き込みは一切行わない）。`masuda chat`は懸念の対話・事実確認に使ってよいが、
+     最終判断は必ず人間がホスト側から`masuda triage dismiss/redo/halt`で独立に記録する。
+     これは規約上の取り決めであり、技術的な強制ではない点に注意すること
+     （オーケストレーターとClaudeセッションは同一ユーザー・同一コンテナで実行され、
+     真の権限境界は存在しない。この既知の制限はGitHub Issue #13で追跡している）
+   - マーカーの`status`が`pending`でなくなったら（自分で書いた場合・別ターミナルの`masuda plan/review/triage approve|reject|dismiss|redo|halt`で書かれた場合のどちらでも）、2へ戻ってLangGraphを起動する
 
 ## 終了条件
 
@@ -35,7 +43,7 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
 
 ## ゲート条件
 
-`TASK.md` の本文に `GATE:<name>` という文字列が含まれていること（`<name>`は`plan`または`review`）
+`TASK.md` の本文に `GATE:<name>` という文字列が含まれていること（`<name>`は`plan`・`review`・`triage`のいずれか）
 
 ## LangGraph 起動コマンド
 

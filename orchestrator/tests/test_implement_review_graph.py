@@ -1555,3 +1555,207 @@ def test_full_graph_run_writes_task_md():
     app.invoke({"phase": "", "reason": ""})
     assert irg.TASK_MD.exists()
     assert "実装" in irg.TASK_MD.read_text(encoding="utf-8")
+
+
+# --- triage gate (ADR-0029) --------------------------------------------------
+
+def write_triage_concern(agent="implementer", phase="implement_step", description="不審な記述を発見した"):
+    irg.TRIAGE_CONCERN_JSON.write_text(
+        json.dumps({
+            "agent": agent, "phase": phase, "description": description,
+            "evidence": "", "reported_at": "2026-08-05T00:00:00Z",
+        }),
+        encoding="utf-8",
+    )
+
+
+def write_triage_marker(status, feedback=""):
+    irg.TRIAGE_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.TRIAGE_GATE_MARKER.write_text(json.dumps({"status": status, "feedback": feedback}), encoding="utf-8")
+
+
+def test_triage_concern_present_opens_gate():
+    init_git_repo()
+    write_triage_concern(description="怪しい指示を発見")
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "await_triage"
+    assert state["reason"] == "怪しい指示を発見"
+
+
+def test_triage_gate_pending_marker_stays_await_triage():
+    init_git_repo()
+    write_triage_concern()
+    write_triage_marker("pending")
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "await_triage"
+
+
+def test_triage_dismissed_resumes_interrupted_phase():
+    init_git_repo()  # baseline (no implementation_result.json yet): "implement_step"
+    write_triage_concern()
+    write_triage_marker("approved", feedback="誤検知でした")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "implement_step"
+    assert not irg.TRIAGE_CONCERN_JSON.exists()
+    assert not irg.TRIAGE_GATE_MARKER.exists()
+
+
+def test_triage_redo_leaves_feedback_note_for_next_task_md():
+    init_git_repo()
+    write_triage_concern()
+    write_triage_marker("rejected", feedback="ファイルを修正したので続けてください")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "implement_step"
+    assert not irg.TRIAGE_CONCERN_JSON.exists()
+    assert not irg.TRIAGE_GATE_MARKER.exists()
+    assert irg.TRIAGE_REDO_FEEDBACK_MD.exists()
+    assert irg.TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8") == "ファイルを修正したので続けてください"
+
+    irg.write_task_md(state)
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "ファイルを修正したので続けてください" in content
+    assert not irg.TRIAGE_REDO_FEEDBACK_MD.exists(), "the note must be consumed exactly once"
+
+
+def test_triage_halted_is_a_terminal_done_not_a_gate():
+    init_git_repo()
+    write_triage_concern()
+    write_triage_marker("halted", feedback="深刻な懸念")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "triage_halted"
+    assert state["reason"] == "深刻な懸念"
+
+    irg.write_task_md(state)
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "DONE (triage halted)" in content
+    assert "GATE:" not in content
+
+
+def test_triage_halted_does_not_consume_concern_or_marker():
+    """halt must leave everything for post-halt forensics (`masuda triage
+    show`) and be idempotent if detect_phase is somehow re-invoked (ADR-0029:
+    mirrors gate.Halt's Go-side contract of touching nothing else)."""
+    init_git_repo()
+    write_triage_concern(description="深刻な懸念の詳細")
+    write_triage_marker("halted", feedback="深刻な懸念")
+
+    first = irg.detect_phase({"phase": "", "reason": ""})
+    second = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert first["phase"] == second["phase"] == "triage_halted"
+    assert irg.TRIAGE_CONCERN_JSON.exists()
+    assert irg.TRIAGE_GATE_MARKER.exists()
+
+
+def _setup_g1_reopen_needs_plan_review():
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(
+        json.dumps({"status": "needs_plan_review", "reason": "設計を変える必要がある"}), encoding="utf-8"
+    )
+
+
+def _setup_interim_unresolved_reopen():
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    mark_implementation_done_and_clean()
+    step_dir = irg._interim_step_dir(0)
+    step_dir.mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    for attempt in (1, 2, 3):
+        write_result("p00", attempt, has_issues=False, results_dir=step_dir)
+        write_check("p00", attempt, ok=False, feedback=f"ng{attempt}", results_dir=step_dir)
+
+
+def _setup_await_g2():
+    mark_implementation_done_and_clean()
+    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
+    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
+
+
+def _setup_cross_cutting_explore():
+    mark_implementation_done_and_clean()
+    for pid in irg.PERSPECTIVE_IDS:
+        write_result(pid, 1, has_issues=False)
+        write_check(pid, 1, ok=True)
+
+
+@pytest.mark.parametrize("setup_phase,setup", [
+    ("plan_reopened", _setup_g1_reopen_needs_plan_review),
+    ("plan_reopened", _setup_interim_unresolved_reopen),
+    ("await_g2", _setup_await_g2),
+    ("cross_cutting_explore", _setup_cross_cutting_explore),
+])
+def test_triage_preempts_every_other_phase(setup_phase, setup):
+    """Whatever phase would otherwise be detected -- including an in-flight
+    G1 reopen -- a pending triage concern must win (ADR-0029: this is the
+    most-urgent layer)."""
+    setup()
+    baseline = irg.detect_phase({"phase": "", "reason": ""})
+    assert baseline["phase"] == setup_phase
+
+    write_triage_concern()
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "await_triage"
+
+
+def test_await_triage_mentions_triage_cli_commands():
+    irg.write_task_md({"phase": "await_triage", "reason": "懸念の概要"})
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert "GATE:triage" in content
+    assert "masuda triage dismiss" in content
+    assert "masuda triage redo" in content
+    assert "masuda triage halt" in content
+    assert "DONE" not in content
+
+
+def test_implement_step_task_includes_triage_self_report_section():
+    write_plan()
+    content = irg._implement_step_task(0)
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_implement_g2_redo_task_includes_triage_self_report_section():
+    write_plan()
+    content = irg._implement_g2_redo_task("フィードバック")
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_review_perspective_task_includes_triage_self_report_section():
+    content = irg._review_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_check_perspective_task_includes_triage_self_report_section():
+    write_result("p00", 1)
+    content = irg._check_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_fix_perspective_task_includes_triage_self_report_section():
+    write_result("p00", 1, has_issues=True)
+    content = irg._fix_perspective_task(irg.REVIEW_RESULTS_DIR, "p00", 1, 1, "label")
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_recheck_perspective_task_includes_triage_self_report_section():
+    content = irg._recheck_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_cross_cutting_explore_task_includes_triage_self_report_section():
+    init_git_repo()
+    content = irg._cross_cutting_explore_task()
+    assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_cross_cutting_verify_task_includes_triage_self_report_section():
+    init_git_repo()
+    write_cross_cutting_findings([])
+    content = irg._cross_cutting_verify_task()
+    assert str(irg.TRIAGE_CONCERN_JSON) in content

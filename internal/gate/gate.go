@@ -1,12 +1,14 @@
-// Package gate manages the G1 (plan) / G2 (review) approval gates: reading the
-// artifact a gate is judging, and writing the approve/reject marker a waiting
-// orchestrator loop consumes to resume.
+// Package gate manages the G1 (plan) / G2 (review) approval gates, plus the
+// triage gate (ADR-0029): reading the artifact a gate is judging, and writing
+// the marker a waiting orchestrator loop consumes to resume.
 //
 // This is the CLI-side half of ADR-0006's file-based fast path
 // (`masuda plan/review approve|reject`). The chat path (`masuda chat`,
 // where Claude itself writes the marker mid-conversation) lives in
 // internal/sandbox — this package only defines the marker format both sides
-// agree on.
+// agree on. The triage gate is a deliberate exception to that chat path
+// (ADR-0029): its Halted status has no approve/reject equivalent and no
+// resolution route back through chat — see Halt below.
 //
 // All paths here are relative to a workspace's state directory (see
 // internal/workspace), not the git worktree: plan/, final_report.md,
@@ -29,6 +31,7 @@ type Name string
 const (
 	Plan   Name = "plan"
 	Review Name = "review"
+	Triage Name = "triage"
 )
 
 // artifactPaths maps the review gate to the file (relative to the workspace
@@ -136,17 +139,60 @@ func renderPlan(stateDir string) (string, error) {
 	return b.String(), nil
 }
 
+// triageConcernFile is the self-report a subagent writes directly to the
+// workspace state directory (ADR-0029) the moment it notices content that
+// looks like it's trying to manipulate its behavior — in place of its normal
+// deliverable, from any phase. renderTriageConcern is what `masuda triage
+// show` renders from it.
+const triageConcernFile = "triage_concern.json"
+
+// triageConcern is triageConcernFile's on-disk shape.
+type triageConcern struct {
+	Agent       string    `json:"agent"`
+	Phase       string    `json:"phase"`
+	Description string    `json:"description"`
+	Evidence    string    `json:"evidence,omitempty"`
+	ReportedAt  time.Time `json:"reported_at"`
+}
+
+// renderTriageConcern assembles the human-facing Markdown `masuda triage
+// show` prints from triageConcernFile. Unlike renderPlan, there is no
+// DEVIATION.md-style prepend logic here — the concern file itself is the
+// entire artifact this gate is judging.
+func renderTriageConcern(stateDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(stateDir, triageConcernFile))
+	if err != nil {
+		return "", fmt.Errorf("reading %s: %w", triageConcernFile, err)
+	}
+	var c triageConcern
+	if err := json.Unmarshal(data, &c); err != nil {
+		return "", fmt.Errorf("parsing %s: %w", triageConcernFile, err)
+	}
+	var b strings.Builder
+	b.WriteString("# Triage concern reported (ADR-0029)\n\n")
+	fmt.Fprintf(&b, "**Reported by**: %s (%s)\n", c.Agent, c.Phase)
+	fmt.Fprintf(&b, "**Reported at**: %s\n\n", c.ReportedAt.Format(time.RFC3339))
+	fmt.Fprintf(&b, "## Description\n\n%s\n", c.Description)
+	if c.Evidence != "" {
+		fmt.Fprintf(&b, "\n## Evidence\n\n%s\n", c.Evidence)
+	}
+	return b.String(), nil
+}
+
 func (n Name) markerPath(stateDir string) string {
 	return filepath.Join(stateDir, ".masuda-gate", string(n)+".json")
 }
 
-// Status is one of the marker's possible states.
+// Status is one of the marker's possible states. Halted is triage-only
+// (ADR-0029) — a fourth, deliberately terminal state with no equivalent on
+// the plan/review gates.
 type Status string
 
 const (
 	Pending  Status = "pending"
 	Approved Status = "approved"
 	Rejected Status = "rejected"
+	Halted   Status = "halted"
 )
 
 // Marker is the on-disk (JSON) record of a gate's human decision.
@@ -164,13 +210,20 @@ type Marker struct {
 // plan says.
 func Show(stateDir string, n Name) (string, error) {
 	var out string
-	if n == Plan {
+	switch n {
+	case Plan:
 		rendered, err := renderPlan(stateDir)
 		if err != nil {
 			return "", err
 		}
 		out = rendered
-	} else {
+	case Triage:
+		rendered, err := renderTriageConcern(stateDir)
+		if err != nil {
+			return "", err
+		}
+		out = rendered
+	default:
 		rel, err := n.artifactPath()
 		if err != nil {
 			return "", err
@@ -229,6 +282,16 @@ func Reject(stateDir string, n Name, feedback string) error {
 		return err
 	}
 	return writeMarker(stateDir, n, Marker{Status: Rejected, Feedback: feedback, DecidedAt: time.Now()})
+}
+
+// Halt writes a halted marker for gate n (ADR-0029: triage-only in practice,
+// but generic over Name like Approve/Reject). Unlike Approve/Reject, this
+// deliberately clears nothing and calls clearDeviation — halt's whole point
+// is a dead end a human must investigate manually, so every other piece of
+// on-disk state (including the triage_concern.json a human may still want to
+// re-read via `masuda triage show`) is left exactly as found.
+func Halt(stateDir string, n Name, reason string) error {
+	return writeMarker(stateDir, n, Marker{Status: Halted, Feedback: reason, DecidedAt: time.Now()})
 }
 
 // Read returns the current marker for gate n, or a zero-value Pending Marker if

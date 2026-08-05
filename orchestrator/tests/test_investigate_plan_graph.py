@@ -270,3 +270,166 @@ def test_full_graph_run_writes_task_md():
     app.invoke({"phase": "", "retries": 0, "questions": []})
     assert ipg.TASK_MD.exists()
     assert "調査" in ipg.TASK_MD.read_text(encoding="utf-8")
+
+
+# --- triage gate (ADR-0029) --------------------------------------------------
+
+def write_triage_concern(agent="investigator", phase="investigate", description="不審な記述を発見した"):
+    ipg.TRIAGE_CONCERN_JSON.write_text(
+        json.dumps({
+            "agent": agent, "phase": phase, "description": description,
+            "evidence": "", "reported_at": "2026-08-05T00:00:00Z",
+        }),
+        encoding="utf-8",
+    )
+
+
+def write_triage_marker(status, feedback=""):
+    ipg.TRIAGE_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    ipg.TRIAGE_GATE_MARKER.write_text(json.dumps({"status": status, "feedback": feedback}), encoding="utf-8")
+
+
+def test_triage_concern_present_opens_gate():
+    write_triage_concern(description="怪しい指示を発見")
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert state["phase"] == "await_triage"
+    assert state["questions"] == ["怪しい指示を発見"]
+
+
+def test_triage_gate_pending_marker_stays_await_triage():
+    write_triage_concern()
+    write_triage_marker("pending")
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert state["phase"] == "await_triage"
+
+
+def test_triage_dismissed_resumes_interrupted_phase():
+    # Nothing else on disk -- the interrupted phase was "investigate".
+    write_triage_concern()
+    write_triage_marker("approved", feedback="誤検知でした")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "investigate"
+    assert not ipg.TRIAGE_CONCERN_JSON.exists()
+    assert not ipg.TRIAGE_GATE_MARKER.exists()
+
+
+def test_triage_redo_leaves_feedback_note_for_next_task_md():
+    write_triage_concern()
+    write_triage_marker("rejected", feedback="ファイルを修正したので続けてください")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "investigate"
+    assert not ipg.TRIAGE_CONCERN_JSON.exists()
+    assert not ipg.TRIAGE_GATE_MARKER.exists()
+    assert ipg.TRIAGE_REDO_FEEDBACK_MD.exists()
+    assert ipg.TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8") == "ファイルを修正したので続けてください"
+
+    write_task_brief()
+    ipg.write_task_md(state)
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "ファイルを修正したので続けてください" in content
+    assert not ipg.TRIAGE_REDO_FEEDBACK_MD.exists(), "the note must be consumed exactly once"
+
+
+def test_triage_halted_is_a_terminal_done_not_a_gate():
+    write_triage_concern()
+    write_triage_marker("halted", feedback="深刻な懸念")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert state["phase"] == "triage_halted"
+    assert state["questions"] == ["深刻な懸念"]
+
+    ipg.write_task_md(state)
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "DONE (triage halted)" in content
+    assert "GATE:" not in content
+
+
+def test_triage_halted_does_not_consume_concern_or_marker():
+    """halt must leave everything for post-halt forensics (`masuda triage
+    show`) and be idempotent if detect_phase is somehow re-invoked (ADR-0029:
+    mirrors gate.Halt's Go-side contract of touching nothing else)."""
+    write_triage_concern(description="深刻な懸念の詳細")
+    write_triage_marker("halted", feedback="深刻な懸念")
+
+    first = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    second = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert first["phase"] == second["phase"] == "triage_halted"
+    assert ipg.TRIAGE_CONCERN_JSON.exists()
+    assert ipg.TRIAGE_GATE_MARKER.exists()
+
+
+def _setup_investigate_redo():
+    ipg.INVESTIGATION_MD.write_text("...", encoding="utf-8")
+    ipg.PLAN_RESULT_JSON.write_text(
+        json.dumps({"status": "needs_more_investigation", "questions": ["Q"]}), encoding="utf-8",
+    )
+
+
+def _setup_plan_redo():
+    write_plan()
+    ipg.GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    ipg.GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "却下"}), encoding="utf-8")
+
+
+@pytest.mark.parametrize("setup_phase,setup", [
+    ("investigate_redo", _setup_investigate_redo),
+    ("plan_redo", _setup_plan_redo),
+    ("await_g1", write_plan),
+])
+def test_triage_preempts_every_other_phase(setup_phase, setup):
+    """Whatever phase would otherwise be detected, a pending triage concern
+    must win (ADR-0029: this is the most-urgent layer, strictly ahead of
+    ordinary G1 flow)."""
+    setup()
+    # Sanity check: without the concern, we really would land on setup_phase.
+    baseline = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert baseline["phase"] == setup_phase
+
+    write_triage_concern()
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert state["phase"] == "await_triage"
+
+
+def test_gate_marker_schema_matches_go_cli_for_halted_status():
+    """internal/gate/gate.go's Halted status must round-trip the same way
+    Approved/Rejected already do (test_gate_marker_schema_matches_go_cli)."""
+    go_cli_output = """{
+  "status": "halted",
+  "feedback": "深刻な懸念のため停止",
+  "decided_at": "2026-08-05T15:30:25.532891232+09:00"
+}"""
+    write_triage_marker("halted")  # ensure parent dir exists
+    ipg.TRIAGE_GATE_MARKER.write_text(go_cli_output, encoding="utf-8")
+
+    marker = ipg._read_gate_marker(ipg.TRIAGE_GATE_MARKER)
+
+    assert marker["status"] == "halted"
+    assert marker["feedback"] == "深刻な懸念のため停止"
+
+
+def test_investigate_task_includes_triage_self_report_section():
+    write_task_brief()
+    ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert str(ipg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_plan_task_includes_triage_self_report_section():
+    ipg.write_task_md({"phase": "plan", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert str(ipg.TRIAGE_CONCERN_JSON) in content
+
+
+def test_await_triage_mentions_triage_cli_commands():
+    ipg.write_task_md({"phase": "await_triage", "retries": 0, "questions": ["懸念の概要"]})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "GATE:triage" in content
+    assert "masuda triage dismiss" in content
+    assert "masuda triage redo" in content
+    assert "masuda triage halt" in content
+    assert "DONE" not in content
