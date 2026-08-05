@@ -160,3 +160,66 @@ func TestBlockingWorkspacesNoneRunning(t *testing.T) {
 		t.Fatalf("BlockingWorkspaces() = %+v, want empty", blocking)
 	}
 }
+
+func TestUpdateDockerfileFromTagBumpsPinnedVersion(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Dockerfile")
+	original := "# comment\nFROM tadahiroyamamura/masuda:v0.1.0\n\nRUN echo hi\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatalf("seeding Dockerfile: %v", err)
+	}
+
+	if err := UpdateDockerfileFromTag(path, "v0.2.0"); err != nil {
+		t.Fatalf("UpdateDockerfileFromTag() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading Dockerfile: %v", err)
+	}
+	want := "# comment\nFROM tadahiroyamamura/masuda:v0.2.0\n\nRUN echo hi\n"
+	if string(got) != want {
+		t.Fatalf("Dockerfile = %q, want %q", got, want)
+	}
+}
+
+func TestUpdateDockerfileFromTagBumpsLatest(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Dockerfile")
+	if err := os.WriteFile(path, []byte("FROM tadahiroyamamura/masuda:latest\n"), 0o644); err != nil {
+		t.Fatalf("seeding Dockerfile: %v", err)
+	}
+
+	if err := UpdateDockerfileFromTag(path, "v0.1.0"); err != nil {
+		t.Fatalf("UpdateDockerfileFromTag() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading Dockerfile: %v", err)
+	}
+	if string(got) != "FROM tadahiroyamamura/masuda:v0.1.0\n" {
+		t.Fatalf("Dockerfile = %q, want pinned to v0.1.0", got)
+	}
+}
+
+func TestUpdateDockerfileFromTagNoMatchLeavesFileUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "Dockerfile")
+	original := "FROM ubuntu:24.04\nCOPY --from=tadahiroyamamura/masuda:v0.1.0 /opt/masuda /opt/masuda\n"
+	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
+		t.Fatalf("seeding Dockerfile: %v", err)
+	}
+
+	if err := UpdateDockerfileFromTag(path, "v0.2.0"); err != nil {
+		t.Fatalf("UpdateDockerfileFromTag() error = %v", err)
+	}
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading Dockerfile: %v", err)
+	}
+	if string(got) != original {
+		t.Fatalf("Dockerfile = %q, want unchanged %q", got, original)
+	}
+}

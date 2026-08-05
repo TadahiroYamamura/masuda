@@ -5,6 +5,7 @@
 package selfupdate
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,17 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // DefaultRepo is masuda's own GitHub repository, "<owner>/<name>".
 const DefaultRepo = "TadahiroYamamura/masuda"
+
+// DefaultDockerImage is the Docker Hub repository masuda's sandbox base
+// image is published to (ADR-0032).
+const DefaultDockerImage = "tadahiroyamamura/masuda"
 
 // DefaultAPIBase is the GitHub REST API's base URL. Overridable via
 // FetchLatestRelease's apiBase parameter so tests can point at an
@@ -120,6 +126,28 @@ func RebuildDockerfile(dockerfilePath, contextDir, tag string, stdout, stderr io
 		return fmt.Errorf("docker build -f %s: %w", dockerfilePath, err)
 	}
 	return nil
+}
+
+var dockerfileFromRe = regexp.MustCompile(`(?m)^FROM\s+` + regexp.QuoteMeta(DefaultDockerImage) + `:\S+`)
+
+// UpdateDockerfileFromTag rewrites dockerfilePath's "FROM
+// tadahiroyamamura/masuda:<tag>" line (materialized by masuda init) to
+// reference newTag, so masuda update can bump the pinned base image version
+// without floating on "latest" (ADR-0032: pinning keeps repeated
+// `docker build` runs of an unchanged Dockerfile reproducible between
+// updates). No-op if the file has no such FROM line -- e.g. the user
+// replaced it with their own base image entirely, which masuda update must
+// not overwrite.
+func UpdateDockerfileFromTag(dockerfilePath, newTag string) error {
+	data, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		return err
+	}
+	updated := dockerfileFromRe.ReplaceAll(data, []byte("FROM "+DefaultDockerImage+":"+newTag))
+	if bytes.Equal(updated, data) {
+		return nil
+	}
+	return os.WriteFile(dockerfilePath, updated, 0o644)
 }
 
 // BlockingWorkspaces returns the subset of infos isRunning reports as still

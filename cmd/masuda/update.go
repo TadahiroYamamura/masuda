@@ -45,21 +45,21 @@ func newUpdateCommand() *cobra.Command {
 				return fmt.Errorf("refusing to update: workspace(s) still running (%s) — stop or remove them first", strings.Join(ids, ", "))
 			}
 
-			if err := updateBinary(cmd); err != nil {
+			release, err := selfupdate.FetchLatestRelease(selfupdate.DefaultAPIBase, selfupdate.DefaultRepo)
+			if err != nil {
 				return err
 			}
-			return refreshProjectDockerfile(cmd)
+			if err := updateBinary(cmd, release); err != nil {
+				return err
+			}
+			return refreshProjectDockerfile(cmd, release)
 		},
 	}
 }
 
 // updateBinary replaces the running masuda executable with the latest
 // GitHub Release build, if it isn't already current.
-func updateBinary(cmd *cobra.Command) error {
-	release, err := selfupdate.FetchLatestRelease(selfupdate.DefaultAPIBase, selfupdate.DefaultRepo)
-	if err != nil {
-		return err
-	}
+func updateBinary(cmd *cobra.Command, release selfupdate.Release) error {
 	if release.TagName == version {
 		fmt.Fprintf(cmd.OutOrStdout(), "masuda is already up to date (%s)\n", version)
 		return nil
@@ -91,8 +91,10 @@ func updateBinary(cmd *cobra.Command) error {
 // "image" field (or sandbox.DefaultImage if that field is unset). A no-op
 // outside a project checkout, or inside one without a .masuda/Dockerfile —
 // masuda init only started writing that file with ADR-0032, so
-// already-initialized projects don't have one yet.
-func refreshProjectDockerfile(cmd *cobra.Command) error {
+// already-initialized projects don't have one yet. Bumps the Dockerfile's
+// pinned FROM tag to release.TagName before rebuilding, so the pin doesn't
+// go stale.
+func refreshProjectDockerfile(cmd *cobra.Command, release selfupdate.Release) error {
 	root, err := repoRoot()
 	if err != nil {
 		return nil
@@ -101,6 +103,10 @@ func refreshProjectDockerfile(cmd *cobra.Command) error {
 	if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 		return nil
 	} else if err != nil {
+		return err
+	}
+
+	if err := selfupdate.UpdateDockerfileFromTag(dockerfilePath, release.TagName); err != nil {
 		return err
 	}
 
