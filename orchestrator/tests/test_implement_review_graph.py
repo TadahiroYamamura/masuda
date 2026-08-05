@@ -40,7 +40,7 @@ TEST_PERSPECTIVE_COUNT = 14
 TEST_PERSPECTIVE_IDS = [f"p{i:02d}" for i in range(TEST_PERSPECTIVE_COUNT)]
 
 
-def _write_test_perspectives(reviews_dir, triggered_ids=()):
+def _write_test_perspectives(reviews_dir, triggered_ids=(), disabled_ids=()):
     """Seeds .masuda/reviews/ (ADR-0024) with a minimal synthetic set of
     perspectives for tests -- production's real 14 built-ins live in
     internal/perspectives/builtin (Go side) and shouldn't be duplicated into
@@ -48,12 +48,17 @@ def _write_test_perspectives(reviews_dir, triggered_ids=()):
     `triggered_ids` (ADR-0027) adds a `trigger` frontmatter field to the
     named perspectives so tests can exercise phase 4's interim review;
     perspectives are otherwise untriggered by default (mirrors most of
-    masuda's real built-ins, which are trigger-less at seed time)."""
+    masuda's real built-ins, which are trigger-less at seed time).
+    `disabled_ids` (ADR-0033) writes `enable: false` for the named
+    perspectives -- the file still exists, only excluded from
+    _load_perspectives()'s result."""
     reviews_dir.mkdir(parents=True, exist_ok=True)
     for pid in TEST_PERSPECTIVE_IDS:
         trigger_line = f'trigger: "{pid}に関する変更"\n' if pid in triggered_ids else ""
+        enable_line = "enable: false\n" if pid in disabled_ids else ""
         (reviews_dir / f"{pid}.md").write_text(
-            f'---\nname: "テスト観点{pid}"\n{trigger_line}---\n' f"テスト観点{pid}のreview_prompt本文。\n",
+            f'---\nname: "テスト観点{pid}"\n{trigger_line}{enable_line}---\n'
+            f"テスト観点{pid}のreview_prompt本文。\n",
             encoding="utf-8",
         )
 
@@ -599,6 +604,31 @@ def test_no_triggered_perspectives_by_default():
     perspective with a `trigger`, mirroring how most of masuda's real
     built-ins may never opt into interim review at all."""
     assert irg.TRIGGERED_PERSPECTIVE_IDS == []
+
+
+def test_disabled_perspective_excluded_from_perspective_ids():
+    """ADR-0033: enable: false keeps the file on disk but drops it from
+    PERSPECTIVE_IDS/TOTAL_PERSPECTIVES, same as if it were absent -- this is
+    what lets `masuda update`'s add-only sync tell "not yet introduced"
+    apart from "deliberately turned off"."""
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", disabled_ids={"p00"})
+    importlib.reload(irg)
+
+    assert "p00" not in irg.PERSPECTIVE_IDS
+    assert irg.TOTAL_PERSPECTIVES == TEST_PERSPECTIVE_COUNT - 1
+
+
+def test_all_perspectives_disabled_raises_on_review_phase_detection():
+    """Every perspective disabled behaves like an empty/missing reviews dir
+    (ADR-0024's original FileNotFoundError), not like "nothing to review"."""
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", disabled_ids=set(TEST_PERSPECTIVE_IDS))
+    importlib.reload(irg)
+
+    mark_implementation_done_and_clean()
+    with pytest.raises(FileNotFoundError, match="enable: false"):
+        irg.detect_phase({"phase": "", "reason": ""})
 
 
 def test_trigger_match_phase_requested_when_a_perspective_declares_trigger(tmp_path, monkeypatch):

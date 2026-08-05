@@ -94,7 +94,11 @@ def _parse_perspective_file(path: Path) -> dict:
     """Parses one .masuda/reviews/*.md file: YAML frontmatter (name; trigger
     -- ADR-0027's optional natural-language condition, Claude-Skill-style,
     for whether phase 4's lightweight interim review should run this
-    perspective against a single step's diff. ADR-0025 dropped
+    perspective against a single step's diff; enable -- ADR-0033, defaults
+    to true, lets a project disable a built-in perspective without deleting
+    its file, so `masuda update` can tell "not yet introduced" (file
+    absent) apart from "deliberately turned off" (file present, enable:
+    false) when syncing newly-added built-ins. ADR-0025 dropped
     category/severity, which were carried over unread from the original
     hardcoded PERSPECTIVES list and never actually consumed anywhere)
     delimited by '---' lines, then a free-text body that becomes
@@ -109,16 +113,21 @@ def _parse_perspective_file(path: Path) -> dict:
     return {
         "name": name,
         "trigger": frontmatter.get("trigger"),
+        "enable": frontmatter.get("enable", True),
         "review_prompt": body,
         "checker_prompt": _checker_prompt(name, body),
     }
 
 
 def _load_perspectives() -> dict[str, dict]:
-    """Loads every perspective in REVIEWS_DIR, keyed by filename minus
-    extension (ADR-0024's stable ID -- addition/removal/renaming of files
-    between runs never shifts another perspective's identity, unlike the
-    sorted-enumeration-as-integer-index alternative ADR-0024 rejected).
+    """Loads every enabled perspective in REVIEWS_DIR, keyed by filename
+    minus extension (ADR-0024's stable ID -- addition/removal/renaming of
+    files between runs never shifts another perspective's identity, unlike
+    the sorted-enumeration-as-integer-index alternative ADR-0024 rejected).
+    Files whose frontmatter sets enable: false (ADR-0033) are parsed but
+    excluded here, same as if the file didn't exist -- the file itself
+    stays on disk so `masuda update`'s add-only sync never mistakes a
+    deliberate opt-out for "not yet introduced".
 
     Tolerates a missing/empty REVIEWS_DIR here -- this runs at *module
     import* time, which for this process's actual entrypoint always has cwd
@@ -131,7 +140,8 @@ def _load_perspectives() -> dict[str, dict]:
     review" rather than a clear error."""
     if not REVIEWS_DIR.is_dir():
         return {}
-    return {path.stem: _parse_perspective_file(path) for path in sorted(REVIEWS_DIR.glob("*.md"))}
+    parsed = {path.stem: _parse_perspective_file(path) for path in sorted(REVIEWS_DIR.glob("*.md"))}
+    return {pid: p for pid, p in parsed.items() if p["enable"]}
 
 
 PERSPECTIVES = _load_perspectives()
@@ -713,7 +723,9 @@ def _detect_review_phase() -> State:
     """
     if TOTAL_PERSPECTIVES == 0:
         raise FileNotFoundError(
-            f"{REVIEWS_DIR} not found or empty — run `masuda init` in this repository first (ADR-0024)"
+            f"{REVIEWS_DIR} not found, empty, or every perspective has enable: false — "
+            "run `masuda init` in this repository first (ADR-0024), or enable at least one "
+            "perspective (ADR-0033)"
         )
     rs = _read_review_state()
     resolved = set(rs["clean"]) | set(rs["fixed"]) | {u["id"] for u in rs["unresolved"]}
