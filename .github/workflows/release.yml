@@ -62,3 +62,31 @@ jobs:
           gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" >/dev/null 2>&1 || \
             gh release create "${{ github.ref_name }}" --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --generate-notes
           gh release upload "${{ github.ref_name }}" dist/* --repo "${{ github.repository }}" --clobber
+
+  # Publishes the sandbox base image (repo-root Dockerfile) to the public
+  # tadahiroyamamura/masuda Docker Hub repo (ADR-0032). Independent of
+  # build/release above -- the base image doesn't consume the Go binaries --
+  # so it isn't gated behind them.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DOCKERHUB_TOKEN" | docker login --username tadahiroyamamura --password-stdin
+
+      - name: Build and push masuda base image
+        run: |
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t tadahiroyamamura/masuda:${{ github.ref_name }} \
+            -t tadahiroyamamura/masuda:latest \
+            --push .
