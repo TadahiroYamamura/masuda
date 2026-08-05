@@ -10,6 +10,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
+	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
 )
 
@@ -44,9 +45,10 @@ const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServer
 // docker/{go,python,typescript,full}/Dockerfile already do against the old
 // locally-built masuda-loop tag.
 func dockerfileTemplate(tag string) string {
-	return fmt.Sprintf(`# Sandbox image for this project (ADR-0032). Customize freely -- add
-# language toolchains, LSP plugins, etc. "masuda update" bumps the pinned
-# tag below to the latest published release and rebuilds this file.
+	return fmt.Sprintf(`# Sandbox image for this project. Customize freely -- add language
+# toolchains, LSP plugins, etc. "masuda sandbox build" (or "masuda update")
+# bumps the pinned tag below to the latest published release and rebuilds
+# this file.
 FROM %s:%s
 `, selfupdate.DefaultDockerImage, tag)
 }
@@ -102,7 +104,17 @@ func newInitCommand() *cobra.Command {
 				return fmt.Errorf("release %s has no reviews asset (%s)", release.TagName, selfupdate.ReviewsAssetName)
 			}
 
-			cfg := config.Config{Image: image, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
+			// Materialized explicitly even when --image wasn't passed, rather
+			// than leaving Image empty for some later reader to implicitly
+			// fall back to sandbox.DefaultImage at its own point of use —
+			// masuda doesn't carry implicit defaults for values a project's
+			// own committed settings.json can just state outright (ADR-0031's
+			// principle, applied here to Image too).
+			resolvedImage := image
+			if resolvedImage == "" {
+				resolvedImage = sandbox.DefaultImage
+			}
+			cfg := config.Config{Image: resolvedImage, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
 			data, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
 				return err

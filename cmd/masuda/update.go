@@ -93,13 +93,14 @@ func updateBinary(cmd *cobra.Command, release selfupdate.Release) error {
 }
 
 // refreshProjectDockerfile rebuilds the current project's .masuda/Dockerfile
-// (ADR-0032), if one exists, tagging the result as .masuda/settings.json's
-// "image" field (or sandbox.DefaultImage if that field is unset). A no-op
-// outside a project checkout, or inside one without a .masuda/Dockerfile —
-// masuda init only started writing that file with ADR-0032, so
-// already-initialized projects don't have one yet. Bumps the Dockerfile's
-// pinned FROM tag to release.TagName before rebuilding, so the pin doesn't
-// go stale.
+// (ADR-0032), if one exists. A no-op outside a project checkout, or inside
+// one without a .masuda/Dockerfile — masuda init only started writing that
+// file with ADR-0032, so already-initialized projects don't have one yet.
+// `masuda sandbox build` (cmd/masuda/sandbox.go) is the standalone
+// equivalent for rebuilding on demand, independent of the rest of `masuda
+// update` (notably its machine-wide running-workspace block, which exists
+// for the CLI binary replace step and has no bearing on a per-project image
+// rebuild).
 func refreshProjectDockerfile(cmd *cobra.Command, release selfupdate.Release) error {
 	root, err := repoRoot()
 	if err != nil {
@@ -111,7 +112,14 @@ func refreshProjectDockerfile(cmd *cobra.Command, release selfupdate.Release) er
 	} else if err != nil {
 		return err
 	}
+	return rebuildDockerfileForRelease(cmd, root, dockerfilePath, release)
+}
 
+// rebuildDockerfileForRelease bumps dockerfilePath's pinned FROM tag to
+// release.TagName (so the pin doesn't go stale) and rebuilds it, tagging
+// the result as .masuda/settings.json's "image" field. Shared by `masuda
+// update` and `masuda sandbox build`.
+func rebuildDockerfileForRelease(cmd *cobra.Command, root, dockerfilePath string, release selfupdate.Release) error {
 	if err := selfupdate.UpdateDockerfileFromTag(dockerfilePath, release.TagName); err != nil {
 		return err
 	}
@@ -120,15 +128,19 @@ func refreshProjectDockerfile(cmd *cobra.Command, release selfupdate.Release) er
 	if err != nil {
 		return err
 	}
-	tag := cfg.Image
-	if tag == "" {
-		tag = sandbox.DefaultImage
+	// No implicit fallback here (ADR-0031's principle): masuda init
+	// materializes Image explicitly, so an empty value here means the
+	// project's own settings.json was edited to remove it, not "masuda
+	// forgot to write one" -- surface that plainly instead of silently
+	// substituting sandbox.DefaultImage.
+	if cfg.Image == "" {
+		return fmt.Errorf("%s has no image field set — set one explicitly (masuda init writes a default)", config.SettingsPath(root))
 	}
 
-	if err := selfupdate.RebuildDockerfile(dockerfilePath, root, tag, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
+	if err := selfupdate.RebuildDockerfile(dockerfilePath, root, cfg.Image, cmd.OutOrStdout(), cmd.ErrOrStderr()); err != nil {
 		return err
 	}
-	fmt.Fprintf(cmd.OutOrStdout(), "rebuilt %s -> %s\n", dockerfilePath, tag)
+	fmt.Fprintf(cmd.OutOrStdout(), "rebuilt %s -> %s\n", dockerfilePath, cfg.Image)
 	return nil
 }
 
