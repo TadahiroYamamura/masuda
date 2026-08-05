@@ -32,8 +32,10 @@ import (
 // specific servers by name in enabledMcpjsonServers, or flip
 // enableAllProjectMcpServers if a repo's servers are all trusted) in front
 // of the user instead of requiring them to know Claude Code's settings
-// schema to discover it.
-const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": []}`
+// schema to discover it. skipDangerousModePermissionPrompt suppresses the
+// bypass-permissions-mode disclaimer dialog that `--dangerously-skip-
+// permissions` would otherwise show on first run (ADR-0034).
+const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": [], "skipDangerousModePermissionPrompt": true}`
 
 // dockerfileTemplate is .masuda/Dockerfile's starting content (ADR-0032):
 // FROM the publicly published masuda base image, pinned to tag. Pinned (not

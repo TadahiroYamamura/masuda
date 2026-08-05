@@ -12,24 +12,12 @@ PROMPT="CLAUDE.mdのルールに従い作業を開始せよ"
 MERGED_SETTINGS=/tmp/masuda-claude-settings.json
 python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
 
-# Pass the initial prompt as a positional argument so Claude starts working immediately
+# Pass the initial prompt as a positional argument so Claude starts working immediately.
+# MERGED_SETTINGS carries skipDangerousModePermissionPrompt: true (ADR-0034),
+# so the bypass-permissions-mode disclaimer dialog never appears here — no
+# tmux capture-pane/send-keys polling needed to get past it.
 tmux new-session -d -s "$SESSION" \
     "claude --dangerously-skip-permissions --settings '$MERGED_SETTINGS' '$PROMPT'"
-
-# Poll for the bypass permissions dialog (up to 10s) and accept it if shown
-for i in $(seq 1 10); do
-    sleep 1
-    pane=$(tmux capture-pane -t "$SESSION" -p 2>/dev/null || true)
-    if echo "$pane" | grep -q "Yes, I accept"; then
-        tmux send-keys -t "$SESSION" "2" Enter
-        echo "[entrypoint] bypass dialog accepted"
-        break
-    fi
-    if echo "$pane" | grep -q "bypass permissions on"; then
-        echo "[entrypoint] Claude started (no dialog)"
-        break
-    fi
-done
 
 echo "[entrypoint] ttyd starting on :7682"
 
