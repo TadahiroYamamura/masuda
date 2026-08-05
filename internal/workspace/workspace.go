@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -210,7 +211,11 @@ func Exists(id string) bool {
 
 // List returns every workspace whose metadata records repoRoot as its
 // repository — the state directory itself is global (not per-repo), since
-// it deliberately lives outside any single git checkout.
+// it deliberately lives outside any single git checkout. Sorted by CreatedAt,
+// most recent first: os.ReadDir's underlying filename order used to be a
+// reasonable stand-in (IDs were branch-prefixed, ADR-0014), but ADR-0030's
+// pure-random IDs sort in an order that means nothing to a human, so this
+// needs to be explicit now.
 func List(repoRoot string) ([]Info, error) {
 	root, err := rootDir()
 	if err != nil {
@@ -236,6 +241,7 @@ func List(repoRoot string) ([]Info, error) {
 			infos = append(infos, info)
 		}
 	}
+	sort.Slice(infos, func(i, j int) bool { return infos[i].CreatedAt.After(infos[j].CreatedAt) })
 	return infos, nil
 }
 
