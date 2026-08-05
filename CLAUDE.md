@@ -41,7 +41,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 - `internal/workspace/`: ワークスペースID（乱数6桁hexのみ、`NewID`。branch名を含めない理由はADR-0030）とその状態ディレクトリ（`~/.local/share/masuda/workspaces/<id>/`、XDG_DATA_HOME尊重）を管理するパッケージ。`Create`/`Load`/`Exists`/`List`/`Remove`を提供する。branch名ではなくこのIDが以後すべてのCLIサブコマンドの引数・worktree/コンテナ/tmuxセッションのアドレッシングキーになる——同じbranchに対して複数のワークスペースが並行して存在できるようにするため
 - `internal/config/`: 対象リポジトリのルート直下の`.masuda/settings.json`（ユーザーが手で編集してコミットする、任意ファイル。`masuda init`が生成する）を読む。`image`（使うDockerイメージ）・`base`（trunk branch名）・`claudeSettings`（`claude`起動時の`--settings`に渡す不透明ペイロード、ADR-0031）の3フィールドを定義する。`resolveImage`/`resolveBase`（`cmd/masuda/main.go`）が`--image`フラグ/`--base`・`--into`フラグ＞`.masuda/settings.json`の値＞デフォルトの優先順位で解決する（`claudeSettings`にCLIフラグでの上書きはない）。`image`フィールドの設計判断（masuda側で言語検出ヒューリスティックを持たずrepo側に委ねる理由）はADR-0015を参照。単一ファイル`.masuda.json`からの再編（破壊的変更、後方互換なし）はADR-0024
-- `internal/perspectives/`: masuda内蔵の14レビュー観点を`builtin/*.md`（Markdown + YAML frontmatter、`go:embed`）として保持し、`WriteBuiltins`で対象リポジトリの`.masuda/reviews/`へ書き出す。観点の識別はファイル名（拡張子除く）をIDとする。詳細はADR-0024。frontmatterの`trigger`（自然言語、任意項目）はADR-0027のフェーズ4途中レビューがどの観点をトリガーするかの判定に使う
+- `internal/perspectives/`: masuda内蔵の14レビュー観点のソース`builtin/*.md`（Markdown + YAML frontmatter）と`ReviewsDir`パスヘルパーのみを持つ。観点の識別はファイル名（拡張子除く）をIDとする。詳細はADR-0024。frontmatterの`trigger`（自然言語、任意項目）はADR-0027のフェーズ4途中レビューがどの観点をトリガーするかの判定に、`enable`（任意項目、既定true）は観点の無効化に使う。実際の対象リポジトリへの展開はGitHub Releaseアセット経由（`internal/selfupdate.SyncReviews`、`masuda init`/`masuda update`から呼ばれる。ADR-0033、`go:embed`は廃止済み）
 
 ### 既知の課題（未修正）
 
@@ -49,7 +49,8 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 ### Go CLI（cmd/masuda）
 
-- `masuda init [--image] [--base]`: 対象リポジトリに`.masuda/`（`settings.json`＋内蔵14観点を書き出す`reviews/`）を展開する一度きりの操作（ADR-0024）。`settings.json`の`claudeSettings`フィールドにはデフォルト値を常に書き出す（ADR-0031）。`.masuda/`が既に存在する場合はエラーで再実行を拒否する——ユーザーが`.masuda/reviews/`から削除した観点ファイルの復活や、masuda自体に新規追加された組み込み観点の後追い取り込み（Issue #8）はこのコマンドの責務ではない
+- `masuda init [--image] [--base]`: 対象リポジトリに`.masuda/`（`settings.json`＋内蔵14観点を書き出す`reviews/`＋`Dockerfile`）を展開する一度きりの操作（ADR-0024）。`settings.json`の`claudeSettings`フィールドにはデフォルト値を常に書き出す（ADR-0031）。`.masuda/`が既に存在する場合はエラーで再実行を拒否する。観点・Dockerfileの内容はGitHub Releaseアセットから取得するため、実行にはネットワーク接続が必要（ADR-0033）
+- `masuda update`: masuda自身のCLIバイナリをGitHub Releaseの最新版へ差し替え、対象プロジェクトの`.masuda/Dockerfile`（あれば）を再ビルドし、`.masuda/reviews/`に無い新規組み込み観点を追加する（既存ファイルは一切変更しない）。進行中のワークスペースが1つでもあれば拒否する（ADR-0032・ADR-0033）
 - `masuda workspace create|merge|remove|list|info|rebase`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
   - `create <branch> [--base]`: 新規ワークスペースID発行＋`git clone --local`によるローカルクローン方式（ADR-0018、`git worktree add`ではない）
   - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する（ユーザーが明示的に叩く手動のローカル統合。`review approve`が自動で行うfast-forward限定の反映＝ADR-0023の`worktree.Pull`とは別物）。`remove`はworktree削除に続けて状態ディレクトリも削除する

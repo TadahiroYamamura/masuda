@@ -70,9 +70,9 @@ masuda init --image masuda-loop:go --base main
 - `.masuda/settings.json`: `--image`・`--base`フラグの毎回指定を省略できる（ADR-0015）
   - `image`: `masuda sandbox start` / `masuda review start`が使うDockerイメージ（未指定時は`masuda-loop`）
   - `base`: worktree作成・マージ先のデフォルトブランチ（未指定時は`develop`）
-- `.masuda/reviews/`: フェーズ5（レビュー）が使う観点をMarkdownファイルとして1観点1ファイルで持つ。masuda内蔵の14観点が展開される。プロジェクト固有の観点を追加したい場合はファイルを追加し、不要な観点はファイルを削除すればよい
+- `.masuda/reviews/`: フェーズ5（レビュー）が使う観点をMarkdownファイルとして1観点1ファイルで持つ。masuda内蔵の14観点が展開される。プロジェクト固有の観点を追加したい場合はファイルを追加し、不要な観点はfrontmatterに`enable: false`を設定する（ADR-0033。ファイルは残るので、後から`masuda update`が新しい組み込み観点を取り込む際に「まだ導入されていない観点」と正しく区別できる）
 
-`masuda init`は一度きりの操作で、`.masuda/`が既に存在するリポジトリに対しては再実行できない（削除した観点ファイルを復活させたり、masuda自体に追加された新しい組み込み観点を後から取り込んだりはしない）。
+`masuda init`は一度きりの操作で、`.masuda/`が既に存在するリポジトリに対しては再実行できない。masuda自体に追加された新しい組み込み観点は、`masuda init`の再実行ではなく`masuda update`（ADR-0033）が取り込む——`.masuda/reviews/`に無い観点だけを追加し、既存ファイル（`enable: false`にしたものも含む）には一切触れない。
 
 `.masuda/`はmasuda自体のリポジトリではなく、**masudaで作業したい対象リポジトリ**の直下に生成される。
 
