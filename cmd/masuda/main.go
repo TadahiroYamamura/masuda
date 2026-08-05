@@ -19,6 +19,15 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
+// version is masuda's own version, embedded at build time via
+// `-ldflags "-X main.version=..."` (.github/workflows/release.yml, ADR-0032).
+// Local `make build`/`make install` builds don't set this — the CI-built
+// release binaries are the only ones that carry a real version, since a
+// bare `go build` has no way to know which git tag it corresponds to
+// without also embedding the source tree's location (ADR-0032 deliberately
+// rejected that).
+var version = "dev"
+
 func main() {
 	if err := newRootCommand().Execute(); err != nil {
 		os.Exit(1)
@@ -29,6 +38,7 @@ func newRootCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:           "masuda",
 		Short:         "AI-collaborative development sandbox orchestration",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: false,
 	}
@@ -36,6 +46,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
 	root.AddCommand(newChatCommand())
+	root.AddCommand(newUpdateCommand())
 
 	planCmd := newGateCommand(gate.Plan)
 	planCmd.AddCommand(newPlanStartCommand())

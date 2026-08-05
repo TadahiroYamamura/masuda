@@ -32,7 +32,10 @@ jobs:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 0
-        run: go build -trimpath -o "masuda_${{ matrix.goos }}_${{ matrix.goarch }}" ./cmd/masuda
+        # -X main.version embeds the pushed tag (ADR-0032) so `masuda
+        # update`/`masuda --version` can identify this build; local `make
+        # build` deliberately leaves it at the "dev" default.
+        run: go build -trimpath -ldflags "-X main.version=${{ github.ref_name }}" -o "masuda_${{ matrix.goos }}_${{ matrix.goarch }}" ./cmd/masuda
 
       - uses: actions/upload-artifact@v4
         with:

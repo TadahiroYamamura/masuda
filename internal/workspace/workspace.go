@@ -209,14 +209,19 @@ func Exists(id string) bool {
 	return err == nil
 }
 
-// List returns every workspace whose metadata records repoRoot as its
-// repository — the state directory itself is global (not per-repo), since
-// it deliberately lives outside any single git checkout. Sorted by CreatedAt,
-// most recent first: os.ReadDir's underlying filename order used to be a
-// reasonable stand-in (IDs were branch-prefixed, ADR-0014), but ADR-0030's
-// pure-random IDs sort in an order that means nothing to a human, so this
-// needs to be explicit now.
-func List(repoRoot string) ([]Info, error) {
+// ListAll returns every workspace known to this machine, regardless of which
+// repository it targets — the state directory is global (not per-repo),
+// since it deliberately lives outside any single git checkout. Sorted by
+// CreatedAt, most recent first: os.ReadDir's underlying filename order used
+// to be a reasonable stand-in (IDs were branch-prefixed, ADR-0014), but
+// ADR-0030's pure-random IDs sort in an order that means nothing to a human,
+// so this needs to be explicit now.
+//
+// This exists alongside the repo-scoped List for `masuda update` (ADR-0032):
+// replacing the CLI binary affects every repo's workspaces at once, so its
+// "is anything in progress" check must not filter by the repo it happens to
+// be invoked from.
+func ListAll() ([]Info, error) {
 	root, err := rootDir()
 	if err != nil {
 		return nil, err
@@ -237,11 +242,25 @@ func List(repoRoot string) ([]Info, error) {
 		if err != nil {
 			continue // skip anything that doesn't look like a valid workspace
 		}
+		infos = append(infos, info)
+	}
+	sort.Slice(infos, func(i, j int) bool { return infos[i].CreatedAt.After(infos[j].CreatedAt) })
+	return infos, nil
+}
+
+// List returns every workspace whose metadata records repoRoot as its
+// repository. See ListAll for the underlying enumeration and sort order.
+func List(repoRoot string) ([]Info, error) {
+	all, err := ListAll()
+	if err != nil {
+		return nil, err
+	}
+	var infos []Info
+	for _, info := range all {
 		if info.RepoRoot == repoRoot {
 			infos = append(infos, info)
 		}
 	}
-	sort.Slice(infos, func(i, j int) bool { return infos[i].CreatedAt.After(infos[j].CreatedAt) })
 	return infos, nil
 }
 
