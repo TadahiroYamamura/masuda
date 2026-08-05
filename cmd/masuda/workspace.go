@@ -43,7 +43,7 @@ func newWorkspaceCommand() *cobra.Command {
 // plan start, review start) that isn't resuming an existing workspace uses.
 // name is an optional display label (see workspace.Create) and may be empty.
 func newWorkspace(root, branch, base, name string) (workspace.Info, string, error) {
-	id, err := workspace.NewID(branch)
+	id, err := workspace.NewID()
 	if err != nil {
 		return workspace.Info{}, "", err
 	}

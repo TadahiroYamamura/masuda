@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -103,18 +102,36 @@ func StateDir(id string) (string, error) {
 	return filepath.Join(root, id), nil
 }
 
-var idSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
+// maxNewIDAttempts bounds NewID's collision-retry loop. A collision on the
+// first attempt is already a 1-in-16.7M event (3 random bytes); this is a
+// defensive cap against a pathological RNG/filesystem failure, not something
+// expected to ever actually bind in practice.
+const maxNewIDAttempts = 100
 
-// NewID generates a unique workspace ID for branch: <sanitized-branch>-<6 hex
-// chars>. The branch prefix keeps IDs recognizable in listings; the random
-// suffix is what actually guarantees uniqueness across repeated invocations
-// for the same branch.
-func NewID(branch string) (string, error) {
+// NewID generates a workspace ID not already in use: 6 random hex chars, no
+// branch name (ADR-0030 dropped the `<sanitized-branch>-` prefix ADR-0014
+// originally used — Info.Branch/Info.Name already carry that information
+// for every masuda-native surface, so embedding it in the identifier itself
+// only paid off for reading raw `docker ps`/`tmux ls` output, which isn't
+// worth lengthening the identifier every masuda command takes as an
+// argument). Retries on collision against Exists -- dropping the branch
+// prefix pools every workspace into one shared 3-byte ID space instead of
+// one per branch, so this is no longer rare enough over a tool's lifetime to
+// leave unchecked (an unchecked collision would silently overwrite an
+// existing workspace's metadata, since Create's os.MkdirAll/os.WriteFile are
+// both unconditional).
+func NewID() (string, error) {
 	suffix := make([]byte, 3)
-	if _, err := rand.Read(suffix); err != nil {
-		return "", fmt.Errorf("generating workspace ID: %w", err)
+	for range maxNewIDAttempts {
+		if _, err := rand.Read(suffix); err != nil {
+			return "", fmt.Errorf("generating workspace ID: %w", err)
+		}
+		id := hex.EncodeToString(suffix)
+		if !Exists(id) {
+			return id, nil
+		}
 	}
-	return fmt.Sprintf("%s-%s", idSanitizer.ReplaceAllString(branch, "-"), hex.EncodeToString(suffix)), nil
+	return "", fmt.Errorf("generating workspace ID: %d consecutive collisions, giving up", maxNewIDAttempts)
 }
 
 // Create persists a new workspace's metadata and returns it. Call once per
