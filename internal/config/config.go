@@ -39,6 +39,16 @@ func DockerfilePath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, DockerfileName)
 }
 
+// GitignoreFileName is the optional, user-authored .gitignore's name within
+// DirName -- not written by masuda init, but some repos add one (typically
+// `*`) to keep DirName's own contents out of git entirely (ADR-0036).
+const GitignoreFileName = ".gitignore"
+
+// GitignorePath returns the absolute path to repoRoot's .masuda/.gitignore.
+func GitignorePath(repoRoot string) string {
+	return filepath.Join(repoRoot, DirName, GitignoreFileName)
+}
+
 // Config is the on-disk shape of .masuda/settings.json. All fields are
 // optional — an absent file, or an absent field within one, means "use
 // masuda's built-in default."

@@ -32,6 +32,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 )
 
 // Dir returns the on-disk path of the checkout for workspace id, rooted
@@ -81,6 +84,9 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 		if _, err := runGit(repoRoot, "clone", "--local", "--branch", branch, repoRoot, dir); err != nil {
 			return "", err
 		}
+		if err := syncMasudaConfig(repoRoot, dir); err != nil {
+			return "", err
+		}
 		return dir, nil
 	}
 
@@ -90,7 +96,99 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 	if _, err := runGit(dir, "checkout", "-b", branch); err != nil {
 		return "", err
 	}
+	if err := syncMasudaConfig(repoRoot, dir); err != nil {
+		return "", err
+	}
 	return dir, nil
+}
+
+// syncMasudaConfig unconditionally overwrites dir's .masuda/settings.json,
+// .masuda/reviews/, and (if present) .masuda/.gitignore with repoRoot's
+// current working-tree copies. These are ordinarily committed config
+// (internal/config, internal/perspectives), in which case `git clone` above
+// already reproduced them and this just rewrites identical content -- but a
+// repo that hasn't committed .masuda/ yet (e.g. dogfooding masuda solo
+// before sharing it with a team) would otherwise get a clone with no config
+// at all, since `git clone` only reproduces committed history. Overwriting
+// rather than copying-if-missing is deliberate: even once .masuda/ is
+// committed, repoRoot may carry local, not-yet-committed edits to these
+// files (settings/perspectives being tried out before sharing with the
+// team), and those should still reach every new workspace.
+//
+// Copying .masuda/.gitignore (when repoRoot has one) matters beyond mere
+// consistency: masuda's own Commit runs `git add -A` inside the clone for
+// phase 4/5 step commits, so without it, the settings.json/reviews/ files
+// this function just wrote would show up as ordinary untracked files in the
+// clone and get swept into the workspace's own branch history. A repoRoot
+// that already commits .masuda/ typically keeps .masuda/.gitignore itself
+// committed too, so `git clone` reproduces it there without help; this only
+// matters for the same not-yet-committed .masuda/ case as settings.json.
+//
+// .masuda/Dockerfile is excluded -- docker build always reads it from
+// repoRoot directly (cmd/masuda/sandbox.go, update.go), never from a clone.
+// .masuda/worktrees/ (sibling workspaces' own clones, including dir itself)
+// is excluded to avoid copying it into itself.
+func syncMasudaConfig(repoRoot, dir string) error {
+	if err := copyFileIfExists(config.SettingsPath(repoRoot), config.SettingsPath(dir)); err != nil {
+		return fmt.Errorf("syncing %s: %w", config.SettingsFileName, err)
+	}
+	if err := copyDirIfExists(perspectives.ReviewsDir(repoRoot), perspectives.ReviewsDir(dir)); err != nil {
+		return fmt.Errorf("syncing %s: %w", perspectives.ReviewsDirName, err)
+	}
+	if err := copyFileIfExists(config.GitignorePath(repoRoot), config.GitignorePath(dir)); err != nil {
+		return fmt.Errorf("syncing %s: %w", config.GitignoreFileName, err)
+	}
+	return nil
+}
+
+func copyFileIfExists(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0o644)
+}
+
+// copyDirIfExists mirrors src onto dst, replacing whatever dst previously
+// held (a no-op if src doesn't exist -- e.g. no .masuda/reviews/ at all).
+func copyDirIfExists(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			if err := copyDirIfExists(srcPath, dstPath); err != nil {
+				return err
+			}
+			continue
+		}
+		data, err := os.ReadFile(srcPath)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(dstPath, data, 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Merge fast-forwards or merges branch into into, entirely within repoRoot's
