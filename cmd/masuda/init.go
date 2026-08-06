@@ -24,18 +24,20 @@ import (
 //
 // theme sidesteps the interactive first-run theme-selection wizard and
 // carries no security implication, so masuda suggesting it by default is
-// fine. enableAllProjectMcpServers/enabledMcpjsonServers are seeded at
-// their own inert values (false/empty — matching Claude Code's own
-// no-trust-by-default behavior, granting nothing) rather than left out
-// entirely: the point isn't to pre-approve anything, it's to put the
-// selective-trust escape hatch for Issue #10's MCP prompt (approve
-// specific servers by name in enabledMcpjsonServers, or flip
-// enableAllProjectMcpServers if a repo's servers are all trusted) in front
-// of the user instead of requiring them to know Claude Code's settings
-// schema to discover it. skipDangerousModePermissionPrompt suppresses the
-// bypass-permissions-mode disclaimer dialog that `--dangerously-skip-
-// permissions` would otherwise show on first run (ADR-0034).
-const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": [], "skipDangerousModePermissionPrompt": true}`
+// fine. enableAllProjectMcpServers/enabledMcpjsonServers/
+// disabledMcpjsonServers are seeded at their own inert values
+// (false/empty/empty — matching Claude Code's own no-trust-by-default
+// behavior, granting nothing) rather than left out entirely: the point
+// isn't to pre-approve anything, it's to put the selective-trust escape
+// hatch for Issue #10's MCP prompt (approve specific servers by name in
+// enabledMcpjsonServers, block specific ones in disabledMcpjsonServers, or
+// flip enableAllProjectMcpServers if a repo's servers are all trusted) in
+// front of the user instead of requiring them to know Claude Code's
+// settings schema to discover it. skipDangerousModePermissionPrompt
+// suppresses the bypass-permissions-mode disclaimer dialog that
+// `--dangerously-skip-permissions` would otherwise show on first run
+// (ADR-0034).
+const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": [], "disabledMcpjsonServers": [], "skipDangerousModePermissionPrompt": true}`
 
 // dockerfileTemplate is .masuda/Dockerfile's starting content (ADR-0032):
 // FROM the publicly published masuda base image, pinned to tag. Pinned (not
