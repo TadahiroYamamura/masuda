@@ -176,6 +176,17 @@ func WriteInstructions(stateDir string, content []byte) error {
 	return os.WriteFile(filepath.Join(stateDir, "INSTRUCTIONS.md"), content, 0o644)
 }
 
+// WriteTDDIntent records that `masuda plan start --tdd` was passed at
+// workspace-creation time -- a marker file investigate_plan_graph.py's plan
+// prompt checks for the same way it already checks INSTRUCTIONS_MD (ADR-0016
+// precedent), so the planner sees the human's TDD intent on every loop
+// iteration/resume. Written once at creation, same as WriteInstructions and
+// WriteTaskBrief, so --tdd never needs to be resupplied on `masuda plan start
+// <workspace-id>`.
+func WriteTDDIntent(stateDir string) error {
+	return os.WriteFile(filepath.Join(stateDir, ".masuda-tdd-requested"), []byte("1"), 0o644)
+}
+
 func renderSystemPrompt(stateDir string) (string, error) {
 	pythonPath, scriptPath, err := ensureRuntime()
 	if err != nil {

@@ -127,6 +127,42 @@ func TestShowPlanOmitsExpectedByproductsSectionWhenAbsent(t *testing.T) {
 	}
 }
 
+func TestShowPlanRendersTDDModeMarkerWhenStepIsTDD(t *testing.T) {
+	stateDir := t.TempDir()
+	writePlan(t, stateDir, "summary", `{"steps": [
+		{"description": "新機能をTDDで実装", "mode": "tdd", "files": [{"path": "a.go", "description": "aを追加"}]},
+		{"description": "依存関係を追加", "files": [{"path": "go.mod", "description": "依存追加"}]}
+	]}`)
+
+	out, err := Show(stateDir, Plan)
+	if err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+
+	if !strings.Contains(out, "1. 新機能をTDDで実装（TDDモード）") {
+		t.Errorf("Show() output missing TDD mode marker on step 1\nfull output:\n%s", out)
+	}
+	if strings.Contains(out, "2. 依存関係を追加（TDDモード）") {
+		t.Errorf("Show() must not mark step 2 as TDD mode when its mode field is absent\nfull output:\n%s", out)
+	}
+}
+
+func TestShowPlanOmitsTDDModeMarkerWhenStepModeAbsent(t *testing.T) {
+	stateDir := t.TempDir()
+	writePlan(t, stateDir, "summary", `{"steps": [
+		{"description": "ステップ1", "files": [{"path": "a.go", "description": "aを追加"}]}
+	]}`)
+
+	out, err := Show(stateDir, Plan)
+	if err != nil {
+		t.Fatalf("Show() error = %v, want nil", err)
+	}
+
+	if strings.Contains(out, "TDDモード") {
+		t.Fatalf("Show() must omit the TDD mode marker when no step declares mode: \"tdd\", got:\n%s", out)
+	}
+}
+
 func TestShowPlanMissingStepsErrors(t *testing.T) {
 	stateDir := t.TempDir()
 	if _, err := Show(stateDir, Plan); err == nil {

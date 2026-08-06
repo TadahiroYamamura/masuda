@@ -56,6 +56,12 @@ TASK_BRIEF = STATE_DIR / ".masuda-task.md"
 # investigator to fact-check it against the actual codebase rather than
 # follow it blindly.
 INSTRUCTIONS_MD = STATE_DIR / "INSTRUCTIONS.md"
+# masuda plan start --tdd (Issue #3): a human's advisory signal that TDD
+# should be used where the planner judges appropriate, checked the same way
+# INSTRUCTIONS_MD is checked below. Written once at workspace-creation time
+# by hostloop.WriteTDDIntent, so it survives a `masuda plan start
+# <workspace-id>` resume without needing to be re-passed.
+TDD_REQUESTED_MARKER = STATE_DIR / ".masuda-tdd-requested"
 INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
 # ADR-0026: PLAN.md is no longer one Markdown file. Prose lives in
 # summary.md; the mechanically-consumed step/file breakdown lives in
@@ -293,6 +299,21 @@ def _plan_task(feedback: str | None) -> str:
 
 上記を踏まえてプランを見直せ。
 """
+
+    tdd_note = ""
+    tdd_schema_hint = ""
+    if TDD_REQUESTED_MARKER.exists():
+        tdd_note = """
+
+## TDDモードについて（`masuda plan start --tdd`が指定された、Issue #3）
+このタスクではTDD（Red→Green→Refactor）での実装が望まれている。ステップ分解の際、
+「新機能の追加」に該当するステップ（バグ修正・依存更新・ドキュメント修正等ではなく、
+新しい振る舞いを追加するステップ）には`"mode": "tdd"`を付けてよい。バグ修正や
+軽微な修正に該当するステップには付けないこと（付けるかどうかの最終判断はプラン
+エージェントに委ねられており、人間がG1でこの判断を確認・修正する）。
+"""
+        tdd_schema_hint = '\n      "mode": "tdd",'
+
     return f"""# TASK: プラン作成（フェーズ2）
 
 Task toolで `subagent_type: planner` を指定し、新規コンテキストのサブエージェントに
@@ -306,7 +327,7 @@ Task toolで `subagent_type: planner` を指定し、新規コンテキストの
 ただし調査の前提が崩れるような大きなギャップがある場合は、独自に調査をやり直さず
 `{PLAN_RESULT_JSON}`に`{{"status": "needs_more_investigation", "questions": [...]}}`
 を書き出させること（この場合{PLAN_SUMMARY_MD.name}・{PLAN_STEPS_JSON.name}は書かない）。
-{redo_note}
+{redo_note}{tdd_note}
 ## {PLAN_SUMMARY_MD.name}の構成（自由記述のprose、人間向け）
 - アプローチの要約
 - テスト方針
@@ -322,7 +343,7 @@ Task toolで `subagent_type: planner` を指定し、新規コンテキストの
 {{
   "steps": [
     {{
-      "description": "ステップ1の説明（このステップで何を実装するか）",
+      "description": "ステップ1の説明（このステップで何を実装するか）",{tdd_schema_hint}
       "files": [
         {{"path": "internal/foo/bar.go", "description": "〜のため〜を追加"}},
         {{"path": "internal/foo/bar_test.go", "description": "上記のテスト"}}

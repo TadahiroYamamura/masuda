@@ -33,6 +33,35 @@ TWO_STEP_PLAN = [
     },
 ]
 
+# TDD mode (Issue #3): a step marked mode: "tdd" goes through the
+# Red/Green/Refactor sub-loop (_detect_tdd_phase) instead of the normal
+# single-shot implement_step path.
+TDD_STEP_PLAN = [
+    {
+        "description": "新機能をTDDで実装",
+        "mode": "tdd",
+        "files": [
+            {"path": "feature.go", "description": "新機能本体"},
+            {"path": "feature_test.go", "description": "対応するテスト"},
+        ],
+    },
+]
+
+MIXED_MODE_PLAN = [
+    {
+        "description": "依存関係を追加",
+        "files": [{"path": "go.mod", "description": "依存追加"}],
+    },
+    {
+        "description": "新機能をTDDで実装",
+        "mode": "tdd",
+        "files": [
+            {"path": "feature.go", "description": "新機能本体"},
+            {"path": "feature_test.go", "description": "対応するテスト"},
+        ],
+    },
+]
+
 
 TEST_PERSPECTIVE_COUNT = 14
 # Zero-padded so string-sort order (irg.PERSPECTIVE_IDS is `sorted(...)`)
@@ -138,6 +167,28 @@ def mark_step_done(changed_files, commit_message="update"):
     irg.STEP_COMMIT_MESSAGE_FILE.write_text(commit_message, encoding="utf-8")
 
 
+def mark_tdd_phase_done(changed_files, commit_message="update", tdd_next_phase=None):
+    """A TDD phase's (Red/Green/Refactor) implementation subagent self-report
+    -- mirrors mark_step_done's shape, plus the optional tdd_next_phase key
+    only a Refactor turn ever needs (see _advance_tdd_cycle). The commit
+    message file is only written when there's something to commit -- an
+    honestly-reported "no changes needed" Refactor turn (changed_files=[])
+    never gets committed, matching what a real subagent would do per
+    _tdd_completion_section's instructions."""
+    result = {"status": "done", "changed_files": changed_files}
+    if tdd_next_phase is not None:
+        result["tdd_next_phase"] = tdd_next_phase
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps(result), encoding="utf-8")
+    if changed_files:
+        irg.TDD_CYCLE_COMMIT_MESSAGE_FILE.write_text(commit_message, encoding="utf-8")
+
+
+def write_tdd_check(step_index, cycle, phase, attempt, ok, feedback=""):
+    path = irg._tdd_check_path(step_index, cycle, phase, attempt)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"ok": ok, "feedback": feedback}), encoding="utf-8")
+
+
 def mark_implementation_done_and_clean():
     """A single-step plan (SAMPLE_STEPS) whose one step is implemented,
     self-reported done, and ready to cleanly land -- the baseline most phase
@@ -229,11 +280,37 @@ def test_completed_step_count_is_zero_before_any_step_commit():
     assert irg._completed_step_count() == 0
 
 
-def test_completed_step_count_reflects_commits_ahead_of_base_ref():
+def test_completed_step_count_counts_tags_not_raw_commits():
+    """TDD mode (Issue #3) can land several commits within a single step, so
+    _completed_step_count() no longer treats "commits ahead of base_ref" as
+    synonymous with "steps landed" -- only a masuda-step-<workspace-id>-<N>
+    tag (_tag_step) marks a step as actually complete."""
     init_git_repo()
     pathlib.Path("extra.txt").write_text("x", encoding="utf-8")
     subprocess.run(["git", "add", "extra.txt"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "one step landed"], check=True)
+    assert irg._completed_step_count() == 0
+    irg._tag_step(0)
+    assert irg._completed_step_count() == 1
+
+
+def test_completed_step_count_ignores_tags_outside_base_ref_range():
+    """A masuda-step-* tag that leaked in from an unrelated task (e.g. via
+    `git clone --local` copying repoRoot's tags wholesale, ADR-0018) must not
+    be counted just because its name happens to match this workspace's id --
+    only tags on commits actually within this branch's own base_ref..HEAD
+    range count."""
+    init_git_repo()
+    # A tag on the baseline commit itself -- outside base_ref..HEAD's
+    # (exclusive of base_ref) range, standing in for a foreign tag that
+    # predates this branch's own history.
+    subprocess.run(["git", "tag", f"masuda-step-{irg._workspace_id()}-99"], check=True)
+    assert irg._completed_step_count() == 0
+
+    pathlib.Path("extra.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "extra.txt"], check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "one step landed"], check=True)
+    irg._tag_step(0)
     assert irg._completed_step_count() == 1
 
 
@@ -1789,3 +1866,257 @@ def test_cross_cutting_verify_task_includes_triage_self_report_section():
     write_cross_cutting_findings([])
     content = irg._cross_cutting_verify_task()
     assert str(irg.TRIAGE_CONCERN_JSON) in content
+
+
+# --- TDD mode (Issue #3): Red/Green/Refactor sub-loop -----------------------
+
+def test_new_tdd_step_starts_at_tdd_red():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "tdd_red"
+
+
+def test_tdd_red_checker_approval_advances_to_green_without_tagging():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red: add failing test")
+    write_tdd_check(0, cycle=1, phase="red", attempt=1, ok=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "tdd_green"
+    assert irg._completed_step_count() == 0, "a phase commit is not a step tag"
+    log = subprocess.run(["git", "log", "--oneline"], capture_output=True, text=True, check=True).stdout
+    assert "red: add failing test" in log
+    assert irg._read_tdd_cycle_state(0)["phase"] == "green"
+
+
+def test_tdd_checker_rejection_redoes_same_phase_with_feedback():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    pathlib.Path("feature_test.go").write_text("bad test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red: bad test")
+    write_tdd_check(0, 1, "red", 1, ok=False, feedback="複数の振る舞いをテストしている")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "tdd_red"
+    assert state["reason"] == "複数の振る舞いをテストしている"
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert irg._read_tdd_cycle_state(0)["attempt"] == 2
+    log = subprocess.run(["git", "log", "--oneline"], capture_output=True, text=True, check=True).stdout
+    assert "red: bad test" not in log, "a rejected phase must not be committed"
+
+
+def test_tdd_checker_rejection_exhausted_reopens_plan():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    pathlib.Path("feature_test.go").write_text("bad test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red: bad test")
+    write_tdd_check(0, 1, "red", 1, ok=False, feedback="1回目却下")
+    irg.detect_phase({"phase": "", "reason": ""})  # attempt -> 2, redo tdd_red
+
+    pathlib.Path("feature_test.go").write_text("still bad", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red: still bad")
+    write_tdd_check(0, 1, "red", 2, ok=False, feedback="2回目も却下")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert "2回目も却下" in state["reason"]
+
+
+def test_tdd_green_always_advances_to_refactor_regardless_of_self_report():
+    """Green never leaves the choice of what's next to self-report -- the
+    orchestrator forces every cycle through at least one Refactor turn
+    (agents are prone to skipping it if left to choose, docs/adr/00xx)."""
+    init_git_repo(steps=TDD_STEP_PLAN)
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red")
+    write_tdd_check(0, 1, "red", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    pathlib.Path("feature.go").write_text("impl", encoding="utf-8")
+    # Even a self-report that tries to skip straight to "complete" is
+    # ignored -- _advance_tdd_cycle hardcodes green -> refactor.
+    mark_tdd_phase_done(["feature.go"], "green", tdd_next_phase="complete")
+    write_tdd_check(0, 1, "green", 1, ok=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "tdd_refactor"
+    assert irg._completed_step_count() == 0
+
+
+def test_tdd_refactor_no_changes_skips_commit_and_checker():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    irg._write_tdd_cycle_state(0, {"cycle": 1, "phase": "refactor", "attempt": 1, "redo_feedback": ""})
+    before = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout
+    mark_tdd_phase_done([], tdd_next_phase="red")
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    after = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout
+    assert before == after, "an honestly-reported no-op refactor must not be committed"
+    assert state["phase"] == "tdd_red"
+    cs = irg._read_tdd_cycle_state(0)
+    assert cs["cycle"] == 2
+    assert not irg._tdd_check_path(0, 1, "refactor", 1).exists(), "the checker must never be invoked for a no-op"
+
+
+def test_tdd_refactor_loops_on_self_reported_refactor():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    irg._write_tdd_cycle_state(0, {"cycle": 1, "phase": "refactor", "attempt": 1, "redo_feedback": ""})
+    pathlib.Path("feature.go").write_text("refactored once", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go"], "refactor: extract helper", tdd_next_phase="refactor")
+    write_tdd_check(0, 1, "refactor", 1, ok=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "tdd_refactor"
+    assert irg._read_tdd_cycle_state(0)["cycle"] == 1, "still the same cycle, just another refactor round"
+    assert irg._completed_step_count() == 0
+
+
+def test_tdd_cycle_completes_and_tags_step():
+    """End-to-end happy path: red -> green (forced) -> refactor (reports
+    complete) -> mechanical backstop passes -> falls through to the
+    existing, unmodified trigger_match/interim-review/G2 flow, and the step
+    gets tagged."""
+    init_git_repo(steps=TDD_STEP_PLAN)
+
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red")
+    write_tdd_check(0, 1, "red", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    pathlib.Path("feature.go").write_text("impl", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go"], "green")
+    write_tdd_check(0, 1, "green", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    pathlib.Path("feature.go").write_text("impl, refactored", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go"], "refactor: tidy up", tdd_next_phase="complete")
+    write_tdd_check(0, 1, "refactor", 1, ok=True)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 1
+    assert state["phase"] == "review_batch", "no triggered perspectives in the test fixture -> straight to phase 5"
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+    assert not irg._tdd_step_dir(0).exists()
+
+
+def test_tdd_step_mechanical_backstop_diffs_since_previous_tag():
+    """A TDD step's commits already landed by finalization time, so `git
+    status --porcelain` alone is clean -- the backstop must diff since the
+    previous step's tag (or base_ref, for the first step) to still catch an
+    out-of-plan file touched during one of the RGR phases."""
+    init_git_repo(steps=TDD_STEP_PLAN)
+
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red")
+    write_tdd_check(0, 1, "red", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    # Green touches an out-of-plan file too -- the phase-level process
+    # checker only judges TDD process adherence, not file scope, so it still
+    # approves and the commit lands.
+    pathlib.Path("feature.go").write_text("impl", encoding="utf-8")
+    pathlib.Path("unplanned.go").write_text("oops", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go", "unplanned.go"], "green")
+    write_tdd_check(0, 1, "green", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    mark_tdd_phase_done([], tdd_next_phase="complete")  # no further refactor
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert "unplanned.go" in state["reason"]
+    status = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True).stdout
+    assert status.strip() == "", "the deviation was caught via the since-tag diff, not a dirty working tree"
+
+
+def test_mixed_plan_non_tdd_step_then_tdd_step_both_finalize_correctly():
+    init_git_repo(steps=MIXED_MODE_PLAN)
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "implement_step", "step 0 (non-TDD) uses the normal single-shot flow"
+
+    pathlib.Path("go.mod").write_text("module updated", encoding="utf-8")
+    mark_step_done(["go.mod"])
+    irg.detect_phase({"phase": "", "reason": ""})
+    assert irg._completed_step_count() == 1
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "tdd_red", "step 1 (TDD) enters the Red/Green/Refactor sub-loop"
+
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red")
+    write_tdd_check(1, 1, "red", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    pathlib.Path("feature.go").write_text("impl", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go"], "green")
+    write_tdd_check(1, 1, "green", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    mark_tdd_phase_done([], tdd_next_phase="complete")
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    assert irg._completed_step_count() == 2
+
+
+def test_needs_plan_review_during_tdd_phase_reopens_plan_via_existing_mechanism():
+    init_git_repo(steps=TDD_STEP_PLAN)
+    irg.IMPLEMENTATION_RESULT_JSON.write_text(
+        json.dumps({"status": "needs_plan_review", "reason": "計画にない依存が必要"}), encoding="utf-8"
+    )
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened"
+    assert "計画にない依存が必要" in state["reason"]
+
+
+def test_tdd_finalization_backstop_rejection_resets_intermediate_commits():
+    init_git_repo(steps=TDD_STEP_PLAN)
+
+    pathlib.Path("feature_test.go").write_text("failing test", encoding="utf-8")
+    mark_tdd_phase_done(["feature_test.go"], "red")
+    write_tdd_check(0, 1, "red", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    pathlib.Path("feature.go").write_text("impl", encoding="utf-8")
+    pathlib.Path("unplanned.go").write_text("oops", encoding="utf-8")
+    mark_tdd_phase_done(["feature.go", "unplanned.go"], "green")
+    write_tdd_check(0, 1, "green", 1, ok=True)
+    irg.detect_phase({"phase": "", "reason": ""})
+
+    mark_tdd_phase_done([], tdd_next_phase="complete")
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "plan_reopened"
+
+    base_sha = irg.BASE_REF_FILE.read_text(encoding="utf-8").strip()
+    commits_before_reject = subprocess.run(
+        ["git", "rev-list", "--count", f"{base_sha}..HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert commits_before_reject == "2", "red + green already landed"
+
+    # DEVIATION.md is only written by write_task_md's "plan_reopened" branch
+    # (same split ADR-0010 established) -- simulate it directly, matching
+    # every other mechanical-deviation test in this file.
+    irg.DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
+    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
+    irg.PLAN_GATE_MARKER.write_text(
+        json.dumps({"status": "rejected", "feedback": "計画外ファイルを削除してやり直して"}), encoding="utf-8"
+    )
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "tdd_red"
+    commits_after_reject = subprocess.run(
+        ["git", "rev-list", "--count", f"{base_sha}..HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    assert commits_after_reject == "0", "reset --hard must discard both landed commits"
+    assert not pathlib.Path("unplanned.go").exists()
+    assert irg._read_tdd_cycle_state(0) == {"cycle": 1, "phase": "red", "attempt": 1, "redo_feedback": ""}
+    assert not irg.IMPLEMENTATION_RESULT_JSON.exists()

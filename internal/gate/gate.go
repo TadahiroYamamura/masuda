@@ -66,6 +66,12 @@ type planStepFile struct {
 type planStep struct {
 	Description string         `json:"description"`
 	Files       []planStepFile `json:"files"`
+	// Mode is "" (the default single-shot implement/backstop/commit flow) or
+	// "tdd" (the Red/Green/Refactor sub-loop, Issue #3) — planner-assigned
+	// when `masuda plan start --tdd` was passed, reviewable and correctable
+	// by a human at G1 like every other planner judgment call (e.g. step
+	// decomposition, file lists), so no separate validation is needed here.
+	Mode string `json:"mode,omitempty"`
 }
 
 // planData is the top-level shape of plan/steps.json (ADR-0028 wrapped it in
@@ -120,7 +126,11 @@ func renderPlan(stateDir string) (string, error) {
 
 	b.WriteString("\n## 実装のステップ分解\n\n")
 	for i, step := range steps {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, step.Description)
+		label := step.Description
+		if step.Mode == "tdd" {
+			label += "（TDDモード）"
+		}
+		fmt.Fprintf(&b, "%d. %s\n", i+1, label)
 		for _, f := range step.Files {
 			fmt.Fprintf(&b, "   - `%s`: %s\n", f.Path, f.Description)
 		}

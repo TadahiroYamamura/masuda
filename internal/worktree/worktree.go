@@ -319,6 +319,9 @@ func Pull(repoRoot, id, branch string) error {
 // is set, the branch ref in repoRoot (a no-op if Merge never fetched it
 // there — e.g. an abandoned, never-merged task).
 func Remove(repoRoot, id, branch string, deleteBranch bool) error {
+	if err := removeLeakedStepTags(repoRoot, id); err != nil {
+		return err
+	}
 	if err := os.RemoveAll(Dir(repoRoot, id)); err != nil {
 		return err
 	}
@@ -326,6 +329,29 @@ func Remove(repoRoot, id, branch string, deleteBranch bool) error {
 		_, _ = runGit(repoRoot, "branch", "-D", branch)
 	}
 	return nil
+}
+
+// removeLeakedStepTags deletes any masuda-step-<id>-* tags (TDD mode's
+// per-step boundary markers, orchestrator/implement_review_graph.py) that
+// ended up in repoRoot. These normally only ever exist inside the clone's
+// own .git (wiped by the os.RemoveAll above), but Merge/Pull's `git fetch`
+// auto-follows tags reachable from newly-fetched commits (neither passes
+// --no-tags), so a workspace that was merged/pulled before removal -- the
+// normal path through `masuda review approve`, which calls Pull then this
+// function -- can leave its step-boundary tags behind in repoRoot. Since
+// tags are scoped by workspace id, this is best-effort cleanup rather than a
+// correctness requirement: no matches is not an error.
+func removeLeakedStepTags(repoRoot, id string) error {
+	out, err := runGit(repoRoot, "tag", "--list", fmt.Sprintf("masuda-step-%s-*", id))
+	if err != nil {
+		return err
+	}
+	names := strings.Fields(out)
+	if len(names) == 0 {
+		return nil
+	}
+	_, err = runGit(repoRoot, append([]string{"tag", "-d"}, names...)...)
+	return err
 }
 
 // Rebase replays workspace id's clone on top of repoRoot's current tip for
