@@ -12,6 +12,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
+	"github.com/TadahiroYamamura/masuda/internal/verify"
 )
 
 // defaultClaudeSettings is the starting value `masuda init` writes into
@@ -107,6 +108,22 @@ func newInitCommand() *cobra.Command {
 			if !ok {
 				return fmt.Errorf("release %s has no reviews asset (%s)", release.TagName, selfupdate.ReviewsAssetName)
 			}
+			reviewsBundleAsset, ok := selfupdate.FindAsset(release, selfupdate.BundleAssetName(selfupdate.ReviewsAssetName))
+			if !ok {
+				return fmt.Errorf("release %s has no signature bundle for %s — refusing to materialize unverified review perspectives", release.TagName, selfupdate.ReviewsAssetName)
+			}
+			reviewsBundleBytes, err := selfupdate.DownloadBytes(reviewsBundleAsset.BrowserDownloadURL)
+			if err != nil {
+				return err
+			}
+			identity, err := verify.ExpectedIdentity(selfupdate.DefaultRepo)
+			if err != nil {
+				return err
+			}
+			trusted, err := verify.TrustedMaterial()
+			if err != nil {
+				return err
+			}
 
 			// Materialized explicitly even when --image wasn't passed, rather
 			// than leaving Image empty for some later reader to implicitly
@@ -130,7 +147,7 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			if _, err := selfupdate.SyncReviews(reviewsAsset.BrowserDownloadURL, perspectives.ReviewsDir(root)); err != nil {
+			if _, err := selfupdate.SyncReviews(reviewsAsset.BrowserDownloadURL, perspectives.ReviewsDir(root), verifiedBundleFunc(reviewsBundleBytes, identity, trusted)); err != nil {
 				return err
 			}
 

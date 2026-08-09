@@ -79,6 +79,13 @@ func AssetName(goos, goarch string) string {
 	return fmt.Sprintf("masuda_%s_%s", goos, goarch)
 }
 
+// BundleAssetName returns the release asset name of assetName's detached
+// Sigstore signature bundle (ADR-0038) — the cosign keyless "sign-blob
+// --bundle" output CI attaches alongside every binary/reviews-zip asset.
+func BundleAssetName(assetName string) string {
+	return assetName + ".bundle"
+}
+
 // ReviewsAssetName is the release asset containing masuda's built-in review
 // perspectives (internal/perspectives/builtin/*.md, zipped by CI's `reviews`
 // job — ADR-0033).
@@ -94,11 +101,37 @@ func FindAsset(release Release, name string) (Asset, bool) {
 	return Asset{}, false
 }
 
+// DownloadBytes downloads url and returns its body in full. Used for small
+// assets (signature bundles, release API responses) that are verified or
+// parsed in memory rather than streamed to disk.
+func DownloadBytes(url string) ([]byte, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("downloading %s: returned %s", url, resp.Status)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("downloading %s: %w", url, err)
+	}
+	return data, nil
+}
+
 // DownloadAndReplace downloads url into execPath's directory and atomically
 // replaces execPath with it (download-then-rename, both on the same
 // filesystem, so the running process is never left pointing at a partial
 // file). The temp file is cleaned up if any step before the rename fails.
-func DownloadAndReplace(execPath, url string) error {
+//
+// verify (ADR-0038) is called with the fully downloaded content before the
+// rename, so a signature verification failure leaves execPath untouched —
+// there is no window where an unverified binary is in place. verify may be
+// nil where verification is out of scope (e.g. tests exercising the
+// download/replace mechanics in isolation); every real call site must pass
+// a real verifier.
+func DownloadAndReplace(execPath, url string, verify func(data []byte) error) error {
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
@@ -116,12 +149,18 @@ func DownloadAndReplace(execPath, url string) error {
 	tmpPath := tmp.Name()
 	defer os.Remove(tmpPath) // no-op once the rename below succeeds
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	var buf bytes.Buffer
+	if _, err := io.Copy(io.MultiWriter(tmp, &buf), resp.Body); err != nil {
 		tmp.Close()
 		return fmt.Errorf("downloading %s: %w", url, err)
 	}
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("downloading %s: %w", url, err)
+	}
+	if verify != nil {
+		if err := verify(buf.Bytes()); err != nil {
+			return fmt.Errorf("verifying %s: %w", url, err)
+		}
 	}
 	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		return fmt.Errorf("making %s executable: %w", tmpPath, err)
@@ -174,18 +213,21 @@ func UpdateDockerfileFromTag(dockerfilePath, newTag string) error {
 // are never touched, so this is safe to run repeatedly: it only ever adds
 // perspectives newly introduced since reviewsDir was last synced. Returns
 // the filenames actually written.
-func SyncReviews(url, reviewsDir string) ([]string, error) {
-	resp, err := http.Get(url)
+//
+// verify (ADR-0038) is called with the fully downloaded zip bytes before
+// any file is extracted; on error, nothing under reviewsDir is touched.
+// verify may be nil where verification is out of scope (tests exercising
+// the sync mechanics in isolation) — every real call site must pass a real
+// verifier.
+func SyncReviews(url, reviewsDir string, verify func(data []byte) error) ([]string, error) {
+	data, err := DownloadBytes(url)
 	if err != nil {
-		return nil, fmt.Errorf("downloading %s: %w", url, err)
+		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("downloading %s: returned %s", url, resp.Status)
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("downloading %s: %w", url, err)
+	if verify != nil {
+		if err := verify(data); err != nil {
+			return nil, fmt.Errorf("verifying %s: %w", url, err)
+		}
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

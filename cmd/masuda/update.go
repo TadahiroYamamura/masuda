@@ -14,8 +14,19 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
+	"github.com/TadahiroYamamura/masuda/internal/verify"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
+
+// verifiedBundleFunc returns a DownloadAndReplace/SyncReviews "verify"
+// closure that checks downloaded content against bundleBytes (a detached
+// Sigstore signature bundle release asset, ADR-0038) under identity and
+// trusted.
+func verifiedBundleFunc(bundleBytes []byte, identity verify.Identity, trusted verify.Trust) func([]byte) error {
+	return func(data []byte) error {
+		return verify.VerifyBlob(data, bundleBytes, identity, trusted)
+	}
+}
 
 // newUpdateCommand implements `masuda update` (ADR-0032/ADR-0033): replace
 // the running CLI binary with the latest GitHub Release build, then (if the
@@ -52,20 +63,37 @@ func newUpdateCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := updateBinary(cmd, release); err != nil {
+
+			// Built once and threaded through every verification below
+			// (ADR-0038): identity is a pure computation, but trusted is a
+			// live fetch against Sigstore's TUF CDN, worth doing only once
+			// per invocation.
+			identity, err := verify.ExpectedIdentity(selfupdate.DefaultRepo)
+			if err != nil {
+				return err
+			}
+			trusted, err := verify.TrustedMaterial()
+			if err != nil {
+				return err
+			}
+
+			if err := updateBinary(cmd, release, identity, trusted); err != nil {
 				return err
 			}
 			if err := refreshProjectDockerfile(cmd, release); err != nil {
 				return err
 			}
-			return syncProjectReviews(cmd, release)
+			return syncProjectReviews(cmd, release, identity, trusted)
 		},
 	}
 }
 
 // updateBinary replaces the running masuda executable with the latest
-// GitHub Release build, if it isn't already current.
-func updateBinary(cmd *cobra.Command, release selfupdate.Release) error {
+// GitHub Release build, if it isn't already current. Refuses to install a
+// binary whose release has no matching signature bundle, or whose
+// signature fails verification (ADR-0038) — there is no unverified
+// fallback path.
+func updateBinary(cmd *cobra.Command, release selfupdate.Release, identity verify.Identity, trusted verify.Trust) error {
 	if release.TagName == version {
 		fmt.Fprintf(cmd.OutOrStdout(), "masuda is already up to date (%s)\n", version)
 		return nil
@@ -76,6 +104,14 @@ func updateBinary(cmd *cobra.Command, release selfupdate.Release) error {
 	if !ok {
 		return fmt.Errorf("release %s has no asset for this platform (%s)", release.TagName, assetName)
 	}
+	bundleAsset, ok := selfupdate.FindAsset(release, selfupdate.BundleAssetName(assetName))
+	if !ok {
+		return fmt.Errorf("release %s has no signature bundle for %s — refusing to install an unverified binary", release.TagName, assetName)
+	}
+	bundleBytes, err := selfupdate.DownloadBytes(bundleAsset.BrowserDownloadURL)
+	if err != nil {
+		return err
+	}
 
 	execPath, err := os.Executable()
 	if err != nil {
@@ -85,7 +121,7 @@ func updateBinary(cmd *cobra.Command, release selfupdate.Release) error {
 		execPath = resolved
 	}
 
-	if err := selfupdate.DownloadAndReplace(execPath, asset.BrowserDownloadURL); err != nil {
+	if err := selfupdate.DownloadAndReplace(execPath, asset.BrowserDownloadURL, verifiedBundleFunc(bundleBytes, identity, trusted)); err != nil {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "updated masuda %s -> %s\n", version, release.TagName)
@@ -151,8 +187,11 @@ func rebuildDockerfileForRelease(cmd *cobra.Command, root, dockerfilePath string
 // outside a project checkout, or inside one that was never `masuda init`'d.
 // A missing reviews asset on the release is reported but doesn't fail the
 // whole command — the binary/Dockerfile updates above may have already
-// succeeded.
-func syncProjectReviews(cmd *cobra.Command, release selfupdate.Release) error {
+// succeeded. Once the reviews asset does exist, though, its signature
+// bundle is mandatory: a missing bundle or a failed verification hard-fails
+// (ADR-0038) — unlike the "asset entirely absent" case, there is no
+// unverified-content fallback.
+func syncProjectReviews(cmd *cobra.Command, release selfupdate.Release, identity verify.Identity, trusted verify.Trust) error {
 	root, err := repoRoot()
 	if err != nil {
 		return nil
@@ -169,8 +208,16 @@ func syncProjectReviews(cmd *cobra.Command, release selfupdate.Release) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: release %s has no reviews asset (%s), skipping perspective sync\n", release.TagName, selfupdate.ReviewsAssetName)
 		return nil
 	}
+	bundleAsset, ok := selfupdate.FindAsset(release, selfupdate.BundleAssetName(selfupdate.ReviewsAssetName))
+	if !ok {
+		return fmt.Errorf("release %s has no signature bundle for %s — refusing to sync unverified review perspectives", release.TagName, selfupdate.ReviewsAssetName)
+	}
+	bundleBytes, err := selfupdate.DownloadBytes(bundleAsset.BrowserDownloadURL)
+	if err != nil {
+		return err
+	}
 
-	added, err := selfupdate.SyncReviews(asset.BrowserDownloadURL, reviewsDir)
+	added, err := selfupdate.SyncReviews(asset.BrowserDownloadURL, reviewsDir, verifiedBundleFunc(bundleBytes, identity, trusted))
 	if err != nil {
 		return err
 	}
