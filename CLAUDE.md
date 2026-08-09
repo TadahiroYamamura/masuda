@@ -50,7 +50,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 ### Go CLI（cmd/masuda）
 
 - `masuda init [--image] [--base]`: 対象リポジトリに`.masuda/`（`settings.json`＋内蔵14観点を書き出す`reviews/`＋`Dockerfile`）を展開する一度きりの操作（ADR-0024）。`settings.json`の`claudeSettings`フィールドにはデフォルト値を常に書き出す（ADR-0031）。`.masuda/`が既に存在する場合はエラーで再実行を拒否する。観点・Dockerfileの内容はGitHub Releaseアセットから取得するため、実行にはネットワーク接続が必要（ADR-0033）
-- `masuda update`: masuda自身のCLIバイナリをGitHub Releaseの最新版へ差し替え、対象プロジェクトの`.masuda/Dockerfile`（あれば）を再ビルドし、`.masuda/reviews/`に無い新規組み込み観点を追加する（既存ファイルは一切変更しない）。進行中のワークスペースが1つでもあれば拒否する（ADR-0032・ADR-0033）
+- `masuda update`: masuda自身のCLIバイナリをGitHub Releaseの最新版へ差し替え、対象プロジェクトの`.masuda/Dockerfile`（あれば）を再ビルドし、`.masuda/reviews/`に無い新規組み込み観点を追加する（既存ファイルは一切変更しない）。進行中のワークスペースが1つでもあれば拒否する（ADR-0032・ADR-0033）。CLIバイナリ・reviewsアセットはcosign keyless署名（Sigstore）で検証し、失敗時はハードフェイルする（ADR-0038、`internal/verify`）
 - `masuda workspace create|merge|remove|list|info|rebase`: ワークスペースのライフサイクル管理。`internal/worktree`パッケージ自体はgitチェックアウトの実装詳細として維持し、CLIコマンド名としては出さない（「worktree」というgit用語のコマンドグループの下に、状態ディレクトリ・メタデータまで含む広い概念の操作が混在するのは違和感がある、というレビュー指摘による改名）
   - `create <branch> [--base]`: 新規ワークスペースID発行＋`git clone --local`によるローカルクローン方式（ADR-0018、`git worktree add`ではない）
   - `merge|remove <workspace-id>`: `workspace.Load`でbranch名を引き、`merge`はクローン側のブランチをメインリポジトリへ`git fetch`してから`git merge`する（ユーザーが明示的に叩く手動のローカル統合。`review approve`が自動で行うfast-forward限定の反映＝ADR-0023の`worktree.Pull`とは別物）。`remove`はworktree削除に続けて状態ディレクトリも削除する

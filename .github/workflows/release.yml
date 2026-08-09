@@ -7,8 +7,12 @@ on:
     tags:
       - "v*"
 
+# contents: write publishes the release; id-token: write lets cosign sign
+# release assets keylessly against this workflow's own GitHub Actions OIDC
+# identity (ADR-0038) -- no signing secret is stored or managed by masuda.
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   build:
@@ -37,10 +41,23 @@ jobs:
         # build` deliberately leaves it at the "dev" default.
         run: go build -trimpath -ldflags "-X main.version=${{ github.ref_name }}" -o "masuda_${{ matrix.goos }}_${{ matrix.goarch }}" ./cmd/masuda
 
+      - uses: sigstore/cosign-installer@v3
+
+      # Keyless: no key material, no secret. The resulting bundle records
+      # this workflow's own OIDC identity, which internal/verify.
+      # ExpectedIdentity pins `masuda update` to (ADR-0038).
+      # --new-bundle-format is required -- sigstore-go's verify package
+      # only reads the newer protobuf bundle schema, not cosign's legacy
+      # bundle JSON.
+      - name: Sign masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+        run: cosign sign-blob --yes --new-bundle-format --bundle "masuda_${{ matrix.goos }}_${{ matrix.goarch }}.bundle" "masuda_${{ matrix.goos }}_${{ matrix.goarch }}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: masuda_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: |
+            masuda_${{ matrix.goos }}_${{ matrix.goarch }}
+            masuda_${{ matrix.goos }}_${{ matrix.goarch }}.bundle
           if-no-files-found: error
 
   # Zips internal/perspectives/builtin/*.md as a release asset (ADR-0033):
@@ -56,10 +73,17 @@ jobs:
       - name: Zip built-in review perspectives
         run: (cd internal/perspectives/builtin && zip -r ../../../masuda_reviews.zip .)
 
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Sign masuda_reviews.zip
+        run: cosign sign-blob --yes --new-bundle-format --bundle masuda_reviews.zip.bundle masuda_reviews.zip
+
       - uses: actions/upload-artifact@v4
         with:
           name: masuda_reviews
-          path: masuda_reviews.zip
+          path: |
+            masuda_reviews.zip
+            masuda_reviews.zip.bundle
           if-no-files-found: error
 
   release:

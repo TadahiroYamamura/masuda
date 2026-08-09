@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -105,7 +106,7 @@ func TestDownloadAndReplace(t *testing.T) {
 		t.Fatalf("seeding execPath: %v", err)
 	}
 
-	if err := DownloadAndReplace(execPath, server.URL); err != nil {
+	if err := DownloadAndReplace(execPath, server.URL, nil); err != nil {
 		t.Fatalf("DownloadAndReplace() error = %v", err)
 	}
 
@@ -146,7 +147,7 @@ func TestDownloadAndReplaceNon200(t *testing.T) {
 		t.Fatalf("seeding execPath: %v", err)
 	}
 
-	if err := DownloadAndReplace(execPath, server.URL); err == nil {
+	if err := DownloadAndReplace(execPath, server.URL, nil); err == nil {
 		t.Fatal("DownloadAndReplace() error = nil, want error on 500")
 	}
 
@@ -156,6 +157,47 @@ func TestDownloadAndReplaceNon200(t *testing.T) {
 	}
 	if string(got) != "old" {
 		t.Fatalf("execPath was modified despite download failure: %q", got)
+	}
+}
+
+func TestDownloadAndReplaceVerificationFailure(t *testing.T) {
+	newContent := []byte("new masuda binary")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(newContent)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	execPath := filepath.Join(dir, "masuda")
+	if err := os.WriteFile(execPath, []byte("old masuda binary"), 0o755); err != nil {
+		t.Fatalf("seeding execPath: %v", err)
+	}
+
+	verifyErr := fmt.Errorf("signature verification failed")
+	err := DownloadAndReplace(execPath, server.URL, func(data []byte) error {
+		if string(data) != string(newContent) {
+			t.Fatalf("verify() received %q, want %q", data, newContent)
+		}
+		return verifyErr
+	})
+	if err == nil {
+		t.Fatal("DownloadAndReplace() error = nil, want error on verification failure")
+	}
+
+	got, err := os.ReadFile(execPath)
+	if err != nil {
+		t.Fatalf("reading execPath: %v", err)
+	}
+	if string(got) != "old masuda binary" {
+		t.Fatalf("execPath was modified despite verification failure: %q", got)
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("dir has %d entries after failed verification, want 1 (no leftover temp file)", len(entries))
 	}
 }
 
@@ -275,7 +317,7 @@ func TestSyncReviewsWritesOnlyNewFiles(t *testing.T) {
 	defer server.Close()
 
 	dir := t.TempDir()
-	added, err := SyncReviews(server.URL, dir)
+	added, err := SyncReviews(server.URL, dir, nil)
 	if err != nil {
 		t.Fatalf("SyncReviews() error = %v", err)
 	}
@@ -304,7 +346,7 @@ func TestSyncReviewsNeverOverwritesExistingFile(t *testing.T) {
 		t.Fatalf("seeding existing file: %v", err)
 	}
 
-	added, err := SyncReviews(server.URL, dir)
+	added, err := SyncReviews(server.URL, dir, nil)
 	if err != nil {
 		t.Fatalf("SyncReviews() error = %v", err)
 	}
@@ -318,5 +360,28 @@ func TestSyncReviewsNeverOverwritesExistingFile(t *testing.T) {
 	}
 	if string(got) != customized {
 		t.Fatalf("dead-code.md = %q, want unchanged %q", got, customized)
+	}
+}
+
+func TestSyncReviewsVerificationFailure(t *testing.T) {
+	data := zipFiles(t, map[string]string{
+		"dead-code.md": "---\nname: \"dead code\"\n---\nbody\n",
+	})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(data)
+	}))
+	defer server.Close()
+
+	dir := t.TempDir()
+	_, err := SyncReviews(server.URL, dir, func(got []byte) error {
+		return fmt.Errorf("signature verification failed")
+	})
+	if err == nil {
+		t.Fatal("SyncReviews() error = nil, want error on verification failure")
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err == nil && len(entries) != 0 {
+		t.Fatalf("reviewsDir has entries after failed verification: %v", entries)
 	}
 }
