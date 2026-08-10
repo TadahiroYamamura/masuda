@@ -118,6 +118,105 @@ def test_plan_rejected_triggers_redo_and_consumes_marker():
     assert not ipg.GATE_MARKER.exists(), "rejection must be consumed so it doesn't re-trigger forever"
 
 
+# --- ADR-0039 (Issue #21): redo-pending markers survive a triage interrupt --
+
+def test_plan_rejected_deletes_stale_plan_and_leaves_pending_marker():
+    write_plan()
+    ipg.GATE_MARKER.parent.mkdir(parents=True)
+    ipg.GATE_MARKER.write_text(
+        json.dumps({"status": "rejected", "feedback": "この案は却下"}), encoding="utf-8"
+    )
+
+    ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert not ipg.PLAN_SUMMARY_MD.exists(), "the rejected plan must not linger to be mistaken for a fresh one"
+    assert not ipg.PLAN_STEPS_JSON.exists()
+    assert ipg.PLAN_REDO_PENDING_MD.exists()
+    assert ipg.PLAN_REDO_PENDING_MD.read_text(encoding="utf-8") == "この案は却下"
+
+
+def test_plan_redo_interrupted_before_rewrite_resumes_plan_redo_not_await_g1():
+    """Simulates Issue #21: GATE_MARKER already consumed (plan_redo pending),
+    but the planner hasn't rewritten plan/summary.md + plan/steps.json yet
+    (e.g. a triage interrupt landed first). A from-scratch re-derivation must
+    not mistake this for a completed, awaiting-approval plan."""
+    ipg.PLAN_REDO_PENDING_MD.write_text("この案は却下", encoding="utf-8")
+    assert not ipg.PLAN_SUMMARY_MD.exists()
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "plan_redo"
+    assert state["questions"] == ["この案は却下"]
+    assert ipg.PLAN_REDO_PENDING_MD.exists(), "must stay pending until the planner actually rewrites the plan"
+
+
+def test_plan_redo_completed_after_pending_clears_marker_and_reaches_await_g1():
+    ipg.PLAN_REDO_PENDING_MD.write_text("この案は却下", encoding="utf-8")
+    write_plan(summary="改訂版")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "await_g1"
+    assert not ipg.PLAN_REDO_PENDING_MD.exists()
+
+
+def test_investigate_redo_interrupted_before_rewrite_resumes_investigate_redo():
+    """Same scenario as the plan_redo case above, for needs_more_investigation:
+    plan_result.json already consumed, but the investigator hasn't updated
+    INVESTIGATION.md yet. Falling through to "plan" here would silently drop
+    the redo questions and proceed with the insufficient investigation."""
+    ipg.INVESTIGATION_MD.write_text("古い調査内容", encoding="utf-8")
+    ipg.INVESTIGATE_REDO_PENDING_JSON.write_text(
+        json.dumps({"retries": 1, "questions": ["Q1", "Q2"]}), encoding="utf-8"
+    )
+
+    state = ipg.detect_phase({"phase": "", "retries": 1, "questions": []})
+
+    assert state["phase"] == "investigate_redo"
+    assert state["questions"] == ["Q1", "Q2"]
+    assert state["retries"] == 1
+    assert ipg.INVESTIGATE_REDO_PENDING_JSON.exists(), "must stay pending until the investigator clears it itself"
+
+
+def test_investigate_redo_completed_after_investigator_clears_pending_marker():
+    ipg.INVESTIGATION_MD.write_text("更新済みの調査内容", encoding="utf-8")
+    # No INVESTIGATE_REDO_PENDING_JSON -- the investigator subagent already
+    # deleted it as its own completion step (_investigate_task's instruction).
+
+    state = ipg.detect_phase({"phase": "", "retries": 1, "questions": []})
+
+    assert state["phase"] == "plan"
+
+
+def test_investigate_redo_pending_marker_includes_deletion_instruction():
+    write_task_brief()
+    ipg.write_task_md({"phase": "investigate_redo", "retries": 1, "questions": ["未解決の疑問A"]})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert str(ipg.INVESTIGATE_REDO_PENDING_JSON) in content
+
+
+def test_plan_redo_triage_interrupt_then_dismiss_resumes_plan_redo():
+    """End-to-end regression test for Issue #21's exact repro: G1 reject ->
+    triage interrupt before the planner rewrites the plan -> dismiss. Must
+    land back on plan_redo (with the original feedback), never await_g1."""
+    write_plan()
+    ipg.GATE_MARKER.parent.mkdir(parents=True)
+    ipg.GATE_MARKER.write_text(
+        json.dumps({"status": "rejected", "feedback": "駐車場・タイトルも含めて修正"}), encoding="utf-8"
+    )
+    first = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    assert first["phase"] == "plan_redo"
+
+    # The planner hasn't rewritten the plan yet -- a triage concern interrupts.
+    write_triage_concern(agent="planner", phase="plan_redo", description="誤検知の疑い")
+    write_triage_marker("approved", feedback="誤検知でした")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "plan_redo"
+    assert state["questions"] == ["駐車場・タイトルも含めて修正"]
+
+
 def test_gate_marker_schema_matches_go_cli():
     """internal/gate/gate.go's Marker struct marshals to exactly this shape
     (json.MarshalIndent with `status`, `feedback`, `decided_at` fields) —

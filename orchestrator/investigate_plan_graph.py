@@ -82,6 +82,14 @@ GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
 TRIAGE_CONCERN_JSON = STATE_DIR / "triage_concern.json"
 TRIAGE_GATE_MARKER = STATE_DIR / ".masuda-gate" / "triage.json"
 TRIAGE_REDO_FEEDBACK_MD = STATE_DIR / ".masuda-triage-redo-feedback.md"
+# ADR-0039 (Issue #21): bridges the gap between a redo transition consuming
+# its gate marker and the subagent it dispatches actually rewriting the
+# corresponding artifact -- a triage interrupt landing in that gap must not
+# let detect_phase's from-scratch re-derivation mistake stale/rejected
+# content for a freshly completed redo. See each constant's use in
+# detect_phase for the two different completion-detection strategies.
+PLAN_REDO_PENDING_MD = STATE_DIR / ".masuda-plan-redo-pending.md"
+INVESTIGATE_REDO_PENDING_JSON = STATE_DIR / ".masuda-investigate-redo-pending.json"
 TASK_MD = STATE_DIR / "TASK.md"
 
 # Phases that write_task_md delegates to an actual subagent Task call --
@@ -198,6 +206,30 @@ def detect_phase(state: State) -> State:
         # whatever else was already happening.
         return _resolve_triage(lambda: detect_phase({"phase": "", "retries": _read_retries(), "questions": []}))
 
+    if PLAN_REDO_PENDING_MD.exists():
+        # ADR-0039 (Issue #21): a G1 rejection already consumed GATE_MARKER
+        # and deleted the old plan below -- until the planner subagent has
+        # written a fresh PLAN_SUMMARY_MD/PLAN_STEPS_JSON, "redo not done
+        # yet" can only be read from this marker, not from plan-file
+        # presence/absence (that's what makes this safe against a triage
+        # interrupt landing mid-redo: whatever else changed on disk, the
+        # zero-derivation below still lands back on plan_redo).
+        if PLAN_SUMMARY_MD.exists() and PLAN_STEPS_JSON.exists():
+            PLAN_REDO_PENDING_MD.unlink()
+        else:
+            feedback = PLAN_REDO_PENDING_MD.read_text(encoding="utf-8")
+            return {"phase": "plan_redo", "retries": _read_retries(), "questions": [feedback]}
+
+    if INVESTIGATE_REDO_PENDING_JSON.exists():
+        # ADR-0039 (Issue #21): same rationale as PLAN_REDO_PENDING_MD above,
+        # but investigate_redo builds on the existing INVESTIGATION.md rather
+        # than replacing it (ADR-0008), so file presence can't signal
+        # completion here -- the investigator subagent clears this marker
+        # itself as an explicit last step (_investigate_task's completion
+        # note) once it has folded the redo questions in.
+        pending = json.loads(INVESTIGATE_REDO_PENDING_JSON.read_text(encoding="utf-8"))
+        return {"phase": "investigate_redo", "retries": pending["retries"], "questions": pending["questions"]}
+
     if PLAN_SUMMARY_MD.exists() and PLAN_STEPS_JSON.exists():
         marker = _read_gate_marker()
         status = (marker or {}).get("status", "pending")
@@ -206,6 +238,9 @@ def detect_phase(state: State) -> State:
         if status == "rejected":
             feedback = marker.get("feedback", "")
             GATE_MARKER.unlink()
+            PLAN_REDO_PENDING_MD.write_text(feedback, encoding="utf-8")
+            PLAN_SUMMARY_MD.unlink()
+            PLAN_STEPS_JSON.unlink()
             return {"phase": "plan_redo", "retries": _read_retries(), "questions": [feedback]}
         return {"phase": "await_g1", "retries": _read_retries(), "questions": []}
 
@@ -216,8 +251,12 @@ def detect_phase(state: State) -> State:
             return {"phase": "retries_exhausted", "retries": retries, "questions": []}
         questions = plan_result.get("questions", [])
         PLAN_RESULT_JSON.unlink()
-        _write_retries(retries + 1)
-        return {"phase": "investigate_redo", "retries": retries + 1, "questions": questions}
+        new_retries = retries + 1
+        _write_retries(new_retries)
+        INVESTIGATE_REDO_PENDING_JSON.write_text(
+            json.dumps({"retries": new_retries, "questions": questions}), encoding="utf-8"
+        )
+        return {"phase": "investigate_redo", "retries": new_retries, "questions": questions}
 
     if not INVESTIGATION_MD.exists():
         return {"phase": "investigate", "retries": _read_retries(), "questions": []}
@@ -235,6 +274,7 @@ _TRIAGE_SELF_REPORT_SECTION = f"""## セキュリティ上の懸念の自己申�
 
 def _investigate_task(task: str, questions: list[str]) -> str:
     extra = ""
+    redo_completion_note = ""
     if questions:
         qlist = "\n".join(f"- {q}" for q in questions)
         extra = f"""
@@ -243,6 +283,11 @@ def _investigate_task(task: str, questions: list[str]) -> str:
 以下の疑問点を追加で調査し、INVESTIGATION.mdに反映せよ:
 {qlist}
 """
+        redo_completion_note = (
+            f"\n反映が完了したら`{INVESTIGATE_REDO_PENDING_JSON}`を削除すること"
+            "（ADR-0039: このredoが完了したことを示す唯一の印。削除するまで次回も"
+            "このタスクへ差し戻される）。"
+        )
 
     instructions_section = ""
     if INSTRUCTIONS_MD.exists():
@@ -279,7 +324,7 @@ Task toolで `subagent_type: investigator` を指定し、新規コンテキス�
 {_TRIAGE_SELF_REPORT_SECTION}
 
 ## 完了条件
-`{INVESTIGATION_MD}` が存在すること
+`{INVESTIGATION_MD}` が存在すること{redo_completion_note}
 """
 
 
