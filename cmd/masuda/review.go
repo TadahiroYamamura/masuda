@@ -72,7 +72,7 @@ show|chat|approve|reject.`,
 			if err != nil {
 				return err
 			}
-			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, resolvedImage)
+			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
 			if err != nil {
 				return err
 			}

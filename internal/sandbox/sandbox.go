@@ -104,6 +104,55 @@ func hostCredentialMounts() ([]string, error) {
 	return mounts, nil
 }
 
+// gitIdentityEnvArgs returns `-e GIT_AUTHOR_NAME=...` etc. docker args so
+// commits made inside the container (phase 4's _commit_scoped, the phase 5
+// fixer) have a git identity to commit with — the container's own $HOME has
+// no ~/.gitconfig at all, and the workspace's clone (worktree.Dir) doesn't
+// inherit repoRoot's *local* config either, since `git clone` never copies
+// local config (see worktree.identityOverride, the same problem on the
+// host-side commit path). Preferring repoRoot's local config over the host's
+// global one mirrors identityOverride's reasoning: a repo that deliberately
+// overrides identity per-project (e.g. a work email) should keep doing so
+// inside the sandbox too. GIT_AUTHOR_*/GIT_COMMITTER_* are read by git
+// itself, so nothing on the orchestrator side needs to pass -c flags.
+//
+// Only these two values are exported, not the whole ~/.gitconfig — same
+// reasoning as hostCredentialMounts mounting just two files instead of all
+// of ~/.claude: the rest of a user's global git config (aliases, credential
+// helpers, includeIf directives pointing at host paths) has no business
+// inside the container and could break things that currently work by
+// accident. If neither local nor global config has an identity set, no -e
+// flags are added at all — the container behaves exactly as it does today,
+// since a host with no git identity anywhere couldn't commit either.
+func gitIdentityEnvArgs(repoRoot string) []string {
+	name := gitConfigValue(repoRoot, "user.name")
+	email := gitConfigValue(repoRoot, "user.email")
+	var args []string
+	if name != "" {
+		args = append(args, "-e", "GIT_AUTHOR_NAME="+name, "-e", "GIT_COMMITTER_NAME="+name)
+	}
+	if email != "" {
+		args = append(args, "-e", "GIT_AUTHOR_EMAIL="+email, "-e", "GIT_COMMITTER_EMAIL="+email)
+	}
+	return args
+}
+
+// gitConfigValue reads key from repoRoot's local git config, falling back to
+// the host's global config (usually ~/.gitconfig) if the repo doesn't
+// override it locally.
+func gitConfigValue(repoRoot, key string) string {
+	if out, err := exec.Command("git", "-C", repoRoot, "config", "--local", "--get", key).Output(); err == nil {
+		if v := strings.TrimSpace(string(out)); v != "" {
+			return v
+		}
+	}
+	out, err := exec.Command("git", "config", "--global", "--get", key).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // Start launches a new sandbox container for workspace id, bind-mounting
 // worktreeDir at /workspace and stateDir (masuda's own control files) at
 // /masuda-state, places masuda's own embedded CLAUDE.md (assets.go) at
@@ -113,7 +162,7 @@ func hostCredentialMounts() ([]string, error) {
 // A create → cp → start sequence is used instead of a single `docker run` so the
 // CLAUDE.md copy always lands before runtime/entrypoint.sh launches Claude —
 // `docker run` would start the entrypoint immediately, racing the copy.
-func Start(id, worktreeDir, stateDir, image string) (Handle, error) {
+func Start(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) {
 	if image == "" {
 		image = DefaultImage
 	}
@@ -163,6 +212,7 @@ func Start(id, worktreeDir, stateDir, image string) (Handle, error) {
 		"-v", stateDir + ":/masuda-state",
 	}
 	createArgs = append(createArgs, credentialMounts...)
+	createArgs = append(createArgs, gitIdentityEnvArgs(repoRoot)...)
 	createArgs = append(createArgs, image)
 
 	if _, err := runDocker(createArgs...); err != nil {
