@@ -47,7 +47,7 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, id) }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir) }()
 	t.Cleanup(func() {
 		cancel()
 		select {

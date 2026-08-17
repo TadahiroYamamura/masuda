@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -30,14 +31,10 @@ const (
 	daemonStoreDirName = "store"
 )
 
-// runStatedaemon opens workspace id's store and serves it over its UDS
+// runStatedaemon opens the store under stateDir and serves it over its UDS
 // socket until ctx is cancelled. Extracted from the cobra RunE so it's
 // directly testable without spawning a subprocess.
-func runStatedaemon(ctx context.Context, id string) error {
-	stateDir, err := workspace.StateDir(id)
-	if err != nil {
-		return err
-	}
+func runStatedaemon(ctx context.Context, stateDir string) error {
 	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
 	if err != nil {
 		return err
@@ -60,21 +57,32 @@ func newInternalCommand() *cobra.Command {
 }
 
 func newInternalStatedaemonCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:    "statedaemon <workspace-id>",
+	var stateDir string
+	cmd := &cobra.Command{
+		Use:    "statedaemon",
 		Hidden: true,
-		Short:  "Run the per-workspace state daemon in the foreground (normally spawned detached by workspace create)",
-		Args:   cobra.ExactArgs(1),
+		Short:  "Run a state daemon in the foreground (normally spawned detached by workspace create)",
+		Args:   cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if stateDir == "" {
+				return fmt.Errorf("--state-dir is required")
+			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			err := runStatedaemon(ctx, args[0])
+			err := runStatedaemon(ctx, stateDir)
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
 			return err
 		},
 	}
+	// A directory, not a workspace ID: internal/workspace's registry plays
+	// no part here, so this same command doubles as a standalone daemon for
+	// orchestrator/tests' pytest fixtures (an arbitrary tmp_path, no
+	// workspace.Create involved) as well as the real per-workspace process
+	// startDaemon spawns.
+	cmd.Flags().StringVar(&stateDir, "state-dir", "", "directory to persist state under and serve (required)")
+	return cmd
 }
 
 // startDaemon spawns `masuda internal statedaemon id` as a detached
@@ -99,7 +107,7 @@ func startDaemon(id string) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(exe, "internal", "statedaemon", id)
+	cmd := exec.Command(exe, "internal", "statedaemon", "--state-dir", stateDir)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
