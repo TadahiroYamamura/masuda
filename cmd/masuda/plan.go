@@ -72,6 +72,13 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 				if err != nil {
 					return err
 				}
+				// The daemon started at workspace creation may no longer be
+				// running by the time a resume happens (host reboot, manual
+				// kill, a crash) -- startDaemon is idempotent, so this is
+				// safe to call even when it's still alive.
+				if err := startDaemon(info.ID); err != nil {
+					return err
+				}
 				worktreeDir := worktree.Dir(root, info.ID)
 				if err := hostloop.Start(info.ID, worktreeDir, stateDir, ""); err != nil {
 					return err

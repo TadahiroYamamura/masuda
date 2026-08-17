@@ -85,17 +85,26 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	return cmd
 }
 
-// startDaemon spawns `masuda internal statedaemon id` as a detached
-// background process (Setsid, stdout/stderr to daemon.log inside the
-// workspace's state directory) and records its PID so stopDaemon can find it
-// later. The process must outlive this CLI invocation -- it has to keep
-// running across the many short-lived `masuda plan/review approve` etc.
-// invocations that follow, the same "fire and forget" shape
-// internal/sandbox.Start uses for the sandbox container itself.
+// startDaemon spawns workspace id's state daemon as a detached background
+// process (Setsid, stdout/stderr to daemon.log inside the workspace's state
+// directory) and records its PID so stopDaemon can find it later. The
+// process must outlive this CLI invocation -- it has to keep running across
+// the many short-lived `masuda plan/review approve` etc. invocations that
+// follow, the same "fire and forget" shape internal/sandbox.Start uses for
+// the sandbox container itself.
+//
+// Idempotent: a no-op if a daemon for id is already alive (daemonAlive), so
+// every entrypoint that needs the daemon running (new workspace creation,
+// but also a `masuda plan start <workspace-id>` resume where the daemon may
+// have died since -- host reboot, manual kill, a crash) can call this
+// unconditionally instead of tracking "did I already start this" itself.
 func startDaemon(id string) error {
 	stateDir, err := workspace.StateDir(id)
 	if err != nil {
 		return err
+	}
+	if daemonAlive(stateDir) {
+		return nil
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -115,6 +124,28 @@ func startDaemon(id string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644)
+}
+
+// daemonAlive reports whether the PID recorded in stateDir/daemon.pid
+// belongs to a live process, using signal 0 (POSIX's standard existence
+// probe: no signal is actually delivered, the call just fails with ESRCH if
+// the process is gone). A missing or unparsable PID file counts as not
+// alive rather than an error, since both are exactly the "nothing to
+// recover" case startDaemon's caller wants to treat the same way.
+func daemonAlive(stateDir string) bool {
+	data, err := os.ReadFile(filepath.Join(stateDir, daemonPIDName))
+	if err != nil {
+		return false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return false
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 // stopDaemon signals workspace id's state daemon (if one is running) to shut

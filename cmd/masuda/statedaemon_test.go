@@ -6,6 +6,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -119,5 +122,42 @@ func TestStopDaemonWithoutPIDFileIsNoOp(t *testing.T) {
 	// predating this feature has no PID file at all).
 	if err := stopDaemon(id); err != nil {
 		t.Fatalf("stopDaemon() error = %v, want nil", err)
+	}
+}
+
+func TestDaemonAliveMissingPIDFile(t *testing.T) {
+	stateDir := t.TempDir()
+	if daemonAlive(stateDir) {
+		t.Fatal("daemonAlive() = true with no daemon.pid, want false")
+	}
+}
+
+func TestDaemonAliveLiveProcess(t *testing.T) {
+	stateDir := t.TempDir()
+	// The test binary itself is definitely alive.
+	pid := strconv.Itoa(os.Getpid())
+	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(pid), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !daemonAlive(stateDir) {
+		t.Fatal("daemonAlive() = false for this test process's own PID, want true")
+	}
+}
+
+func TestDaemonAliveDeadProcess(t *testing.T) {
+	stateDir := t.TempDir()
+	// Spawn and immediately wait out a short-lived process to get a PID
+	// that's guaranteed to be free again (no PID reuse race within a single
+	// test process's lifetime on Linux).
+	c := exec.Command("true")
+	if err := c.Run(); err != nil {
+		t.Fatal(err)
+	}
+	deadPID := strconv.Itoa(c.Process.Pid)
+	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(deadPID), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if daemonAlive(stateDir) {
+		t.Fatal("daemonAlive() = true for an already-exited process's PID, want false")
 	}
 }
