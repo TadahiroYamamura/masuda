@@ -14,7 +14,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 
 ### ループ機構・ゲート
 
-- `runtime/CLAUDE.md`: サンドボックス内で自己ループするClaudeの作業ループ仕様。`GATE:<name>`終了条件（ADR-0006）を実装している——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`mcp__masuda-gate__wait_for_gate_change`ツール呼び出しでゲートが解決されるまで待機する（Issue #35。ゲートマーカーはファイルではなくワークスペースの状態デーモン`internal/statedaemon`が保持し、`internal/statedaemon/mcpserver`のcurated tool setとしてUDS→`masuda internal mcp-relay`→ローカルTCP経由でClaude Codeの`--mcp-config`に公開される。以前はADR-0017の`inotifywait`単発ブロッキング呼び出しでファイルを監視していたが、ツール呼び出し自体が単発のブロッキング呼び出しになったためこの機構は不要になった。フェーズ1-2は`internal/hostloop/system_prompt.md.tmpl`が同じ仕組みを別テンプレートとして持つ）
+- `runtime/CLAUDE.md`: サンドボックス内で自己ループするClaudeの作業ループ仕様。`GATE:<name>`終了条件（ADR-0006）を実装している——終了条件（`DONE`）とゲート条件（`GATE:<name>`）は排他で、ゲート条件を満たす場合はセッションを終了せず`mcp__masuda-gate__wait_for_gate_change`ツール呼び出しでゲートが解決されるまで待機する（ADR-0040〜0042。フェーズ1-2は`internal/hostloop/system_prompt.md.tmpl`が同じ仕組みを別テンプレートとして持つ）
 - `.masuda/settings.json`の`claudeSettings`フィールド（ADR-0031）: 各フェーズの`claude`起動コマンドに`--settings`として渡す。フェーズ1-2は`internal/hostloop.Start`が直接渡し、フェーズ3-5は`runtime/merge_claude_settings.py`がビルド時焼き込みのプラグイン状態とマージしてから`runtime/entrypoint.sh`・`start_claude.sh`が渡す
 
 ### オーケストレーター
