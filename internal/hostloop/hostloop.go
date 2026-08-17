@@ -188,12 +188,22 @@ func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
 // call.
 const mcpGateServerName = "masuda-gate"
 
+// mcpToolTimeoutMillis is the per-server "timeout" Claude Code's MCP client
+// enforces on every tool call to masuda-gate. Confirmed live: without this,
+// Claude Code aborts a wait_for_gate_change call on its own hard wall-clock
+// MCP_TOOL_TIMEOUT well under a minute ("MCP tool idle timeout" -- progress
+// notifications do NOT extend this one, per Claude Code's own error text),
+// long before any real human gets around to approving a gate. 7 days is a
+// generous bound for "a human might be offline over a weekend" while still
+// being finite.
+const mcpToolTimeoutMillis = 7 * 24 * 60 * 60 * 1000
+
 // mcpConfigJSON builds the --mcp-config payload pointing Claude Code's MCP
 // client at the local relay startMCPRelay just started.
 func mcpConfigJSON(relayPort int) string {
 	return fmt.Sprintf(
-		`{"mcpServers":{%q:{"type":"http","url":"http://127.0.0.1:%d/"}}}`,
-		mcpGateServerName, relayPort,
+		`{"mcpServers":{%q:{"type":"http","url":"http://127.0.0.1:%d/","timeout":%d}}}`,
+		mcpGateServerName, relayPort, mcpToolTimeoutMillis,
 	)
 }
 
@@ -408,14 +418,25 @@ func Start(id, worktreeDir, stateDir, task string) error {
 		return fmt.Errorf("starting the MCP relay for the curated gate-wait tool set: %w", err)
 	}
 
+	// CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0 disables Claude Code's separate
+	// idle-timeout abort (distinct from the per-server "timeout" above,
+	// which covers the hard wall-clock one) as defense in depth -- belt and
+	// suspenders, since only the hard timeout was confirmed live to matter
+	// for wait_for_gate_change specifically.
 	claudeCmd := fmt.Sprintf(
-		"claude --allowedTools %s --agents %s --append-system-prompt-file %s --mcp-config %s",
+		"CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0 claude --allowedTools %s --agents %s --append-system-prompt-file %s --mcp-config %s",
 		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath), shellQuote(mcpConfigJSON(relayPort)),
 	)
 	if len(cfg.ClaudeSettings) > 0 {
 		claudeCmd += " --settings " + shellQuote(string(cfg.ClaudeSettings))
 	}
-	claudeCmd += " '作業を開始せよ'"
+	// The `--` is required: --mcp-config takes a space-separated *list* of
+	// configs, so without a terminator right after it (nothing else always
+	// follows -- --settings above is conditional), Claude Code silently
+	// swallows the prompt string as an extra, invalid --mcp-config entry and
+	// refuses to start ("MCP config file not found: <prompt text>") --
+	// confirmed live.
+	claudeCmd += " -- '作業を開始せよ'"
 
 	cmd := exec.Command("tmux", "new-session", "-d", "-s", SessionName(id), "-c", worktreeDir, claudeCmd)
 	if out, err := cmd.CombinedOutput(); err != nil {

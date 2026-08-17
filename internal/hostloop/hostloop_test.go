@@ -116,8 +116,9 @@ func TestMCPConfigJSONIsValidAndPointsAtTheGivenPort(t *testing.T) {
 	raw := mcpConfigJSON(54321)
 	var parsed struct {
 		MCPServers map[string]struct {
-			Type string `json:"type"`
-			URL  string `json:"url"`
+			Type    string `json:"type"`
+			URL     string `json:"url"`
+			Timeout int64  `json:"timeout"`
 		} `json:"mcpServers"`
 	}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
@@ -129,6 +130,13 @@ func TestMCPConfigJSONIsValidAndPointsAtTheGivenPort(t *testing.T) {
 	}
 	if server.Type != "http" || server.URL != "http://127.0.0.1:54321/" {
 		t.Fatalf("mcpConfigJSON(54321) server entry = %+v, want type=http url=http://127.0.0.1:54321/", server)
+	}
+	// Confirmed live: without a generous per-server timeout override,
+	// Claude Code aborts a wait_for_gate_change call on its own hard
+	// wall-clock MCP tool timeout well under a minute -- long before any
+	// real human gets around to approving a gate.
+	if server.Timeout < 60*60*1000 {
+		t.Fatalf("mcpConfigJSON(54321) server timeout = %dms, want at least an hour -- too short and real gate waits will be silently aborted by Claude Code's own MCP tool timeout", server.Timeout)
 	}
 }
 
