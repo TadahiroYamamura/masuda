@@ -82,6 +82,15 @@ func ensureRuntime() (pythonPath, scriptPath string, err error) {
 	if err := atomicWrite(dir, "investigate_plan_graph.py", masuda.OrchestratorScript, 0o644); err != nil {
 		return "", "", fmt.Errorf("extracting orchestrator script: %w", err)
 	}
+	// investigate_plan_graph.py imports state_client as a sibling module
+	// (orchestrator/state_client.py, ADR-0040's state-daemon client) --
+	// extracted alongside it into the same runtime dir for that import to
+	// resolve. The Docker sandbox (phase 3-5) never needed this: its image
+	// COPYs the whole orchestrator/ directory rather than embedding a
+	// single script.
+	if err := atomicWrite(dir, "state_client.py", masuda.StateClientScript, 0o644); err != nil {
+		return "", "", fmt.Errorf("extracting state_client.py: %w", err)
+	}
 
 	venvDir := filepath.Join(dir, "venv")
 	pythonPath = filepath.Join(venvDir, "bin", "python")

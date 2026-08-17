@@ -11,6 +11,9 @@ import _ "embed"
 //go:embed orchestrator/investigate_plan_graph.py
 var OrchestratorScript []byte
 
+//go:embed orchestrator/state_client.py
+var StateClientScript []byte
+
 //go:embed requirements.txt
 var Requirements []byte
 
