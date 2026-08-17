@@ -43,6 +43,7 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: false,
 	}
 	root.AddCommand(newInitCommand())
+	root.AddCommand(newInternalCommand())
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
 	root.AddCommand(newChatCommand())

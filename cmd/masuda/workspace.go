@@ -55,6 +55,13 @@ func newWorkspace(root, branch, base, name string) (workspace.Info, string, erro
 	if err != nil {
 		return workspace.Info{}, "", err
 	}
+	// Started only once both the metadata and the worktree exist, so a
+	// worktree.Create failure above never leaves an orphan daemon process
+	// behind (see the known non-atomicity issue this function's doc comment
+	// -- adding a third failure mode here would make it worse, not better).
+	if err := startDaemon(id); err != nil {
+		return workspace.Info{}, "", err
+	}
 	return info, dir, nil
 }
 
@@ -127,6 +134,14 @@ func newWorkspaceRemoveCommand() *cobra.Command {
 			}
 			info, err := workspace.Load(args[0])
 			if err != nil {
+				return err
+			}
+			// Stop the daemon before workspace.Remove deletes daemon.pid out
+			// from under it -- otherwise there'd be no way left to find the
+			// process to signal, and it would keep running indefinitely.
+			// Best-effort: a workspace created before this feature existed
+			// has no daemon.pid at all, and that must not block removal.
+			if err := stopDaemon(info.ID); err != nil {
 				return err
 			}
 			if err := worktree.Remove(root, info.ID, info.Branch, !keepBranch); err != nil {
