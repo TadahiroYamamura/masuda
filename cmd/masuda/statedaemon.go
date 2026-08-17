@@ -31,15 +31,35 @@ const (
 	daemonStoreDirName = "store"
 )
 
-// runStatedaemon opens the store under stateDir and serves it over its UDS
-// socket until ctx is cancelled. Extracted from the cobra RunE so it's
+// runStatedaemon opens the store under stateDir and serves both its trusted
+// (full) and curated (Claude-facing) tool sets, each over its own UDS
+// socket, until ctx is cancelled. Extracted from the cobra RunE so it's
 // directly testable without spawning a subprocess.
 func runStatedaemon(ctx context.Context, stateDir string) error {
 	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
 	if err != nil {
 		return err
 	}
-	return mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir))
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 2)
+	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
+	go func() { errCh <- mcpserver.ServeCuratedUDS(ctx, store, statedaemon.CuratedSocketPath(stateDir)) }()
+
+	// Whichever listener stops first (a real error, or ctx cancellation)
+	// triggers the other to stop too, so one socket failing doesn't leave
+	// the other running forever as an orphan.
+	first := <-errCh
+	cancel()
+	second := <-errCh
+	for _, err := range []error{first, second} {
+		if err != nil && !errors.Is(err, context.Canceled) {
+			return err
+		}
+	}
+	return first
 }
 
 // newInternalCommand groups plumbing commands masuda spawns for itself

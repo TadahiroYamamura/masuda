@@ -116,6 +116,98 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 	}
 }
 
+func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
+	id := newTestWorkspace(t)
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- runStatedaemon(ctx, stateDir) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-serveErr:
+		case <-time.After(2 * time.Second):
+			t.Error("runStatedaemon did not stop after context cancellation")
+		}
+	})
+
+	trustedSocket := statedaemon.SocketPath(stateDir)
+	curatedSocket := statedaemon.CuratedSocketPath(stateDir)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		_, err1 := os.Stat(trustedSocket)
+		_, err2 := os.Stat(curatedSocket)
+		if err1 == nil && err2 == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	dial := func(socketPath string) *mcp.ClientSession {
+		httpClient := &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+					var d net.Dialer
+					return d.DialContext(ctx, "unix", socketPath)
+				},
+			},
+		}
+		transport := &mcp.StreamableClientTransport{Endpoint: "http://unix/", HTTPClient: httpClient}
+		client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+		session, err := client.Connect(context.Background(), transport, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { session.Close() })
+		return session
+	}
+
+	trusted := dial(trustedSocket)
+	curated := dial(curatedSocket)
+
+	type waitResult struct {
+		Status string `json:"status"`
+	}
+	done := make(chan waitResult, 1)
+	go func() {
+		res, err := curated.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "wait_for_gate_change",
+			Arguments: map[string]any{"name": "plan"},
+		})
+		if err != nil || res.IsError {
+			t.Errorf("CallTool(wait_for_gate_change) = (%+v, %v), want success", res, err)
+			done <- waitResult{}
+			return
+		}
+		data, _ := json.Marshal(res.StructuredContent)
+		var out waitResult
+		json.Unmarshal(data, &out)
+		done <- out
+	}()
+
+	// Prove both sockets share the same underlying Store: the write goes
+	// through the trusted socket, the wait is unblocked on the curated one.
+	if _, err := trusted.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "state_put",
+		Arguments: map[string]any{"key": "gate:plan", "value": `{"status":"approved"}`},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case out := <-done:
+		if out.Status != "approved" {
+			t.Fatalf("wait_for_gate_change result = %+v, want status=approved", out)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("wait_for_gate_change did not return after the trusted socket's state_put")
+	}
+}
+
 func TestStopDaemonWithoutPIDFileIsNoOp(t *testing.T) {
 	id := newTestWorkspace(t)
 	// No daemon.pid was ever written -- must succeed anyway (a workspace

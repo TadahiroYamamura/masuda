@@ -26,17 +26,33 @@ import (
 	"sync"
 )
 
-// socketFileName is the Unix domain socket file a workspace's state daemon
-// listens on, relative to its state directory (see internal/workspace).
-const socketFileName = "daemon.sock"
+// socketFileName/curatedSocketFileName are the Unix domain socket files a
+// workspace's state daemon listens on, relative to its state directory (see
+// internal/workspace) -- the trusted full tool set and the curated,
+// Claude-facing tool set (internal/statedaemon/mcpserver.New/NewCurated)
+// respectively.
+const (
+	socketFileName        = "daemon.sock"
+	curatedSocketFileName = "daemon-curated.sock"
+)
 
-// SocketPath returns the Unix domain socket path a workspace's state daemon
-// listens on, given its state directory. Exported so any trusted caller
-// (cmd/masuda's Go code, internal/gate) can locate the socket without
-// depending on cmd/masuda (package main, unimportable) or duplicating this
-// path convention.
+// SocketPath returns the Unix domain socket path a workspace's state
+// daemon's trusted (full) tool set listens on, given its state directory.
+// Exported so any trusted caller (cmd/masuda's Go code, internal/gate) can
+// locate the socket without depending on cmd/masuda (package main,
+// unimportable) or duplicating this path convention.
 func SocketPath(stateDir string) string {
 	return filepath.Join(stateDir, socketFileName)
+}
+
+// CuratedSocketPath returns the Unix domain socket path a workspace's state
+// daemon's curated, Claude-facing tool set listens on, given its state
+// directory. Reachable from inside the sandbox the same way SocketPath is
+// (the state directory is bind-mounted at /masuda-state), meant to be
+// relayed to Claude's own MCP client over vsock/a local proxy rather than
+// dialed directly the way trusted callers dial SocketPath.
+func CuratedSocketPath(stateDir string) string {
+	return filepath.Join(stateDir, curatedSocketFileName)
 }
 
 // Store is a single workspace's key-value state, persisted under dir.
