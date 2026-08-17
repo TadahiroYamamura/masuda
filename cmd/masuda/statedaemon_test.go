@@ -12,10 +12,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+// runAsFakeMCPChild is the fork-and-exec trick go-sdk's own mcp/cmd_test.go
+// uses: when set, this test binary re-execs itself as a minimal MCP server
+// over stdio instead of running go test, so
+// TestRunStatedaemonAggregatesApprovedMCPServer can exercise
+// runStatedaemon's real --repo-root wiring (statedaemon.go ->
+// mcpaggregator.Start -> exec.Command -> CommandTransport) end to end.
+const runAsFakeMCPChild = "_MASUDA_TEST_FAKE_MCP_CHILD"
+
+func TestMain(m *testing.M) {
+	if os.Getenv(runAsFakeMCPChild) != "" {
+		runFakeMCPChildServer()
+		return
+	}
+	os.Exit(m.Run())
+}
+
+func runFakeMCPChildServer() {
+	server := mcp.NewServer(&mcp.Implementation{Name: "fake-child", Version: "0.0.1"}, nil)
+	mcp.AddTool(server, &mcp.Tool{Name: "ping", Description: "fake ping"}, func(
+		_ context.Context, _ *mcp.CallToolRequest, _ struct{},
+	) (*mcp.CallToolResult, any, error) {
+		return nil, map[string]any{"pong": true}, nil
+	})
+	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
+		panic(err)
+	}
+}
 
 // newTestWorkspace points internal/workspace's XDG data dir at a short-lived
 // directory under /tmp (not t.TempDir(), whose longer paths risk exceeding
@@ -50,7 +79,7 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir) }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -125,7 +154,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir) }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -205,6 +234,100 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("wait_for_gate_change did not return after the trusted socket's state_put")
+	}
+}
+
+func TestRunStatedaemonAggregatesApprovedMCPServer(t *testing.T) {
+	id := newTestWorkspace(t)
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := t.TempDir()
+
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	decl := config.MCPServerDecl{Command: exe, Env: []string{runAsFakeMCPChild}, Tools: []string{"ping"}}
+	hash, err := config.DeclHash(decl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeConfigJSON(t, config.SettingsPath(repoRoot), config.Config{
+		MCPServers: map[string]config.MCPServerDecl{"fake": decl},
+	})
+	writeConfigJSON(t, config.SettingsLocalPath(repoRoot), config.LocalSettings{
+		MCPServers: map[string]config.MCPServerApproval{
+			"fake": {Approved: true, DeclHash: hash, Env: map[string]string{runAsFakeMCPChild: "1"}},
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, repoRoot) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-serveErr:
+		case <-time.After(5 * time.Second):
+			t.Error("runStatedaemon did not stop after context cancellation")
+		}
+	})
+
+	curatedSocket := statedaemon.CuratedSocketPath(stateDir)
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(curatedSocket); err == nil {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", curatedSocket)
+			},
+		},
+	}
+	transport := &mcp.StreamableClientTransport{Endpoint: "http://unix/", HTTPClient: httpClient}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Close() })
+
+	// The aggregated child starts asynchronously (internal/statedaemon/
+	// mcpaggregator.Start never blocks its caller) -- poll for the proxied
+	// tool to appear rather than assuming it's ready the instant the
+	// curated socket itself is up.
+	deadline = time.Now().Add(15 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "fake__ping"})
+		if err == nil && !res.IsError {
+			return // success
+		}
+		lastErr = err
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("fake__ping never became callable over the curated socket, last error: %v", lastErr)
+}
+
+func writeConfigJSON(t *testing.T, path string, v any) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

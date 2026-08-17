@@ -114,6 +114,65 @@ func TestServeUDSRoundTrip(t *testing.T) {
 	}
 }
 
+func TestServeCuratedServerUDSServesGivenServer(t *testing.T) {
+	// internal/statedaemon/mcpaggregator builds its own *mcp.Server (from
+	// NewCurated plus proxied child tools) and hands it to
+	// ServeCuratedServerUDS directly -- unlike ServeCuratedUDS, which
+	// builds the server itself from a Store. This confirms that path
+	// works: an externally-constructed server, with an extra tool
+	// mcpaggregator-style code added onto it, is reachable over UDS.
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-curated", Version: "0.0.0"}, nil)
+	mcp.AddTool(server, &mcp.Tool{Name: "extra_tool", Description: "not part of NewCurated"}, func(
+		_ context.Context, _ *mcp.CallToolRequest, _ struct{},
+	) (*mcp.CallToolResult, any, error) {
+		return nil, map[string]any{"ok": true}, nil
+	})
+
+	sockDir, err := os.MkdirTemp("", "sdmcp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	socketPath := filepath.Join(sockDir, "daemon-curated.sock")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- ServeCuratedServerUDS(ctx, server, socketPath) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-serveErr:
+		case <-time.After(2 * time.Second):
+			t.Error("ServeCuratedServerUDS did not stop after context cancellation")
+		}
+	})
+	waitForSocket(t, socketPath)
+
+	httpClient := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+				var d net.Dialer
+				return d.DialContext(ctx, "unix", socketPath)
+			},
+		},
+	}
+	transport := &mcp.StreamableClientTransport{Endpoint: "http://unix/", HTTPClient: httpClient}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, transport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Close() })
+
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "extra_tool"})
+	if err != nil {
+		t.Fatalf("CallTool(extra_tool) error = %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("extra_tool returned a tool error: %+v", res.Content)
+	}
+}
+
 func TestServeUDSRemovesStaleSocket(t *testing.T) {
 	sockDir, err := os.MkdirTemp("", "sdmcp")
 	if err != nil {

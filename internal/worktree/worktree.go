@@ -128,6 +128,15 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 // repoRoot directly (cmd/masuda/sandbox.go, update.go), never from a clone.
 // .masuda/worktrees/ (sibling workspaces' own clones, including dir itself)
 // is excluded to avoid copying it into itself.
+//
+// .masuda/settings.local.json (config.SettingsLocalPath) is deliberately
+// never synced here either, unlike settings.json -- it routinely carries
+// real secret values (config.MCPServerApproval.Env), and this clone is
+// exactly what phase 4/5's `git add -A` step commits sweep up; copying it
+// in would leak those secrets into the workspace's own branch history. The
+// per-workspace state daemon reads settings.local.json directly from
+// repoRoot (via workspace.Info.RepoRoot) instead, so no clone-side copy is
+// needed for it to work.
 func syncMasudaConfig(repoRoot, dir string) error {
 	if err := copyFileIfExists(config.SettingsPath(repoRoot), config.SettingsPath(dir)); err != nil {
 		return fmt.Errorf("syncing %s: %w", config.SettingsFileName, err)

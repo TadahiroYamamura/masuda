@@ -71,6 +71,64 @@ func TestLoadMalformedJSONErrors(t *testing.T) {
 	}
 }
 
+func TestLoadReadsMCPServers(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, `{"mcpServers": {"github": {"command": "npx", "args": ["-y", "gh-mcp"], "env": ["GITHUB_TOKEN"], "tools": ["get_issue"]}}}`)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	decl, ok := cfg.MCPServers["github"]
+	if !ok {
+		t.Fatal("MCPServers[\"github\"] missing")
+	}
+	if decl.Command != "npx" {
+		t.Fatalf("Command = %q, want %q", decl.Command, "npx")
+	}
+	if len(decl.Args) != 2 || decl.Args[0] != "-y" || decl.Args[1] != "gh-mcp" {
+		t.Fatalf("Args = %v, want [-y gh-mcp]", decl.Args)
+	}
+	if len(decl.Env) != 1 || decl.Env[0] != "GITHUB_TOKEN" {
+		t.Fatalf("Env = %v, want [GITHUB_TOKEN]", decl.Env)
+	}
+	if len(decl.Tools) != 1 || decl.Tools[0] != "get_issue" {
+		t.Fatalf("Tools = %v, want [get_issue]", decl.Tools)
+	}
+}
+
+func TestDeclHashStableAndSensitiveToChange(t *testing.T) {
+	decl := MCPServerDecl{Command: "npx", Args: []string{"-y", "gh-mcp"}, Env: []string{"GITHUB_TOKEN"}, Tools: []string{"get_issue"}}
+
+	h1, err := DeclHash(decl)
+	if err != nil {
+		t.Fatalf("DeclHash() error = %v, want nil", err)
+	}
+	h2, err := DeclHash(decl)
+	if err != nil {
+		t.Fatalf("DeclHash() error = %v, want nil", err)
+	}
+	if h1 != h2 {
+		t.Fatalf("DeclHash() not stable: %q != %q", h1, h2)
+	}
+
+	variants := []MCPServerDecl{
+		{Command: "npx2", Args: decl.Args, Env: decl.Env, Tools: decl.Tools},
+		{Command: decl.Command, Args: []string{"-y", "other-mcp"}, Env: decl.Env, Tools: decl.Tools},
+		{Command: decl.Command, Args: decl.Args, Env: []string{"OTHER_TOKEN"}, Tools: decl.Tools},
+		{Command: decl.Command, Args: decl.Args, Env: decl.Env, Tools: []string{"other_tool"}},
+	}
+	for i, v := range variants {
+		h, err := DeclHash(v)
+		if err != nil {
+			t.Fatalf("DeclHash(variant %d) error = %v, want nil", i, err)
+		}
+		if h == h1 {
+			t.Fatalf("DeclHash(variant %d) = %q, want different from base hash %q", i, h, h1)
+		}
+	}
+}
+
 func TestDockerfilePath(t *testing.T) {
 	got := DockerfilePath("/repo")
 	want := filepath.Join("/repo", DirName, DockerfileName)

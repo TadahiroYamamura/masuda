@@ -40,7 +40,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
 ### ワークスペースID・リポジトリ設定ファイル（ADR-0014・0015・0030）
 
 - `internal/workspace/`: ワークスペースID（乱数6桁hexのみ、`NewID`。branch名を含めない理由はADR-0030）とその状態ディレクトリ（`~/.local/share/masuda/workspaces/<id>/`、XDG_DATA_HOME尊重）を管理するパッケージ。`Create`/`Load`/`Exists`/`List`/`Remove`を提供する。branch名ではなくこのIDが以後すべてのCLIサブコマンドの引数・worktree/コンテナ/tmuxセッションのアドレッシングキーになる——同じbranchに対して複数のワークスペースが並行して存在できるようにするため
-- `internal/config/`: 対象リポジトリのルート直下の`.masuda/settings.json`（ユーザーが手で編集してコミットする、任意ファイル。`masuda init`が生成する）を読む。`image`（使うDockerイメージ）・`base`（trunk branch名）・`claudeSettings`（`claude`起動時の`--settings`に渡す不透明ペイロード、ADR-0031）の3フィールドを定義する。`resolveImage`/`resolveBase`（`cmd/masuda/main.go`）が`--image`フラグ/`--base`・`--into`フラグ＞`.masuda/settings.json`の値＞デフォルトの優先順位で解決する（`claudeSettings`にCLIフラグでの上書きはない）。`image`フィールドの設計判断（masuda側で言語検出ヒューリスティックを持たずrepo側に委ねる理由）はADR-0015を参照。単一ファイル`.masuda.json`からの再編（破壊的変更、後方互換なし）はADR-0024
+- `internal/config/`: 対象リポジトリのルート直下の`.masuda/settings.json`（ユーザーが手で編集してコミットする、任意ファイル。`masuda init`が生成する）を読む。`image`（使うDockerイメージ）・`base`（trunk branch名）・`claudeSettings`（`claude`起動時の`--settings`に渡す不透明ペイロード、ADR-0031）・`mcpServers`（子MCPサーバーの宣言、ADR-0043）の4フィールドを定義する。`resolveImage`/`resolveBase`（`cmd/masuda/main.go`）が`--image`フラグ/`--base`・`--into`フラグ＞`.masuda/settings.json`の値＞デフォルトの優先順位で解決する（`claudeSettings`にCLIフラグでの上書きはない）。`image`フィールドの設計判断（masuda側で言語検出ヒューリスティックを持たずrepo側に委ねる理由）はADR-0015を参照。単一ファイル`.masuda.json`からの再編（破壊的変更、後方互換なし）はADR-0024。`repoRoot/.masuda/settings.local.json`（gitignore対象、`LoadLocal`/`SaveLocal`）は`mcpServers`宣言に対するユーザーの承認・秘密情報を持つ別ファイル（ADR-0043）
 - `internal/perspectives/`: masuda内蔵の14レビュー観点のソース`builtin/*.md`（Markdown + YAML frontmatter）と`ReviewsDir`パスヘルパーのみを持つ。観点の識別はファイル名（拡張子除く）をIDとする。詳細はADR-0024。frontmatterの`trigger`（自然言語、任意項目）はADR-0027のフェーズ4途中レビューがどの観点をトリガーするかの判定に、`enable`（任意項目、既定true）は観点の無効化に使う。実際の対象リポジトリへの展開はGitHub Releaseアセット経由（`internal/selfupdate.SyncReviews`、`masuda init`/`masuda update`から呼ばれる。ADR-0033、`go:embed`は廃止済み）
 
 ### 既知の課題（未修正）
@@ -63,6 +63,7 @@ AIとの協同開発（調査→プラン作成→git worktree作成→プロジ
   - サブエージェントに新しいツールを追加したら、セッションレベルの`allowedTools`にも同じツールをパス制限なしで追加すること。エージェント定義側（`customAgentsJSON`）にツールを持たせるだけでは、セッションレベルの許可ルールに乗っていない限りデフォルトの確認プロンプトに落ちる（`Grep`/`Glob`が未許可でplannerが停止した実例あり）
   - `go:embed`のパターンは宣言ファイル自身のディレクトリ以下にしか到達できず`..`を挟めないため、`assets.go`でembedするファイル（`orchestrator/`・`runtime/`）はリポジトリルート直下に置く必要がある。また`orchestrator/investigate_plan_graph.py`や`runtime/CLAUDE.md`を編集した後は`go build`し直さないと埋め込み内容が更新されない（Dockerイメージの再ビルド忘れと対になる注意点、後述）
 - `masuda chat <workspace-id>`: フェーズ1-2ホストループかフェーズ3-5サンドボックスか、どちらのセッションが生きているかだけを見てattachする（ゲート名を引数に取らない）。G1がフェーズ1-2ホストループ・フェーズ4-5のDocker再オープンどちらで待機していても対応する
+- `masuda mcp list|approve|reject <server-name>`: `.masuda/settings.json`の`mcpServers`宣言に対するユーザー承認・秘密情報（`.masuda/settings.local.json`）を管理する。承認済み＋宣言と一致するもののみ、状態デーモン（`internal/statedaemon/mcpaggregator`）がClaude向けcurated setへ子MCPサーバーのtoolをプロキシ登録する（ADR-0043）
 - `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`（worktree）・`/masuda-state`（状態ディレクトリ）は対象ワークスペース専用のbind mount先として空けてある
 
 ### レビュー単体エントリーポイント

@@ -12,6 +12,8 @@
 package config
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -72,6 +74,62 @@ type Config struct {
 	// keeping built-in content implicit. masuda never interprets this
 	// value — it's an opaque payload for Claude Code, not masuda.
 	ClaudeSettings json.RawMessage `json:"claudeSettings,omitempty"`
+
+	// MCPServers declares child MCP servers the per-workspace state daemon
+	// should aggregate into its Claude-facing curated tool set (Issue #35,
+	// ADR-0041's forward-pointer). The map key is the server's name --
+	// used both as the `masuda mcp approve <name>` argument and as the
+	// proxied tool name's namespace prefix ("<name>__<tool>").
+	//
+	// Declaring a server here does nothing on its own: this file is
+	// committed to the target repository and so, like every other field
+	// here, is not unconditionally trusted (Issue #19). The daemon only
+	// starts a declared server once a matching, hash-pinned approval
+	// exists in repoRoot/.masuda/settings.local.json (see LoadLocal) --
+	// see DeclHash.
+	MCPServers map[string]MCPServerDecl `json:"mcpServers,omitempty"`
+}
+
+// MCPServerDecl is one entry in Config.MCPServers: how to launch a child
+// MCP server and which of its tools may ever reach Claude. It never
+// carries secret values -- only the *names* of environment variables the
+// child needs (Env); actual values live in the user-owned, gitignored
+// settings.local.json (see LocalSettings.MCPServers[name].Env).
+type MCPServerDecl struct {
+	// Command is the executable to exec (e.g. "npx").
+	Command string `json:"command"`
+	// Args are passed to Command verbatim.
+	Args []string `json:"args,omitempty"`
+	// Env lists the names (never values) of environment variables the
+	// child process needs. A name here with no corresponding value in the
+	// user's approval blocks the daemon from starting this server at all.
+	Env []string `json:"env,omitempty"`
+	// Tools is the allowlist of this child server's own tool names that
+	// may be proxied onto the curated set. Default-deny: any tool the
+	// child reports that isn't listed here is never registered, no matter
+	// what the user approved -- the declaration-side half of a two-guard
+	// model (the user-side half is MCPServerApproval.Approved).
+	Tools []string `json:"tools,omitempty"`
+}
+
+// DeclHash returns a stable fingerprint of decl (sha256 of its canonical
+// JSON encoding). `masuda mcp approve` records this alongside a user's
+// approval (MCPServerApproval.DeclHash) so the daemon can tell whether
+// repoRoot's settings.json changed a server's declaration since it was
+// last approved -- e.g. a malicious commit swapping an already-approved
+// server's command/args. A hash mismatch is treated the same as "never
+// approved" (see internal/statedaemon/mcpaggregator), without which
+// approval-by-name alone would let a project-side change silently
+// escalate a previously-reviewed declaration, reintroducing the
+// "settings.json blindly trusted" problem this project/user split exists
+// to avoid (Issue #19).
+func DeclHash(decl MCPServerDecl) (string, error) {
+	data, err := json.Marshal(decl)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // Load reads .masuda/settings.json from repoRoot. A missing file is not an

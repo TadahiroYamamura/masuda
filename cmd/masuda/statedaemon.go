@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -35,7 +36,15 @@ const (
 // (full) and curated (Claude-facing) tool sets, each over its own UDS
 // socket, until ctx is cancelled. Extracted from the cobra RunE so it's
 // directly testable without spawning a subprocess.
-func runStatedaemon(ctx context.Context, stateDir string) error {
+//
+// repoRoot lets the curated server aggregate child MCP servers declared in
+// repoRoot's .masuda/settings.json and approved in
+// .masuda/settings.local.json (internal/statedaemon/mcpaggregator, Issue
+// #35). repoRoot == "" disables the aggregator entirely -- the standalone/
+// pytest-fixture use of this command (see newInternalStatedaemonCommand's
+// --state-dir doc comment) has no associated repository to read either
+// file from.
+func runStatedaemon(ctx context.Context, stateDir, repoRoot string) error {
 	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
 	if err != nil {
 		return err
@@ -44,15 +53,28 @@ func runStatedaemon(ctx context.Context, stateDir string) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Built once, up front, so both ServeCuratedServerUDS and
+	// mcpaggregator.Start (which registers proxy tools onto it as child
+	// servers become ready) share the same *mcp.Server instance.
+	curated := mcpserver.NewCurated(store)
+
 	errCh := make(chan error, 2)
 	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
-	go func() { errCh <- mcpserver.ServeCuratedUDS(ctx, store, statedaemon.CuratedSocketPath(stateDir)) }()
+	go func() { errCh <- mcpserver.ServeCuratedServerUDS(ctx, curated, statedaemon.CuratedSocketPath(stateDir)) }()
+
+	var agg *mcpaggregator.Aggregator
+	if repoRoot != "" {
+		agg = mcpaggregator.Start(ctx, repoRoot, curated, stateDir)
+	}
 
 	// Whichever listener stops first (a real error, or ctx cancellation)
 	// triggers the other to stop too, so one socket failing doesn't leave
 	// the other running forever as an orphan.
 	first := <-errCh
 	cancel()
+	if agg != nil {
+		agg.Close()
+	}
 	second := <-errCh
 	for _, err := range []error{first, second} {
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -78,7 +100,7 @@ func newInternalCommand() *cobra.Command {
 }
 
 func newInternalStatedaemonCommand() *cobra.Command {
-	var stateDir string
+	var stateDir, repoRoot string
 	cmd := &cobra.Command{
 		Use:    "statedaemon",
 		Hidden: true,
@@ -90,7 +112,7 @@ func newInternalStatedaemonCommand() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			err := runStatedaemon(ctx, stateDir)
+			err := runStatedaemon(ctx, stateDir, repoRoot)
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
@@ -103,6 +125,12 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	// workspace.Create involved) as well as the real per-workspace process
 	// startDaemon spawns.
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "directory to persist state under and serve (required)")
+	// Optional: omitting it (the pytest-fixture case above) disables the
+	// child-MCP-server aggregator rather than erroring, since those
+	// fixtures have no real target repository to read
+	// settings(.local).json from.
+	cmd.Flags().StringVar(&repoRoot, "repo-root", "",
+		"target repository root to read .masuda/settings.json + settings.local.json's child MCP server declarations from (optional; omit to disable the aggregator)")
 	return cmd
 }
 
@@ -127,6 +155,10 @@ func startDaemon(id string) error {
 	if daemonAlive(stateDir) {
 		return nil
 	}
+	info, err := workspace.Load(id)
+	if err != nil {
+		return err
+	}
 	exe, err := os.Executable()
 	if err != nil {
 		return err
@@ -137,7 +169,7 @@ func startDaemon(id string) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(exe, "internal", "statedaemon", "--state-dir", stateDir)
+	cmd := exec.Command(exe, "internal", "statedaemon", "--state-dir", stateDir, "--repo-root", info.RepoRoot)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

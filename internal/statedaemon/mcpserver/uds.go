@@ -22,7 +22,17 @@ func ServeUDS(ctx context.Context, store *statedaemon.Store, socketPath string) 
 // (NewCurated) over a Unix domain socket at socketPath, blocking until ctx
 // is cancelled or the listener fails.
 func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {
-	return serveUDS(ctx, NewCurated(store), socketPath)
+	return ServeCuratedServerUDS(ctx, NewCurated(store), socketPath)
+}
+
+// ServeCuratedServerUDS serves an already-constructed curated *mcp.Server
+// over socketPath, blocking until ctx is cancelled or the listener fails.
+// Unlike ServeCuratedUDS, the caller builds (and may keep mutating) the
+// server itself -- e.g. internal/statedaemon/mcpaggregator registering
+// child-MCP-server proxy tools onto it, potentially after serving has
+// already started (mcp.Server.AddTool is safe to call at any time).
+func ServeCuratedServerUDS(ctx context.Context, server *mcp.Server, socketPath string) error {
+	return serveUDS(ctx, server, socketPath)
 }
 
 // serveUDS binds socketPath and serves server's tool set over it until ctx

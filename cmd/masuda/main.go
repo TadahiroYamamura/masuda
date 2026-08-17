@@ -59,6 +59,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(reviewCmd)
 
 	root.AddCommand(newTriageCommand())
+	root.AddCommand(newMCPCommand())
 	return root
 }
 
