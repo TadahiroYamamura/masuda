@@ -71,23 +71,23 @@ func TestWriteTaskBriefRoundTrips(t *testing.T) {
 	}
 }
 
-func TestWriteInstructionsRoundTrips(t *testing.T) {
-	stateDir := newTestDaemon(t)
+func TestWriteInstructionsWritesAPlainFile(t *testing.T) {
+	// Deliberately not daemon-backed -- see WriteInstructions' doc comment:
+	// the investigator subagent opens INSTRUCTIONS.md itself by path, so it
+	// must stay a real file no daemon is involved in reading. A bare
+	// t.TempDir() is fine here (no socket path involved, unlike
+	// newTestDaemon's other callers).
+	stateDir := t.TempDir()
 	if err := WriteInstructions(stateDir, []byte("事前調査メモ")); err != nil {
 		t.Fatalf("WriteInstructions() error = %v, want nil", err)
 	}
 
-	c, err := dial(context.Background(), stateDir)
+	data, err := os.ReadFile(filepath.Join(stateDir, "INSTRUCTIONS.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
-	value, found, err := c.Get(context.Background(), instructionsKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !found || value != "事前調査メモ" {
-		t.Fatalf("Get(instructionsKey) = (%q, %v), want (%q, true)", value, found, "事前調査メモ")
+	if string(data) != "事前調査メモ" {
+		t.Fatalf("INSTRUCTIONS.md content = %q, want %q", data, "事前調査メモ")
 	}
 }
 

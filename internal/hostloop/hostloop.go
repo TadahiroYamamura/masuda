@@ -160,15 +160,18 @@ func SessionName(id string) string {
 	return tmuxSessionPrefix + sessionNameSanitizer.ReplaceAllString(id, "-")
 }
 
-// taskBriefKey/instructionsKey/tddRequestedKey are the state daemon keys
-// this package writes and orchestrator/*.py's state_client reads (Issue
-// #35 phase A). Safe to move off plain files because both sides are
-// trusted, non-subagent code -- unlike INVESTIGATION.md/plan/steps.json/
-// etc., nothing here is ever touched by a Claude subagent's Edit tool (see
-// internal/gate's package doc for the fuller rationale behind this split).
+// taskBriefKey/tddRequestedKey are the state daemon keys this package
+// writes and orchestrator/*.py's state_client reads (Issue #35 phase A).
+// Safe to move off plain files because both are read only by the
+// orchestrator itself, which folds their content/presence into the TASK.md
+// text it writes -- never referenced by path in a prompt a subagent's own
+// Read tool would open (see internal/gate's package doc for the fuller
+// writer/reader trust boundary this split enforces). INSTRUCTIONS.md is the
+// one exception in this same neighborhood: the investigate prompt tells the
+// investigator subagent to open that file itself by path (ADR-0016), so it
+// must stay a real file WriteInstructions writes below, not a daemon key.
 const (
 	taskBriefKey    = "internal:task-brief"
-	instructionsKey = "internal:instructions"
 	tddRequestedKey = "internal:tdd-requested"
 )
 
@@ -189,20 +192,17 @@ func WriteTaskBrief(stateDir, task string) error {
 }
 
 // WriteInstructions copies a user-supplied instructions/investigation
-// document (masuda plan start --file) into the workspace's state daemon at
-// instructionsKey, snapshotting it at start time -- the same convention
-// WriteTaskBrief already uses for the task description -- so a later edit,
-// move, or deletion of the original file can't affect an already-running
-// workspace. investigate_plan_graph.py's investigate prompt checks for this
-// key and, when present, instructs the investigator to fact-check it
-// against the actual codebase rather than blindly trust it (ADR-0016).
+// document (masuda plan start --file) into the workspace's state directory
+// as INSTRUCTIONS.md, snapshotting it at start time -- the same convention
+// WriteTaskBrief conceptually follows for the task description -- so a
+// later edit, move, or deletion of the original file can't affect an
+// already-running workspace. This deliberately stays a plain file (not a
+// daemon key like WriteTaskBrief/WriteTDDIntent): investigate_plan_graph.py's
+// investigate prompt tells the investigator subagent to open this exact
+// path itself with its own Read tool (ADR-0016) rather than folding the
+// content into TASK.md, and that subagent has no way to read daemon state.
 func WriteInstructions(stateDir string, content []byte) error {
-	c, err := dial(context.Background(), stateDir)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	return c.Put(context.Background(), instructionsKey, string(content))
+	return os.WriteFile(filepath.Join(stateDir, "INSTRUCTIONS.md"), content, 0o644)
 }
 
 // WriteTDDIntent records that `masuda plan start --tdd` was passed at
