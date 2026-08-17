@@ -37,7 +37,7 @@ func newTriageShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			content, err := gate.Show(stateDir, gate.Triage)
+			content, err := gate.Show(cmd.Context(), stateDir, gate.Triage)
 			if err != nil {
 				return err
 			}
@@ -62,7 +62,7 @@ func newTriageDismissCommand() *cobra.Command {
 			if len(args) > 1 {
 				feedback = args[1]
 			}
-			return gate.Approve(stateDir, gate.Triage, feedback)
+			return gate.Approve(cmd.Context(), stateDir, gate.Triage, feedback)
 		},
 	}
 }
@@ -78,7 +78,7 @@ func newTriageRedoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return gate.Reject(stateDir, gate.Triage, args[1])
+			return gate.Reject(cmd.Context(), stateDir, gate.Triage, args[1])
 		},
 	}
 }
@@ -102,7 +102,7 @@ func newTriageHaltCommand() *cobra.Command {
 			if len(args) > 1 {
 				reason = args[1]
 			}
-			return gate.Halt(stateDir, gate.Triage, reason)
+			return gate.Halt(cmd.Context(), stateDir, gate.Triage, reason)
 		},
 	}
 }

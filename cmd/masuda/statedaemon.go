@@ -18,20 +18,17 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// daemonSocketName/daemonPIDName/daemonLogName/daemonStoreDirName are the
-// well-known filenames a workspace's state directory holds for its
-// statedaemon process (Issue #35). store/ is where the KV data itself is
-// persisted, kept in its own subdirectory so it doesn't mix with
-// workspace.json and the other plain files internal/workspace already owns
-// there.
+// daemonPIDName/daemonLogName/daemonStoreDirName are the well-known
+// filenames a workspace's state directory holds for its statedaemon process
+// (Issue #35), besides its socket (statedaemon.SocketPath). store/ is where
+// the KV data itself is persisted, kept in its own subdirectory so it
+// doesn't mix with workspace.json and the other plain files
+// internal/workspace already owns there.
 const (
-	daemonSocketName   = "daemon.sock"
 	daemonPIDName      = "daemon.pid"
 	daemonLogName      = "daemon.log"
 	daemonStoreDirName = "store"
 )
-
-func daemonSocketPath(stateDir string) string { return filepath.Join(stateDir, daemonSocketName) }
 
 // runStatedaemon opens workspace id's store and serves it over its UDS
 // socket until ctx is cancelled. Extracted from the cobra RunE so it's
@@ -45,7 +42,7 @@ func runStatedaemon(ctx context.Context, id string) error {
 	if err != nil {
 		return err
 	}
-	return mcpserver.ServeUDS(ctx, store, daemonSocketPath(stateDir))
+	return mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir))
 }
 
 // newInternalCommand groups plumbing commands masuda spawns for itself

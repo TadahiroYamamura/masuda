@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -56,7 +57,7 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 		}
 	})
 
-	socketPath := daemonSocketPath(stateDir)
+	socketPath := statedaemon.SocketPath(stateDir)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if _, err := os.Stat(socketPath); err == nil {

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpclient"
 )
 
@@ -31,7 +32,7 @@ func newInternalStateCommand() *cobra.Command {
 				if stateDir == "" {
 					return fmt.Errorf("--socket not given and MASUDA_STATE_DIR is not set")
 				}
-				socket = daemonSocketPath(stateDir)
+				socket = statedaemon.SocketPath(stateDir)
 			}
 			return nil
 		},
@@ -107,10 +108,6 @@ func newInternalStateCommand() *cobra.Command {
 
 	return cmd
 }
-
-// daemonSocketPath is also used by newInternalStateCommand's default flag
-// resolution -- statedaemon.go defines it against a state directory, which
-// is exactly what $MASUDA_STATE_DIR already points at inside the sandbox.
 
 // withClient connects to socket, runs fn, and always closes the connection
 // afterward. ctx is cancelled on SIGINT/SIGTERM so `wait` (otherwise

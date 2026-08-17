@@ -26,6 +26,19 @@ import (
 	"sync"
 )
 
+// socketFileName is the Unix domain socket file a workspace's state daemon
+// listens on, relative to its state directory (see internal/workspace).
+const socketFileName = "daemon.sock"
+
+// SocketPath returns the Unix domain socket path a workspace's state daemon
+// listens on, given its state directory. Exported so any trusted caller
+// (cmd/masuda's Go code, internal/gate) can locate the socket without
+// depending on cmd/masuda (package main, unimportable) or duplicating this
+// path convention.
+func SocketPath(stateDir string) string {
+	return filepath.Join(stateDir, socketFileName)
+}
+
 // Store is a single workspace's key-value state, persisted under dir.
 type Store struct {
 	dir string

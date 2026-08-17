@@ -61,7 +61,7 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			content, err := gate.Show(stateDir, n)
+			content, err := gate.Show(cmd.Context(), stateDir, n)
 			if err != nil {
 				return err
 			}
@@ -86,7 +86,7 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 			if len(args) > 1 {
 				feedback = args[1]
 			}
-			if err := gate.Approve(stateDir, n, feedback); err != nil {
+			if err := gate.Approve(cmd.Context(), stateDir, n, feedback); err != nil {
 				return err
 			}
 			if n == gate.Review {
@@ -108,7 +108,7 @@ func newGateRejectCommand(n gate.Name) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return gate.Reject(stateDir, n, args[1])
+			return gate.Reject(cmd.Context(), stateDir, n, args[1])
 		},
 	}
 }
