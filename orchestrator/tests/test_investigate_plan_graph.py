@@ -1,7 +1,9 @@
 """
 Layer 1 tests for investigate_plan_graph.py: pure state-machine logic, no LLM
-calls, no Docker, no real Claude invocations. Every case sets up on-disk state
-in a temp directory and asserts the resulting phase / TASK.md content.
+calls, no Docker, no real Claude invocations. Every case sets up state (on
+disk, or in a real state daemon for the subset Issue #35 phase A moved
+there -- see conftest.py's state_daemon fixture) and asserts the resulting
+phase / TASK.md content.
 """
 import importlib
 import json
@@ -9,34 +11,41 @@ import json
 import pytest
 
 import investigate_plan_graph as ipg
+import state_client
 
 
 @pytest.fixture(autouse=True)
-def in_tmp_workspace(tmp_path, monkeypatch):
+def in_tmp_workspace(state_daemon):
     # ipg reads MASUDA_STATE_DIR once at import time (STATE_DIR is a module-level
     # constant, not resolved lazily -- see the module docstring). reload() re-runs
-    # that top-level code with the freshly-set env var so every test gets its own
-    # isolated state directory instead of all tests sharing whatever STATE_DIR
-    # happened to be set when this module was first imported.
-    monkeypatch.setenv("MASUDA_STATE_DIR", str(tmp_path))
+    # that top-level code with the freshly-set env var (state_daemon already set
+    # it before yielding) so every test gets its own isolated state directory +
+    # daemon instead of all tests sharing whatever STATE_DIR happened to be set
+    # when this module was first imported.
     importlib.reload(ipg)
-    yield tmp_path
+    yield state_daemon
 
 
 def write_task_brief(text="タスクの説明"):
-    ipg.TASK_BRIEF.write_text(text, encoding="utf-8")
+    state_client.put(ipg.TASK_BRIEF_KEY, text)
 
 
 def write_plan(summary="...", steps=None, expected_byproducts=None):
     """ADR-0026: the plan is plan/summary.md (prose) + plan/steps.json
     (structured), not a single PLAN.md file. ADR-0028 wraps steps.json's
-    content in {"steps": [...], "expected_byproducts": [...]}."""
+    content in {"steps": [...], "expected_byproducts": [...]}. Both stay
+    plain files -- the planner subagent writes them with its own Edit tool
+    (see the module docstring's writer/reader trust boundary)."""
     if steps is None:
         steps = [{"description": "step 1", "files": []}]
     ipg.PLAN_DIR.mkdir(parents=True, exist_ok=True)
     ipg.PLAN_SUMMARY_MD.write_text(summary, encoding="utf-8")
     data = {"steps": steps, "expected_byproducts": expected_byproducts or []}
     ipg.PLAN_STEPS_JSON.write_text(json.dumps(data), encoding="utf-8")
+
+
+def write_gate_marker(status, feedback=""):
+    state_client.put(ipg.GATE_KEY, json.dumps({"status": status, "feedback": feedback}))
 
 
 # --- detect_phase -------------------------------------------------------
@@ -65,7 +74,7 @@ def test_needs_more_investigation_triggers_redo_and_consumes_signal():
     assert state["questions"] == ["Q1", "Q2"]
     assert state["retries"] == 1
     assert not ipg.PLAN_RESULT_JSON.exists(), "signal must be consumed so it doesn't re-trigger forever"
-    assert ipg._read_retries() == 1, "retry count must persist to disk across process restarts"
+    assert ipg._read_retries() == 1, "retry count must persist across process restarts"
 
 
 def test_retries_exhausted_stops_and_preserves_plan_result_for_inspection():
@@ -90,74 +99,65 @@ def test_plan_done_no_marker_means_await_g1():
 
 def test_plan_done_pending_marker_means_await_g1():
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(json.dumps({"status": "pending"}), encoding="utf-8")
+    write_gate_marker("pending")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "await_g1"
 
 
 def test_plan_approved_means_g1_approved():
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(json.dumps({"status": "approved", "feedback": "lgtm"}), encoding="utf-8")
+    write_gate_marker("approved", feedback="lgtm")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "g1_approved"
 
 
 def test_plan_rejected_triggers_redo_and_consumes_marker():
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(
-        json.dumps({"status": "rejected", "feedback": "この案は却下"}), encoding="utf-8"
-    )
+    write_gate_marker("rejected", feedback="この案は却下")
 
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
     assert state["phase"] == "plan_redo"
     assert state["questions"] == ["この案は却下"]
-    assert not ipg.GATE_MARKER.exists(), "rejection must be consumed so it doesn't re-trigger forever"
+    assert not state_client.exists(ipg.GATE_KEY), "rejection must be consumed so it doesn't re-trigger forever"
 
 
 # --- ADR-0039 (Issue #21): redo-pending markers survive a triage interrupt --
 
 def test_plan_rejected_deletes_stale_plan_and_leaves_pending_marker():
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(
-        json.dumps({"status": "rejected", "feedback": "この案は却下"}), encoding="utf-8"
-    )
+    write_gate_marker("rejected", feedback="この案は却下")
 
     ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
     assert not ipg.PLAN_SUMMARY_MD.exists(), "the rejected plan must not linger to be mistaken for a fresh one"
     assert not ipg.PLAN_STEPS_JSON.exists()
-    assert ipg.PLAN_REDO_PENDING_MD.exists()
-    assert ipg.PLAN_REDO_PENDING_MD.read_text(encoding="utf-8") == "この案は却下"
+    assert state_client.get(ipg.PLAN_REDO_PENDING_KEY) == "この案は却下"
 
 
 def test_plan_redo_interrupted_before_rewrite_resumes_plan_redo_not_await_g1():
-    """Simulates Issue #21: GATE_MARKER already consumed (plan_redo pending),
+    """Simulates Issue #21: GATE_KEY already consumed (plan_redo pending),
     but the planner hasn't rewritten plan/summary.md + plan/steps.json yet
     (e.g. a triage interrupt landed first). A from-scratch re-derivation must
     not mistake this for a completed, awaiting-approval plan."""
-    ipg.PLAN_REDO_PENDING_MD.write_text("この案は却下", encoding="utf-8")
+    state_client.put(ipg.PLAN_REDO_PENDING_KEY, "この案は却下")
     assert not ipg.PLAN_SUMMARY_MD.exists()
 
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
     assert state["phase"] == "plan_redo"
     assert state["questions"] == ["この案は却下"]
-    assert ipg.PLAN_REDO_PENDING_MD.exists(), "must stay pending until the planner actually rewrites the plan"
+    assert state_client.exists(ipg.PLAN_REDO_PENDING_KEY), "must stay pending until the planner actually rewrites the plan"
 
 
 def test_plan_redo_completed_after_pending_clears_marker_and_reaches_await_g1():
-    ipg.PLAN_REDO_PENDING_MD.write_text("この案は却下", encoding="utf-8")
+    state_client.put(ipg.PLAN_REDO_PENDING_KEY, "この案は却下")
     write_plan(summary="改訂版")
 
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
     assert state["phase"] == "await_g1"
-    assert not ipg.PLAN_REDO_PENDING_MD.exists()
+    assert not state_client.exists(ipg.PLAN_REDO_PENDING_KEY)
 
 
 def test_investigate_redo_interrupted_before_rewrite_resumes_investigate_redo():
@@ -200,10 +200,7 @@ def test_plan_redo_triage_interrupt_then_dismiss_resumes_plan_redo():
     triage interrupt before the planner rewrites the plan -> dismiss. Must
     land back on plan_redo (with the original feedback), never await_g1."""
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(
-        json.dumps({"status": "rejected", "feedback": "駐車場・タイトルも含めて修正"}), encoding="utf-8"
-    )
+    write_gate_marker("rejected", feedback="駐車場・タイトルも含めて修正")
     first = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert first["phase"] == "plan_redo"
 
@@ -219,9 +216,9 @@ def test_plan_redo_triage_interrupt_then_dismiss_resumes_plan_redo():
 
 def test_gate_marker_schema_matches_go_cli():
     """internal/gate/gate.go's Marker struct marshals to exactly this shape
-    (json.MarshalIndent with `status`, `feedback`, `decided_at` fields) —
-    this is the file-based contract between the Go CLI and this orchestrator.
-    A change to either side that breaks this shape must fail here first.
+    (json.Marshal with `status`, `feedback`, `decided_at` fields) — this is
+    the daemon-value contract between the Go CLI and this orchestrator. A
+    change to either side that breaks this shape must fail here first.
     """
     go_cli_output = """{
   "status": "approved",
@@ -229,8 +226,7 @@ def test_gate_marker_schema_matches_go_cli():
   "decided_at": "2026-07-25T15:30:25.532891232+09:00"
 }"""
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True)
-    ipg.GATE_MARKER.write_text(go_cli_output, encoding="utf-8")
+    state_client.put(ipg.GATE_KEY, go_cli_output)
 
     marker = ipg._read_gate_marker()
 
@@ -269,7 +265,7 @@ def test_plan_task_delegates_to_no_bash_planner_agent():
 
 
 def test_investigate_missing_task_brief_raises():
-    with pytest.raises(FileNotFoundError):
+    with pytest.raises(RuntimeError):
         ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
 
 
@@ -352,7 +348,7 @@ def test_iteration_budget_exceeded_overrides_phase():
     must render the blocked message instead of another subagent delegation —
     this is a final defense line independent of MAX_RETRIES (ADR-0011)."""
     write_task_brief()
-    ipg.ITERATION_COUNT_FILE.write_text(str(ipg.ITERATION_BUDGET), encoding="utf-8")
+    state_client.put(ipg.ITERATION_COUNT_KEY, str(ipg.ITERATION_BUDGET))
 
     ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
 
@@ -361,7 +357,7 @@ def test_iteration_budget_exceeded_overrides_phase():
     assert "ITERATION_BUDGET" in content
 
 
-# --- build_graph end-to-end (still no LLM calls: pure file-driven) --------
+# --- build_graph end-to-end (still no LLM calls: file + daemon driven) ----
 
 def test_full_graph_run_writes_task_md():
     write_task_brief("何かのタスク")
@@ -384,8 +380,7 @@ def write_triage_concern(agent="investigator", phase="investigate", description=
 
 
 def write_triage_marker(status, feedback=""):
-    ipg.TRIAGE_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    ipg.TRIAGE_GATE_MARKER.write_text(json.dumps({"status": status, "feedback": feedback}), encoding="utf-8")
+    state_client.put(ipg.TRIAGE_GATE_KEY, json.dumps({"status": status, "feedback": feedback}))
 
 
 def test_triage_concern_present_opens_gate():
@@ -403,7 +398,7 @@ def test_triage_gate_pending_marker_stays_await_triage():
 
 
 def test_triage_dismissed_resumes_interrupted_phase():
-    # Nothing else on disk -- the interrupted phase was "investigate".
+    # Nothing else set -- the interrupted phase was "investigate".
     write_triage_concern()
     write_triage_marker("approved", feedback="誤検知でした")
 
@@ -411,7 +406,7 @@ def test_triage_dismissed_resumes_interrupted_phase():
 
     assert state["phase"] == "investigate"
     assert not ipg.TRIAGE_CONCERN_JSON.exists()
-    assert not ipg.TRIAGE_GATE_MARKER.exists()
+    assert not state_client.exists(ipg.TRIAGE_GATE_KEY)
 
 
 def test_triage_redo_leaves_feedback_note_for_next_task_md():
@@ -422,15 +417,14 @@ def test_triage_redo_leaves_feedback_note_for_next_task_md():
 
     assert state["phase"] == "investigate"
     assert not ipg.TRIAGE_CONCERN_JSON.exists()
-    assert not ipg.TRIAGE_GATE_MARKER.exists()
-    assert ipg.TRIAGE_REDO_FEEDBACK_MD.exists()
-    assert ipg.TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8") == "ファイルを修正したので続けてください"
+    assert not state_client.exists(ipg.TRIAGE_GATE_KEY)
+    assert state_client.get(ipg.TRIAGE_REDO_FEEDBACK_KEY) == "ファイルを修正したので続けてください"
 
     write_task_brief()
     ipg.write_task_md(state)
     content = ipg.TASK_MD.read_text(encoding="utf-8")
     assert "ファイルを修正したので続けてください" in content
-    assert not ipg.TRIAGE_REDO_FEEDBACK_MD.exists(), "the note must be consumed exactly once"
+    assert not state_client.exists(ipg.TRIAGE_REDO_FEEDBACK_KEY), "the note must be consumed exactly once"
 
 
 def test_triage_halted_is_a_terminal_done_not_a_gate():
@@ -459,7 +453,7 @@ def test_triage_halted_does_not_consume_concern_or_marker():
 
     assert first["phase"] == second["phase"] == "triage_halted"
     assert ipg.TRIAGE_CONCERN_JSON.exists()
-    assert ipg.TRIAGE_GATE_MARKER.exists()
+    assert state_client.exists(ipg.TRIAGE_GATE_KEY)
 
 
 def _setup_investigate_redo():
@@ -471,8 +465,7 @@ def _setup_investigate_redo():
 
 def _setup_plan_redo():
     write_plan()
-    ipg.GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    ipg.GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "却下"}), encoding="utf-8")
+    write_gate_marker("rejected", feedback="却下")
 
 
 @pytest.mark.parametrize("setup_phase,setup", [
@@ -502,10 +495,9 @@ def test_gate_marker_schema_matches_go_cli_for_halted_status():
   "feedback": "深刻な懸念のため停止",
   "decided_at": "2026-08-05T15:30:25.532891232+09:00"
 }"""
-    write_triage_marker("halted")  # ensure parent dir exists
-    ipg.TRIAGE_GATE_MARKER.write_text(go_cli_output, encoding="utf-8")
+    state_client.put(ipg.TRIAGE_GATE_KEY, go_cli_output)
 
-    marker = ipg._read_gate_marker(ipg.TRIAGE_GATE_MARKER)
+    marker = ipg._read_gate_marker(ipg.TRIAGE_GATE_KEY)
 
     assert marker["status"] == "halted"
     assert marker["feedback"] == "深刻な懸念のため停止"

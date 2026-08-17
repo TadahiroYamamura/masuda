@@ -4,20 +4,37 @@ Phase 1-2 (investigate -> plan -> G1) orchestrator.
 Runs on the HOST (no Docker — see docs/adr/0012) against a worktree that
 `masuda plan start` already created. Responsibilities:
 
-  - Inspect on-disk state (INVESTIGATION.md / plan/summary.md+plan/steps.json
-    (ADR-0026) / plan_result.json / the G1 gate marker
-    `masuda plan approve|reject` writes) to derive the current phase
+  - Inspect state (INVESTIGATION.md / plan/summary.md+plan/steps.json
+    (ADR-0026) / plan_result.json -- still plain files, see below -- plus
+    the G1 gate marker and a handful of orchestrator-internal counters/
+    markers held by the workspace's state daemon, Issue #35) to derive the
+    current phase
   - Overwrite TASK.md with instructions delegating the next step to a subagent
   - Exit -- the self-looping Claude session picks TASK.md up from there
 
-No LLM calls happen in this process: it's a pure state machine over the
-filesystem. The main Claude Code session (reading TASK.md per its loop
-protocol) is the one that actually spawns subagents via its own Task tool.
+No LLM calls happen in this process: it's a pure state machine over
+filesystem + daemon state. The main Claude Code session (reading TASK.md per
+its loop protocol) is the one that actually spawns subagents via its own
+Task tool.
+
+Issue #35 (phase A) moved part of this script's state to the workspace's
+state daemon (state_client.py, shelling out to `masuda internal state ...`)
+-- but only where every reader and writer is trusted, non-subagent code
+(this script itself, or the Go CLI). INVESTIGATION.md, plan/summary.md,
+plan/steps.json, plan_result.json, triage_concern.json,
+.masuda-investigate-redo-pending.json, and INSTRUCTIONS.md deliberately stay
+plain files: they're written and/or read by a Claude subagent via its own
+Read/Edit tools (investigator, planner, or the ADR-0029 self-report path),
+which has no way to reach the daemon. TASK.md stays a file for the same
+reason on the read side -- the main Claude Code session reads it with its
+own Read tool. Mixing the two categories up once already caused a real bug
+(see internal/gate's package doc on the Go side) — don't repeat it here.
 
 All state that needs to survive across invocations (the redo counter) is
-persisted to disk, not carried in the LangGraph state dict -- this script is
-re-invoked as a fresh process every loop iteration, so anything not on disk is
-lost. See ADR-0008 for the investigate<->plan redo protocol this implements.
+persisted (to disk or the daemon), not carried in the LangGraph state dict --
+this script is re-invoked as a fresh process every loop iteration, so
+anything not persisted is lost. See ADR-0008 for the investigate<->plan redo
+protocol this implements.
 
 All of masuda's own control files live under STATE_DIR (roadmap step 7's
 workspace state directory, `MASUDA_STATE_DIR` env var), never inside the
@@ -33,6 +50,8 @@ from pathlib import Path
 from typing import TypedDict
 
 from langgraph.graph import END, StateGraph
+
+import state_client
 
 # ADR-0008: investigate<->plan redo budget -- bounds the investigate_redo
 # loop specifically. Independent of ITERATION_BUDGET below (ADR-0011), which
@@ -50,46 +69,54 @@ ITERATION_BUDGET = 20
 
 STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 
-TASK_BRIEF = STATE_DIR / ".masuda-task.md"
+# Daemon keys (Issue #35 phase A) -- orchestrator-internal counters/markers
+# and the G1/triage gate markers, all read and written exclusively by this
+# script or the Go CLI. See the module docstring for what stays a plain file
+# instead and why.
+TASK_BRIEF_KEY = "internal:task-brief"
+TDD_REQUESTED_KEY = "internal:tdd-requested"
+RETRIES_KEY = "internal:plan-retries"
+ITERATION_COUNT_KEY = "internal:iteration-count"
+GATE_KEY = "gate:plan"
+TRIAGE_GATE_KEY = "gate:triage"
+TRIAGE_REDO_FEEDBACK_KEY = "internal:triage-redo-feedback"
+PLAN_REDO_PENDING_KEY = "internal:plan-redo-pending"
+
 # Optional pre-written instructions/investigation document (masuda plan
 # start --file, ADR-0016). When present, _investigate_task tells the
 # investigator to fact-check it against the actual codebase rather than
-# follow it blindly.
+# follow it blindly. Stays a plain file: the investigate prompt tells the
+# investigator subagent to open this exact path with its own Read tool
+# (internal/hostloop.WriteInstructions' doc comment has the full rationale).
 INSTRUCTIONS_MD = STATE_DIR / "INSTRUCTIONS.md"
-# masuda plan start --tdd (Issue #3): a human's advisory signal that TDD
-# should be used where the planner judges appropriate, checked the same way
-# INSTRUCTIONS_MD is checked below. Written once at workspace-creation time
-# by hostloop.WriteTDDIntent, so it survives a `masuda plan start
-# <workspace-id>` resume without needing to be re-passed.
-TDD_REQUESTED_MARKER = STATE_DIR / ".masuda-tdd-requested"
 INVESTIGATION_MD = STATE_DIR / "INVESTIGATION.md"
 # ADR-0026: PLAN.md is no longer one Markdown file. Prose lives in
 # summary.md; the mechanically-consumed step/file breakdown lives in
 # steps.json (one JSON array, each element a {"description", "files"} step --
 # `internal/gate/gate.go`'s renderPlan assembles both into the Markdown
-# `masuda plan show` prints).
+# `masuda plan show` prints). Both are written by the planner subagent's Edit
+# tool, so they stay plain files (see module docstring).
 PLAN_DIR = STATE_DIR / "plan"
 PLAN_SUMMARY_MD = PLAN_DIR / "summary.md"
 PLAN_STEPS_JSON = PLAN_DIR / "steps.json"
 PLAN_RESULT_JSON = STATE_DIR / "plan_result.json"
-RETRIES_FILE = STATE_DIR / ".masuda-plan-retries"
-ITERATION_COUNT_FILE = STATE_DIR / ".masuda-iteration-count"
-GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
 # ADR-0029: same triage gate as implement_review_graph.py's phase 4-5 -- see
 # that file's equivalent constants for the full rationale. Both files stay
 # independent modules (no shared import), same as every other piece of
-# duplicated logic between them (e.g. plan-rendering).
+# duplicated logic between them (e.g. plan-rendering). triage_concern.json
+# stays a plain file: any subagent may self-report to it via Edit/Bash.
 TRIAGE_CONCERN_JSON = STATE_DIR / "triage_concern.json"
-TRIAGE_GATE_MARKER = STATE_DIR / ".masuda-gate" / "triage.json"
-TRIAGE_REDO_FEEDBACK_MD = STATE_DIR / ".masuda-triage-redo-feedback.md"
 # ADR-0039 (Issue #21): bridges the gap between a redo transition consuming
 # its gate marker and the subagent it dispatches actually rewriting the
 # corresponding artifact -- a triage interrupt landing in that gap must not
 # let detect_phase's from-scratch re-derivation mistake stale/rejected
 # content for a freshly completed redo. See each constant's use in
 # detect_phase for the two different completion-detection strategies.
-PLAN_REDO_PENDING_MD = STATE_DIR / ".masuda-plan-redo-pending.md"
+# INVESTIGATE_REDO_PENDING_JSON stays a plain file: the investigator
+# subagent deletes it itself once done (see _investigate_task).
 INVESTIGATE_REDO_PENDING_JSON = STATE_DIR / ".masuda-investigate-redo-pending.json"
+# TASK_MD stays a plain file: the main Claude Code session reads it with its
+# own Read tool as part of the loop protocol (runtime/CLAUDE.md).
 TASK_MD = STATE_DIR / "TASK.md"
 
 # Phases that write_task_md delegates to an actual subagent Task call --
@@ -105,19 +132,19 @@ class State(TypedDict):
 
 
 def _read_task_brief() -> str:
-    if not TASK_BRIEF.exists():
-        raise FileNotFoundError(f"{TASK_BRIEF} not found — `masuda plan start` should have written it")
-    return TASK_BRIEF.read_text(encoding="utf-8").strip()
+    brief = state_client.get(TASK_BRIEF_KEY)
+    if brief is None:
+        raise RuntimeError(f"{TASK_BRIEF_KEY} not found in the state daemon — `masuda plan start` should have written it")
+    return brief.strip()
 
 
 def _read_retries() -> int:
-    if not RETRIES_FILE.exists():
-        return 0
-    return int(RETRIES_FILE.read_text(encoding="utf-8").strip() or "0")
+    value = state_client.get(RETRIES_KEY)
+    return int(value) if value else 0
 
 
 def _write_retries(n: int) -> None:
-    RETRIES_FILE.write_text(str(n), encoding="utf-8")
+    state_client.put(RETRIES_KEY, str(n))
 
 
 def _read_plan_result() -> dict | None:
@@ -127,9 +154,8 @@ def _read_plan_result() -> dict | None:
 
 
 def _read_iteration_count() -> int:
-    if not ITERATION_COUNT_FILE.exists():
-        return 0
-    return int(ITERATION_COUNT_FILE.read_text(encoding="utf-8").strip() or "0")
+    value = state_client.get(ITERATION_COUNT_KEY)
+    return int(value) if value else 0
 
 
 def _record_iteration() -> int:
@@ -138,23 +164,24 @@ def _record_iteration() -> int:
     write_task_md call for a _SUBAGENT_PHASES phase is exactly one Task
     delegation the main session is about to make). Returns the new total."""
     n = _read_iteration_count() + 1
-    ITERATION_COUNT_FILE.write_text(str(n), encoding="utf-8")
+    state_client.put(ITERATION_COUNT_KEY, str(n))
     return n
 
 
-def _read_gate_marker(path: Path = GATE_MARKER) -> dict | None:
+def _read_gate_marker(key: str = GATE_KEY) -> dict | None:
     """Reads a gate marker `masuda <gate> approve|reject|...` writes — G1's
-    by default, or any other gate's (e.g. TRIAGE_GATE_MARKER, ADR-0029) via
-    the path argument.
+    by default, or any other gate's (e.g. TRIAGE_GATE_KEY, ADR-0029) via
+    the key argument.
 
     Must stay compatible with internal/gate/gate.go's Marker struct
     ({"status", "feedback", "decided_at"}) on the Go CLI side — see
     orchestrator/tests/test_investigate_plan_graph.py's
     test_gate_marker_schema_matches_go_cli for the contract check.
     """
-    if not path.exists():
+    value = state_client.get(key)
+    if value is None:
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
 
 
 def _await_triage_state(description: str) -> State:
@@ -170,7 +197,7 @@ def _resolve_triage(resume_phase_fn) -> State:
     implement_review_graph.py's _resolve_triage for the full rationale
     (identical logic here, just returning this file's {phase, retries,
     questions} State shape instead of {phase, reason})."""
-    marker = _read_gate_marker(TRIAGE_GATE_MARKER)
+    marker = _read_gate_marker(TRIAGE_GATE_KEY)
     status = (marker or {}).get("status", "pending")
     if status == "pending":
         concern = json.loads(TRIAGE_CONCERN_JSON.read_text(encoding="utf-8"))
@@ -181,9 +208,9 @@ def _resolve_triage(resume_phase_fn) -> State:
         return _triage_halted_state(feedback)
 
     TRIAGE_CONCERN_JSON.unlink()
-    TRIAGE_GATE_MARKER.unlink()
+    state_client.delete(TRIAGE_GATE_KEY)
     if status == "rejected":
-        TRIAGE_REDO_FEEDBACK_MD.write_text(feedback, encoding="utf-8")
+        state_client.put(TRIAGE_REDO_FEEDBACK_KEY, feedback)
     return resume_phase_fn()
 
 
@@ -192,7 +219,7 @@ def _resolve_triage(resume_phase_fn) -> State:
 # ---------------------------------------------------------------------------
 
 def detect_phase(state: State) -> State:
-    """Derive the current phase from file-system state.
+    """Derive the current phase from filesystem + daemon state.
 
     Has two side effects on transition, both "consuming" a one-shot signal so
     the next invocation doesn't re-trigger the same transition forever:
@@ -206,27 +233,28 @@ def detect_phase(state: State) -> State:
         # whatever else was already happening.
         return _resolve_triage(lambda: detect_phase({"phase": "", "retries": _read_retries(), "questions": []}))
 
-    if PLAN_REDO_PENDING_MD.exists():
-        # ADR-0039 (Issue #21): a G1 rejection already consumed GATE_MARKER
-        # and deleted the old plan below -- until the planner subagent has
+    if state_client.exists(PLAN_REDO_PENDING_KEY):
+        # ADR-0039 (Issue #21): a G1 rejection already consumed GATE_KEY and
+        # deleted the old plan below -- until the planner subagent has
         # written a fresh PLAN_SUMMARY_MD/PLAN_STEPS_JSON, "redo not done
         # yet" can only be read from this marker, not from plan-file
         # presence/absence (that's what makes this safe against a triage
         # interrupt landing mid-redo: whatever else changed on disk, the
         # zero-derivation below still lands back on plan_redo).
         if PLAN_SUMMARY_MD.exists() and PLAN_STEPS_JSON.exists():
-            PLAN_REDO_PENDING_MD.unlink()
+            state_client.delete(PLAN_REDO_PENDING_KEY)
         else:
-            feedback = PLAN_REDO_PENDING_MD.read_text(encoding="utf-8")
+            feedback = state_client.get(PLAN_REDO_PENDING_KEY)
             return {"phase": "plan_redo", "retries": _read_retries(), "questions": [feedback]}
 
     if INVESTIGATE_REDO_PENDING_JSON.exists():
-        # ADR-0039 (Issue #21): same rationale as PLAN_REDO_PENDING_MD above,
-        # but investigate_redo builds on the existing INVESTIGATION.md rather
-        # than replacing it (ADR-0008), so file presence can't signal
-        # completion here -- the investigator subagent clears this marker
-        # itself as an explicit last step (_investigate_task's completion
-        # note) once it has folded the redo questions in.
+        # ADR-0039 (Issue #21): same rationale as PLAN_REDO_PENDING_KEY
+        # above, but investigate_redo builds on the existing
+        # INVESTIGATION.md rather than replacing it (ADR-0008), so file
+        # presence can't signal completion here -- the investigator
+        # subagent clears this marker itself as an explicit last step
+        # (_investigate_task's completion note) once it has folded the redo
+        # questions in.
         pending = json.loads(INVESTIGATE_REDO_PENDING_JSON.read_text(encoding="utf-8"))
         return {"phase": "investigate_redo", "retries": pending["retries"], "questions": pending["questions"]}
 
@@ -237,8 +265,8 @@ def detect_phase(state: State) -> State:
             return {"phase": "g1_approved", "retries": _read_retries(), "questions": []}
         if status == "rejected":
             feedback = marker.get("feedback", "")
-            GATE_MARKER.unlink()
-            PLAN_REDO_PENDING_MD.write_text(feedback, encoding="utf-8")
+            state_client.delete(GATE_KEY)
+            state_client.put(PLAN_REDO_PENDING_KEY, feedback)
             PLAN_SUMMARY_MD.unlink()
             PLAN_STEPS_JSON.unlink()
             return {"phase": "plan_redo", "retries": _read_retries(), "questions": [feedback]}
@@ -347,7 +375,7 @@ def _plan_task(feedback: str | None) -> str:
 
     tdd_note = ""
     tdd_schema_hint = ""
-    if TDD_REQUESTED_MARKER.exists():
+    if state_client.exists(TDD_REQUESTED_KEY):
         tdd_note = """
 
 ## TDDモードについて（`masuda plan start --tdd`が指定された、Issue #3）
@@ -430,7 +458,7 @@ def _triage_task(reason: str) -> str:
     return f"""# GATE:triage
 
 セキュリティ上の懸念が自己申告されました（ADR-0029）。セッションは終了せず、
-`{TRIAGE_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
+triageゲート（`masuda triage show`）のstatusがpendingでなくなるまで待機してください。
 
 ## 懸念の概要
 {reason}
@@ -457,10 +485,10 @@ def _triage_halted_task(reason: str) -> str:
 
 
 _TERMINAL = {
-    "await_g1": f"""# GATE:plan
+    "await_g1": """# GATE:plan
 
 プランが完成し、G1（プラン承認ゲート）の判断待ちです。セッションは終了せず、
-`{GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
+G1ゲート（`masuda plan show`）のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda plan show <workspace-id>` でプランを確認し、
 `masuda plan chat <workspace-id>` で対話するか、
@@ -506,12 +534,12 @@ def write_task_md(state: State) -> State:
     else:
         raise ValueError(f"unknown phase: {phase}")
 
-    if TRIAGE_REDO_FEEDBACK_MD.exists():
+    triage_redo_note = state_client.get(TRIAGE_REDO_FEEDBACK_KEY)
+    if triage_redo_note is not None:
         # ADR-0029: see implement_review_graph.py's write_task_md for why
-        # this rides a one-shot file rather than State.
-        note = TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8")
-        content = f"## triage対応後の申し送り（ADR-0029）\n{note}\n\n---\n\n" + content
-        TRIAGE_REDO_FEEDBACK_MD.unlink()
+        # this rides a one-shot marker rather than State.
+        content = f"## triage対応後の申し送り（ADR-0029）\n{triage_redo_note}\n\n---\n\n" + content
+        state_client.delete(TRIAGE_REDO_FEEDBACK_KEY)
 
     TASK_MD.write_text(content, encoding="utf-8")
     print(f"[orchestrator] TASK.md written (phase={phase})")
