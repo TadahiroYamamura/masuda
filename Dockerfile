@@ -1,3 +1,15 @@
+# Builder stage: masuda's own CLI binary, so orchestrator/*.py (Issue #35's
+# phase A) can shell out to `masuda internal state ...` inside the container
+# instead of embedding its own MCP client. The rest of this image has no Go
+# toolchain at all -- this stage exists purely to produce the one binary the
+# final stage copies out, and is discarded after.
+FROM golang:1.26 AS masuda-builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/masuda ./cmd/masuda
+
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -54,6 +66,11 @@ RUN python3 -m venv venv \
 COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
 COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/
 RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh runtime/merge_claude_settings.py
+
+# masuda CLI binary (see the masuda-builder stage above) -- orchestrator/*.py
+# shells out to `masuda internal state ...` to reach this workspace's state
+# daemon over its UDS socket at /masuda-state/daemon.sock.
+COPY --from=masuda-builder /out/masuda /usr/local/bin/masuda
 
 USER ubuntu
 
