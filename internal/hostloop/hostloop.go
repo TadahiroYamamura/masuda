@@ -17,6 +17,7 @@
 package hostloop
 
 import (
+	"context"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -28,6 +29,8 @@ import (
 	"text/template"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpclient"
 )
 
 //go:embed system_prompt.md.tmpl
@@ -157,34 +160,65 @@ func SessionName(id string) string {
 	return tmuxSessionPrefix + sessionNameSanitizer.ReplaceAllString(id, "-")
 }
 
+// taskBriefKey/instructionsKey/tddRequestedKey are the state daemon keys
+// this package writes and orchestrator/*.py's state_client reads (Issue
+// #35 phase A). Safe to move off plain files because both sides are
+// trusted, non-subagent code -- unlike INVESTIGATION.md/plan/steps.json/
+// etc., nothing here is ever touched by a Claude subagent's Edit tool (see
+// internal/gate's package doc for the fuller rationale behind this split).
+const (
+	taskBriefKey    = "internal:task-brief"
+	instructionsKey = "internal:instructions"
+	tddRequestedKey = "internal:tdd-requested"
+)
+
+func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
+	return mcpclient.Dial(ctx, statedaemon.SocketPath(stateDir))
+}
+
 // WriteTaskBrief writes the task description masuda plan start was given
-// into the workspace's state directory, for investigate_plan_graph.py to
-// read as .masuda-task.md.
+// into the workspace's state daemon, for investigate_plan_graph.py's
+// state_client to read back as taskBriefKey.
 func WriteTaskBrief(stateDir, task string) error {
-	return os.WriteFile(filepath.Join(stateDir, ".masuda-task.md"), []byte(task), 0o644)
+	c, err := dial(context.Background(), stateDir)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.Put(context.Background(), taskBriefKey, task)
 }
 
 // WriteInstructions copies a user-supplied instructions/investigation
-// document (masuda plan start --file) into the workspace's state directory
-// as INSTRUCTIONS.md, snapshotting it at start time -- the same convention
+// document (masuda plan start --file) into the workspace's state daemon at
+// instructionsKey, snapshotting it at start time -- the same convention
 // WriteTaskBrief already uses for the task description -- so a later edit,
 // move, or deletion of the original file can't affect an already-running
 // workspace. investigate_plan_graph.py's investigate prompt checks for this
-// file and, when present, instructs the investigator to fact-check it
+// key and, when present, instructs the investigator to fact-check it
 // against the actual codebase rather than blindly trust it (ADR-0016).
 func WriteInstructions(stateDir string, content []byte) error {
-	return os.WriteFile(filepath.Join(stateDir, "INSTRUCTIONS.md"), content, 0o644)
+	c, err := dial(context.Background(), stateDir)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.Put(context.Background(), instructionsKey, string(content))
 }
 
 // WriteTDDIntent records that `masuda plan start --tdd` was passed at
-// workspace-creation time -- a marker file investigate_plan_graph.py's plan
-// prompt checks for the same way it already checks INSTRUCTIONS_MD (ADR-0016
-// precedent), so the planner sees the human's TDD intent on every loop
-// iteration/resume. Written once at creation, same as WriteInstructions and
-// WriteTaskBrief, so --tdd never needs to be resupplied on `masuda plan start
-// <workspace-id>`.
+// workspace-creation time -- a daemon key investigate_plan_graph.py's plan
+// prompt checks for the same way it already checks instructionsKey
+// (ADR-0016 precedent), so the planner sees the human's TDD intent on every
+// loop iteration/resume. Written once at creation, same as WriteInstructions
+// and WriteTaskBrief, so --tdd never needs to be resupplied on `masuda plan
+// start <workspace-id>`.
 func WriteTDDIntent(stateDir string) error {
-	return os.WriteFile(filepath.Join(stateDir, ".masuda-tdd-requested"), []byte("1"), 0o644)
+	c, err := dial(context.Background(), stateDir)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	return c.Put(context.Background(), tddRequestedKey, "1")
 }
 
 func renderSystemPrompt(stateDir string) (string, error) {
@@ -245,8 +279,16 @@ func Start(id, worktreeDir, stateDir, task string) error {
 		return nil
 	}
 
-	briefPath := filepath.Join(stateDir, ".masuda-task.md")
-	if _, err := os.Stat(briefPath); os.IsNotExist(err) {
+	c, err := dial(context.Background(), stateDir)
+	if err != nil {
+		return fmt.Errorf("connecting to state daemon: %w", err)
+	}
+	_, briefExists, err := c.Get(context.Background(), taskBriefKey)
+	c.Close()
+	if err != nil {
+		return fmt.Errorf("checking for an existing task brief: %w", err)
+	}
+	if !briefExists {
 		if task == "" {
 			return fmt.Errorf("no task description on file yet for workspace %q — pass one: masuda plan start %s \"<task>\"", id, id)
 		}
