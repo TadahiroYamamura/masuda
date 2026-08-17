@@ -36,8 +36,20 @@ Responsibilities:
   - Overwrite TASK.md with the next instruction; exit -- the self-looping
     Claude session picks it up from there
 
-No LLM calls happen in this process -- pure state machine over the
-filesystem, same design as investigate_plan_graph.py.
+No LLM calls happen in this process -- pure state machine over filesystem +
+daemon state, same design as investigate_plan_graph.py.
+
+Issue #35 (phase A) moved part of this script's state to the workspace's
+state daemon (state_client.py) -- but, same boundary as
+investigate_plan_graph.py, only where every reader and writer is trusted,
+non-subagent code (this script itself, or the Go CLI). Anything a Claude
+subagent writes directly (implementation_result.json, triage_concern.json,
+review_results/*, interim_review/step*/*, tdd_cycle/step*/check_cycle*.json,
+.masuda-commit-message, .masuda-step-commit-message,
+.masuda-tdd-cycle-commit-message, ...) or that the main Claude Code session
+reads itself (TASK.md) deliberately stays a plain file -- it has no way to
+reach the daemon. See internal/gate's package doc on the Go side for the
+same rule and the bug it prevents repeating.
 
 All of masuda's own control files live under STATE_DIR (roadmap step 7's
 workspace state directory, `MASUDA_STATE_DIR` env var, bind-mounted at
@@ -56,6 +68,8 @@ from typing import TypedDict
 
 import yaml
 from langgraph.graph import END, StateGraph
+
+import state_client
 
 # ADR-0024: perspectives are no longer hardcoded here. They're read from the
 # target repository's own .masuda/reviews/ (one Markdown file per
@@ -184,6 +198,9 @@ STATE_DIR = Path(os.environ["MASUDA_STATE_DIR"])
 PLAN_DIR = STATE_DIR / "plan"
 PLAN_SUMMARY_MD = PLAN_DIR / "summary.md"
 PLAN_STEPS_JSON = PLAN_DIR / "steps.json"
+# Read-only here (Go's worktree.Create writes it, before this workspace's
+# daemon is guaranteed to be running yet -- see internal/workspace.Create),
+# so this deliberately stays a plain file rather than a daemon key.
 BASE_REF_FILE = STATE_DIR / ".masuda-base-ref"
 COMMIT_MESSAGE_FILE = STATE_DIR / ".masuda-commit-message"
 # ADR-0027: whichever of implement_step / implement_g2_redo is currently
@@ -192,27 +209,39 @@ COMMIT_MESSAGE_FILE = STATE_DIR / ".masuda-commit-message"
 # path is enough.
 STEP_COMMIT_MESSAGE_FILE = STATE_DIR / ".masuda-step-commit-message"
 IMPLEMENTATION_RESULT_JSON = STATE_DIR / "implementation_result.json"
-DEVIATION_MD = STATE_DIR / "DEVIATION.md"
-APPROVED_DEVIATIONS_JSON = STATE_DIR / ".masuda-approved-deviations.json"
-PLAN_GATE_MARKER = STATE_DIR / ".masuda-gate" / "plan.json"
-REVIEW_GATE_MARKER = STATE_DIR / ".masuda-gate" / "review.json"
-# ADR-0029: the triage gate's self-report (any subagent writes this in place
-# of its normal deliverable the moment it notices something concerning),
-# marker, and the one-shot side channel a `redo` human's feedback rides in on
-# (State's shape differs too much between this file and
-# investigate_plan_graph.py to thread it through State itself).
+# ADR-0029: the triage gate's self-report -- any subagent writes this in
+# place of its normal deliverable the moment it notices something
+# concerning, so (like plan/summary.md etc.) it stays a plain file rather
+# than a daemon key (Issue #35 phase A's writer/reader trust boundary).
 TRIAGE_CONCERN_JSON = STATE_DIR / "triage_concern.json"
-TRIAGE_GATE_MARKER = STATE_DIR / ".masuda-gate" / "triage.json"
-TRIAGE_REDO_FEEDBACK_MD = STATE_DIR / ".masuda-triage-redo-feedback.md"
-REVIEW_STATE_JSON = STATE_DIR / ".masuda-review-state.json"
-REVIEW_FEEDBACK_MD = STATE_DIR / ".masuda-review-feedback.md"
-ITERATION_COUNT_FILE = STATE_DIR / ".masuda-iteration-count"
 REVIEW_RESULTS_DIR = STATE_DIR / "review_results"
 FINAL_REPORT_MD = REVIEW_RESULTS_DIR / "final_report.md"
 # ADR-0027: per-step lightweight review state, kept separate from
 # REVIEW_RESULTS_DIR (phase 5's full G2 review) so the two never collide.
 INTERIM_DIR = STATE_DIR / "interim_review"
-INTERIM_CARRIED_FINDINGS_JSON = STATE_DIR / ".masuda-interim-carried-findings.json"
+
+# Daemon keys (Issue #35 phase A) -- read and written exclusively by this
+# script or the Go CLI (gate:* -- already written by `masuda plan/review/
+# triage approve|reject|...`), never referenced by path in a subagent
+# prompt and never touched by the main Claude Code session's own tools. See
+# the module docstring and internal/gate's package doc for the writer/
+# reader trust boundary this follows; the equivalent constants above used to
+# be plain-file Paths (DEVIATION_MD, PLAN_GATE_MARKER, ...).
+DEVIATION_KEY = "artifact:DEVIATION.md"
+APPROVED_DEVIATIONS_KEY = "internal:approved-deviations"
+PLAN_GATE_KEY = "gate:plan"
+REVIEW_GATE_KEY = "gate:review"
+TRIAGE_GATE_KEY = "gate:triage"
+# Shared with investigate_plan_graph.py's identically-named constants on
+# purpose -- both scripts operate on the same workspace's daemon, and only
+# one phase is ever active at a time, so one key each is enough (mirrors
+# these constants' pre-migration behavior, where both scripts already read/
+# wrote the exact same STATE_DIR-relative filename).
+TRIAGE_REDO_FEEDBACK_KEY = "internal:triage-redo-feedback"
+ITERATION_COUNT_KEY = "internal:iteration-count"
+REVIEW_STATE_KEY = "internal:review-state"
+REVIEW_FEEDBACK_KEY = "internal:review-feedback"
+INTERIM_CARRIED_FINDINGS_KEY = "internal:interim-carried-findings"
 
 # Phases that write_task_md delegates to an actual subagent Task call --
 # every other phase (gate waits, terminal DONE states) doesn't invoke one,
@@ -459,13 +488,14 @@ def _actual_changed_files(since_ref: str | None = None) -> set[str]:
 
 
 def _read_approved_deviations() -> set[str]:
-    if not APPROVED_DEVIATIONS_JSON.exists():
+    value = state_client.get(APPROVED_DEVIATIONS_KEY)
+    if value is None:
         return set()
-    return set(json.loads(APPROVED_DEVIATIONS_JSON.read_text(encoding="utf-8")))
+    return set(json.loads(value))
 
 
 def _write_approved_deviations(paths: set[str]) -> None:
-    APPROVED_DEVIATIONS_JSON.write_text(json.dumps(sorted(paths), ensure_ascii=False), encoding="utf-8")
+    state_client.put(APPROVED_DEVIATIONS_KEY, json.dumps(sorted(paths), ensure_ascii=False))
 
 
 def _step_diff_base(step_index: int) -> str:
@@ -587,9 +617,8 @@ def _commit_scoped(changed_files: list[str], message_file: Path) -> None:
 
 
 def _read_iteration_count() -> int:
-    if not ITERATION_COUNT_FILE.exists():
-        return 0
-    return int(ITERATION_COUNT_FILE.read_text(encoding="utf-8").strip() or "0")
+    value = state_client.get(ITERATION_COUNT_KEY)
+    return int(value) if value else 0
 
 
 def _record_iteration(n: int = 1) -> int:
@@ -599,7 +628,7 @@ def _record_iteration(n: int = 1) -> int:
     calls; ADR-0021's review_batch phase delegates to n at once instead of
     the usual 1). Returns the new total."""
     total = _read_iteration_count() + n
-    ITERATION_COUNT_FILE.write_text(str(total), encoding="utf-8")
+    state_client.put(ITERATION_COUNT_KEY, str(total))
     return total
 
 
@@ -617,10 +646,11 @@ def _iteration_budget() -> int:
     return BASE_BUDGET + PER_STEP_BUDGET * len(steps)
 
 
-def _read_gate_marker(path: Path) -> dict | None:
-    if not path.exists():
+def _read_gate_marker(key: str) -> dict | None:
+    value = state_client.get(key)
+    if value is None:
         return None
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
 
 
 # --- review/check/fix/recheck machinery (ADR-0004/0021), shared by phase 5's
@@ -699,20 +729,20 @@ def _advance_and_next_task(results_dir: Path, pid: str, rs: dict) -> dict | None
 # --- phase 5 (review) state -------------------------------------------------
 
 def _read_review_state() -> dict:
-    if not REVIEW_STATE_JSON.exists():
+    value = state_client.get(REVIEW_STATE_KEY)
+    if value is None:
         return {"redo_counts": {}, "fix_counts": {}, "unresolved": [], "fixed": [], "clean": []}
-    return json.loads(REVIEW_STATE_JSON.read_text(encoding="utf-8"))
+    return json.loads(value)
 
 
 def _write_review_state(rs: dict) -> None:
-    REVIEW_STATE_JSON.write_text(json.dumps(rs, ensure_ascii=False), encoding="utf-8")
+    state_client.put(REVIEW_STATE_KEY, json.dumps(rs, ensure_ascii=False))
 
 
 def _clear_review_state() -> None:
     """Wipes phase 5 state so a post-redo review starts from perspective 0
     (ADR-0013 — previous review/check results aren't reused after a fix)."""
-    if REVIEW_STATE_JSON.exists():
-        REVIEW_STATE_JSON.unlink()
+    state_client.delete(REVIEW_STATE_KEY)
     if REVIEW_RESULTS_DIR.exists():
         for f in REVIEW_RESULTS_DIR.iterdir():
             f.unlink()
@@ -729,20 +759,22 @@ def _trigger_match_path(step_index: int) -> Path:
     return _interim_step_dir(step_index) / "trigger_match.json"
 
 
-def _interim_state_path(step_index: int) -> Path:
-    return _interim_step_dir(step_index) / "review_state.json"
+def _interim_state_key(step_index: int) -> str:
+    # Orchestrator-only (unlike trigger_match.json/result/check/fix/recheck
+    # in the same _interim_step_dir, which subagents write directly), so
+    # this one piece of that directory's state lives in the daemon instead.
+    return f"internal:interim-review-state-step{step_index}"
 
 
 def _read_interim_state(step_index: int) -> dict:
-    path = _interim_state_path(step_index)
-    if not path.exists():
+    value = state_client.get(_interim_state_key(step_index))
+    if value is None:
         return {"redo_counts": {}, "fix_counts": {}, "unresolved": [], "fixed": [], "clean": []}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
 
 
 def _write_interim_state(step_index: int, rs: dict) -> None:
-    _interim_step_dir(step_index).mkdir(parents=True, exist_ok=True)
-    _interim_state_path(step_index).write_text(json.dumps(rs, ensure_ascii=False), encoding="utf-8")
+    state_client.put(_interim_state_key(step_index), json.dumps(rs, ensure_ascii=False))
 
 
 def _clear_interim_step(step_index: int) -> None:
@@ -750,6 +782,7 @@ def _clear_interim_step(step_index: int) -> None:
     reopen for an unresolved interim finding is rejected (ADR-0027) and the
     step gets redone from scratch, mirroring _clear_review_state()'s "don't
     reuse previous review/check results after a redo" rule."""
+    state_client.delete(_interim_state_key(step_index))
     step_dir = _interim_step_dir(step_index)
     if not step_dir.exists():
         return
@@ -763,12 +796,11 @@ def _append_interim_carried_finding(step_index: int, rs: dict) -> None:
     as-is (ADR-0027's stopgap escalation, reusing the G1 gate) so synthesize
     can surface them in the final G2 report later -- carrying the finding
     forward rather than silently dropping it once the step commits."""
-    carried = []
-    if INTERIM_CARRIED_FINDINGS_JSON.exists():
-        carried = json.loads(INTERIM_CARRIED_FINDINGS_JSON.read_text(encoding="utf-8"))
+    value = state_client.get(INTERIM_CARRIED_FINDINGS_KEY)
+    carried = json.loads(value) if value is not None else []
     for u in rs["unresolved"]:
         carried.append({"step": step_index, "id": u["id"], "reason": u["reason"]})
-    INTERIM_CARRIED_FINDINGS_JSON.write_text(json.dumps(carried, ensure_ascii=False), encoding="utf-8")
+    state_client.put(INTERIM_CARRIED_FINDINGS_KEY, json.dumps(carried, ensure_ascii=False))
 
 
 # --- TDD mode (Issue #3): per-step Red/Green/Refactor cycle state ----------
@@ -781,8 +813,11 @@ def _tdd_step_dir(step_index: int) -> Path:
     return TDD_DIR / f"step{step_index}"
 
 
-def _tdd_cycle_state_path(step_index: int) -> Path:
-    return _tdd_step_dir(step_index) / "cycle.json"
+def _tdd_cycle_state_key(step_index: int) -> str:
+    # Orchestrator-only (unlike check_cycle*.json in the same _tdd_step_dir,
+    # which the TDD process-checker subagent writes directly by path), so
+    # this one piece of that directory's state lives in the daemon instead.
+    return f"internal:tdd-cycle-step{step_index}"
 
 
 def _tdd_check_path(step_index: int, cycle: int, phase: str, attempt: int) -> Path:
@@ -790,15 +825,14 @@ def _tdd_check_path(step_index: int, cycle: int, phase: str, attempt: int) -> Pa
 
 
 def _read_tdd_cycle_state(step_index: int) -> dict:
-    path = _tdd_cycle_state_path(step_index)
-    if not path.exists():
+    value = state_client.get(_tdd_cycle_state_key(step_index))
+    if value is None:
         return {"cycle": 1, "phase": "red", "attempt": 1, "redo_feedback": ""}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return json.loads(value)
 
 
 def _write_tdd_cycle_state(step_index: int, cs: dict) -> None:
-    _tdd_step_dir(step_index).mkdir(parents=True, exist_ok=True)
-    _tdd_cycle_state_path(step_index).write_text(json.dumps(cs, ensure_ascii=False), encoding="utf-8")
+    state_client.put(_tdd_cycle_state_key(step_index), json.dumps(cs, ensure_ascii=False))
 
 
 def _clear_tdd_step(step_index: int) -> None:
@@ -807,6 +841,7 @@ def _clear_tdd_step(step_index: int) -> None:
     resume) and when a G1 reopen rejects the step's committed work and it
     restarts from tdd_red/cycle 1 (_reset_tdd_step), mirroring
     _clear_interim_step's "don't reuse stale state after a redo" rule."""
+    state_client.delete(_tdd_cycle_state_key(step_index))
     step_dir = _tdd_step_dir(step_index)
     if not step_dir.exists():
         return
@@ -883,8 +918,8 @@ def _resolve_tdd_process_reopen(step_index: int, step: dict, cs: dict, check: di
     than inventing a new gate.
 
     Approval means the phase lands despite the checker's standing objection
-    (a human judgment call, not recorded in APPROVED_DEVIATIONS_JSON since
-    this is a process judgment, not a file-scope one -- that json is
+    (a human judgment call, not recorded in APPROVED_DEVIATIONS_KEY since
+    this is a process judgment, not a file-scope one -- that key is
     specifically the mechanical backstop's memory), via the same landing
     path a clean checker approval takes; rejection redoes the same phase with
     the checker's last feedback in view, at a fresh attempt number (never
@@ -1081,14 +1116,14 @@ def _detect_post_implementation_phase() -> State:
     if not FINAL_REPORT_MD.exists() or not COMMIT_MESSAGE_FILE.exists():
         return _detect_review_phase()
 
-    marker = _read_gate_marker(REVIEW_GATE_MARKER)
+    marker = _read_gate_marker(REVIEW_GATE_KEY)
     status = (marker or {}).get("status", "pending")
     if status == "approved":
         return {"phase": "g2_approved", "reason": ""}
     if status == "rejected":
         feedback = marker.get("feedback", "")
         reason = f"G2（レビュー承認ゲート）で却下されました（ADR-0013）:\n{feedback}\n\n修正後はレビューを最初の観点からやり直す。"
-        REVIEW_GATE_MARKER.unlink()
+        state_client.delete(REVIEW_GATE_KEY)
         _clear_review_state()
         # ADR-0027: unlike the old single-shot design, implementation_result.json
         # no longer lingers through all of phase 5 -- _finalize_step already
@@ -1103,7 +1138,7 @@ def _detect_post_implementation_phase() -> State:
         # inside a G2-redo cycle (never unlinked until _finalize_g2_redo
         # commits) -- distinguishing this single non-decomposed redo from
         # phase 4's normal per-step flow, which has no such file.
-        REVIEW_FEEDBACK_MD.write_text(reason, encoding="utf-8")
+        state_client.put(REVIEW_FEEDBACK_KEY, reason)
         return {"phase": "implement_g2_redo", "reason": reason}
     return {"phase": "await_g2", "reason": ""}
 
@@ -1124,30 +1159,29 @@ def _resolve_gate_reopen(reason: str, on_approved, on_rejected) -> State:
     human manually re-ran the right command instead of the loop resuming
     itself.
     """
-    if not DEVIATION_MD.exists():
-        # A marker may still be sitting on disk from an earlier, unrelated
-        # decision -- the original G1 approval (investigate_plan_graph.py's
-        # detect_phase never unlinks an *approved* marker) or a previously
-        # resolved reopen. Left in place, the GATE:plan wait condition ("not
-        # pending") would already be satisfied before a human has looked at
-        # *this* deviation, letting stale history silently stand in for
-        # today's answer (confirmed on a live run: an "approved" marker from
-        # hours earlier, still sitting there the moment a fresh mechanical
-        # deviation opened the gate). Clear it so "not pending" can only mean
-        # a fresh decision on this reopen.
-        if PLAN_GATE_MARKER.exists():
-            PLAN_GATE_MARKER.unlink()
+    if not state_client.exists(DEVIATION_KEY):
+        # A marker may still be sitting in the daemon from an earlier,
+        # unrelated decision -- the original G1 approval
+        # (investigate_plan_graph.py's detect_phase never deletes an
+        # *approved* marker) or a previously resolved reopen. Left in place,
+        # the GATE:plan wait condition ("not pending") would already be
+        # satisfied before a human has looked at *this* deviation, letting
+        # stale history silently stand in for today's answer (confirmed on a
+        # live run: an "approved" marker from hours earlier, still sitting
+        # there the moment a fresh mechanical deviation opened the gate).
+        # Clear it so "not pending" can only mean a fresh decision on this
+        # reopen.
+        state_client.delete(PLAN_GATE_KEY)
         return {"phase": "plan_reopened", "reason": reason}
 
-    marker = _read_gate_marker(PLAN_GATE_MARKER)
+    marker = _read_gate_marker(PLAN_GATE_KEY)
     gate_status = (marker or {}).get("status", "pending")
     if gate_status == "pending":
-        return {"phase": "plan_reopened", "reason": DEVIATION_MD.read_text(encoding="utf-8")}
+        return {"phase": "plan_reopened", "reason": state_client.get(DEVIATION_KEY)}
 
     feedback = (marker or {}).get("feedback", "")
-    DEVIATION_MD.unlink()
-    if PLAN_GATE_MARKER.exists():
-        PLAN_GATE_MARKER.unlink()
+    state_client.delete(DEVIATION_KEY)
+    state_client.delete(PLAN_GATE_KEY)
 
     if gate_status == "approved":
         return on_approved()
@@ -1164,8 +1198,8 @@ def _triage_halted_state(feedback: str) -> State:
 
 def _resolve_triage(resume_phase_fn) -> State:
     """ADR-0029's dedicated 3-outcome gate, independent of
-    _resolve_gate_reopen -- that primitive is hardwired to DEVIATION_MD/
-    PLAN_GATE_MARKER and a 2-outcome approve/reject shape, neither of which
+    _resolve_gate_reopen -- that primitive is hardwired to DEVIATION_KEY/
+    PLAN_GATE_KEY and a 2-outcome approve/reject shape, neither of which
     fits a concern that (a) any subagent in either orchestrator can raise
     inline, at any point, and (b) can resolve to a third outcome (halt) with
     no redo. Takes priority over every other in-flight phase (detect_phase
@@ -1177,11 +1211,11 @@ def _resolve_triage(resume_phase_fn) -> State:
     and resume whatever phase was interrupted, re-derived from scratch via
     resume_phase_fn -- the same "nothing else advanced, so just re-derive"
     trick _finalize_step already relies on. halt does the opposite: it
-    deliberately leaves TRIAGE_CONCERN_JSON and TRIAGE_GATE_MARKER untouched
+    deliberately leaves TRIAGE_CONCERN_JSON and TRIAGE_GATE_KEY untouched
     (so `masuda triage show` still works afterward, mirroring
     gate.Halt's Go-side contract of not calling clearDeviation) and never
     calls resume_phase_fn -- there is nothing left to resume."""
-    marker = _read_gate_marker(TRIAGE_GATE_MARKER)
+    marker = _read_gate_marker(TRIAGE_GATE_KEY)
     status = (marker or {}).get("status", "pending")
     if status == "pending":
         concern = json.loads(TRIAGE_CONCERN_JSON.read_text(encoding="utf-8"))
@@ -1192,9 +1226,9 @@ def _resolve_triage(resume_phase_fn) -> State:
         return _triage_halted_state(feedback)
 
     TRIAGE_CONCERN_JSON.unlink()
-    TRIAGE_GATE_MARKER.unlink()
+    state_client.delete(TRIAGE_GATE_KEY)
     if status == "rejected":
-        TRIAGE_REDO_FEEDBACK_MD.write_text(feedback, encoding="utf-8")
+        state_client.put(TRIAGE_REDO_FEEDBACK_KEY, feedback)
     return resume_phase_fn()
 
 
@@ -1341,12 +1375,12 @@ def _finalize_step(step_index: int, step: dict, result: dict) -> State:
 
 
 def _finalize_g2_redo(result: dict) -> State:
-    """Same as _finalize_step, but also clears REVIEW_FEEDBACK_MD -- the
+    """Same as _finalize_step, but also clears REVIEW_FEEDBACK_KEY -- the
     marker that both rendered implement_g2_redo's reason and signaled "we're
     mid G2-redo" is no longer needed once this lands."""
     _commit_scoped(result.get("changed_files", []), STEP_COMMIT_MESSAGE_FILE)
     IMPLEMENTATION_RESULT_JSON.unlink()
-    REVIEW_FEEDBACK_MD.unlink()
+    state_client.delete(REVIEW_FEEDBACK_KEY)
     return detect_phase({"phase": "", "reason": ""})
 
 
@@ -1358,7 +1392,7 @@ def detect_phase(state: State) -> State:
         return _resolve_triage(lambda: detect_phase({"phase": "", "reason": ""}))
 
     result = _read_implementation_result()
-    in_g2_redo = REVIEW_FEEDBACK_MD.exists()
+    in_g2_redo = state_client.exists(REVIEW_FEEDBACK_KEY)
 
     if result is not None:
         # TDD mode (Issue #3): a step marked mode: "tdd" in plan/steps.json
@@ -1417,7 +1451,7 @@ def detect_phase(state: State) -> State:
         raise ValueError(f"unknown implementation_result.json status: {status!r}")
 
     if in_g2_redo:
-        return {"phase": "implement_g2_redo", "reason": REVIEW_FEEDBACK_MD.read_text(encoding="utf-8")}
+        return {"phase": "implement_g2_redo", "reason": state_client.get(REVIEW_FEEDBACK_KEY)}
 
     steps = _read_plan_steps()
     completed = _completed_step_count()
@@ -1754,12 +1788,12 @@ def _plan_reopened_task(reason: str) -> str:
     return f"""# GATE:plan
 
 G1（プラン承認ゲート）を再オープンしました（ADR-0010）。セッションは終了せず、
-`{PLAN_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
+G1ゲート（`masuda plan show`）のstatusがpendingでなくなるまで待機してください。
 
 ## 理由
 {reason}
 
-人間は `masuda plan show <workspace-id>` で理由（{DEVIATION_MD.name}）とプランを確認し、
+人間は `masuda plan show <workspace-id>` で理由とプランを確認し、
 `masuda plan chat <workspace-id>` で対話するか、
 `masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """
@@ -1769,7 +1803,7 @@ def _triage_task(reason: str) -> str:
     return f"""# GATE:triage
 
 セキュリティ上の懸念が自己申告されました（ADR-0029）。セッションは終了せず、
-`{TRIAGE_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
+triageゲート（`masuda triage show`）のstatusがpendingでなくなるまで待機してください。
 
 ## 懸念の概要
 {reason}
@@ -2212,9 +2246,10 @@ def _interim_carried_section() -> str:
     silently dropped once their step committed -- LLM-free like the other
     sections above, since this is just replaying what _append_interim_carried_finding
     already recorded."""
-    if not INTERIM_CARRIED_FINDINGS_JSON.exists():
+    value = state_client.get(INTERIM_CARRIED_FINDINGS_KEY)
+    if value is None:
         return ""
-    carried = json.loads(INTERIM_CARRIED_FINDINGS_JSON.read_text(encoding="utf-8"))
+    carried = json.loads(value)
     if not carried:
         return ""
     lines = [
@@ -2292,7 +2327,7 @@ _TERMINAL = {
     "await_g2": f"""# GATE:review
 
 レビューが完了し、G2（最終承認ゲート）の判断待ちです。セッションは終了せず、
-`{REVIEW_GATE_MARKER}`のstatusがpendingでなくなるまで待機してください。
+G2ゲート（`masuda review show`）のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda review show <workspace-id>` で{FINAL_REPORT_MD.name}を確認し、
 `masuda review chat <workspace-id>` で対話するか、
@@ -2344,10 +2379,10 @@ def write_task_md(state: State) -> State:
     elif phase == "plan_reopened":
         # Only clearing/consuming the gate happens here on *resolution*
         # (_resolve_gate_reopen, called from detect_phase) -- writing
-        # DEVIATION.md here is idempotent for the still-pending re-check case
-        # (same content already on disk) and is the actual first write on
-        # fresh detection.
-        DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
+        # DEVIATION_KEY here is idempotent for the still-pending re-check
+        # case (same content already stored) and is the actual first write
+        # on fresh detection.
+        state_client.put(DEVIATION_KEY, state["reason"])
         content = _plan_reopened_task(state["reason"])
     elif phase == "review_batch":
         content = _review_batch_task(json.loads(state["reason"])["tasks"])
@@ -2366,14 +2401,14 @@ def write_task_md(state: State) -> State:
     else:
         raise ValueError(f"unknown phase: {phase}")
 
-    if TRIAGE_REDO_FEEDBACK_MD.exists():
+    triage_redo_note = state_client.get(TRIAGE_REDO_FEEDBACK_KEY)
+    if triage_redo_note is not None:
         # ADR-0029: a `masuda triage redo` human's feedback, carried across
         # the one detect_phase call that resumed whatever was interrupted --
         # State's shape can't carry it (see _resolve_triage), so it rides
-        # this one-shot file instead, consumed exactly once here.
-        note = TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8")
-        content = f"## triage対応後の申し送り（ADR-0029）\n{note}\n\n---\n\n" + content
-        TRIAGE_REDO_FEEDBACK_MD.unlink()
+        # this one-shot key instead, consumed exactly once here.
+        content = f"## triage対応後の申し送り（ADR-0029）\n{triage_redo_note}\n\n---\n\n" + content
+        state_client.delete(TRIAGE_REDO_FEEDBACK_KEY)
 
     TASK_MD.write_text(content, encoding="utf-8")
     print(f"[orchestrator] TASK.md written (phase={phase})")

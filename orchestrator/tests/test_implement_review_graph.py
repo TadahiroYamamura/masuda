@@ -11,6 +11,7 @@ import subprocess
 import pytest
 
 import implement_review_graph as irg
+import state_client
 
 # ADR-0026/0027: the plan is plan/summary.md (prose) + plan/steps.json
 # (structured, machine-parseable), with each step declaring its own file
@@ -93,25 +94,25 @@ def _write_test_perspectives(reviews_dir, triggered_ids=(), disabled_ids=()):
 
 
 @pytest.fixture(autouse=True)
-def in_tmp_workspace(tmp_path, monkeypatch):
+def in_tmp_workspace(tmp_path, monkeypatch, state_daemon):
     # Mirrors production's split (roadmap step 7): git commands run against
     # worktree_dir (this process's cwd, same as before), while masuda's own
-    # control files (irg.PLAN_STEPS_JSON, irg.IMPLEMENTATION_RESULT_JSON, ...)
-    # resolve under a separate state_dir via MASUDA_STATE_DIR. irg reads that
-    # env var once at import time (STATE_DIR is a module-level constant), so
-    # it must be reload()ed after monkeypatching for each test to get its own
-    # isolated state directory.
+    # control files resolve under a separate state directory. Some of that
+    # state (irg.PLAN_STEPS_JSON, irg.IMPLEMENTATION_RESULT_JSON, ...) is
+    # still plain files there; the rest (gate markers, DEVIATION.md, redo/
+    # iteration counters -- Issue #35 phase A) now lives in a real state
+    # daemon the state_daemon fixture starts and points MASUDA_STATE_DIR at.
+    # irg reads that env var once at import time (STATE_DIR is a
+    # module-level constant), so it must be reload()ed after monkeypatching
+    # for each test to get its own isolated state directory + daemon.
     #
     # Perspectives (ADR-0024) are now also read at import time, from
     # .masuda/reviews/ under cwd -- so that directory must exist before the
     # reload too, or the module import itself raises FileNotFoundError.
     worktree_dir = tmp_path / "worktree"
-    state_dir = tmp_path / "state"
     worktree_dir.mkdir()
-    state_dir.mkdir()
     _write_test_perspectives(worktree_dir / ".masuda" / "reviews")
     monkeypatch.chdir(worktree_dir)
-    monkeypatch.setenv("MASUDA_STATE_DIR", str(state_dir))
     importlib.reload(irg)
     yield worktree_dir
 
@@ -325,8 +326,7 @@ def test_actual_changed_files_ignores_masuda_state_dir_files():
     init_git_repo()
     irg.TASK_MD.write_text("...", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text('{"status": "done"}', encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.PLAN_GATE_MARKER.write_text('{"status": "approved"}', encoding="utf-8")
+    state_client.put(irg.PLAN_GATE_KEY, '{"status": "approved"}')
 
     assert irg._actual_changed_files() == set()
 
@@ -834,15 +834,14 @@ def test_interim_review_unresolved_approved_carries_finding_and_lands_step():
     # not by detect_phase itself (same split ADR-0010 established) -- write
     # it directly here to simulate "the gate was already opened in a prior
     # round," same pattern the mechanical-deviation tests above use.
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
     write_all_perspectives_clean()
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert irg._completed_step_count() == 1, "approval lets the step land as-is"
-    carried = json.loads(irg.INTERIM_CARRIED_FINDINGS_JSON.read_text(encoding="utf-8"))
+    carried = json.loads(state_client.get(irg.INTERIM_CARRIED_FINDINGS_KEY))
     assert carried == [{"step": 0, "id": "p00", "reason": "review_check_not_converged"}]
     assert state["phase"] in ("review_batch", "cross_cutting_explore")
 
@@ -862,9 +861,8 @@ def test_interim_review_unresolved_rejected_redoes_step():
     # not by detect_phase itself (same split ADR-0010 established) -- write
     # it directly here to simulate "the gate was already opened in a prior
     # round," same pattern the mechanical-deviation tests above use.
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "直して"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "rejected", "feedback": "直して"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -888,16 +886,15 @@ def test_final_report_rejected_reopens_as_g2_redo_not_step_flow():
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
     irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
-    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "セキュリティ観点を見直して"}), encoding="utf-8")
+    state_client.put(irg.REVIEW_GATE_KEY, json.dumps({"status": "rejected", "feedback": "セキュリティ観点を見直して"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert state["phase"] == "implement_g2_redo"
     assert "セキュリティ観点を見直して" in state["reason"]
-    assert not irg.REVIEW_GATE_MARKER.exists(), "rejection must be consumed"
+    assert not state_client.exists(irg.REVIEW_GATE_KEY), "rejection must be consumed"
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists(), "must force a fresh implementation round"
-    assert not irg.REVIEW_STATE_JSON.exists(), "review must restart from perspective 0 (ADR-0013)"
+    assert not state_client.exists(irg.REVIEW_STATE_KEY), "review must restart from perspective 0 (ADR-0013)"
     assert not irg.REVIEW_RESULTS_DIR.exists(), "stale review results must not be reused (ADR-0013)"
     assert not irg.COMMIT_MESSAGE_FILE.exists(), "stale commit message must not be reused for the redo's changes"
 
@@ -906,7 +903,7 @@ def test_g2_redo_detected_on_fresh_process_via_feedback_file():
     """detect_phase is re-invoked as a fresh process each loop iteration --
     the reopened-implementation instruction must survive that, not just live
     in the in-memory state dict."""
-    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    state_client.put(irg.REVIEW_FEEDBACK_KEY, "直して")
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "implement_g2_redo"
     assert state["reason"] == "直して"
@@ -914,7 +911,7 @@ def test_g2_redo_detected_on_fresh_process_via_feedback_file():
 
 def test_g2_redo_backstop_uses_whole_plan_union_not_a_single_step():
     init_git_repo(steps=TWO_STEP_PLAN)
-    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    state_client.put(irg.REVIEW_FEEDBACK_KEY, "直して")
     # cmd/masuda/main.go belongs to step 2, not step 1 -- but implement_g2_redo
     # isn't decomposed into steps, so touching it must be fine.
     pathlib.Path("cmd/masuda").mkdir(parents=True)
@@ -924,12 +921,12 @@ def test_g2_redo_backstop_uses_whole_plan_union_not_a_single_step():
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert state["phase"] != "plan_reopened"
-    assert not irg.REVIEW_FEEDBACK_MD.exists()
+    assert not state_client.exists(irg.REVIEW_FEEDBACK_KEY)
 
 
 def test_g2_redo_backstop_still_flags_a_file_outside_the_whole_plan():
     init_git_repo(steps=TWO_STEP_PLAN)
-    irg.REVIEW_FEEDBACK_MD.write_text("直して", encoding="utf-8")
+    state_client.put(irg.REVIEW_FEEDBACK_KEY, "直して")
     pathlib.Path("totally-unplanned.txt").write_text("oops", encoding="utf-8")
     mark_step_done(["totally-unplanned.txt"], "g2 redo")
 
@@ -1106,9 +1103,7 @@ def test_synthesize_omits_cross_cutting_section_when_no_findings():
 def test_synthesize_includes_interim_carried_section_when_present():
     init_git_repo()
     write_all_perspectives_clean()
-    irg.INTERIM_CARRIED_FINDINGS_JSON.write_text(
-        json.dumps([{"step": 0, "id": "p00", "reason": "review_check_not_converged"}]), encoding="utf-8"
-    )
+    state_client.put(irg.INTERIM_CARRIED_FINDINGS_KEY, json.dumps([{"step": 0, "id": "p00", "reason": "review_check_not_converged"}]))
 
     irg.write_task_md({"phase": "synthesize", "reason": ""})
 
@@ -1139,8 +1134,7 @@ def test_g2_rejection_clears_cross_cutting_files_too():
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
     irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
-    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "却下"}), encoding="utf-8")
+    state_client.put(irg.REVIEW_GATE_KEY, json.dumps({"status": "rejected", "feedback": "却下"}))
 
     irg.detect_phase({"phase": "", "reason": ""})
 
@@ -1253,8 +1247,7 @@ def test_final_report_approved_means_g2_approved():
     irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
     irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
     irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
-    irg.REVIEW_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.REVIEW_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.REVIEW_GATE_KEY, json.dumps({"status": "approved"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -1307,14 +1300,13 @@ def test_plan_reopened_writes_deviation_as_a_gate_not_a_terminal_done():
     deviation reopen the gate forever once the loop could auto-resume
     (GATE:plan, roadmap step 5) instead of a human always restarting by hand.
     """
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
 
     irg.write_task_md({"phase": "plan_reopened", "reason": "計画外のファイル変更"})
 
-    assert irg.DEVIATION_MD.read_text(encoding="utf-8") == "計画外のファイル変更"
-    assert irg.PLAN_GATE_MARKER.exists()
+    assert state_client.get(irg.DEVIATION_KEY) == "計画外のファイル変更"
+    assert state_client.exists(irg.PLAN_GATE_KEY)
     assert irg.IMPLEMENTATION_RESULT_JSON.exists()
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "GATE:plan" in content
@@ -1332,7 +1324,7 @@ def test_mechanical_deviation_first_detection_opens_gate_without_clearing():
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert state["phase"] == "plan_reopened"
-    assert not irg.DEVIATION_MD.exists(), "DEVIATION.md is written by write_task_md, not detect_phase"
+    assert not state_client.exists(irg.DEVIATION_KEY), "DEVIATION.md is written by write_task_md, not detect_phase"
 
 
 def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
@@ -1346,20 +1338,19 @@ def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
     init_git_repo()
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
     assert state["phase"] == "plan_reopened"
-    assert not irg.PLAN_GATE_MARKER.exists()
+    assert not state_client.exists(irg.PLAN_GATE_KEY)
 
 
 def test_mechanical_deviation_still_pending_reflects_same_reason():
     init_git_repo()
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -1377,15 +1368,14 @@ def test_mechanical_deviation_approved_is_recorded_and_step_lands():
     pathlib.Path("README.md").write_text("updated", encoding="utf-8")
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     mark_step_done(["README.md"])
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
     resolve_other_perspectives_as_clean(skip="p00")
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert not irg.DEVIATION_MD.exists()
-    assert not irg.PLAN_GATE_MARKER.exists()
+    assert not state_client.exists(irg.DEVIATION_KEY)
+    assert not state_client.exists(irg.PLAN_GATE_KEY)
     assert "unplanned.txt" in irg._read_approved_deviations()
     assert irg._completed_step_count() == 1, "approval must not force a redo -- the step lands"
     assert state["phase"] == "review_batch"
@@ -1400,9 +1390,8 @@ def test_mechanical_deviation_approved_does_not_reflag_on_next_check():
     pathlib.Path("README.md").write_text("updated", encoding="utf-8")
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     mark_step_done(["README.md"])
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
 
     irg.detect_phase({"phase": "", "reason": ""})  # resolves the approval, lands the step
 
@@ -1413,14 +1402,13 @@ def test_mechanical_deviation_rejected_forces_fresh_implementation():
     init_git_repo()
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "rejected", "feedback": "計画通りにして"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "rejected", "feedback": "計画通りにして"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
-    assert not irg.DEVIATION_MD.exists()
-    assert not irg.PLAN_GATE_MARKER.exists()
+    assert not state_client.exists(irg.DEVIATION_KEY)
+    assert not state_client.exists(irg.PLAN_GATE_KEY)
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
     assert irg._read_approved_deviations() == set()
     assert state["phase"] == "implement_step"
@@ -1435,9 +1423,8 @@ def test_self_reported_deviation_approved_still_needs_a_redo_turn():
     irg.IMPLEMENTATION_RESULT_JSON.write_text(
         json.dumps({"status": "needs_plan_review", "reason": "設計を変えたい"}), encoding="utf-8"
     )
-    irg.DEVIATION_MD.write_text("既存の理由", encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True)
-    irg.PLAN_GATE_MARKER.write_text(json.dumps({"status": "approved"}), encoding="utf-8")
+    state_client.put(irg.DEVIATION_KEY, "既存の理由")
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -1647,7 +1634,7 @@ def test_iteration_budget_exceeded_overrides_phase():
     subagent delegation -- a final defense line independent of
     MAX_REVIEW_RETRIES (ADR-0011)."""
     init_git_repo()
-    irg.ITERATION_COUNT_FILE.write_text(str(irg._iteration_budget()), encoding="utf-8")
+    state_client.put(irg.ITERATION_COUNT_KEY, str(irg._iteration_budget()))
 
     irg.write_task_md({"phase": "implement_step", "reason": ""})
 
@@ -1677,8 +1664,7 @@ def write_triage_concern(agent="implementer", phase="implement_step", descriptio
 
 
 def write_triage_marker(status, feedback=""):
-    irg.TRIAGE_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.TRIAGE_GATE_MARKER.write_text(json.dumps({"status": status, "feedback": feedback}), encoding="utf-8")
+    state_client.put(irg.TRIAGE_GATE_KEY, json.dumps({"status": status, "feedback": feedback}))
 
 
 def test_triage_concern_present_opens_gate():
@@ -1706,7 +1692,7 @@ def test_triage_dismissed_resumes_interrupted_phase():
 
     assert state["phase"] == "implement_step"
     assert not irg.TRIAGE_CONCERN_JSON.exists()
-    assert not irg.TRIAGE_GATE_MARKER.exists()
+    assert not state_client.exists(irg.TRIAGE_GATE_KEY)
 
 
 def test_triage_redo_leaves_feedback_note_for_next_task_md():
@@ -1718,14 +1704,14 @@ def test_triage_redo_leaves_feedback_note_for_next_task_md():
 
     assert state["phase"] == "implement_step"
     assert not irg.TRIAGE_CONCERN_JSON.exists()
-    assert not irg.TRIAGE_GATE_MARKER.exists()
-    assert irg.TRIAGE_REDO_FEEDBACK_MD.exists()
-    assert irg.TRIAGE_REDO_FEEDBACK_MD.read_text(encoding="utf-8") == "ファイルを修正したので続けてください"
+    assert not state_client.exists(irg.TRIAGE_GATE_KEY)
+    assert state_client.exists(irg.TRIAGE_REDO_FEEDBACK_KEY)
+    assert state_client.get(irg.TRIAGE_REDO_FEEDBACK_KEY) == "ファイルを修正したので続けてください"
 
     irg.write_task_md(state)
     content = irg.TASK_MD.read_text(encoding="utf-8")
     assert "ファイルを修正したので続けてください" in content
-    assert not irg.TRIAGE_REDO_FEEDBACK_MD.exists(), "the note must be consumed exactly once"
+    assert not state_client.exists(irg.TRIAGE_REDO_FEEDBACK_KEY), "the note must be consumed exactly once"
 
 
 def test_triage_halted_is_a_terminal_done_not_a_gate():
@@ -1756,7 +1742,7 @@ def test_triage_halted_does_not_consume_concern_or_marker():
 
     assert first["phase"] == second["phase"] == "triage_halted"
     assert irg.TRIAGE_CONCERN_JSON.exists()
-    assert irg.TRIAGE_GATE_MARKER.exists()
+    assert state_client.exists(irg.TRIAGE_GATE_KEY)
 
 
 def _setup_g1_reopen_needs_plan_review():
@@ -2104,11 +2090,8 @@ def test_tdd_finalization_backstop_rejection_resets_intermediate_commits():
     # DEVIATION.md is only written by write_task_md's "plan_reopened" branch
     # (same split ADR-0010 established) -- simulate it directly, matching
     # every other mechanical-deviation test in this file.
-    irg.DEVIATION_MD.write_text(state["reason"], encoding="utf-8")
-    irg.PLAN_GATE_MARKER.parent.mkdir(parents=True, exist_ok=True)
-    irg.PLAN_GATE_MARKER.write_text(
-        json.dumps({"status": "rejected", "feedback": "計画外ファイルを削除してやり直して"}), encoding="utf-8"
-    )
+    state_client.put(irg.DEVIATION_KEY, state["reason"])
+    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "rejected", "feedback": "計画外ファイルを削除してやり直して"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
