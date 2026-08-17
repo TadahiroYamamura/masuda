@@ -58,6 +58,7 @@ func newInternalCommand() *cobra.Command {
 		Short:  "Internal plumbing commands, not part of the public CLI surface",
 	}
 	cmd.AddCommand(newInternalStatedaemonCommand())
+	cmd.AddCommand(newInternalStateCommand())
 	return cmd
 }
 
