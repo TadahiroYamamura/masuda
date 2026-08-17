@@ -10,18 +10,26 @@
 // (ADR-0029): its Halted status has no approve/reject equivalent and no
 // resolution route back through chat — see Halt below.
 //
-// As of Issue #35's phase A, every read/write here goes through a
-// workspace's state daemon (internal/statedaemon/mcpclient) rather than
-// touching files directly — the daemon is the sole source of truth for
-// plan/, review_results/, gate markers, etc. Every function therefore takes
-// stateDir (used only to locate the daemon's socket, via
-// statedaemon.SocketPath) and a context to dial it with.
+// Issue #35's phase A moves state to a workspace's daemon (see
+// internal/statedaemon/mcpclient) only where every reader and writer is
+// already trusted Go code (this package, orchestrator/*.py, or the CLI
+// itself) -- gate markers and DEVIATION.md qualify. Artifacts a Claude
+// subagent produces via its own Edit tool (plan/summary.md, plan/steps.json,
+// INVESTIGATION.md, triage_concern.json, review_results/final_report.md)
+// deliberately stay plain files for now: moving them would require giving
+// those subagents an MCP write tool instead of Edit, a separate, larger
+// piece of design work this phase doesn't attempt. Mixing the two here once
+// already caused a real bug (subagents kept writing files while this package
+// read from the daemon) — see Issue #35's design notes for the writer/reader
+// trust boundary this split enforces.
 package gate
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -39,8 +47,8 @@ const (
 )
 
 // gatePrefix/artifactPrefix are the daemon key namespaces this package
-// reads/writes (Issue #35's key convention: "<namespace>:<rest>", rest
-// mirroring today's file-relative paths so the mapping stays obvious).
+// writes (gate markers, DEVIATION.md — see the package doc for why the rest
+// of the artifacts below stay plain files instead).
 const (
 	gatePrefix     = "gate:"
 	artifactPrefix = "artifact:"
@@ -48,28 +56,27 @@ const (
 
 func (n Name) gateKey() string { return gatePrefix + string(n) }
 
-// artifactKeys maps the review gate to the key (see artifactPrefix) whose
-// value `masuda review show` prints verbatim. The plan gate has no single-key
+// artifactPaths maps the review gate to the file (relative to stateDir) that
+// `masuda review show` prints verbatim. The plan gate has no single-file
 // equivalent (ADR-0026 split it into plan/summary.md + plan/steps.json) and
-// is rendered by renderPlan instead.
-var artifactKeys = map[Name]string{
-	Review: artifactPrefix + "review_results/final_report.md",
+// is rendered by renderPlan instead. Written by the synthesize subagent's
+// Edit tool (phase 5) — see the package doc — so this stays a plain file.
+var artifactPaths = map[Name]string{
+	Review: "review_results/final_report.md",
 }
 
-func (n Name) artifactKey() (string, error) {
-	k, ok := artifactKeys[n]
+func (n Name) artifactPath() (string, error) {
+	p, ok := artifactPaths[n]
 	if !ok {
 		return "", fmt.Errorf("unknown gate %q", n)
 	}
-	return k, nil
+	return p, nil
 }
 
-// planSummaryKey/planStepsKey are the daemon keys renderPlan reads (ADR-0026
-// split the plan artifact into these two pieces).
-const (
-	planSummaryKey = artifactPrefix + "plan/summary.md"
-	planStepsKey   = artifactPrefix + "plan/steps.json"
-)
+// planDir is the subdirectory (relative to stateDir) holding the plan
+// artifacts (ADR-0026). Written by the planner subagent's Edit tool — see
+// the package doc for why this stays files rather than daemon keys.
+const planDir = "plan"
 
 // planStepFile is one file plan/steps.json declares a step will touch —
 // mirrors what phase 4's mechanical backstop (ADR-0010, scoped per-step by
@@ -91,45 +98,39 @@ type planStep struct {
 	Mode string `json:"mode,omitempty"`
 }
 
-// planData is the top-level shape of the plan/steps.json artifact (ADR-0028
-// wrapped it in an object, from a bare step array, to also carry
-// ExpectedByproducts — glob patterns the planner predicts the build/test
-// toolchain may generate as a side effect, e.g. "*__pycache__*"). Both
-// fields are planner-authored and human-approved at G1, unlike anything the
-// implementation subagent self-reports later.
+// planData is the top-level shape of plan/steps.json (ADR-0028 wrapped it in
+// an object, from a bare step array, to also carry ExpectedByproducts —
+// glob patterns the planner predicts the build/test toolchain may generate
+// as a side effect, e.g. "*__pycache__*"). Both fields are planner-authored
+// and human-approved at G1, unlike anything the implementation subagent
+// self-reports later.
 type planData struct {
 	Steps              []planStep `json:"steps"`
 	ExpectedByproducts []string   `json:"expected_byproducts"`
 }
 
 // renderPlan assembles the human-facing Markdown `masuda plan show` prints
-// from the plan summary key's free prose and the plan steps key's structured
-// data (ADR-0026, ADR-0028) — deterministic string concatenation, no LLM
+// from plan/summary.md's free prose and plan/steps.json's structured data
+// (ADR-0026, ADR-0028) — deterministic string concatenation, no LLM
 // involved, mirroring _render_plan_text() on the Python side
 // (orchestrator/implement_review_graph.py).
-func renderPlan(ctx context.Context, c *mcpclient.Client) (string, error) {
-	summary, found, err := c.Get(ctx, planSummaryKey)
+func renderPlan(stateDir string) (string, error) {
+	summary, err := os.ReadFile(filepath.Join(stateDir, planDir, "summary.md"))
 	if err != nil {
 		return "", fmt.Errorf("reading plan summary: %w", err)
 	}
-	if !found {
-		return "", fmt.Errorf("reading plan summary: not found")
-	}
-	stepsData, found, err := c.Get(ctx, planStepsKey)
+	stepsData, err := os.ReadFile(filepath.Join(stateDir, planDir, "steps.json"))
 	if err != nil {
 		return "", fmt.Errorf("reading plan steps: %w", err)
 	}
-	if !found {
-		return "", fmt.Errorf("reading plan steps: not found")
-	}
 	var data planData
-	if err := json.Unmarshal([]byte(stepsData), &data); err != nil {
+	if err := json.Unmarshal(stepsData, &data); err != nil {
 		return "", fmt.Errorf("parsing plan steps: %w", err)
 	}
 	steps := data.Steps
 
 	var b strings.Builder
-	b.WriteString(summary)
+	b.Write(summary)
 
 	// "変更するファイル一覧" is the dedup union of every step's files
 	// (ADR-0026) rather than a separately-authored list, so it can never
@@ -172,13 +173,16 @@ func renderPlan(ctx context.Context, c *mcpclient.Client) (string, error) {
 	return b.String(), nil
 }
 
-// triageConcernKey is the self-report a subagent writes directly (ADR-0029)
-// the moment it notices content that looks like it's trying to manipulate
-// its behavior — in place of its normal deliverable, from any phase.
-// renderTriageConcern is what `masuda triage show` renders from it.
-const triageConcernKey = artifactPrefix + "triage_concern.json"
+// triageConcernFile is the self-report a subagent writes directly to the
+// workspace state directory (ADR-0029) the moment it notices content that
+// looks like it's trying to manipulate its behavior — in place of its normal
+// deliverable, from any phase. renderTriageConcern is what `masuda triage
+// show` renders from it. Written via Edit (or, in the Docker-sandboxed
+// phase 4-5, Bash) by the reporting subagent — see the package doc for why
+// this stays a plain file.
+const triageConcernFile = "triage_concern.json"
 
-// triageConcern is triageConcernKey's value shape.
+// triageConcern is triageConcernFile's on-disk shape.
 type triageConcern struct {
 	Agent       string    `json:"agent"`
 	Phase       string    `json:"phase"`
@@ -188,34 +192,34 @@ type triageConcern struct {
 }
 
 // renderTriageConcern assembles the human-facing Markdown `masuda triage
-// show` prints from triageConcernKey. Unlike renderPlan, there is no
-// DEVIATION.md-style prepend logic here — the concern itself is the entire
-// artifact this gate is judging.
-func renderTriageConcern(ctx context.Context, c *mcpclient.Client) (string, error) {
-	data, found, err := c.Get(ctx, triageConcernKey)
+// show` prints from triageConcernFile. Unlike renderPlan, there is no
+// DEVIATION.md-style prepend logic here — the concern file itself is the
+// entire artifact this gate is judging.
+func renderTriageConcern(stateDir string) (string, error) {
+	data, err := os.ReadFile(filepath.Join(stateDir, triageConcernFile))
 	if err != nil {
-		return "", fmt.Errorf("reading triage concern: %w", err)
+		return "", fmt.Errorf("reading %s: %w", triageConcernFile, err)
 	}
-	if !found {
-		return "", fmt.Errorf("reading triage concern: not found")
-	}
-	var tc triageConcern
-	if err := json.Unmarshal([]byte(data), &tc); err != nil {
-		return "", fmt.Errorf("parsing triage concern: %w", err)
+	var c triageConcern
+	if err := json.Unmarshal(data, &c); err != nil {
+		return "", fmt.Errorf("parsing %s: %w", triageConcernFile, err)
 	}
 	var b strings.Builder
 	b.WriteString("# Triage concern reported (ADR-0029)\n\n")
-	fmt.Fprintf(&b, "**Reported by**: %s (%s)\n", tc.Agent, tc.Phase)
-	fmt.Fprintf(&b, "**Reported at**: %s\n\n", tc.ReportedAt.Format(time.RFC3339))
-	fmt.Fprintf(&b, "## Description\n\n%s\n", tc.Description)
-	if tc.Evidence != "" {
-		fmt.Fprintf(&b, "\n## Evidence\n\n%s\n", tc.Evidence)
+	fmt.Fprintf(&b, "**Reported by**: %s (%s)\n", c.Agent, c.Phase)
+	fmt.Fprintf(&b, "**Reported at**: %s\n\n", c.ReportedAt.Format(time.RFC3339))
+	fmt.Fprintf(&b, "## Description\n\n%s\n", c.Description)
+	if c.Evidence != "" {
+		fmt.Fprintf(&b, "\n## Evidence\n\n%s\n", c.Evidence)
 	}
 	return b.String(), nil
 }
 
-// deviationKey is the reason phase 4's mechanical backstop (ADR-0010) or a
-// self-reported deviation reopened G1 — see Show's Plan case.
+// deviationKey is the daemon key holding the reason phase 4's mechanical
+// backstop (ADR-0010) or a self-reported deviation reopened G1 — see Show's
+// Plan case. Written by write_task_md itself (orchestrator/*.py, Python),
+// not by any subagent, so unlike the artifacts above it's safe to keep
+// daemon-backed (see the package doc).
 const deviationKey = artifactPrefix + "DEVIATION.md"
 
 // Status is one of the marker's possible states. Halted is triage-only
@@ -249,42 +253,38 @@ func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
 // *why* the gate is open again, not just what the (still-approved-looking)
 // plan says.
 func Show(ctx context.Context, stateDir string, n Name) (string, error) {
-	c, err := dial(ctx, stateDir)
-	if err != nil {
-		return "", err
-	}
-	defer c.Close()
-
 	var out string
 	switch n {
 	case Plan:
-		rendered, err := renderPlan(ctx, c)
+		rendered, err := renderPlan(stateDir)
 		if err != nil {
 			return "", err
 		}
 		out = rendered
 	case Triage:
-		rendered, err := renderTriageConcern(ctx, c)
+		rendered, err := renderTriageConcern(stateDir)
 		if err != nil {
 			return "", err
 		}
 		out = rendered
 	default:
-		key, err := n.artifactKey()
+		rel, err := n.artifactPath()
 		if err != nil {
 			return "", err
 		}
-		content, found, err := c.Get(ctx, key)
+		content, err := os.ReadFile(filepath.Join(stateDir, rel))
 		if err != nil {
-			return "", fmt.Errorf("reading %s: %w", key, err)
+			return "", fmt.Errorf("reading %s: %w", rel, err)
 		}
-		if !found {
-			return "", fmt.Errorf("reading %s: not found", key)
-		}
-		out = content
+		out = string(content)
 	}
 
 	if n == Plan {
+		c, err := dial(ctx, stateDir)
+		if err != nil {
+			return "", err
+		}
+		defer c.Close()
 		if deviation, found, err := c.Get(ctx, deviationKey); err == nil && found {
 			out = "# G1 reopened — deviation reported (ADR-0010)\n\n" + deviation + "\n\n---\n\n" + out
 		}
@@ -338,9 +338,9 @@ func Reject(ctx context.Context, stateDir string, n Name, feedback string) error
 // Halt writes a halted marker for gate n (ADR-0029: triage-only in practice,
 // but generic over Name like Approve/Reject). Unlike Approve/Reject, this
 // deliberately clears nothing — halt's whole point is a dead end a human
-// must investigate manually, so every other piece of state (including the
-// triage concern a human may still want to re-read via `masuda triage
-// show`) is left exactly as found.
+// must investigate manually, so every other piece of on-disk state
+// (including the triage_concern.json a human may still want to re-read via
+// `masuda triage show`) is left exactly as found.
 func Halt(ctx context.Context, stateDir string, n Name, reason string) error {
 	c, err := dial(ctx, stateDir)
 	if err != nil {

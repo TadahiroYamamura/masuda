@@ -18,7 +18,10 @@ import (
 // AF_UNIX's ~108 byte sun_path limit once daemon.sock's own path is appended
 // -- see internal/statedaemon/mcpserver's uds_test.go) and returns the state
 // directory gate.go's functions expect (they derive the socket path from it
-// via statedaemon.SocketPath, same as the real daemon process).
+// via statedaemon.SocketPath, same as the real daemon process). Only gate
+// markers and DEVIATION.md go through this daemon -- everything else in
+// this package's tests writes plain files directly, matching what a
+// subagent's Edit tool actually produces (see gate.go's package doc).
 func newTestDaemon(t *testing.T) string {
 	t.Helper()
 	stateDir, err := os.MkdirTemp("", "gt")
@@ -54,8 +57,9 @@ func newTestDaemon(t *testing.T) string {
 	return ""
 }
 
-// put seeds key's value directly through the daemon, standing in for what
-// would otherwise be a subagent's or the CLI's own write.
+// put seeds a daemon key directly, standing in for orchestrator/*.py's own
+// write (deviationKey) or the CLI's own write (gate markers, exercised via
+// Approve/Reject/Halt instead).
 func put(t *testing.T, stateDir, key, value string) {
 	t.Helper()
 	c, err := mcpclient.Dial(context.Background(), statedaemon.SocketPath(stateDir))
@@ -68,8 +72,8 @@ func put(t *testing.T, stateDir, key, value string) {
 	}
 }
 
-// get reads key's value directly through the daemon, for asserting on state
-// this package's own API doesn't expose a getter for (e.g. deviationKey).
+// get reads a daemon key directly, for asserting on state this package's own
+// API doesn't expose a getter for (e.g. deviationKey).
 func get(t *testing.T, stateDir, key string) (value string, found bool) {
 	t.Helper()
 	c, err := mcpclient.Dial(context.Background(), statedaemon.SocketPath(stateDir))
@@ -84,10 +88,21 @@ func get(t *testing.T, stateDir, key string) (value string, found bool) {
 	return value, found
 }
 
+// writePlan writes plan/summary.md + plan/steps.json as plain files --
+// what the planner subagent's Edit tool actually produces (see gate.go's
+// package doc for why these stay files rather than daemon keys).
 func writePlan(t *testing.T, stateDir, summary, stepsJSON string) {
 	t.Helper()
-	put(t, stateDir, planSummaryKey, summary)
-	put(t, stateDir, planStepsKey, stepsJSON)
+	dir := filepath.Join(stateDir, planDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "summary.md"), []byte(summary), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "steps.json"), []byte(stepsJSON), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestShowPlanRendersSummaryAndSteps(t *testing.T) {
@@ -233,14 +248,18 @@ func TestShowPlanOmitsTDDModeMarkerWhenStepModeAbsent(t *testing.T) {
 func TestShowPlanMissingStepsErrors(t *testing.T) {
 	stateDir := newTestDaemon(t)
 	if _, err := Show(context.Background(), stateDir, Plan); err == nil {
-		t.Fatal("Show() error = nil, want an error when the plan steps key is missing")
+		t.Fatal("Show() error = nil, want an error when plan/steps.json is missing")
 	}
 }
 
+// writeTriageConcern writes triage_concern.json as a plain file -- what the
+// reporting subagent actually produces (see gate.go's package doc).
 func writeTriageConcern(t *testing.T, stateDir, agent, phase, description, evidence string) {
 	t.Helper()
 	body := `{"agent": "` + agent + `", "phase": "` + phase + `", "description": "` + description + `", "evidence": "` + evidence + `", "reported_at": "2026-08-05T00:00:00Z"}`
-	put(t, stateDir, triageConcernKey, body)
+	if err := os.WriteFile(filepath.Join(stateDir, triageConcernFile), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestShowTriageRendersConcern(t *testing.T) {
@@ -267,7 +286,7 @@ func TestShowTriageRendersConcern(t *testing.T) {
 func TestShowTriageMissingConcernErrors(t *testing.T) {
 	stateDir := newTestDaemon(t)
 	if _, err := Show(context.Background(), stateDir, Triage); err == nil {
-		t.Fatal("Show() error = nil, want an error when the triage concern key is missing")
+		t.Fatal("Show() error = nil, want an error when triage_concern.json is missing")
 	}
 }
 
@@ -346,6 +365,9 @@ func TestHaltDoesNotClearTriageConcern(t *testing.T) {
 		t.Fatalf("Halt() error = %v, want nil", err)
 	}
 
+	if _, err := os.Stat(filepath.Join(stateDir, triageConcernFile)); err != nil {
+		t.Fatalf("%s must survive Halt() (halt leaves all other state untouched), stat error = %v", triageConcernFile, err)
+	}
 	out, err := Show(context.Background(), stateDir, Triage)
 	if err != nil {
 		t.Fatalf("Show() after Halt() error = %v, want nil -- the concern must still be readable for post-halt forensics", err)
@@ -357,17 +379,19 @@ func TestHaltDoesNotClearTriageConcern(t *testing.T) {
 
 func TestShowReviewStillReadsFinalReportVerbatim(t *testing.T) {
 	stateDir := newTestDaemon(t)
-	key, err := Review.artifactKey()
-	if err != nil {
+	dir := filepath.Join(stateDir, "review_results")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	put(t, stateDir, key, "# report body")
+	if err := os.WriteFile(filepath.Join(dir, "final_report.md"), []byte("# report body"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	out, err := Show(context.Background(), stateDir, Review)
 	if err != nil {
 		t.Fatalf("Show() error = %v, want nil", err)
 	}
 	if out != "# report body" {
-		t.Fatalf("Show(Review) = %q, want the value unchanged", out)
+		t.Fatalf("Show(Review) = %q, want the file's raw content unchanged", out)
 	}
 }
