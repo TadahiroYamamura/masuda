@@ -36,18 +36,24 @@ func connectCurated(t *testing.T) (*statedaemon.Store, *mcp.ClientSession) {
 	return store, session
 }
 
-func TestCuratedOnlyExposesWaitForGateChange(t *testing.T) {
+func TestCuratedExposesExactlyTheHumanApprovalFlowTools(t *testing.T) {
 	_, session := connectCurated(t)
 	res, err := session.ListTools(context.Background(), &mcp.ListToolsParams{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(res.Tools) != 1 || res.Tools[0].Name != "wait_for_gate_change" {
-		names := make([]string, len(res.Tools))
-		for i, tool := range res.Tools {
-			names[i] = tool.Name
+	names := make([]string, len(res.Tools))
+	for i, tool := range res.Tools {
+		names[i] = tool.Name
+	}
+	want := map[string]bool{"wait_for_gate_change": true, "resolve_gate_from_chat": true}
+	if len(names) != len(want) {
+		t.Fatalf("curated tool list = %v, want exactly %v", names, want)
+	}
+	for _, name := range names {
+		if !want[name] {
+			t.Fatalf("curated tool list = %v, want exactly %v", names, want)
 		}
-		t.Fatalf("curated tool list = %v, want exactly [wait_for_gate_change]", names)
 	}
 }
 
@@ -106,5 +112,75 @@ func TestWaitForGateChangeRejectsUnknownGateName(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatal("wait_for_gate_change with an unknown gate name: IsError = false, want true")
+	}
+}
+
+func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
+	store, session := connectCurated(t)
+
+	type waitResult struct {
+		Status   string `json:"status"`
+		Feedback string `json:"feedback"`
+	}
+	done := make(chan waitResult, 1)
+	go func() {
+		value, found, err := store.WaitForChange(context.Background(), "gate:review")
+		if err != nil || !found {
+			t.Errorf("WaitForChange = (found=%v, err=%v), want found=true", found, err)
+			done <- waitResult{}
+			return
+		}
+		var out waitResult
+		json.Unmarshal([]byte(value), &out)
+		done <- out
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "resolve_gate_from_chat",
+		Arguments: map[string]any{"name": "review", "status": "approved", "feedback": "対話で承認"},
+	})
+	if err != nil || res.IsError {
+		t.Fatalf("CallTool(resolve_gate_from_chat) = (%+v, %v), want success", res, err)
+	}
+
+	select {
+	case out := <-done:
+		if out.Status != "approved" || out.Feedback != "対話で承認" {
+			t.Fatalf("marker written by resolve_gate_from_chat = %+v, want status=approved feedback=対話で承認", out)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("WaitForChange did not see resolve_gate_from_chat's write")
+	}
+}
+
+func TestResolveGateFromChatRejectsTriage(t *testing.T) {
+	store, session := connectCurated(t)
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "resolve_gate_from_chat",
+		Arguments: map[string]any{"name": "triage", "status": "approved"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
+	}
+	if !res.IsError {
+		t.Fatal("resolve_gate_from_chat on the triage gate: IsError = false, want true -- ADR-0029 must block this")
+	}
+	if _, found := store.Get("gate:triage"); found {
+		t.Fatal("resolve_gate_from_chat must not have written gate:triage despite the error")
+	}
+}
+
+func TestResolveGateFromChatRejectsInvalidStatus(t *testing.T) {
+	_, session := connectCurated(t)
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "resolve_gate_from_chat",
+		Arguments: map[string]any{"name": "plan", "status": "halted"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
+	}
+	if !res.IsError {
+		t.Fatal("resolve_gate_from_chat with status=halted: IsError = false, want true (only approved/rejected allowed)")
 	}
 }
