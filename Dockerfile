@@ -17,21 +17,20 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8
 
 # Node.js 22 (LTS) + system tools
-# inotify-tools: runtime/CLAUDE.md's gate-wait step uses a single blocking
-# `inotifywait` call instead of a `while` loop or the Monitor tool -- both of
-# those got flagged by Claude Code's own permission risk-evaluation and stalled
-# an unattended loop waiting on a confirmation that never comes (confirmed
-# live); a lone inotifywait call doesn't trigger that even with a dynamic
-# absolute path embedded in it.
 # build-essential: a C toolchain is needed across all language variants, not
 # just one -- Go's `go test -race`/cgo, Python packages without prebuilt
 # wheels, and Node native addons (node-gyp) all fall back to compiling from
 # source. Baking it in here once (ADR-0022) avoids repeating the same RUN
 # line in docker/{go,python,typescript}/Dockerfile.
+#
+# inotify-tools is deliberately NOT installed here -- the gate-wait step it
+# used to back (ADR-0017's single blocking `inotifywait` call) was replaced
+# by a `mcp__masuda-gate__wait_for_gate_change` MCP tool call, backed by the
+# workspace's state daemon rather than a watched file (Issue #35).
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git inotify-tools \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI

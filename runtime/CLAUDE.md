@@ -15,27 +15,26 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
      ```
    - ゲート条件を満たしていれば → 4へ
    - どちらも満たしていなければ → LangGraph を起動して `/masuda-state/TASK.md` を上書きさせ、2 へ戻る
-4. ゲートマーカー（`/masuda-state/.masuda-gate/<name>.json`、`<name>`はTASK.mdの`GATE:<name>`から読み取る）の
-   `status`が`pending`でなくなるまで待機する。`while`ループ構文（Monitorツールの内部実装を含む）で
-   ポーリングすると、動的な文字列を含むコマンドとして確認を求められ無人ループで詰まることが実機で
-   確認されているため、`while`ループもMonitorツールも使わないこと。代わりに`inotifywait`を
-   ループなしの単発ブロッキング呼び出しで使うこと（実機検証済み、確認プロンプトは発生しない）:
-   ```bash
-   inotifywait -e modify,close_write,move_self $GATE_FILE
-   ```
-   - 待機中に人間が`docker exec -it ... tmux attach`（`masuda chat`）で接続し、対話の中で「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で`$GATE_FILE`に以下の形式で承認マーカーを書いてよい（却下の場合は`status`を`"rejected"`にする）
-     ```json
-     {"status": "approved", "feedback": "<対話の要約>", "decided_at": "<ISO8601形式の現在時刻>"}
-     ```
+4. `mcp__masuda-gate__wait_for_gate_change` ツールを呼び、`name`にTASK.mdの`GATE:<name>`
+   （`plan`・`review`・`triage`のいずれか）を渡して、人間がゲートを解決するまでブロッキング
+   待機する（Issue #35：ADR-0017の`inotifywait`単発ブロッキング呼び出しに相当する、状態
+   デーモン経由のMCPツール呼び出し。ツール呼び出し自体が単発のブロッキング呼び出しなので、
+   `while`ループもMonitorツールも不要）。
+   - 待機中に人間が`docker exec -it ... tmux attach`（`masuda chat`）で接続し、対話の中で
+     「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で
+     `mcp__masuda-gate__resolve_gate_from_chat`ツール（`name`・`status`
+     （`"approved"`または`"rejected"`）・`feedback`（対話の要約））を呼んでゲートを解決してよい。
    - ただし`triage`ゲート（ADR-0029）はこの限りではない。懸念の対象となっている
      エージェント自身が、chatでの会話を理由に自分自身でこのゲートを閉じることは
-     絶対にしないこと（`$GATE_FILE`が`.masuda-gate/triage.json`の場合、上記の
-     自己書き込みは一切行わない）。`masuda chat`は懸念の対話・事実確認に使ってよいが、
-     最終判断は必ず人間がホスト側から`masuda triage dismiss/redo/halt`で独立に記録する。
-     これは規約上の取り決めであり、技術的な強制ではない点に注意すること
-     （オーケストレーターとClaudeセッションは同一ユーザー・同一コンテナで実行され、
-     真の権限境界は存在しない。この既知の制限はGitHub Issue #13で追跡している）
-   - マーカーの`status`が`pending`でなくなったら（自分で書いた場合・別ターミナルの`masuda plan/review/triage approve|reject|dismiss|redo|halt`で書かれた場合のどちらでも）、2へ戻ってLangGraphを起動する
+     絶対にしないこと。`resolve_gate_from_chat`は`name`に`"triage"`を渡すとサーバー側で
+     エラーを返す実装になっており、この一点についてはIssue #13が指摘する権限境界の欠如が
+     技術的に埋まっている（ただしオーケストレーターとClaudeセッションが同一ユーザー・同一
+     コンテナで実行されているという、より広い意味での権限境界の欠如自体は残っている）。
+     `masuda chat`は懸念の対話・事実確認に使ってよいが、最終判断は必ず人間がホスト側から
+     `masuda triage dismiss/redo/halt`で独立に記録する。
+   - `wait_for_gate_change`が返ったら（自分で`resolve_gate_from_chat`を呼んだ場合・別ターミナルの
+     `masuda plan/review/triage approve|reject|dismiss|redo|halt`で解決された場合のどちらでも）、
+     2へ戻ってLangGraphを起動する
 
 ## 終了条件
 
@@ -53,7 +52,7 @@ MASUDA_STATE_DIR=/masuda-state /opt/masuda/venv/bin/python /opt/masuda/orchestra
 
 ## 注意
 
-masuda自身の制御ファイル（TASK.md・`plan/`・`.masuda-gate/`・`review_results/`等）は
-`/masuda-state`配下に置かれる（対象リポジトリ＝`/workspace`の`git status`を汚さない
-ため）。ゲートマーカーの`$GATE_FILE`もこの配下（例: `/masuda-state/.masuda-gate/review.json`）
-を指す。コード自体の実装・レビューはこれまで通り`/workspace`に対して行う。
+masuda自身の制御ファイル（TASK.md・`plan/`・`review_results/`等）は`/masuda-state`配下に
+置かれる（対象リポジトリ＝`/workspace`の`git status`を汚さないため）。ゲートマーカーは
+Issue #35以降ファイルではなく状態デーモンが保持しており、`mcp__masuda-gate__*`ツール経由で
+しか触れない。コード自体の実装・レビューはこれまで通り`/workspace`に対して行う。

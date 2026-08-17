@@ -21,11 +21,14 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"text/template"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
@@ -179,6 +182,76 @@ func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
 	return mcpclient.Dial(ctx, statedaemon.SocketPath(stateDir))
 }
 
+// mcpGateServerName is the name Claude's tool list shows the curated gate
+// MCP server under (e.g. mcp__masuda-gate__wait_for_gate_change) -- must
+// match what runtime/CLAUDE.md and system_prompt.md.tmpl instruct Claude to
+// call.
+const mcpGateServerName = "masuda-gate"
+
+// mcpConfigJSON builds the --mcp-config payload pointing Claude Code's MCP
+// client at the local relay startMCPRelay just started.
+func mcpConfigJSON(relayPort int) string {
+	return fmt.Sprintf(
+		`{"mcpServers":{%q:{"type":"http","url":"http://127.0.0.1:%d/"}}}`,
+		mcpGateServerName, relayPort,
+	)
+}
+
+// freeTCPPort asks the OS for an unused TCP port on 127.0.0.1. There's an
+// inherent TOCTOU race between closing this listener and the relay binding
+// the port, but it's the same acceptable risk internal/sandbox.freePort
+// already takes for the ttyd port.
+func freeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
+}
+
+// startMCPRelay spawns a detached `masuda internal mcp-relay` process
+// bridging stateDir's curated MCP socket (statedaemon.CuratedSocketPath) to
+// a freshly chosen local TCP port, and returns that port.
+//
+// Unlike the Docker sandbox (one isolated network namespace per container,
+// so a fixed port there is fine -- see runtime/entrypoint.sh), multiple
+// workspaces' host loops can run on this same host concurrently, so the
+// port has to be chosen fresh per workspace rather than shared.
+//
+// Not deduplicated against a relay from a previous Start() on the same
+// workspace (a resume after a G1 reject, say) -- Start()'s IsRunning guard
+// already means this only runs when no tmux session (and so no live MCP
+// client using the old relay) exists, and the process itself is cheap
+// enough that a handful of orphaned relays across a workspace's lifetime
+// isn't worth the extra bookkeeping a stopDaemon-style PID file would add.
+func startMCPRelay(stateDir string) (int, error) {
+	port, err := freeTCPPort()
+	if err != nil {
+		return 0, err
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		return 0, err
+	}
+	logFile, err := os.OpenFile(filepath.Join(stateDir, "mcp-relay.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return 0, err
+	}
+	defer logFile.Close()
+
+	cmd := exec.Command(exe, "internal", "mcp-relay",
+		"--socket", statedaemon.CuratedSocketPath(stateDir),
+		"--port", strconv.Itoa(port))
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	if err := cmd.Start(); err != nil {
+		return 0, err
+	}
+	return port, nil
+}
+
 // WriteTaskBrief writes the task description masuda plan start was given
 // into the workspace's state daemon, for investigate_plan_graph.py's
 // state_client to read back as taskBriefKey.
@@ -329,9 +402,15 @@ func Start(id, worktreeDir, stateDir, task string) error {
 	if err != nil {
 		return fmt.Errorf("loading .masuda/settings.json: %w", err)
 	}
+
+	relayPort, err := startMCPRelay(stateDir)
+	if err != nil {
+		return fmt.Errorf("starting the MCP relay for the curated gate-wait tool set: %w", err)
+	}
+
 	claudeCmd := fmt.Sprintf(
-		"claude --allowedTools %s --agents %s --append-system-prompt-file %s",
-		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath),
+		"claude --allowedTools %s --agents %s --append-system-prompt-file %s --mcp-config %s",
+		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath), shellQuote(mcpConfigJSON(relayPort)),
 	)
 	if len(cfg.ClaudeSettings) > 0 {
 		claudeCmd += " --settings " + shellQuote(string(cfg.ClaudeSettings))

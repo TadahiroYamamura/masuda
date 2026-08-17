@@ -2,6 +2,7 @@ package hostloop
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -108,5 +109,45 @@ func TestWriteTDDIntentRoundTrips(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("Get(tddRequestedKey) found = false, want true")
+	}
+}
+
+func TestMCPConfigJSONIsValidAndPointsAtTheGivenPort(t *testing.T) {
+	raw := mcpConfigJSON(54321)
+	var parsed struct {
+		MCPServers map[string]struct {
+			Type string `json:"type"`
+			URL  string `json:"url"`
+		} `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		t.Fatalf("mcpConfigJSON(54321) = %q is not valid JSON: %v", raw, err)
+	}
+	server, ok := parsed.MCPServers[mcpGateServerName]
+	if !ok {
+		t.Fatalf("mcpConfigJSON(54321) = %q has no %q entry", raw, mcpGateServerName)
+	}
+	if server.Type != "http" || server.URL != "http://127.0.0.1:54321/" {
+		t.Fatalf("mcpConfigJSON(54321) server entry = %+v, want type=http url=http://127.0.0.1:54321/", server)
+	}
+}
+
+func TestStartMCPRelayBridgesCuratedSocketToATCPPort(t *testing.T) {
+	stateDir := newTestDaemon(t)
+
+	port, err := startMCPRelay(stateDir)
+	if err != nil {
+		t.Fatalf("startMCPRelay() error = %v, want nil", err)
+	}
+
+	// The relay is a detached subprocess of the *test binary*, not the real
+	// masuda CLI (os.Executable() resolves to whatever is running this test)
+	// -- so it can't actually understand "internal mcp-relay" as a
+	// subcommand. This only proves startMCPRelay picks a free port and
+	// attempts to launch something there; the relay's own byte-proxying
+	// behavior is covered by cmd/masuda's TestMCPRelayProxiesCallsToCuratedSocket,
+	// which runs against the real subcommand function directly.
+	if port <= 0 {
+		t.Fatalf("startMCPRelay() port = %d, want a positive port number", port)
 	}
 }
