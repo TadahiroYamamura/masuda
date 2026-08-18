@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/hostloop"
-	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -33,8 +32,12 @@ func newChatCommand() *cobra.Command {
 			if hostloop.IsRunning(id) {
 				return attach(hostloop.AttachArgs(id))
 			}
-			if sandbox.IsRunning(id) {
-				return attach(sandbox.AttachArgs(id))
+			if sandboxBackend.IsRunning(id) {
+				attachArgs, err := sandboxBackend.AttachArgs(id)
+				if err != nil {
+					return err
+				}
+				return attach(attachArgs)
 			}
 			return fmt.Errorf("no session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", id, id, id)
 		},

@@ -34,6 +34,20 @@ if [ -r /masuda-secrets/token ]; then
     CLAUDE_CODE_OAUTH_TOKEN=$(cat /masuda-secrets/token)
 fi
 
+# See runtime/entrypoint.sh for what this is and why it's two plain lines,
+# not sourced as shell.
+GIT_IDENTITY_FILE=/masuda-state/.masuda-git-identity
+if [ -r "$GIT_IDENTITY_FILE" ]; then
+    GIT_AUTHOR_NAME=$(sed -n '1p' "$GIT_IDENTITY_FILE")
+    GIT_AUTHOR_EMAIL=$(sed -n '2p' "$GIT_IDENTITY_FILE")
+    if [ -n "$GIT_AUTHOR_NAME" ]; then
+        export GIT_AUTHOR_NAME GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+    fi
+    if [ -n "$GIT_AUTHOR_EMAIL" ]; then
+        export GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+    fi
+fi
+
 # MERGED_SETTINGS carries skipDangerousModePermissionPrompt: true (ADR-0034),
 # so the bypass-permissions-mode disclaimer dialog never appears here — no
 # tmux capture-pane/send-keys polling needed to get past it.

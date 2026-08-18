@@ -72,7 +72,7 @@ show|chat|approve|reject.`,
 			if err != nil {
 				return err
 			}
-			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
+			h, err := sandboxBackend.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
 			if err != nil {
 				return err
 			}
@@ -81,7 +81,7 @@ show|chat|approve|reject.`,
 		},
 	}
 	cmd.Flags().StringVar(&base, "base", defaultBase, "ref to diff and review against")
-	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to run")
+	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to build the VM rootfs from")
 	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only, shown in `workspace list`/`info`)")
 	return cmd
 }

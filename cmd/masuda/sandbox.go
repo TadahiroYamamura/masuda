@@ -13,10 +13,19 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
+// sandboxBackend is the single Backend implementation every subcommand uses
+// to manage a workspace's sandbox (Issue #31): Docker's execution runtime
+// (DockerBackend, and the package-level Start/Stop/IsRunning/AttachArgs
+// functions it wrapped) was removed once VMBackend proved stable in real
+// use -- see internal/sandbox/backend.go. `docker build`/`docker export`
+// (internal/rootfs.Build) still runs, unrelated to this: that's building
+// the *image* a VM's rootfs is derived from, not running a container.
+var sandboxBackend sandbox.Backend = sandbox.VMBackend{}
+
 func newSandboxCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
-		Short: "Start, stop, or (re)build the docker sandbox image for a workspace/project",
+		Short: "Start, stop, or (re)build the sandbox VM's source image for a workspace/project",
 	}
 	cmd.AddCommand(newSandboxStartCommand())
 	cmd.AddCommand(newSandboxStopCommand())
@@ -28,7 +37,7 @@ func newSandboxStartCommand() *cobra.Command {
 	var image string
 	cmd := &cobra.Command{
 		Use:               "start <workspace-id>",
-		Short:             "Start a sandbox container for an existing workspace",
+		Short:             "Start a sandbox VM for an existing workspace",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,7 +58,7 @@ func newSandboxStartCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			h, err := sandbox.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
+			h, err := sandboxBackend.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
 			if err != nil {
 				return err
 			}
@@ -57,18 +66,18 @@ func newSandboxStartCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to run")
+	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to build the VM rootfs from")
 	return cmd
 }
 
 func newSandboxStopCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:               "stop <workspace-id>",
-		Short:             "Stop and remove a workspace's sandbox container",
+		Short:             "Stop and remove a workspace's sandbox VM",
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return sandbox.Stop(args[0])
+			return sandboxBackend.Stop(args[0])
 		},
 	}
 }

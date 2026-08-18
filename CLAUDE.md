@@ -58,14 +58,14 @@ AIとの協同開発（Provision→Discovery→Blueprint→Scaffold→Build→Re
   - `list`: 現在のリポジトリに紐づく全ワークスペースの一覧
   - `info <workspace-id>`: clone・状態ディレクトリの絶対パスとstatus/runningを表示する。`create`は作成時に一度だけworktreeパスを出力するが、後から調べる手段が無かったため追加
   - `rebase <workspace-id>`: `review approve`のfast-forwardが非fast-forwardで失敗した場合に、cloneをrepoRootの現在のブランチtipにfetch+rebaseする（`review approve`には組み込まない、常に人間が明示的に呼ぶ別コマンド。理由はADR-0023）
-- `masuda sandbox start|stop <workspace-id>`: worktreeのbind mountに加え、状態ディレクトリを`/masuda-state`に、ホストの`~/.claude/.credentials.json`・`~/.claude.json`をbind mountしてサブスク認証を引き継ぐ（ADR-0001）。前回のコンテナが（tmuxセッション終了により）Exited状態で残っていると`docker create`が名前衝突で失敗するため、`start`は同名の既存コンテナを`docker rm -f`してから作り直す
+- `masuda sandbox start|stop <workspace-id>`: `internal/sandbox.VMBackend`がCloud Hypervisor microVM（Issue #31）としてサンドボックスを起動・停止する。worktree・状態ディレクトリ（`/masuda-state`）はvirtiofs経由でゲストへ共有し、ホストのClaude Codeサブスク認証は`~/.claude/.credentials.json`のbind mountではなく`claude setup-token`の長期OAuthトークン（`masuda internal claude-token set`で登録、`internal/sandbox/claudetoken.go`）を専用のvirtiofs共有（`/masuda-secrets`）で渡す。git identity（`GIT_AUTHOR_*`/`GIT_COMMITTER_*`）は`/masuda-state/.masuda-git-identity`経由、`~/.claude/CLAUDE.md`はrootfsビルド時のExtraFile注入で渡す（いずれも`internal/sandbox/vmbackend.go`）。DockerBackend（`docker run`/`exec`でコンテナとして実行する方式）はVMBackendが安定した時点で削除済み——`docker build`/`docker export`（`internal/rootfs.Build`）はrootfsの元イメージ抽出に引き続き使うが、コンテナとして実行することはない
 - `masuda plan start <branch> "<task>"`（新規）/ `masuda plan start <workspace-id>`（再開）: 引数が既存ワークスペースIDかどうか（`workspace.Exists`）で新規/再開を判別する。新規はワークスペースID発行＋worktree作成＋Discovery/Blueprint段階のホスト側自己ループ起動（`internal/hostloop`）。メインセッションは`Bash,Task,Read,Edit`（成果物4ファイルのみ——`INVESTIGATION.md`・`plan/summary.md`・`plan/steps.json`（ADR-0026）・`plan_result.json`、状態ディレクトリの絶対パス）だけを持ち、実際にリポジトリ内容を読み回る調査・プラン作成はBashなしのカスタムエージェント（`investigator`/`planner`、`Read,Grep,Glob,Edit`のみ）にTask委譲する（ADR-0002の具体化）
   - **Claude Codeの許可ルールの罠**: 状態ディレクトリ（worktree外の絶対パス）への書き込みを事前承認する`Edit(/abs/path)`ルールは、単一の先頭スラッシュが「ルール自身が置かれた場所からの相対アンカー」と解釈されるため、パスが完全一致していても常に確認プロンプトが出る。真に絶対パスとして固定するには`Edit(//abs/path)`のように先頭スラッシュを2つ重ねる必要がある（既知のアップストリーム課題: [anthropics/claude-code#25137](https://github.com/anthropics/claude-code/issues/25137)、[#18200](https://github.com/anthropics/claude-code/issues/18200)）
   - サブエージェントに新しいツールを追加したら、セッションレベルの`allowedTools`にも同じツールをパス制限なしで追加すること。エージェント定義側（`customAgentsJSON`）にツールを持たせるだけでは、セッションレベルの許可ルールに乗っていない限りデフォルトの確認プロンプトに落ちる（`Grep`/`Glob`が未許可でplannerが停止した実例あり）
   - `go:embed`のパターンは宣言ファイル自身のディレクトリ以下にしか到達できず`..`を挟めないため、`assets.go`でembedするファイル（`orchestrator/`・`runtime/`）はリポジトリルート直下に置く必要がある。また`orchestrator/investigate_plan_graph.py`や`runtime/CLAUDE.md`を編集した後は`go build`し直さないと埋め込み内容が更新されない（Dockerイメージの再ビルド忘れと対になる注意点、後述）
-- `masuda chat <workspace-id>`: Discovery/Blueprint段階のホストループかScaffold/Build/Review段階のサンドボックスか、どちらのセッションが生きているかだけを見てattachする（ゲート名を引数に取らない）。plan gateがDiscovery/Blueprint段階のホストループ・Build/Review段階のDocker再オープンどちらで待機していても対応する
+- `masuda chat <workspace-id>`: Discovery/Blueprint段階のホストループかScaffold/Build/Review段階のサンドボックスか、どちらのセッションが生きているかだけを見てattachする（ゲート名を引数に取らない）。サンドボックス側はSSH経由でVMゲストのtmuxセッションにアタッチする（`internal/sandbox.VMBackend.AttachArgs`）。plan gateがDiscovery/Blueprint段階のホストループ・Build/Review段階のVM再オープンどちらで待機していても対応する
 - `masuda mcp list|approve|reject <server-name>`: `.masuda/settings.json`の`mcpServers`宣言に対するユーザー承認・秘密情報（`.masuda/settings.local.json`）を管理する。承認済み＋宣言と一致するもののみ、状態デーモン（`internal/statedaemon/mcpaggregator`）がClaude向けcurated setへ子MCPサーバーのtoolをプロキシ登録する（ADR-0043）
-- `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`（worktree）・`/masuda-state`（状態ディレクトリ）は対象ワークスペース専用のbind mount先として空けてある
+- `Dockerfile`: masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は`/opt/masuda`に配置し、`/workspace`（worktree）・`/masuda-state`（状態ディレクトリ）は対象ワークスペース専用の共有先として空けてある（VMBackendがvirtiofs経由でマウントする、`runtime/fstab.vm`）
 
 ### レビュー単体エントリーポイント
 
@@ -75,12 +75,12 @@ AIとの協同開発（Provision→Discovery→Blueprint→Scaffold→Build→Re
 
 ### Dockerイメージ・LSPプラグイン（ADR-0015）
 
-- `Dockerfile`（base）: `claude plugin marketplace add anthropics/claude-plugins-official`で公式マーケットプレイスを登録する（認証不要、公開GitHubリポジトリへの`git clone`のみ）。プラグイン状態（`extraKnownMarketplaces`・`enabledPlugins`）は`~/.claude/settings.json`（ビルド時にCOPYで焼き込み）・`~/.claude/plugins/`に保存され、コンテナ起動時にホストからbind mountされる`~/.claude.json`・`~/.claude/.credentials.json`とは別ファイルなので上書きされない
+- `Dockerfile`（base）: `claude plugin marketplace add anthropics/claude-plugins-official`で公式マーケットプレイスを登録する（認証不要、公開GitHubリポジトリへの`git clone`のみ）。プラグイン状態（`extraKnownMarketplaces`・`enabledPlugins`）は`~/.claude/settings.json`（ビルド時にCOPYで焼き込み）・`~/.claude/plugins/`に保存される。VMBackendが渡す認証（`CLAUDE_CODE_OAUTH_TOKEN`環境変数、`masuda sandbox start|stop`の項参照）はファイルではなく環境変数なので、これらのプラグイン状態ファイルと衝突しない
 - `docker/{go,python,typescript,full}/Dockerfile`: `masuda-loop:latest`から派生する言語別バリアント。`.masuda/settings.json`の`image`フィールドまたは`--image`でユーザーが選ぶ
   - `docker/go/Dockerfile`: Goツールチェーン＋`gopls`＋`gopls-lsp`プラグイン。リポジトリ直下に`Dockerfile.go`という名前で置くと、Goの`go build ./...`・`go vet ./...`がそれを`.go`ソースファイルとして誤認しビルドが壊れるため、`docker/go/Dockerfile`という配置にしている。`go install`後のモジュールキャッシュ削除は`rm -rf`だと権限エラーになる（Goがモジュールキャッシュを読み取り専用にするため）ため`go clean -modcache -cache`を使う
   - `docker/python/Dockerfile`・`docker/typescript/Dockerfile`: `pyright`・`typescript-language-server`はnpm配布のためbase imageのNode.jsに乗るだけで済むが、npmのグローバルインストール先（`/usr/lib/node_modules`）がroot所有のため、そのステップだけ`USER root`に戻す必要がある
   - `docker/full/Dockerfile`: 上記3つを1つにまとめたkitchen sinkバリアント。複数言語混在repo向け
-- **開発時の注意**: `orchestrator/`はDockerイメージのビルド時に`COPY`で焼き込まれ、コンテナ起動後に中身が変わることはない。オーケストレーター（`investigate_plan_graph.py`・`implement_review_graph.py`）のコードを変更した後にDockerでの実機テストを行う場合、`masuda-loop:latest`（base）と使用する言語バリアントイメージの両方を必ず再ビルドしてからコンテナを起動し直すこと。再ビルドを忘れると、古いコードのままコンテナが動き続け、新しい段階が一切実行されずに次の段階へ直行するなど、原因が分かりにくい形で不具合が出る
+- **開発時の注意**: `orchestrator/`はDockerイメージのビルド時に`COPY`で焼き込まれ、そのイメージから変換されたVMのrootfsの中身が後から変わることはない。オーケストレーター（`investigate_plan_graph.py`・`implement_review_graph.py`）や`runtime/`配下のコードを変更した後に実機テストを行う場合、`masuda-loop:latest`（base）と使用する言語バリアントイメージの両方を必ず再ビルドしてからVMを起動し直すこと。再ビルドを忘れると、古いコードのままVMが動き続け、新しい段階が一切実行されずに次の段階へ直行するなど、原因が分かりにくい形で不具合が出る
 
 ## 開発環境
 

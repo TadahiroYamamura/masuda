@@ -10,48 +10,10 @@
 - Go: `go build ./...`・`go vet ./...`・`go test ./...`（標準の`go`ツールチェーンのみ、追加セットアップ不要）
 - GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使うこと。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
 
-## VM実行基盤（Issue #31、開発中）の追加要件
+## VM実行基盤（Issue #31）を扱う開発上の注意
 
-masudaはサンドボックスの実行基盤をDockerからCloud Hypervisor（MicroVM）へ移行する作業を進めている（Issue #31）。以下は**この移行作業に参加する場合のみ**必要——`masuda internal rootfs build`等、開発中のツールでのみ使う。VM backend自体（`masuda sandbox start`のVM版）はまだ存在せず、通常のmasuda利用には一切関係ない。
+VM実行基盤そのもののセットアップ手順（Cloud Hypervisor・virtiofsd配置、`scripts/setup-vm-host.sh`、VMゲストSSH鍵、VMゲストのClaude認証）は利用者向け手順として`docs/INSTALLATION.md`「VM実行基盤のセットアップ」節に統合済み——masudaを使うだけなら、このリポジトリの開発に参加していなくても必要になるため。以下は`internal/sandbox`・`internal/rootfs`・`cmd/masuda-net-helper`等、masuda自身のGoコードを変更する開発者だけが意識すればよい注意点。
 
-### 事前に手動で用意するもの
-
-- **Cloud Hypervisor・virtiofsd**（`~/.local/bin/`等、`$PATH`が通った場所に配置。標準のaptパッケージが無く、ダウンロード元がバージョン依存のためスクリプト化していない）
-- **linux-image-genericの初回インストール**（未導入の場合）: `sudo apt-get install -y linux-image-generic`（インストール後の権限修正は下記スクリプトが行う）
-
-### ホスト側の一度きりのセットアップ
-
-上記2点を用意したら、以下を実行する（再実行しても安全な冪等スクリプト）。
-
-```bash
-bash scripts/setup-vm-host.sh
-```
-
-行っている内容（詳細・理由は各手順に対応するコミット・スクリプト自身のコメントを参照）:
-
-- `fakeroot`・`e2fsprogs`のインストール（`internal/rootfs.Build`がDockerイメージの所有権を保ったままext4イメージへ変換するために使用）
-- `vmlinuz`（ゲストOS用カーネル）を、一般ユーザーが読める場所へ複製（インストール直後はroot:root・mode 600のため）
-- TAP＋ブリッジ（`br-masuda0`）＋outbound NATのセットアップ（個々のワークスペース用TAPデバイスは`masuda-net-helper`が動的に作成・削除する、ブリッジ自体が複数VMで共有されるホスト単位のインフラ）
-- `masuda-net-helper`のビルド＋`setcap`（Issue #31 M5-2）: `internal/sandbox`のTAP管理（`EnsureTap`/`ReleaseTap`）が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（スクリプトは毎回再実行する前提で書かれている）
-- `dnsmasq`のインストール＋設定＋有効化（Issue #31 M5-5）: `br-masuda0`だけにバインドしたDHCPサーバー。VMゲストのIPアドレスは`systemd-networkd`のDHCPクライアントで自動取得する（複数ワークスペースが並行稼働してもmasuda側で独自のIP割り当て機構を持たずに済む）
-
-### VMゲストSSH鍵（Issue #31 M5-5）
-
-`masuda chat`のVM版は`docker exec`の代わりにSSHでゲストへ接続する。鍵は`masuda`のインストール単位で1組（ワークスペースごとではない）。初回は自動生成される（`EnsureSSHKeypair`）が、明示的に再生成したい場合（鍵の流出が疑われる場合等）:
-
-```bash
-masuda internal vm-ssh-key rotate
-```
-
-秘密鍵はホスト側にしか存在せず、ゲストのrootfsには公開鍵だけが`internal/rootfs.Build`のExtraFile機構でビルド時に注入される（Dockerfileには焼き込まない——鍵を再生成してもDockerイメージの再ビルドが不要なようにするため）。**既知の制限**: 再生成しても、既にビルド済みのrootfsイメージ・起動中のVMは古い公開鍵を信頼し続ける（rebuild/restartまで遡及しない）。masudaのワークスペースは使い捨てなので許容している。
-
-### VMゲストのClaude認証（Issue #31 M5-6）
-
-DockerパスはホストのClaude Code認証情報ファイル（`~/.claude/.credentials.json`・`~/.claude.json`）をそのままbind mountして使い回すが、VMゲストは別カーネルのためこの方式が使えない（virtiofsはディレクトリ単位の共有しかできず、Dockerのような「2ファイルだけを狙ったbind mount」を再現できない）。代わりに、CI/ヘッドレス環境向けに用意されている長期OAuthトークン（`claude setup-token`、サブスクリプション連携・有効期限1年）を使う。
-
-```bash
-claude setup-token   # 出力されたトークン文字列をコピー
-echo "<コピーしたトークン>" | masuda internal claude-token set
-```
-
-保存先は`~/.local/share/masuda/claude-oauth-token`（mode 0600、`internal/sandbox/claudetoken.go`）。`VMBackend.Start`はこのファイルが存在する場合のみ、専用のvirtiofs共有（`/masuda-secrets`、`runtime/fstab.vm`の`claude-secrets`タグ）でゲストへ渡す。トークンが未登録でもVM起動自体はブロックされない（`masuda-loop.service`はこのマウントを`Requires=`ではなく`After=`にしている）——ゲスト内の`claude`が「ログインしていません」と表示するだけ。
+- `masuda-net-helper`は`CAP_NET_ADMIN`をsetcapで単体付与している（masuda本体には付与しない）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（`bash scripts/setup-vm-host.sh`を再実行すればよい、冪等）
+- `internal/rootfs.Build`を変更した場合、`internal/rootfs/build_test.go`（実docker daemonが必要、無ければ自動skip）で確認すること
+- `internal/sandbox/vmbackend.go`を変更した場合の実機検証は、`masuda-loop:latest`イメージの再ビルド（`docker build -t masuda-loop:latest .`）を忘れないこと——Dockerfile自体は変更していなくても、`runtime/`配下のファイル（`entrypoint.sh`等）はCOPYで焼き込まれているため

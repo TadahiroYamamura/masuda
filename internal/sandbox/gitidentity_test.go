@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"os"
 	"os/exec"
 	"path/filepath"
 	"testing"
@@ -57,29 +58,49 @@ func TestGitConfigValueEmptyWhenUnset(t *testing.T) {
 	}
 }
 
-func TestGitIdentityEnvArgs(t *testing.T) {
-	withIsolatedGlobalConfig(t, "user.name", "A Name", "user.email", "a@example.com")
-	root := newBareRepoRoot(t)
-	args := gitIdentityEnvArgs(root)
-	want := []string{
-		"-e", "GIT_AUTHOR_NAME=A Name", "-e", "GIT_COMMITTER_NAME=A Name",
-		"-e", "GIT_AUTHOR_EMAIL=a@example.com", "-e", "GIT_COMMITTER_EMAIL=a@example.com",
-	}
-	if len(args) != len(want) {
-		t.Fatalf("gitIdentityEnvArgs() = %v, want %v", args, want)
-	}
-	for i := range want {
-		if args[i] != want[i] {
-			t.Errorf("gitIdentityEnvArgs()[%d] = %q, want %q", i, args[i], want[i])
-		}
-	}
-}
-
-func TestGitIdentityEnvArgsEmptyWhenNoIdentity(t *testing.T) {
+// TestWriteGitIdentity confirms the two-line file format WriteGitIdentity
+// produces (see its doc comment for why it's plain lines, not a
+// shell-sourceable file) round-trips a name containing a space intact --
+// runtime/entrypoint.sh reads this with `sed -n '1p'`/`'2p'`.
+func TestWriteGitIdentity(t *testing.T) {
 	withIsolatedGlobalConfig(t)
 	root := newBareRepoRoot(t)
-	if args := gitIdentityEnvArgs(root); args != nil {
-		t.Errorf("gitIdentityEnvArgs() = %v, want nil", args)
+	if err := exec.Command("git", "-C", root, "config", "--local", "user.name", "A Name With Spaces").Run(); err != nil {
+		t.Fatalf("seeding local config: %v", err)
+	}
+	if err := exec.Command("git", "-C", root, "config", "--local", "user.email", "a@example.com").Run(); err != nil {
+		t.Fatalf("seeding local config: %v", err)
+	}
+
+	stateDir := t.TempDir()
+	if err := WriteGitIdentity(stateDir, root); err != nil {
+		t.Fatalf("WriteGitIdentity() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(stateDir, gitIdentityFileName))
+	if err != nil {
+		t.Fatalf("reading identity file: %v", err)
+	}
+	want := "A Name With Spaces\na@example.com\n"
+	if string(content) != want {
+		t.Errorf("identity file content = %q, want %q", content, want)
 	}
 }
 
+func TestWriteGitIdentityEmptyWhenNoIdentity(t *testing.T) {
+	withIsolatedGlobalConfig(t)
+	root := newBareRepoRoot(t)
+
+	stateDir := t.TempDir()
+	if err := WriteGitIdentity(stateDir, root); err != nil {
+		t.Fatalf("WriteGitIdentity() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(stateDir, gitIdentityFileName))
+	if err != nil {
+		t.Fatalf("reading identity file: %v", err)
+	}
+	if string(content) != "\n\n" {
+		t.Errorf("identity file content = %q, want two empty lines", content)
+	}
+}

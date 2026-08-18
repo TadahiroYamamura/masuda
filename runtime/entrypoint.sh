@@ -56,6 +56,26 @@ if [ -r /masuda-secrets/token ]; then
     CLAUDE_CODE_OAUTH_TOKEN=$(cat /masuda-secrets/token)
 fi
 
+# VM boot path: git identity for the Build stage's per-step commits inside
+# the guest (see internal/sandbox/gitidentity.go's WriteGitIdentity) --
+# a VM's rootfs (built from the same Docker image) has no ~/.gitconfig any
+# more than a container did, so git itself has no identity to commit with
+# otherwise. Read as two plain lines (name, email), not sourced as shell,
+# since either value may contain characters that would need escaping to
+# embed safely in a script. Comes in for free over the existing
+# /masuda-state virtiofs mount, already required by masuda-loop.service.
+GIT_IDENTITY_FILE=/masuda-state/.masuda-git-identity
+if [ -r "$GIT_IDENTITY_FILE" ]; then
+    GIT_AUTHOR_NAME=$(sed -n '1p' "$GIT_IDENTITY_FILE")
+    GIT_AUTHOR_EMAIL=$(sed -n '2p' "$GIT_IDENTITY_FILE")
+    if [ -n "$GIT_AUTHOR_NAME" ]; then
+        export GIT_AUTHOR_NAME GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME"
+    fi
+    if [ -n "$GIT_AUTHOR_EMAIL" ]; then
+        export GIT_AUTHOR_EMAIL GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL"
+    fi
+fi
+
 # Pass the initial prompt as a positional argument so Claude starts working immediately.
 # MERGED_SETTINGS carries skipDangerousModePermissionPrompt: true (ADR-0034),
 # so the bypass-permissions-mode disclaimer dialog never appears here — no

@@ -21,9 +21,9 @@ worktreeの作成はDiscoveryより前に行う。理由は後述の「worktree�
 | **Discovery** | 調査 | サブエージェント（read-only、worktree全体にRead/Grep/LSP可） | 不要（メインのClaude CodeセッションがworktreeをホストOS上で直接読む） | タスク内容 | `INVESTIGATION.md` |
 | **Blueprint** | プラン作成 | サブエージェント | 不要 | INVESTIGATION.md | `PLAN.md` |
 | **plan gate** | プラン承認ゲート | 人間 | — | PLAN.md | 承認 or 差し戻し |
-| **Scaffold** | プロジェクト初期化 | Go CLI / entrypoint.sh | Docker起動 | worktree | 依存解決済み環境、LSP起動済み |（※未実装・予約名。依存解決は現状Buildの実装サブエージェント・Reviewのexplorerサブエージェントがそれぞれ自分のタスク内で必要に応じて行う形になっている。詳細は`CLAUDE.md`の「現状」節参照）
-| **Build** | 実装 | サブエージェント（write/Edit/Bash可） | Docker（フル） | PLAN.md | worktree上のコード変更 |
-| **Review** | レビュー | サブエージェント群（後述） | Docker（フル、Scaffoldの環境を再利用） | worktreeのdiff | `review_results/final_report.md` |
+| **Scaffold** | プロジェクト初期化 | Go CLI / entrypoint.sh | VM起動 | worktree | 依存解決済み環境、LSP起動済み |（※未実装・予約名。依存解決は現状Buildの実装サブエージェント・Reviewのexplorerサブエージェントがそれぞれ自分のタスク内で必要に応じて行う形になっている。詳細は`CLAUDE.md`の「現状」節参照）
+| **Build** | 実装 | サブエージェント（write/Edit/Bash可） | VM（フル） | PLAN.md | worktree上のコード変更 |
+| **Review** | レビュー | サブエージェント群（後述） | VM（フル、Scaffoldの環境を再利用） | worktreeのdiff | `review_results/final_report.md` |
 | **review gate** | 最終承認ゲート | 人間 | — | final_report.md + diff | 承認（マージ・後片付け） or 差し戻し |
 
 Discovery/Blueprint・Buildの詳細な内部設計は後述の各セクションを参照。
@@ -36,7 +36,7 @@ Discovery/Blueprint・Buildの詳細な内部設計は後述の各セクショ�
 - **後片付けの一貫性**: plan gateで差し戻されて終わったタスクも、[[0005-manual-push-automatic-worktree-ops]]の「worktree操作は自動化してよい」により、worktree削除だけで後片付けが完結する
 - **ゲート操作CLIの一貫性**: `masuda plan`・`masuda review`のどちらも同じ`<branch>`ベースのworktreeアドレッシングに統一でき、plan gateだけ特別扱いする必要がなくなる
 
-**サンドボックス（Docker起動）とworktree作成は別のタイミングでよい**ことに気づいたのが前倒しの決め手になった。worktreeの作成はホスト側のgit操作でしかなく、Dockerコンテナを起動する理由にはならない。Discovery/Blueprintはサンドボックスなしのまま、メインのClaude CodeセッションがworktreeをホストOS上で直接読み書きしてサブエージェントに委譲する形にした。Dockerサンドボックスの起動は引き続きScaffold（プロジェクト初期化）まで不要。
+**サンドボックス起動とworktree作成は別のタイミングでよい**ことに気づいたのが前倒しの決め手になった。worktreeの作成はホスト側のgit操作でしかなく、サンドボックスを起動する理由にはならない。Discovery/Blueprintはサンドボックスなしのまま、メインのClaude CodeセッションがworktreeをホストOS上で直接読み書きしてサブエージェントに委譲する形にした。サンドボックスの起動は引き続きScaffold（プロジェクト初期化）まで不要（サンドボックス自体は当初Dockerコンテナだったが、Issue #31でCloud Hypervisor microVMへ移行した——このタイミングの設計判断自体は実行基盤に依存しない）。
 
 ## 役割分担: メインエージェント / サブエージェント
 
@@ -160,12 +160,12 @@ plan gate（プラン承認）・review gate（レビュー承認）自体はこ
 
 ### ゲートの操作方法: chat + approve/reject の二択
 
-当初「ファイル経由でapprove/reject」のみを想定していたが、実際の承認フローは「AIの提示したプランに対して質疑応答を繰り返し、懸念が晴れてから承認する」という対話的なものであり、コンテナ起動を伴うファイル往復では遅すぎる。そのため以下の2パスを用意する。
+当初「ファイル経由でapprove/reject」のみを想定していたが、実際の承認フローは「AIの提示したプランに対して質疑応答を繰り返し、懸念が晴れてから承認する」という対話的なものであり、サンドボックス起動を伴うファイル往復では遅すぎる。そのため以下の2パスを用意する。
 
-- `masuda plan chat` / `masuda review chat`: ゲートに到達した時点でコンテナ（tmuxセッション）を終了させずに待機させ、`docker exec -it ... tmux attach`で直接アタッチして対話する。プランを作った本人（同じコンテキスト）と直接質疑応答でき、納得したら会話の中で「進めていい」と伝えるとClaude自身が承認マーカーを書いてループを再開する
+- `masuda plan chat` / `masuda review chat`: ゲートに到達した時点でサンドボックス（tmuxセッション）を終了させずに待機させ、`masuda chat`でSSH経由（VMゲスト、`internal/sandbox.VMBackend.AttachArgs`）に直接アタッチして対話する。プランを作った本人（同じコンテキスト）と直接質疑応答でき、納得したら会話の中で「進めていい」と伝えるとClaude自身が承認マーカーを書いてループを再開する
 - `masuda plan approve/reject "<feedback>"` / `masuda review approve/reject "<feedback>"`: 質疑不要な場合の即決パス。別ターミナルから承認マーカー・却下フィードバックをファイルに書き込む
 
-ゲートで待機中のコンテナは終了しない設計にした。これは対話の可能性があるため。ただし待機中はリソースをほぼ消費しない（LLM呼び出しが発生していないアイドル状態）。
+ゲートで待機中のサンドボックスは終了しない設計にした。これは対話の可能性があるため。ただし待機中はリソースをほぼ消費しない（LLM呼び出しが発生していないアイドル状態）。
 
 ## レビュー単体での再利用
 
@@ -189,8 +189,8 @@ masuda review <branch-or-ref>   # デフォルトは現在ブランチ vs develo
 
 **実際のファイル一覧・各ファイルの役割は`CLAUDE.md`の「現状」節を参照**（本セクションに書いていたASCIIツリーは実装が進むにつれ`scripts/local_review.sh`・`runtime/mcp/lsp-config.json`のように実際には作られなかったファイルを含む形で古くなったため削除した）。以下は判断軸として現在も有効な原則のみ残す。
 
-- masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は対象リポジトリのworktreeとは独立した場所に置く（Dockerサンドボックス内では`/opt/masuda`、ホスト側では`~/.local/share/masuda/workspaces/<workspace-id>/`という状態ディレクトリ。[[0014-workspace-id-and-external-state-directory]]参照）
-- **重要な制約**: `runtime/CLAUDE.md`（作業ループ仕様）は、対象リポジトリのworktreeの`CLAUDE.md`を上書きコピーしてはいけない。対象リポジトリには既にプロジェクト固有のCLAUDE.mdが存在しており、上書きするとそれが失われる。Claude Codeはユーザーレベル（`~/.claude/CLAUDE.md`）とプロジェクトレベルのCLAUDE.mdを両方読んで重ね合わせる仕組みを持っているため、ループ仕様はサンドボックスコンテナの`~/.claude/CLAUDE.md`（対象リポジトリとは独立した場所）に配置する
+- masuda自身の制御ファイル（`venv`・`orchestrator`・`runtime`）は対象リポジトリのworktreeとは独立した場所に置く（サンドボックスVM内では`/opt/masuda`、ホスト側では`~/.local/share/masuda/workspaces/<workspace-id>/`という状態ディレクトリ。[[0014-workspace-id-and-external-state-directory]]参照）
+- **重要な制約**: `runtime/CLAUDE.md`（作業ループ仕様）は、対象リポジトリのworktreeの`CLAUDE.md`を上書きコピーしてはいけない。対象リポジトリには既にプロジェクト固有のCLAUDE.mdが存在しており、上書きするとそれが失われる。Claude Codeはユーザーレベル（`~/.claude/CLAUDE.md`）とプロジェクトレベルのCLAUDE.mdを両方読んで重ね合わせる仕組みを持っているため、ループ仕様はサンドボックスVMの`~/.claude/CLAUDE.md`（対象リポジトリとは独立した場所）に配置する
 
 ## 予算管理
 

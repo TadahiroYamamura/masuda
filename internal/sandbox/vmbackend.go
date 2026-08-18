@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	masuda "github.com/TadahiroYamamura/masuda"
 	"github.com/TadahiroYamamura/masuda/internal/rootfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -45,16 +46,17 @@ const (
 // /masuda-state, StartMCPRelay for the gate-wait MCP connection, and
 // EnsureSSHKeypair/SSHAttachArgs for `masuda chat`.
 //
-// Not wired into any masuda subcommand yet -- `.masuda/settings.json`
-// backend selection and `masuda sandbox start` choosing between
-// DockerBackend and VMBackend is a later, separate step (the original
-// roadmap's M6), deliberately left to the user to decide when to take.
+// The only Backend implementation now wired into `masuda sandbox
+// start`/`stop` and every other cmd/masuda call site (see
+// cmd/masuda/sandbox.go's sandboxBackend) -- DockerBackend was deleted once
+// this proved stable in real use, so there's no `.masuda/settings.json`
+// backend-selection field either.
 type VMBackend struct{}
 
 var _ Backend = VMBackend{}
 
 func (VMBackend) Start(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) {
-	return vmStart(id, worktreeDir, stateDir, image)
+	return vmStart(id, worktreeDir, stateDir, repoRoot, image)
 }
 
 func (VMBackend) Stop(id string) error {
@@ -191,7 +193,7 @@ func vmClaudeSecretsSocketPath(workDir string) string {
 // vmStart builds (if not already running) everything a VM needs and boots
 // it. Idempotent like DockerBackend's Start: if id's VM is already running,
 // it returns immediately without rebuilding anything.
-func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
+func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) {
 	if vmIsRunning(id) {
 		return Handle{ID: id, ContainerName: TapName(id)}, nil
 	}
@@ -210,6 +212,14 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 	username, err := currentUsername()
 	if err != nil {
 		return Handle{}, err
+	}
+
+	// Shared into the guest for free via the existing /masuda-state
+	// virtiofs mount (started below) -- no separate share needed, unlike
+	// the claude-secrets one, since this isn't sensitive and stateDir is
+	// already workspace-scoped.
+	if err := WriteGitIdentity(stateDir, repoRoot); err != nil {
+		return Handle{}, fmt.Errorf("writing git identity for guest: %w", err)
 	}
 
 	// SSH: only the public key ever goes into the guest (ExtraFile below);
@@ -232,6 +242,14 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 	rootfsPath := filepath.Join(workDir, "rootfs.img")
 	extra := []rootfs.ExtraFile{
 		{GuestPath: "home/ubuntu/.ssh/authorized_keys", Content: pubKey, Mode: 0o600, UID: 1000, GID: 1000},
+		// The Docker path injects this via `docker cp` after `docker create`,
+		// deliberately not baked into the Docker image itself (ADR-0007), so
+		// the loop protocol can be iterated on without an image rebuild. A
+		// VM's rootfs has no equivalent "image vs. container" split -- it's
+		// rebuilt from scratch on every Start regardless (see rootfs.Build's
+		// own doc comment) -- so injecting it as an ExtraFile here costs
+		// nothing extra and needs no separate delivery mechanism.
+		{GuestPath: "home/ubuntu/.claude/CLAUDE.md", Content: masuda.ClaudeMD, Mode: 0o644, UID: 1000, GID: 1000},
 		virtiofsModule,
 	}
 	if err := rootfs.Build(image, rootfsPath, extra); err != nil {

@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/hostloop"
-	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -179,7 +178,7 @@ func newWorkspaceInfoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			running := hostloop.IsRunning(info.ID) || sandbox.IsRunning(info.ID)
+			running := hostloop.IsRunning(info.ID) || sandboxBackend.IsRunning(info.ID)
 			fmt.Fprintf(cmd.OutOrStdout(), "id=%s\nname=%s\nbranch=%s\nbase=%s\nworktree=%s\nstate_dir=%s\nstatus=%s\nrunning=%t\n",
 				info.ID, info.Name, info.Branch, info.Base, worktree.Dir(root, info.ID), stateDir, workspace.Status(info.ID), running)
 			return nil
@@ -252,7 +251,7 @@ func newWorkspaceListCommand() *cobra.Command {
 				entries[i] = workspace.EntryStatus{
 					Info:       info,
 					TaskStatus: workspace.Status(info.ID),
-					Running:    hostloop.IsRunning(info.ID) || sandbox.IsRunning(info.ID),
+					Running:    hostloop.IsRunning(info.ID) || sandboxBackend.IsRunning(info.ID),
 				}
 			}
 			fmt.Fprint(cmd.OutOrStdout(), workspace.FormatEntries(entries))

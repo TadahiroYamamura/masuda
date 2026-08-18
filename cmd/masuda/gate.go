@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/gate"
-	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -122,8 +121,8 @@ func finalizeReviewApproval(root, id string) error {
 	if err != nil {
 		return err
 	}
-	if sandbox.IsRunning(id) {
-		if err := sandbox.Stop(id); err != nil {
+	if sandboxBackend.IsRunning(id) {
+		if err := sandboxBackend.Stop(id); err != nil {
 			return fmt.Errorf("stopping sandbox after approval: %w", err)
 		}
 	}
