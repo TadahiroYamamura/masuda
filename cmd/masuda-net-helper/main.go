@@ -112,15 +112,43 @@ func createTap(name, bridge, ownerUser string) error {
 	if err != nil {
 		return fmt.Errorf("parsing uid %q for %s: %w", u.Uid, ownerUser, err)
 	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		return fmt.Errorf("parsing gid %q for %s: %w", u.Gid, ownerUser, err)
+	}
 
 	tap := &netlink.Tuntap{
 		LinkAttrs: netlink.LinkAttrs{Name: name, MasterIndex: br.Attrs().Index, Alias: tapAliasMarker},
 		Mode:      netlink.TUNTAP_MODE_TAP,
 		Owner:     uint32(uid),
+		// netlink.LinkAdd always issues TUNSETGROUP (no "leave unset"
+		// option), and its zero value is gid 0 (root) -- confirmed live
+		// this is what actually broke cloud-hypervisor's boot ("Operation
+		// not permitted" from ConfigureTap), not the earlier PI-framing
+		// issue: `ip tuntap add` (which works) never calls TUNSETGROUP at
+		// all, leaving the kernel's own unset sentinel in place, so a tap
+		// owned by ubuntu but group-restricted to root fails for a
+		// cloud-hypervisor process that isn't in group root. Passing the
+		// kernel's "invalid gid" sentinel (0xffffffff) to try to reproduce
+		// "never called TUNSETGROUP" was tried and rejected by the kernel
+		// with EINVAL (make_kgid() itself validates the value) -- there's
+		// no way to skip the ioctl or pass "unset" through this library.
+		// Using ownerUser's own primary group instead is the actual fix:
+		// it's a guaranteed-valid gid, and since Owner already matches too,
+		// nothing meaningful is restricted beyond "must be this user".
+		Group: uint32(gid),
+		// TUNTAP_NO_PI: `ip tuntap add`'s own default, and what
+		// cloud-hypervisor (like other VMMs) expects -- without it, every
+		// packet carries an extra 4-byte "packet information" header
+		// vishvananda/netlink's own zero-value Flags default does *not*
+		// include (its TUNTAP_DEFAULTS omits it). Confirmed live: a tap
+		// created without this flag has `pi on` (`ip -d link show`), and
+		// cloud-hypervisor fails to attach to it with "ConfigureTap:
+		// Operation not permitted" -- not a permissions problem despite
+		// the error text, a PI-framing mismatch.
 		// NonPersist defaults to false, i.e. persistent -- matches `ip
-		// tuntap add` (no `one_queue`/`pi` flags either, matching the
-		// prior `ip tuntap add dev ... mode tap user ...` invocation this
-		// replaces).
+		// tuntap add`.
+		Flags: netlink.TUNTAP_DEFAULTS | netlink.TUNTAP_NO_PI,
 	}
 	if err := netlink.LinkAdd(tap); err != nil {
 		return fmt.Errorf("creating tap %s: %w", name, err)
