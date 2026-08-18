@@ -4,3 +4,9 @@
 # VMBackend passes to cloud-hypervisor/virtiofsd (M5-3).
 workspace /workspace virtiofs defaults,nofail 0 0
 masuda-state /masuda-state virtiofs defaults,nofail 0 0
+# claude-secrets: only present when VMBackend.Start found a saved `claude
+# setup-token` OAuth token to share (Issue #31 M5-6, internal/sandbox/
+# claudetoken.go) -- nofail so a missing/unstarted virtiofsd on this tag
+# doesn't block boot, and masuda-loop.service intentionally has no hard
+# dependency on this mount either (see that unit's own comment).
+claude-secrets /masuda-secrets virtiofs defaults,nofail 0 0

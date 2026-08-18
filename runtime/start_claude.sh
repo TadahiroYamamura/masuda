@@ -10,17 +10,29 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     exit 0
 fi
 
-# Same fixed port entrypoint.sh started the MCP relay on, once, for this
-# container's whole lifetime -- see that script for why a fixed port is
-# fine here. timeout (ms, 7 days): see runtime/entrypoint.sh -- confirmed
-# live that without this, Claude Code aborts a wait_for_gate_change call on
-# its own hard wall-clock MCP tool timeout well under a minute.
-MCP_RELAY_PORT=39217
-MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http://127.0.0.1:$MCP_RELAY_PORT/\",\"timeout\":604800000}}}"
+# Same relay entrypoint.sh already started (or, on the VM boot path, the
+# host-side one VMBackend.Start runs -- see that script's own comment), for
+# this container/VM's whole lifetime -- just resolve the same address again
+# rather than starting a second one. timeout (ms, 7 days): see
+# runtime/entrypoint.sh -- confirmed live that without this, Claude Code
+# aborts a wait_for_gate_change call on its own hard wall-clock MCP tool
+# timeout well under a minute.
+MCP_RELAY_ADDR=$(sed -n 's/.*masuda\.mcp_relay=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -z "$MCP_RELAY_ADDR" ]; then
+    MCP_RELAY_ADDR="127.0.0.1:39217"
+fi
+MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http://$MCP_RELAY_ADDR/\",\"timeout\":604800000}}}"
 
 # See runtime/entrypoint.sh for why this merge happens before --settings.
 MERGED_SETTINGS=/tmp/masuda-claude-settings.json
 python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
+
+# See runtime/entrypoint.sh for what this is and why it's export'd rather
+# than inlined into the tmux command string.
+if [ -r /masuda-secrets/token ]; then
+    export CLAUDE_CODE_OAUTH_TOKEN
+    CLAUDE_CODE_OAUTH_TOKEN=$(cat /masuda-secrets/token)
+fi
 
 # MERGED_SETTINGS carries skipDangerousModePermissionPrompt: true (ADR-0034),
 # so the bypass-permissions-mode disclaimer dialog never appears here — no

@@ -175,6 +175,19 @@ func vmWorkspaceSocketPath(workDir string) string {
 func vmStateSocketPath(workDir string) string { return filepath.Join(workDir, "virtiofs-state.sock") }
 func vmRelayPortFile(workDir string) string   { return filepath.Join(workDir, "mcp-relay.port") }
 
+// vmClaudeSecretsDir/vmClaudeSecretsSocketPath stage the `claude
+// setup-token` OAuth token (see internal/sandbox/claudetoken.go) for
+// sharing into the guest at /masuda-secrets (runtime/fstab.vm's
+// claude-secrets tag) -- a separate share from /masuda-state so this
+// credential never ends up inside a target repository's workspace state,
+// and separate from the rootfs image so a token registered or rotated
+// after a workspace's rootfs was built still takes effect on the next
+// Start without a rebuild.
+func vmClaudeSecretsDir(workDir string) string { return filepath.Join(workDir, "claude-secrets") }
+func vmClaudeSecretsSocketPath(workDir string) string {
+	return filepath.Join(workDir, "virtiofs-claude-secrets.sock")
+}
+
 // vmStart builds (if not already running) everything a VM needs and boots
 // it. Idempotent like DockerBackend's Start: if id's VM is already running,
 // it returns immediately without rebuilding anything.
@@ -242,8 +255,44 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 		return Handle{}, fmt.Errorf("starting virtiofsd for /masuda-state: %w", err)
 	}
 
+	// claude-secrets: only shared when a token has actually been registered
+	// (`masuda internal claude-token set`) -- see claudetoken.go's doc
+	// comment for why the Docker path's ~/.claude file bind mounts don't
+	// translate to a VM guest. Not finding one is not an error here: the
+	// guest just boots without it (and Claude Code inside prints its own
+	// "not logged in" message), the same as a fresh masuda install that
+	// hasn't been set up for the VM path at all yet.
+	var secretsVF *VirtiofsProcess
+	if tokenPath, err := ClaudeOAuthTokenPath(); err == nil {
+		if token, err := os.ReadFile(tokenPath); err == nil {
+			secretsDir := vmClaudeSecretsDir(workDir)
+			if err := os.MkdirAll(secretsDir, 0o700); err != nil {
+				_ = stateVF.Stop()
+				_ = wsVF.Stop()
+				_ = ReleaseTap(id)
+				return Handle{}, fmt.Errorf("creating claude secrets staging directory: %w", err)
+			}
+			if err := os.WriteFile(filepath.Join(secretsDir, "token"), token, 0o600); err != nil {
+				_ = stateVF.Stop()
+				_ = wsVF.Stop()
+				_ = ReleaseTap(id)
+				return Handle{}, fmt.Errorf("staging claude oauth token: %w", err)
+			}
+			secretsVF, err = StartVirtiofs(secretsDir, vmClaudeSecretsSocketPath(workDir), filepath.Join(workDir, "virtiofs-claude-secrets.log"))
+			if err != nil {
+				_ = stateVF.Stop()
+				_ = wsVF.Stop()
+				_ = ReleaseTap(id)
+				return Handle{}, fmt.Errorf("starting virtiofsd for /masuda-secrets: %w", err)
+			}
+		}
+	}
+
 	relayPort, err := freePort()
 	if err != nil {
+		if secretsVF != nil {
+			_ = secretsVF.Stop()
+		}
 		_ = stateVF.Stop()
 		_ = wsVF.Stop()
 		_ = ReleaseTap(id)
@@ -254,6 +303,9 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 		vmBridgeGatewayIP, relayPort,
 		filepath.Join(workDir, "mcp-relay.log"))
 	if err != nil {
+		if secretsVF != nil {
+			_ = secretsVF.Stop()
+		}
 		_ = stateVF.Stop()
 		_ = wsVF.Stop()
 		_ = ReleaseTap(id)
@@ -265,6 +317,9 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 	// recomputed, relayPort was randomly chosen by freePort(), so it has to
 	// be persisted for Stop to find and kill the right process.
 	if err := os.WriteFile(vmRelayPortFile(workDir), []byte(strconv.Itoa(relayPort)), 0o644); err != nil {
+		if secretsVF != nil {
+			_ = secretsVF.Stop()
+		}
 		_ = relay.Stop()
 		_ = stateVF.Stop()
 		_ = wsVF.Stop()
@@ -274,12 +329,20 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 
 	mac := MACFor(id)
 	cmdline := fmt.Sprintf("console=ttyS0 root=/dev/vda rw masuda.mcp_relay=%s", relay.Addr)
-	cmd := exec.Command(cloudHypervisorBinary,
+	fsArgs := []string{
+		"tag=workspace,socket=" + wsVF.SocketPath,
+		"tag=masuda-state,socket=" + stateVF.SocketPath,
+	}
+	if secretsVF != nil {
+		fsArgs = append(fsArgs, "tag=claude-secrets,socket="+secretsVF.SocketPath)
+	}
+	cmdArgs := []string{
 		"--kernel", kernelPath,
-		"--disk", "path="+rootfsPath+",readonly=off,image_type=raw",
+		"--disk", "path=" + rootfsPath + ",readonly=off,image_type=raw",
 		"--fs",
-		"tag=workspace,socket="+wsVF.SocketPath,
-		"tag=masuda-state,socket="+stateVF.SocketPath,
+	}
+	cmdArgs = append(cmdArgs, fsArgs...)
+	cmdArgs = append(cmdArgs,
 		"--net", "tap="+tapName+",mac="+mac,
 		"--cpus", vmCPUs,
 		"--memory", "size="+vmMemorySize+",shared=on",
@@ -287,7 +350,11 @@ func vmStart(id, worktreeDir, stateDir, image string) (Handle, error) {
 		"--console", "off",
 		"--serial", "file="+filepath.Join(workDir, "console.log"),
 	)
+	cmd := exec.Command(cloudHypervisorBinary, cmdArgs...)
 	if err := startBackgroundProcess(cmd, chPIDPath(workDir)); err != nil {
+		if secretsVF != nil {
+			_ = secretsVF.Stop()
+		}
 		_ = relay.Stop()
 		_ = stateVF.Stop()
 		_ = wsVF.Stop()
@@ -334,6 +401,7 @@ func vmStop(id string) error {
 
 	stopKnownProcess(vmWorkspaceSocketPath(workDir))
 	stopKnownProcess(vmStateSocketPath(workDir))
+	stopKnownProcess(vmClaudeSecretsSocketPath(workDir)) // no-op if claude-secrets was never started (no token registered)
 
 	if port, err := os.ReadFile(vmRelayPortFile(workDir)); err == nil {
 		addr := vmBridgeGatewayIP + ":" + strings.TrimSpace(string(port))

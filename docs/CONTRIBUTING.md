@@ -44,3 +44,14 @@ masuda internal vm-ssh-key rotate
 ```
 
 秘密鍵はホスト側にしか存在せず、ゲストのrootfsには公開鍵だけが`internal/rootfs.Build`のExtraFile機構でビルド時に注入される（Dockerfileには焼き込まない——鍵を再生成してもDockerイメージの再ビルドが不要なようにするため）。**既知の制限**: 再生成しても、既にビルド済みのrootfsイメージ・起動中のVMは古い公開鍵を信頼し続ける（rebuild/restartまで遡及しない）。masudaのワークスペースは使い捨てなので許容している。
+
+### VMゲストのClaude認証（Issue #31 M5-6）
+
+DockerパスはホストのClaude Code認証情報ファイル（`~/.claude/.credentials.json`・`~/.claude.json`）をそのままbind mountして使い回すが、VMゲストは別カーネルのためこの方式が使えない（virtiofsはディレクトリ単位の共有しかできず、Dockerのような「2ファイルだけを狙ったbind mount」を再現できない）。代わりに、CI/ヘッドレス環境向けに用意されている長期OAuthトークン（`claude setup-token`、サブスクリプション連携・有効期限1年）を使う。
+
+```bash
+claude setup-token   # 出力されたトークン文字列をコピー
+echo "<コピーしたトークン>" | masuda internal claude-token set
+```
+
+保存先は`~/.local/share/masuda/claude-oauth-token`（mode 0600、`internal/sandbox/claudetoken.go`）。`VMBackend.Start`はこのファイルが存在する場合のみ、専用のvirtiofs共有（`/masuda-secrets`、`runtime/fstab.vm`の`claude-secrets`タグ）でゲストへ渡す。トークンが未登録でもVM起動自体はブロックされない（`masuda-loop.service`はこのマウントを`Requires=`ではなく`After=`にしている）——ゲスト内の`claude`が「ログインしていません」と表示するだけ。
