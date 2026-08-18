@@ -4,6 +4,9 @@
 
 Accepted (2026-08-04)
 
+- 一部改訂: [[0029-immediate-stop-escalation-dedicated-gate]] — 本ADRが暫定的にplan gate再オープンへ流用したエスカレーションのうち、セキュリティ由来の懸念は専用の`triage`ゲートに移った。それ以外（観点レビューが自動修正ループで収束しない場合）はplan gate再オープンのまま
+- 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — ステップ位置の追跡は`git rev-list --count`ではなく`masuda-step-<workspace-id>-<N>`というgit tagの数。TDDステップは1ステップで複数commitを積むため、commit数＝ステップ数という前提が成立しなくなった
+
 ## Context
 
 現行のフェーズ4（実装）は、`plan/steps.json`（[[0026-plan-md-as-prose-plus-per-step-json]]）

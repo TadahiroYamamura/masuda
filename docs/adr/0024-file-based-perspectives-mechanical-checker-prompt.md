@@ -4,6 +4,10 @@
 
 Accepted (2026-08-03)
 
+- 一部改訂: [[0025-drop-unused-category-severity-from-perspective-frontmatter]] — frontmatterの必須フィールドは`name`のみ
+- 一部改訂: [[0027-phase4-step-based-implement-review-commit-loop]] — frontmatterにBuild段階の途中レビュー用の`trigger`（任意）が加わった
+- 一部改訂: [[0033-perspective-enable-flag-and-release-asset-sync]] — frontmatterに`enable`が加わり、builtin観点の配布は`go:embed`ではなくGitHub Releaseアセット経由になった
+
 ## Context
 
 フェーズ5（レビュー）の14観点は`orchestrator/perspectives/config.py`にハードコードされており、全プロジェクトで同一の観点セットを適用している（[[0003-mechanical-vs-complex-review-nodes]]が定義した「機械的チェック」側の実体）。実プロジェクトで運用したところ、プロジェクト固有の規約に基づく観点を追加したい、AIが繰り返す失敗パターンを再発防止の観点として蓄積したい、という需要が明らかになった（GitHub Issue #1）。

@@ -4,6 +4,9 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0021-parallel-perspective-review-batching]] — 1ラウンドでN件のサブエージェントを並列起動する場合はN加算する、と数え方を明確化した（単位の定義自体は不変）
+- 一部改訂: [[0027-phase4-step-based-implement-review-commit-loop]] — Build/Review段階の予算は固定値200ではなく`BASE_BUDGET + PER_STEP_BUDGET × ステップ数`の動的計算になった
+
 ## Context
 
 [[0003-mechanical-vs-complex-review-nodes]]で、横断的チェックノードは1回の呼び出しが多ターンのエージェント探索になるため、機械的チェックが前提とする「1呼び出し=1単位」という予算管理（`MAX_RETRIES`・`ITERATION_BUDGET`）がそのままでは使えない、という課題を保留にしていた。

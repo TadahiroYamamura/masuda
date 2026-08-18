@@ -4,6 +4,9 @@
 
 Accepted (2026-08-17)
 
+- 一部改訂: [[0041-mcp-protocol-with-trusted-and-curated-surfaces]] — デーモンの通信プロトコルはMCP（JSON-RPC 2.0）に統一され、trusted用フルセットとClaude向けcurated setの2つのUDSソケットで公開される
+- 一部改訂: [[0042-mcp-tool-call-replaces-inotifywait-gate-wait]] — `WaitForChange`はゲート待機の実体として`wait_for_gate_change` toolから呼ばれる
+
 ## Context
 
 [[0017-inotifywait-for-gate-wait-polling]]のGATE待機機構は、`/masuda-state`がbind mountでホストとコンテナ間で同一inodeを共有していることに構造的に依存している——ホスト側の書き込みがコンテナ内から`inotifywait`のイベントとして即座に見えるのは、両者が同じファイルシステムエントリを指しているからに過ぎない。

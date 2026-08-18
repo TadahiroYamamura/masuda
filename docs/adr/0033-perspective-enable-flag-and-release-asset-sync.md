@@ -4,6 +4,8 @@
 
 Accepted (2026-08-05)
 
+- 一部改訂: [[0038-cosign-keyless-blob-verification-for-self-update]] — `SyncReviews`は署名バンドルの検証を通過した場合のみ展開する。「アセット自体が無ければ警告して継続」という緩和は残るが、アセットがあるのにバンドルが無い/検証に失敗するケースはハードフェイルする
+
 ## Context
 
 GitHub Issue #8は、masuda自体に新しい組み込み観点が追加されたとき、既に`masuda init`済みのプロジェクトへ後から取り込む手段が無いという課題を扱う。[[0032-masuda-self-update-via-github-release-and-dockerhub-pull]]でmasuda自身のバージョン識別・`masuda update`という更新導線が確立したことで、Issue #8に着手できる前提が整った。

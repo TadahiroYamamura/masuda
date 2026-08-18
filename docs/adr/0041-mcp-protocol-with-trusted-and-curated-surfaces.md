@@ -4,6 +4,8 @@
 
 Accepted (2026-08-17)
 
+- 一部改訂: [[0043-child-mcp-server-aggregator-with-project-user-config-split]] — curated setには、承認済み子MCPサーバーのtoolが`<serverName>__<toolName>`という名前でプロキシ登録される
+
 ## Context
 
 [[0040-per-workspace-state-daemon-for-masuda-owned-state]]で状態デーモンの存在自体は決まったが、それを誰がどう呼ぶかは未決定だった。呼び手は大きく2種類ある——ホストCLI（`cmd/masuda`）・`orchestrator/*.py`のような「信頼された、masuda自身のコード」と、Claudeセッション自身（`runtime/CLAUDE.md`のGATE待機ステップ）という「エージェント本体」である。

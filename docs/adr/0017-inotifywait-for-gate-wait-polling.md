@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted (2026-07-29)
+Superseded by [[0042-mcp-tool-call-replaces-inotifywait-gate-wait]] (2026-08-17)
+
+Accepted (2026-07-29) — ゲート待機はMCP tool（`wait_for_gate_change`）呼び出しに置き換わり、`inotify-tools`もDockerfileから削除済み。本ADRが避けようとした「`while`ループがBashの許可リスク評価に引っかかる」問題は、ツール呼び出しがそもそもBashコマンドでないことにより問題のクラスごと消えた。
 
 ## Context
 

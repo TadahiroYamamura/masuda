@@ -4,6 +4,8 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0023-review-approve-fast-forward-not-local-merge]] — `review approve`のブランチ反映は`into`へのローカルmergeではなくfast-forward限定のPullになった。「pushは常に手動」という権限境界そのものは変わっていない
+
 ## Context
 
 サンドボックス内のAIエージェントが自律的に実行してよい操作と、人間の承認を必要とする操作を区別する必要がある。当初は「破壊的かどうか・不可逆かどうか」を軸に検討していた（worktreeのマージ・削除も含めて全て承認ゲートを挟む案）。

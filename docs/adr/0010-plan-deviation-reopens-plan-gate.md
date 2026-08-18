@@ -4,6 +4,10 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0027-phase4-step-based-implement-review-commit-loop]] — バックストップの突き合わせ対象は「PLAN.md全体のファイル一覧」ではなく「そのステップの`files`」。review gate却下時のみ全ステップのunionを使う
+- 一部改訂: [[0028-plan-predicted-byproducts-exempt-from-backstop]] — `expected_byproducts`にマッチするファイルは逸脱判定から除外される
+- 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — TDDステップでは`since_ref`（前ステップのtag）基準で、作業ツリーとcommit済み差分を合算して突き合わせる
+
 ## Context
 
 承認済みPLAN.mdと異なる実装をしたくなった場合、ユーザー自身がscope-discipline（宣言した範囲を超えない、プランと異なる判断は実装前に確認する）という原則を持っており、これを実装サブエージェントの振る舞いにもそのまま適用したい。

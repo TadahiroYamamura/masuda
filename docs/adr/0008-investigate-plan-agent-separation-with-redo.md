@@ -4,6 +4,9 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0026-plan-md-as-prose-plus-per-step-json]] — プランの成果物はPLAN.md単一ファイルではなく`plan/summary.md`＋`plan/steps.json`。`needs_more_investigation`によるredoの仕組み自体は不変
+- 一部改訂: [[0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite]] — investigate redoの完了判定に専用のpendingマーカーが挟まる
+
 ## Context
 
 フェーズ1（調査）とフェーズ2（プラン作成）を、[[0002-workflow-orchestrator-with-subagent-delegation]]の原則通り別々のサブエージェント（新規コンテキスト）で実行することにした場合、「プラン作成フェーズで必要な情報を調査フェーズが全て集めきれる」という前提を置くのか、という疑問が生じる。

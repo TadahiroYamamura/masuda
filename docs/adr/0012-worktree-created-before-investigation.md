@@ -4,6 +4,9 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — 「サンドボックスの起動はScaffold段階まで行わない」という境界は不変だが、サンドボックスの実体はDockerコンテナではなくCloud Hypervisor microVM
+- 本文中のフェーズ番号（0〜5）は旧称。現在の段階名との対応は[`../glossary.md`](../glossary.md)を参照
+
 ## Context
 
 当初の設計（design doc初版）では、フェーズ1（調査）・フェーズ2（プラン作成）は「サンドボックス不要」という理由から、G1承認後・実装直前（旧フェーズ3）までgit worktreeを作らず、メインチェックアウトを直接読み書きする案だった。

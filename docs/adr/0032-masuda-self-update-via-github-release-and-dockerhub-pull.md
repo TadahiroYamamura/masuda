@@ -4,6 +4,10 @@
 
 Accepted (2026-08-05)
 
+- 一部改訂: [[0033-perspective-enable-flag-and-release-asset-sync]] — `masuda init`/`masuda update`のreviews展開はGitHub Releaseアセット経由になり、`masuda init`にネットワーク接続が必須になった
+- 一部改訂: [[0038-cosign-keyless-blob-verification-for-self-update]] — ダウンロードしたCLIバイナリ・reviewsアセットは、cosign keyless署名の検証を通さない限り書き込まれない
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — Docker Hubのbaseイメージは、コンテナ実行用ではなくVMのrootfsを作る変換元として使われる
+
 ## Context
 
 GitHub Issue #8（組み込みレビュー観点を、既にinit済みのプロジェクトへ後から取り込む手段）の検討中に、そもそもmasuda自体に「バージョンを識別し、最新化する」手段が一切存在しないことが判明した。masudaには`--version`フラグもなく、`go.mod`はGoツールチェインバージョンのみでモジュール自体のセマンティックバージョンを持たず、gitタグ運用もない。現状の運用実態は、開発者自身が`git clone`→`make build`/`make install`（バイナリを`/usr/local/bin`へ配置）→`make docker-images`（ローカル`docker build`、レジストリなし）で完結させる手動プロセスであり、READMEもほぼ空で公開配布の仕組みは存在しない。

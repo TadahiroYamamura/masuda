@@ -4,6 +4,9 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0027-phase4-step-based-implement-review-commit-loop]] — 自己検証ループの適用単位が「プラン全体を1回」から「`plan/steps.json`のステップごと」になった
+- 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — `mode: "tdd"`のステップではRed/Green/Refactorのサブループが内側に入る
+
 ## Context
 
 フェーズ5（実装）のサブエージェントはwrite/Edit/Bash権限を持つ。書いたコードがビルドやテストに失敗する状態のままフェーズ6（レビュー）に渡すのは、レビューの意味を薄れさせるため望ましくない。

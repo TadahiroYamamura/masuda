@@ -4,6 +4,8 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — `runtime/CLAUDE.md`をゲストの`~/.claude/CLAUDE.md`へ置く方針は不変だが、注入方法はコンテナ起動時の`docker cp`ではなくrootfsビルド時の`ExtraFile`焼き込みになった
+
 ## Context
 
 `develop`ブランチのCLAUDE.mdは「作業ループ仕様」（TASK.mdの読み書きルール、終了条件等）を記述しており、サンドボックスコンテナ内で自己ループするClaude Codeセッションに読ませることを意図している。一方`feat/github-actions-langgraph-nodes`ブランチのCLAUDE.mdは「masuda自身のツールがどう動くか」を説明する、人間・開発者向けの一般的なプロジェクトドキュメントである。masudaリポジトリのルートに置くCLAUDE.mdとして、両者は役割が異なり同じ場所に共存できない。

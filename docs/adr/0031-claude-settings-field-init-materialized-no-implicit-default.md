@@ -4,6 +4,10 @@
 
 Accepted (2026-08-05)
 
+- 一部改訂: [[0034-skip-dangerous-mode-permission-prompt-over-tmux-polling]] — `masuda init`が書き出すデフォルト値に`skipDangerousModePermissionPrompt: true`が加わった
+- 一部改訂: [[0043-child-mcp-server-aggregator-with-project-user-config-split]] — `.masuda/settings.json`に`mcpServers`フィールドが加わり、その承認・秘密情報は別ファイル`.masuda/settings.local.json`が持つ
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — Scaffold/Build/Review段階で`merge_claude_settings.py`が動く先はDockerコンテナではなくVMゲスト
+
 ## Context
 
 対象リポジトリに`.mcp.json`があると、`claude`の初回起動時にMCP信頼確認プロンプトが出て無人ループが止まる（GitHub Issue #10）。実機検証により、`--settings <file-or-json>`フラグが対象リポジトリの`.claude/settings.json`を含む他の全設定ファイルより優先されることを確認済みで、これを使えば解決できることまでは判明していた。

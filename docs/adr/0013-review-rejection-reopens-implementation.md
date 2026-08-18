@@ -4,6 +4,8 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0027-phase4-step-based-implement-review-commit-loop]] — review gate却下時の再実装は、ステップ機構とは別ルートの`implement_g2_redo`（プラン全体スコープの単発修正、ステップ分解を経由しない）として扱う
+
 ## Context
 
 フェーズ4（実装）とフェーズ5（レビュー）は同じDockerサンドボックス・同じ`runtime/CLAUDE.md`の自己ループ上で動く（ADR-0012の「サンドボックス起動とworktree作成は別タイミングでよい」と同じ理由で、フェーズ4-5は同一サンドボックスの中で連続して進む）。

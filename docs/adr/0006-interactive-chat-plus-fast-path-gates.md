@@ -4,6 +4,9 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0042-mcp-tool-call-replaces-inotifywait-gate-wait]] — chat内での自己承認は`resolve_gate_from_chat` MCP tool呼び出しに置き換わり、`triage`ゲートに対しては技術的に禁止された
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — アタッチ手段は`docker exec -it ... tmux attach`ではなくVMゲストへのSSH。CLIコマンドも`masuda plan chat`/`masuda review chat`ではなく`masuda chat <workspace-id>`に統一されている
+
 ## Context
 
 G1（プラン承認）・G2（レビュー承認）の当初案は、ファイル経由の非同期承認フローだった。ゲートに到達したコンテナは成果物（PLAN.md等）を書き出して終了し、人間はCLIでそれを確認して承認/却下ファイルを書き込み、CLIが新しいコンテナを起動して再開する、という設計。

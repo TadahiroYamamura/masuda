@@ -4,6 +4,8 @@
 
 Accepted (2026-07-29)
 
+- 一部改訂: [[0036-sync-uncommitted-masuda-config-into-clone]] — `worktree.Create`は`git clone --local`の直後に、repoRootの`.masuda/`設定をcloneへ上書きコピーする処理を追加で行う
+
 ## Context
 
 [[0012-worktree-created-before-investigation]]で「worktreeの作成タイミング」を決めたが、「どう作るか」は未決定だった。

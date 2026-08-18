@@ -4,6 +4,9 @@
 
 Accepted (2026-08-04)
 
+- 一部改訂: [[0028-plan-predicted-byproducts-exempt-from-backstop]] — `plan/steps.json`のトップレベルはステップの配列ではなく`{"steps": [...], "expected_byproducts": [...]}`というオブジェクト
+- 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — 各ステップに`"mode": "tdd"`が付きうる
+
 ## Context
 
 `PLAN.md`の「変更するファイル一覧」は、[[0010-plan-deviation-reopens-plan-gate]]の機械的

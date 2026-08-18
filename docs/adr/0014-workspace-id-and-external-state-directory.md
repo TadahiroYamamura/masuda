@@ -4,6 +4,9 @@
 
 Accepted (2026-07-27)
 
+- 一部改訂: [[0030-workspace-id-drops-branch-name-prefix]] — ワークスペースIDは`<sanitized-branch>-<hex>`ではなく乱数のみ
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — `/workspace`・`/masuda-state`はDockerのbind mountではなくVMゲストへのvirtiofs共有
+
 ## Context
 
 ロードマップ6番（`masuda review start`、レビュー単体エントリーポイント）の実装中、worktreeのパス・サンドボックスのコンテナ名がbranch名だけをキーにしていることに気づいた。同じbranchに対してフルパイプライン（`masuda plan start`→`sandbox start`）と単体レビュー（`masuda review start`）を並行稼働させると、同じworktree・同じコンテナを奪い合って衝突する。

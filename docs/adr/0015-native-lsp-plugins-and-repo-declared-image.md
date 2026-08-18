@@ -4,6 +4,9 @@
 
 Accepted (2026-07-27)
 
+- 一部改訂: [[0024-file-based-perspectives-mechanical-checker-prompt]] — 設定ファイルは`.masuda.json`ではなく`.masuda/settings.json`
+- 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — `image`が指すDockerイメージはコンテナとして起動されず、VMのrootfsを作る変換元としてのみ使われる。LSPプラグイン同梱というイメージ設計の意図自体は不変
+
 ## Context
 
 [[0003-mechanical-vs-complex-review-nodes]]・[[0011-iteration-budget-per-subagent-invocation]]は、横断的チェック（LSPによる整合性検証）をGo言語のLSPサーバー（gopls）をMCP経由でサブエージェントに持たせる方式で実現する前提だった。

@@ -4,6 +4,8 @@
 
 Accepted (2026-08-06)
 
+- 一部改訂: [[0043-child-mcp-server-aggregator-with-project-user-config-split]] — 新設された`.masuda/settings.local.json`（秘密情報を含む）は、意図的にコピー対象から除外する
+
 ## Decision
 
 `internal/worktree.Create`内、`git clone --local`成功後・`return dir, nil`の直前（branch-existsパスと新規branchパスの両方）で、新設のヘルパー`syncMasudaConfig(repoRoot, dir string) error`を呼ぶ。これは`repoRoot`の作業ツリー上の`.masuda/settings.json`（`config.SettingsPath`）・`.masuda/reviews/`（`perspectives.ReviewsDir`、配下を再帰的に`RemoveAll`→再構築でミラー）・存在すれば`.masuda/.gitignore`（`config.GitignorePath`）を、cloneが既に持っている内容の有無やtracked/untrackedの別に関わらず**常に上書き**でコピーする。
