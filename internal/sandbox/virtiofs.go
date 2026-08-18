@@ -1,13 +1,9 @@
 package sandbox
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
-	"syscall"
 	"time"
 )
 
@@ -29,13 +25,18 @@ type VirtiofsProcess struct {
 	SocketPath string
 }
 
+// pidPath derives the file startBackgroundProcess records a process's PID
+// in, from the path that identifies it (a socket path here; a listen
+// address for StartMCPRelay). A later Start for the same identity uses this
+// to find and kill an orphan from a crashed previous run.
+func pidPath(identity string) string {
+	return identity + ".pid"
+}
+
 // StartVirtiofs launches virtiofsd serving dir over a fresh vhost-user UDS
 // at socketPath, logging virtiofsd's own stdout/stderr to logPath for
 // diagnostics. Safe to call again for a socketPath a crashed previous run
-// left behind: any orphaned virtiofsd process still holding that path (see
-// pidPath) is killed first, then the stale socket file is cleared, mirroring
-// EnsureTap's "clear any stale leftover, then create" pattern for TAP
-// devices -- allocation and stale reclaim are the same code path here too.
+// left behind -- see startBackgroundProcess.
 //
 // --sandbox=none: virtiofsd's own default (--sandbox=namespace) needs
 // newuidmap/newgidmap (the uidmap package), which isn't installed and isn't
@@ -48,7 +49,7 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 		return nil, fmt.Errorf("%s not found on PATH (required for VM shared directories, Issue #31): %w", virtiofsdBinary, err)
 	}
 
-	killStalePID(socketPath)
+	killStalePID(pidPath(socketPath))
 
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("clearing stale socket %s: %w", socketPath, err)
@@ -67,20 +68,13 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := cmd.Start(); err != nil {
+	if err := startBackgroundProcess(cmd, pidPath(socketPath)); err != nil {
 		return nil, fmt.Errorf("starting virtiofsd for %s: %w", dir, err)
 	}
 
 	if err := waitForSocket(socketPath, virtiofsStartupTimeout); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
+		_ = stopBackgroundProcess(cmd.Process, pidPath(socketPath))
 		return nil, fmt.Errorf("virtiofsd for %s did not create its socket in time: %w", dir, err)
-	}
-
-	if err := os.WriteFile(pidPath(socketPath), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
-		_ = cmd.Process.Kill()
-		_, _ = cmd.Process.Wait()
-		return nil, fmt.Errorf("recording virtiofsd pid for %s: %w", dir, err)
 	}
 
 	return &VirtiofsProcess{cmd: cmd, SocketPath: socketPath}, nil
@@ -89,54 +83,13 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 // Stop terminates the virtiofsd process and removes its socket and pid
 // files. Not an error if the process has already exited on its own.
 func (v *VirtiofsProcess) Stop() error {
-	if v.cmd.Process != nil {
-		if err := v.cmd.Process.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
-			return fmt.Errorf("stopping virtiofsd: %w", err)
-		}
-		_, _ = v.cmd.Process.Wait()
+	if err := stopBackgroundProcess(v.cmd.Process, pidPath(v.SocketPath)); err != nil {
+		return err
 	}
 	if err := os.Remove(v.SocketPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing socket %s: %w", v.SocketPath, err)
 	}
-	if err := os.Remove(pidPath(v.SocketPath)); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("removing pid file for %s: %w", v.SocketPath, err)
-	}
 	return nil
-}
-
-// pidPath derives the file StartVirtiofs records its virtiofsd process's
-// PID in, so a later StartVirtiofs for the same socketPath can find and
-// kill an orphaned instance from a crashed previous run (masuda's own
-// process, or the whole host, dying before Stop ran).
-func pidPath(socketPath string) string {
-	return socketPath + ".pid"
-}
-
-// killStalePID kills any process recorded by a previous StartVirtiofs for
-// socketPath, if it's still alive. Best effort: any error here (missing pid
-// file, already-dead process, permission issue) is silently ignored -- the
-// subsequent os.Remove(socketPath) and fresh virtiofsd start are what
-// actually matter, this is just cleanup so an orphan doesn't keep running
-// forever in the background.
-//
-// Deliberately doesn't call Process.Wait: that PID belongs to a *previous*
-// masuda run (masuda itself may have crashed and restarted, or this is a
-// fresh process entirely), not a child of the current process, and Wait
-// only works for actual children -- it would just fail with ECHILD.
-func killStalePID(socketPath string) {
-	data, err := os.ReadFile(pidPath(socketPath))
-	if err != nil {
-		return
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return
-	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return
-	}
-	_ = proc.Signal(syscall.SIGTERM)
 }
 
 func waitForSocket(path string, timeout time.Duration) error {

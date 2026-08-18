@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -49,7 +50,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 
 	port := freeTCPPort(t)
 	relayErr := make(chan error, 1)
-	go func() { relayErr <- runMCPRelay(ctx, socketPath, port) }()
+	go func() { relayErr <- runMCPRelay(ctx, socketPath, "127.0.0.1", port) }()
 	waitForTCPPort(t, port)
 
 	transport := &mcp.StreamableClientTransport{Endpoint: fmt.Sprintf("http://127.0.0.1:%d/", port)}
@@ -107,6 +108,51 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	if err := <-relayErr; err != nil && err != context.Canceled {
 		t.Errorf("runMCPRelay() error = %v, want nil or context.Canceled", err)
 	}
+}
+
+// TestMCPRelayRespectsBindAddress confirms --bind actually changes which
+// address the relay listens on (not just accepted-but-ignored), using
+// 127.0.0.2 rather than 127.0.0.1 -- still loopback, so it needs no host
+// network setup, but a genuinely different address from the default,
+// proving the parameter is threaded through rather than silently dropped.
+// The VM path (Issue #31 M5-4) needs a real non-loopback bridge address in
+// practice, but that's a deployment detail this doesn't need real VM/bridge
+// infrastructure to verify.
+func TestMCPRelayRespectsBindAddress(t *testing.T) {
+	sockDir, err := os.MkdirTemp("", "relay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	socketPath := filepath.Join(sockDir, "daemon-curated.sock")
+
+	store, err := statedaemon.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	go func() { _ = mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
+	waitForFile(t, socketPath)
+
+	const bind = "127.0.0.2"
+	port := freeTCPPort(t)
+	go func() { _ = runMCPRelay(ctx, socketPath, bind, port) }()
+
+	addr := net.JoinHostPort(bind, strconv.Itoa(port))
+	deadline := time.Now().Add(2 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			conn.Close()
+			return
+		}
+		lastErr = err
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("nothing listening on %s (relay ignored --bind?): %v", addr, lastErr)
 }
 
 func waitForFile(t *testing.T, path string) {
