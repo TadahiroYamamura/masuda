@@ -17,5 +17,27 @@ masudaはサンドボックスの実行基盤をDockerからCloud Hypervisor（M
 - **fakeroot**（`internal/rootfs.Build`がDockerイメージのファイル所有権を保ったままext4イメージへ変換するために使用。Debian/Ubuntu系は`apt install fakeroot`）
 - **e2fsprogs**（`mkfs.ext4`・`debugfs`コマンド。通常プリインストール済み）
 - **linux-image-generic**（ゲストOS用カーネル`vmlinuz`の入手のため。Debian/Ubuntu系は`apt install linux-image-generic`）
-  - **既知の制限**: インストール直後の`/boot/vmlinuz-<version>`はroot:root所有・mode 600で、一般ユーザーからは読めない。Cloud Hypervisorはsudoなしで起動する設計のため、読み取り可能な場所へ複製する一手間が必要（M3で対応予定、現状未対応）
-- Cloud Hypervisor・virtiofsd・KVM（`/dev/kvm`）・vhost-vsock（`/dev/vhost-vsock`）は将来的な前提条件だが、現時点ではmasudaのコード側に依存箇所はまだない（Issue #31のspikeでの手動検証のみ）
+  - **既知の制限**: インストール直後の`/boot/vmlinuz-<version>`はroot:root所有・mode 600で、一般ユーザーからは読めない。読み取り可能な場所へ一度だけ複製する（自動化はしていない、手動での回避が前提）:
+    ```bash
+    sudo install -m 0644 -o "$USER" -g "$USER" \
+      /boot/vmlinuz-$(uname -r) \
+      ~/.local/share/masuda/vmlinuz-$(uname -r)
+    ```
+- **Cloud Hypervisor・virtiofsd**（`~/.local/bin/`等、`$PATH`が通った場所に配置）
+- **TAP＋ブリッジ＋NAT**（ホスト単位・一度きりのセットアップ。`eth1`は環境のデフォルトルート向きインターフェース名に読み替える）:
+  ```bash
+  sudo ip link add br-masuda0 type bridge
+  sudo ip addr add 192.168.200.1/24 dev br-masuda0
+  sudo ip link set br-masuda0 up
+  sudo sysctl -w net.ipv4.ip_forward=1
+  sudo iptables -t nat -A POSTROUTING -s 192.168.200.0/24 -o eth1 -j MASQUERADE
+  sudo iptables -A FORWARD -i br-masuda0 -o eth1 -j ACCEPT
+  sudo iptables -A FORWARD -i eth1 -o br-masuda0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+  ```
+  個々のワークスペース（VM）用のTAPデバイスはブリッジに接続する形で動的に作成・削除される（`masuda-net-helper`、下記）。ブリッジ自体は複数VMで共有される
+- **`masuda-net-helper`のビルド＋setcap**（Issue #31 M5-2）: `internal/sandbox`のTAP管理（`EnsureTap`/`ReleaseTap`）が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）:
+  ```bash
+  go build -o ~/.local/bin/masuda-net-helper ./cmd/masuda-net-helper
+  sudo setcap cap_net_admin+ep ~/.local/bin/masuda-net-helper
+  ```
+  バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`をやり直す必要がある
