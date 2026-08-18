@@ -116,3 +116,5 @@ masuda review start <branch> --base develop
 ```
 
 `workspace-id`は`masuda workspace list`で確認できる。各コマンドの詳細は`masuda <command> --help`、内部設計は`CLAUDE.md`の「現状」節を参照。
+
+masuda自体の開発（VM実行基盤への移行作業等）に参加する場合の追加要件は`docs/CONTRIBUTING.md`を参照。
