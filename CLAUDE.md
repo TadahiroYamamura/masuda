@@ -87,3 +87,4 @@ AIとの協同開発（Provision→Discovery→Blueprint→Scaffold→Build→Re
 - Python: `venv/`に依存関係インストール済み（`requirements.txt`）。テスト: `pytest orchestrator/tests/`
 - Go: `go build ./...`・`go vet ./...`・`go test ./...`（標準の`go`ツールチェーンのみ、追加セットアップ不要）
 - GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使うこと。このリポジトリ専用のトークンを`.env`（Claudeからは読み書き不可、`.claude/settings.json`参照）から読み込んで`gh`に渡すラッパー
+- rootfsイメージビルド（`masuda internal rootfs build`、Issue #31フェーズBのM2）: `docker`・`fakeroot`・`mkfs.ext4`（e2fsprogsパッケージ）が必要。`internal/sandbox`の統合テスト同様、無ければ`go test`は自動でskipする

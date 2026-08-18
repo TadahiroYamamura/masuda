@@ -96,6 +96,7 @@ func newInternalCommand() *cobra.Command {
 	cmd.AddCommand(newInternalStatedaemonCommand())
 	cmd.AddCommand(newInternalStateCommand())
 	cmd.AddCommand(newInternalMCPRelayCommand())
+	cmd.AddCommand(newInternalRootfsCommand())
 	return cmd
 }
 
