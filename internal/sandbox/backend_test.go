@@ -111,7 +111,11 @@ func TestDockerBackendLifecycle(t *testing.T) {
 	}
 
 	wantAttach := []string{"docker", "exec", "-it", h.ContainerName, "tmux", "attach", "-t", tmuxSession}
-	if got := backend.AttachArgs(id); strings.Join(got, " ") != strings.Join(wantAttach, " ") {
+	got, err := backend.AttachArgs(id)
+	if err != nil {
+		t.Fatalf("AttachArgs() error = %v", err)
+	}
+	if strings.Join(got, " ") != strings.Join(wantAttach, " ") {
 		t.Errorf("AttachArgs() = %v, want %v", got, wantAttach)
 	}
 

@@ -48,7 +48,13 @@ const (
 // requiredBinaries lists external commands Build shells out to. Checked up
 // front so a missing dependency fails fast with one clear error, not after
 // minutes of `docker export`.
-var requiredBinaries = []string{"docker", "fakeroot", "mkfs.ext4"}
+//
+// depmod is here unconditionally, not only when a caller actually injects
+// kernel modules via ExtraFile (e.g. VMBackend's virtiofs.ko, Issue #31
+// M5-6): this package only exists to build VM boot images, so a host able
+// to run Build at all is already expected to have the VM toolchain
+// (scripts/setup-vm-host.sh's kmod install) present.
+var requiredBinaries = []string{"docker", "fakeroot", "mkfs.ext4", "depmod"}
 
 // ExtraFile is a small file Build writes into the image's filesystem in
 // addition to whatever comes from the Docker image itself -- content that
@@ -238,13 +244,24 @@ func imageSizeMiB(tarPath string) (int, error) {
 
 // extractAndFormat extracts tarPath into extractDir, overlays stagingDir's
 // extra files (see Build's ExtraFile handling) on top, applies each extra
-// file's intended ownership from ownerManifestPath, and formats the result
-// as an ext4 image at imagePath sized sizeMiB -- all inside a single
-// fakeroot session so the ownership mkfs.ext4 bakes in is real (see Build's
-// doc comment). Arguments are passed to the fakeroot shell as positional
-// parameters ($1, $2, ...), not interpolated into the script string, so
-// paths containing shell-special characters can't break or inject into the
-// command.
+// file's intended ownership from ownerManifestPath, regenerates the kernel
+// module database for any /lib/modules/<version> tree an ExtraFile added
+// (see the depmod step below), and formats the result as an ext4 image at
+// imagePath sized sizeMiB -- all inside a single fakeroot session so the
+// ownership mkfs.ext4 bakes in is real (see Build's doc comment). Arguments
+// are passed to the fakeroot shell as positional parameters ($1, $2, ...),
+// not interpolated into the script string, so paths containing
+// shell-special characters can't break or inject into the command.
+//
+// depmod -b: a plain Docker/Ubuntu userland has no /lib/modules/<version>
+// tree of its own (containers don't carry kernel modules), so any module
+// files present here came entirely from an ExtraFile a caller injected
+// (e.g. VMBackend staging virtiofs.ko.zst so the guest's systemd-udevd can
+// auto-load it on PCI device detection, the same mechanism the Dockerfile's
+// kmod install already assumes -- Issue #31 M5-6). depmod only needs to see
+// whatever module files actually exist under the tree it's pointed at; it
+// doesn't require the rest of a real /lib/modules/<version> install to
+// resolve dependencies for modules that aren't present at all.
 //
 // The chown pass is not optional polish: confirmed live that `cp -a`'s own
 // ownership-preservation can't be trusted here. A staged extra file's real
@@ -266,6 +283,12 @@ if [ -n "$(ls -A "$3" 2>/dev/null)" ]; then
     [ -z "$rel" ] && continue
     chown "$owner_uid:$owner_gid" "$1/$rel"
   done < "$7"
+fi
+if [ -d "$1/lib/modules" ]; then
+  for moddir in "$1"/lib/modules/*/; do
+    [ -d "$moddir" ] || continue
+    depmod -b "$1" "$(basename "$moddir")"
+  done
 fi
 mkfs.ext4 -q -F -d "$1" -L "$4" "$5" "$6"M
 `

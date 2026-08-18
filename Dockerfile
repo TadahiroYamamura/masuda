@@ -35,6 +35,18 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # PCI device is detected; without it there's no working module autoload and
 # a VM boot would need its own ad hoc module-loading step instead.
 #
+# sudo is also VM boot path only (Issue #31 M5-6) -- VMBackend.Stop() SSHes
+# in and runs `sudo systemctl poweroff` for a clean guest shutdown before
+# tearing down the VM process, since an abrupt kill was confirmed live to
+# corrupt the disk image (no chance for the guest to unmount/sync). A
+# plain `systemctl poweroff` without root was tried first and denied --
+# logind's default polkit policy only allows it for an "active" (seat-
+# attached) session, which an SSH session isn't. The /etc/sudoers.d rule
+# below is scoped to poweroff only, not general sudo access, and only
+# takes effect for a process invoked as ubuntu -- Docker's ENTRYPOINT
+# doesn't grant that shell any credential to sudo with, so this has no
+# practical effect there either.
+#
 # openssh-server is also VM boot path only (Issue #31 M5-5) -- `masuda chat`
 # has no `docker exec` equivalent for a VM, so it SSHes in instead. Its own
 # apt postinst runs `ssh-keygen -A` once at image build time, baking host
@@ -49,8 +61,10 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod openssh-server \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod openssh-server sudo \
  && rm -f /etc/ssh/ssh_host_* \
+ && echo 'ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff' > /etc/sudoers.d/masuda-vm-poweroff \
+ && chmod 0440 /etc/sudoers.d/masuda-vm-poweroff \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI

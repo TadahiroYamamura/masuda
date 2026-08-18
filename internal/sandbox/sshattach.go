@@ -88,6 +88,14 @@ func findLeaseIP(mac, leaseFilePath string) (string, error) {
 // isn't a security property this internal, masuda-controlled connection
 // relies on the way an interactive SSH session to an arbitrary host would.
 func SSHAttachArgs(guestIP, privateKeyPath string) []string {
+	return append(sshBaseArgs(guestIP, privateKeyPath), "tmux", "attach", "-t", tmuxSession)
+}
+
+// sshBaseArgs returns the ssh argv up to and including the target
+// (ubuntu@guestIP), shared by SSHAttachArgs and VMBackend.Stop's own
+// non-interactive `sudo systemctl poweroff` -- both need the identical
+// connection options, just a different trailing remote command.
+func sshBaseArgs(guestIP, privateKeyPath string) []string {
 	return []string{
 		"ssh",
 		"-i", privateKeyPath,
@@ -95,6 +103,5 @@ func SSHAttachArgs(guestIP, privateKeyPath string) []string {
 		"-o", "UserKnownHostsFile=/dev/null",
 		"-o", "LogLevel=ERROR",
 		"ubuntu@" + guestIP,
-		"tmux", "attach", "-t", tmuxSession,
 	}
 }

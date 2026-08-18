@@ -21,8 +21,13 @@ type Backend interface {
 	// IsRunning reports whether the sandbox for workspace id is currently up.
 	IsRunning(id string) bool
 	// AttachArgs returns the argv for interactively attaching to the
-	// sandbox's running session.
-	AttachArgs(id string) []string
+	// sandbox's running session. Unlike DockerBackend's (a pure function of
+	// id, never fails), VMBackend's has to look up the guest's current
+	// DHCP-assigned IP (Issue #31 M5-5/M5-6), which is real I/O that can
+	// fail -- e.g. no lease yet, or the VM isn't actually running -- so
+	// this returns an error where DockerBackend's underlying
+	// package-level AttachArgs doesn't need one.
+	AttachArgs(id string) ([]string, error)
 }
 
 // DockerBackend implements Backend by shelling out to `docker`, wrapping this
@@ -44,6 +49,6 @@ func (DockerBackend) IsRunning(id string) bool {
 	return IsRunning(id)
 }
 
-func (DockerBackend) AttachArgs(id string) []string {
-	return AttachArgs(id)
+func (DockerBackend) AttachArgs(id string) ([]string, error) {
+	return AttachArgs(id), nil
 }

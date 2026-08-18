@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -123,6 +124,50 @@ func TestBuildWritesExtraFiles(t *testing.T) {
 	}
 	if !bytes.Contains(out, []byte("ssh-ed25519 AAAAtest test-key")) {
 		t.Errorf("authorized_keys content = %q, want it to contain the test key", out)
+	}
+}
+
+// TestBuildRegeneratesModulesDep confirms Build's depmod step turns a
+// kernel module file injected via ExtraFile into a working modules.dep
+// entry -- the mechanism Issue #31 M5-6 relies on for the guest to
+// auto-load virtiofs.ko (there's no real /lib/modules/<version> tree in a
+// plain Docker/Ubuntu image otherwise, see extractAndFormat's doc comment).
+// Uses a real kernel module file from this host rather than a synthetic
+// fixture, since depmod parses actual ELF/module-info sections; skips if
+// this host has no installed kernel module tree to borrow one from.
+func TestBuildRegeneratesModulesDep(t *testing.T) {
+	requireRootfsTools(t)
+
+	hostModules, err := filepath.Glob("/lib/modules/*/kernel/fs/fuse/virtiofs.ko*")
+	if err != nil || len(hostModules) == 0 {
+		t.Skip("no virtiofs kernel module found on this host to use as a test fixture")
+	}
+	modPath := hostModules[0]
+	rel := strings.TrimPrefix(modPath, "/lib/modules/")
+	version, relInModulesDir, ok := strings.Cut(rel, "/")
+	if !ok {
+		t.Fatalf("unexpected module path shape: %s", modPath)
+	}
+	content, err := os.ReadFile(modPath)
+	if err != nil {
+		t.Fatalf("reading fixture module %s: %v", modPath, err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+	extra := []ExtraFile{
+		{GuestPath: filepath.Join("lib/modules", version, relInModulesDir), Content: content, Mode: 0o644, UID: 0, GID: 0},
+	}
+	if err := Build("alpine:latest", outputPath, extra); err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	depPath := "/lib/modules/" + version + "/modules.dep"
+	out, err := exec.Command("debugfs", "-R", "cat "+depPath, outputPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("debugfs cat %s: %v\n%s", depPath, err, out)
+	}
+	if !bytes.Contains(out, []byte("virtiofs")) {
+		t.Errorf("modules.dep = %q, want an entry for the injected virtiofs module", out)
 	}
 }
 
