@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 // rootfsLabel is the ext4 volume label baked into every image Build
@@ -49,6 +50,26 @@ const (
 // minutes of `docker export`.
 var requiredBinaries = []string{"docker", "fakeroot", "mkfs.ext4"}
 
+// ExtraFile is a small file Build writes into the image's filesystem in
+// addition to whatever comes from the Docker image itself -- content that
+// only makes sense for a VM-boot rootfs (the guest's SSH
+// ~/.ssh/authorized_keys, Issue #31 M5-5) and has no business in the
+// shared Dockerfile/Docker image the export itself is built from.
+type ExtraFile struct {
+	// GuestPath is relative to the image's root, e.g.
+	// "home/ubuntu/.ssh/authorized_keys" (no leading slash).
+	GuestPath string
+	Content   []byte
+	Mode      os.FileMode
+	// UID/GID are the owner baked into the image's inode -- not applied by
+	// staging the file on the host (see stageExtraFiles's doc comment for
+	// why that alone isn't reliable) but by an explicit chown inside
+	// extractAndFormat's fakeroot session, the same session that already
+	// makes ownership like root:shadow on /etc/shadow possible for content
+	// coming from the Docker image itself.
+	UID, GID int
+}
+
 // Build exports image's container filesystem and writes it as a raw ext4
 // disk image at outputPath, ready to hand to a VM as a virtio-blk root
 // device. outputPath is written atomically: the image is built at
@@ -68,7 +89,7 @@ var requiredBinaries = []string{"docker", "fakeroot", "mkfs.ext4"}
 // real recorded ownership, not the invoking user's. Confirmed against a
 // real masuda sandbox image with debugfs: /etc/shadow lands as
 // user=0/group=42 (shadow), not the host user's uid/gid.
-func Build(image, outputPath string) error {
+func Build(image, outputPath string, extra []ExtraFile) error {
 	for _, bin := range requiredBinaries {
 		if _, err := exec.LookPath(bin); err != nil {
 			return fmt.Errorf("%s not found on PATH (required to build a rootfs image): %w", bin, err)
@@ -100,10 +121,25 @@ func Build(image, outputPath string) error {
 		return fmt.Errorf("creating extraction directory: %w", err)
 	}
 
+	// Staged on the host first, then overlaid onto extractDir *inside* the
+	// same fakeroot session extractAndFormat runs (see its doc comment), so
+	// mkfs.ext4 -d sees the final tree in one pass, same as everything from
+	// the Docker image itself. ownerManifestPath carries each file's
+	// intended UID/GID separately -- content staged as a plain host file
+	// always lands owned by masuda's own real uid regardless of what
+	// ExtraFile.UID/GID asked for, so ownership has to be fixed up
+	// explicitly afterward (see extractAndFormat's doc comment for why
+	// `cp -a`'s own ownership-preservation can't be trusted here).
+	stagingDir := filepath.Join(workDir, "extra")
+	ownerManifestPath := filepath.Join(workDir, "extra-owners.tsv")
+	if err := stageExtraFiles(stagingDir, ownerManifestPath, extra); err != nil {
+		return fmt.Errorf("staging extra files: %w", err)
+	}
+
 	tmpImagePath := outputPath + ".tmp"
 	defer os.Remove(tmpImagePath) // no-op once the rename below succeeds
 
-	if err := extractAndFormat(extractDir, tarPath, tmpImagePath, sizeMiB); err != nil {
+	if err := extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, tmpImagePath, sizeMiB); err != nil {
 		return err
 	}
 
@@ -111,6 +147,30 @@ func Build(image, outputPath string) error {
 		return fmt.Errorf("moving finished image into place: %w", err)
 	}
 	return nil
+}
+
+// stageExtraFiles writes each of extra's content to stagingDir/GuestPath and
+// records its intended ownership as one "<uid>\t<gid>\t<guest path>" line
+// per file in ownerManifestPath, for extractAndFormat's chown pass to read.
+// Always creates stagingDir, even if extra is empty, so extractAndFormat's
+// overlay step has a directory to check for (rather than needing to
+// special-case "were there any").
+func stageExtraFiles(stagingDir, ownerManifestPath string, extra []ExtraFile) error {
+	if err := os.MkdirAll(stagingDir, 0o755); err != nil {
+		return err
+	}
+	var manifest strings.Builder
+	for _, f := range extra {
+		dest := filepath.Join(stagingDir, f.GuestPath)
+		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(dest, f.Content, f.Mode); err != nil {
+			return err
+		}
+		fmt.Fprintf(&manifest, "%d\t%d\t%s\n", f.UID, f.GID, f.GuestPath)
+	}
+	return os.WriteFile(ownerManifestPath, []byte(manifest.String()), 0o644)
 }
 
 // dockerExport writes image's merged container filesystem to tarPath as a
@@ -176,20 +236,41 @@ func imageSizeMiB(tarPath string) (int, error) {
 	return max(mib, minImageSizeMiB), nil
 }
 
-// extractAndFormat extracts tarPath into extractDir and formats it as an
-// ext4 image at imagePath sized sizeMiB, both inside a single fakeroot
-// session so the ownership mkfs.ext4 bakes in is the tarball's real
-// ownership (see Build's doc comment). Arguments are passed to the fakeroot
-// shell as positional parameters ($1, $2, ...), not interpolated into the
-// script string, so paths containing shell-special characters can't break
-// or inject into the command.
-func extractAndFormat(extractDir, tarPath, imagePath string, sizeMiB int) error {
+// extractAndFormat extracts tarPath into extractDir, overlays stagingDir's
+// extra files (see Build's ExtraFile handling) on top, applies each extra
+// file's intended ownership from ownerManifestPath, and formats the result
+// as an ext4 image at imagePath sized sizeMiB -- all inside a single
+// fakeroot session so the ownership mkfs.ext4 bakes in is real (see Build's
+// doc comment). Arguments are passed to the fakeroot shell as positional
+// parameters ($1, $2, ...), not interpolated into the script string, so
+// paths containing shell-special characters can't break or inject into the
+// command.
+//
+// The chown pass is not optional polish: confirmed live that `cp -a`'s own
+// ownership-preservation can't be trusted here. A staged extra file's real
+// on-disk owner (masuda's own host uid, set before fakeroot ever starts) is
+// exactly what `cp -a` should propagate, but fakeroot's fake-ownership
+// tracking treats a freshly created destination file as owned by whatever
+// uid it *thinks* is doing the copying (root, since fakeroot fakes that
+// too) rather than what `cp` actually asked it to chown to -- observed
+// directly by comparing `ls -la` run inside vs. outside the same fakeroot
+// session on the same copy. Fixed by chowning explicitly afterward, the
+// same way ownership already has to be set explicitly for anything else
+// this session didn't inherit correctly on its own.
+func extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, imagePath string, sizeMiB int) error {
 	const script = `set -e
 tar -C "$1" -xpf "$2"
-mkfs.ext4 -q -F -d "$1" -L "$3" "$4" "$5"M
+if [ -n "$(ls -A "$3" 2>/dev/null)" ]; then
+  cp -a "$3"/. "$1"/
+  while IFS="$(printf '\t')" read -r owner_uid owner_gid rel; do
+    [ -z "$rel" ] && continue
+    chown "$owner_uid:$owner_gid" "$1/$rel"
+  done < "$7"
+fi
+mkfs.ext4 -q -F -d "$1" -L "$4" "$5" "$6"M
 `
 	cmd := exec.Command("fakeroot", "sh", "-c", script, "sh",
-		extractDir, tarPath, rootfsLabel, imagePath, strconv.Itoa(sizeMiB))
+		extractDir, tarPath, stagingDir, rootfsLabel, imagePath, strconv.Itoa(sizeMiB), ownerManifestPath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {

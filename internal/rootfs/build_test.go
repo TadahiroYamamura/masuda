@@ -49,7 +49,7 @@ func TestBuildProducesBootableOwnershipCorrectImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "nested", "rootfs.img")
-	if err := Build("alpine:latest", outputPath); err != nil {
+	if err := Build("alpine:latest", outputPath, nil); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -75,7 +75,7 @@ func TestBuildUnknownImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
-	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath)
+	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath, nil)
 	if err == nil {
 		t.Fatal("Build() with an unknown image succeeded, want an error")
 	}
@@ -84,6 +84,45 @@ func TestBuildUnknownImage(t *testing.T) {
 	}
 	if _, statErr := os.Stat(outputPath + ".tmp"); !os.IsNotExist(statErr) {
 		t.Error("Build() left a .tmp file behind after failing")
+	}
+}
+
+// TestBuildWritesExtraFiles confirms ExtraFile content lands in the built
+// image with the requested permissions -- the mechanism Issue #31 M5-5
+// uses to inject the guest's SSH ~/.ssh/authorized_keys at build time
+// (never baked into the shared Dockerfile, so key rotation doesn't require
+// a docker build to take effect).
+func TestBuildWritesExtraFiles(t *testing.T) {
+	requireRootfsTools(t)
+
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+	// UID/GID 1000, deliberately not 0: staging a file as a plain host file
+	// always leaves it owned by masuda's own real uid regardless of what's
+	// requested here, so a test using 0/0 wouldn't catch a chown that
+	// silently never happened (root:root is also alpine's default for a
+	// freshly created path). 1000 is a real, distinguishable-from-both
+	// value.
+	extra := []ExtraFile{
+		{GuestPath: "home/ubuntu/.ssh/authorized_keys", Content: []byte("ssh-ed25519 AAAAtest test-key\n"), Mode: 0o600, UID: 1000, GID: 1000},
+	}
+	if err := Build("alpine:latest", outputPath, extra); err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	stat := debugfsStat(t, outputPath, "/home/ubuntu/.ssh/authorized_keys")
+	if !bytes.Contains([]byte(stat), []byte("Mode:  0600")) {
+		t.Errorf("authorized_keys mode not 0600 in built image:\n%s", stat)
+	}
+	if !bytes.Contains([]byte(stat), []byte("User:  1000   Group:  1000")) {
+		t.Errorf("authorized_keys not owned 1000:1000 in built image:\n%s", stat)
+	}
+
+	out, err := exec.Command("debugfs", "-R", "cat /home/ubuntu/.ssh/authorized_keys", outputPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("debugfs cat authorized_keys: %v\n%s", err, out)
+	}
+	if !bytes.Contains(out, []byte("ssh-ed25519 AAAAtest test-key")) {
+		t.Errorf("authorized_keys content = %q, want it to contain the test key", out)
 	}
 }
 

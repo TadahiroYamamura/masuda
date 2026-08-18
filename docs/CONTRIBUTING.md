@@ -14,30 +14,33 @@
 
 masudaはサンドボックスの実行基盤をDockerからCloud Hypervisor（MicroVM）へ移行する作業を進めている（Issue #31）。以下は**この移行作業に参加する場合のみ**必要——`masuda internal rootfs build`等、開発中のツールでのみ使う。VM backend自体（`masuda sandbox start`のVM版）はまだ存在せず、通常のmasuda利用には一切関係ない。
 
-- **fakeroot**（`internal/rootfs.Build`がDockerイメージのファイル所有権を保ったままext4イメージへ変換するために使用。Debian/Ubuntu系は`apt install fakeroot`）
-- **e2fsprogs**（`mkfs.ext4`・`debugfs`コマンド。通常プリインストール済み）
-- **linux-image-generic**（ゲストOS用カーネル`vmlinuz`の入手のため。Debian/Ubuntu系は`apt install linux-image-generic`）
-  - **既知の制限**: インストール直後の`/boot/vmlinuz-<version>`はroot:root所有・mode 600で、一般ユーザーからは読めない。読み取り可能な場所へ一度だけ複製する（自動化はしていない、手動での回避が前提）:
-    ```bash
-    sudo install -m 0644 -o "$USER" -g "$USER" \
-      /boot/vmlinuz-$(uname -r) \
-      ~/.local/share/masuda/vmlinuz-$(uname -r)
-    ```
-- **Cloud Hypervisor・virtiofsd**（`~/.local/bin/`等、`$PATH`が通った場所に配置）
-- **TAP＋ブリッジ＋NAT**（ホスト単位・一度きりのセットアップ。`eth1`は環境のデフォルトルート向きインターフェース名に読み替える）:
-  ```bash
-  sudo ip link add br-masuda0 type bridge
-  sudo ip addr add 192.168.200.1/24 dev br-masuda0
-  sudo ip link set br-masuda0 up
-  sudo sysctl -w net.ipv4.ip_forward=1
-  sudo iptables -t nat -A POSTROUTING -s 192.168.200.0/24 -o eth1 -j MASQUERADE
-  sudo iptables -A FORWARD -i br-masuda0 -o eth1 -j ACCEPT
-  sudo iptables -A FORWARD -i eth1 -o br-masuda0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-  ```
-  個々のワークスペース（VM）用のTAPデバイスはブリッジに接続する形で動的に作成・削除される（`masuda-net-helper`、下記）。ブリッジ自体は複数VMで共有される
-- **`masuda-net-helper`のビルド＋setcap**（Issue #31 M5-2）: `internal/sandbox`のTAP管理（`EnsureTap`/`ReleaseTap`）が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）:
-  ```bash
-  go build -o ~/.local/bin/masuda-net-helper ./cmd/masuda-net-helper
-  sudo setcap cap_net_admin+ep ~/.local/bin/masuda-net-helper
-  ```
-  バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`をやり直す必要がある
+### 事前に手動で用意するもの
+
+- **Cloud Hypervisor・virtiofsd**（`~/.local/bin/`等、`$PATH`が通った場所に配置。標準のaptパッケージが無く、ダウンロード元がバージョン依存のためスクリプト化していない）
+- **linux-image-genericの初回インストール**（未導入の場合）: `sudo apt-get install -y linux-image-generic`（インストール後の権限修正は下記スクリプトが行う）
+
+### ホスト側の一度きりのセットアップ
+
+上記2点を用意したら、以下を実行する（再実行しても安全な冪等スクリプト）。
+
+```bash
+bash scripts/setup-vm-host.sh
+```
+
+行っている内容（詳細・理由は各手順に対応するコミット・スクリプト自身のコメントを参照）:
+
+- `fakeroot`・`e2fsprogs`のインストール（`internal/rootfs.Build`がDockerイメージの所有権を保ったままext4イメージへ変換するために使用）
+- `vmlinuz`（ゲストOS用カーネル）を、一般ユーザーが読める場所へ複製（インストール直後はroot:root・mode 600のため）
+- TAP＋ブリッジ（`br-masuda0`）＋outbound NATのセットアップ（個々のワークスペース用TAPデバイスは`masuda-net-helper`が動的に作成・削除する、ブリッジ自体が複数VMで共有されるホスト単位のインフラ）
+- `masuda-net-helper`のビルド＋`setcap`（Issue #31 M5-2）: `internal/sandbox`のTAP管理（`EnsureTap`/`ReleaseTap`）が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（スクリプトは毎回再実行する前提で書かれている）
+- `dnsmasq`のインストール＋設定＋有効化（Issue #31 M5-5）: `br-masuda0`だけにバインドしたDHCPサーバー。VMゲストのIPアドレスは`systemd-networkd`のDHCPクライアントで自動取得する（複数ワークスペースが並行稼働してもmasuda側で独自のIP割り当て機構を持たずに済む）
+
+### VMゲストSSH鍵（Issue #31 M5-5）
+
+`masuda chat`のVM版は`docker exec`の代わりにSSHでゲストへ接続する。鍵は`masuda`のインストール単位で1組（ワークスペースごとではない）。初回は自動生成される（`EnsureSSHKeypair`）が、明示的に再生成したい場合（鍵の流出が疑われる場合等）:
+
+```bash
+masuda internal vm-ssh-key rotate
+```
+
+秘密鍵はホスト側にしか存在せず、ゲストのrootfsには公開鍵だけが`internal/rootfs.Build`のExtraFile機構でビルド時に注入される（Dockerfileには焼き込まない——鍵を再生成してもDockerイメージの再ビルドが不要なようにするため）。**既知の制限**: 再生成しても、既にビルド済みのrootfsイメージ・起動中のVMは古い公開鍵を信頼し続ける（rebuild/restartまで遡及しない）。masudaのワークスペースは使い捨てなので許容している。

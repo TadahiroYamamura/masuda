@@ -36,7 +36,7 @@ func newInternalRootfsBuildCommand() *cobra.Command {
 			if output == "" {
 				return fmt.Errorf("--output is required")
 			}
-			if err := rootfs.Build(image, output); err != nil {
+			if err := rootfs.Build(image, output, nil); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", output)

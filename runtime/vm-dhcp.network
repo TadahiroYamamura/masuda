@@ -1,0 +1,16 @@
+# VM boot path only (Issue #31 M5-5). Docker never reads systemd-networkd
+# config -- ENTRYPOINT stays entrypoint.sh, systemd (and therefore
+# systemd-networkd) never runs as PID1 under Docker.
+#
+# cloud-hypervisor's virtio-net device shows up as eth0 (no udev predictable-
+# naming rules are active in this minimal image). DHCP=yes lets masuda's
+# host-side dnsmasq (bound to br-masuda0, see docs/CONTRIBUTING.md) assign
+# this VM's address instead of masuda hand-configuring it -- with multiple
+# workspaces potentially running concurrently, each VM needs its own
+# address, and DHCP's own lease/conflict handling is what actually solves
+# that, not a static per-VM config baked into the image.
+[Match]
+Name=eth0
+
+[Network]
+DHCP=yes

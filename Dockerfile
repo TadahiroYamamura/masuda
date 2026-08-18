@@ -34,10 +34,23 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # is what lets systemd-udevd auto-load virtiofs.ko when the VM's virtio-fs
 # PCI device is detected; without it there's no working module autoload and
 # a VM boot would need its own ad hoc module-loading step instead.
+#
+# openssh-server is also VM boot path only (Issue #31 M5-5) -- `masuda chat`
+# has no `docker exec` equivalent for a VM, so it SSHes in instead. Its own
+# apt postinst runs `ssh-keygen -A` once at image build time, baking host
+# keys into this image that every container/VM built from it would share;
+# deleting them here means each VM instead gets its own, generated fresh on
+# first boot by runtime/ssh-host-keys.service (confirmed live: ssh.service
+# itself has no such regeneration built in -- with the keys just missing, it
+# fails outright, so this isn't optional). This is about the *server's* host
+# key identity, a different key from the *client* authorized_keys key
+# discussed below, and not a secret (it authenticates the VM to the
+# connecting client, not the other way around).
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod openssh-server \
+ && rm -f /etc/ssh/ssh_host_* \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI
@@ -79,6 +92,8 @@ RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh runtime/merge_claude_
 # actually running, so it's safe inside `docker build`.
 COPY runtime/masuda-loop.service /etc/systemd/system/masuda-loop.service
 COPY runtime/fstab.vm /tmp/fstab.vm
+COPY runtime/vm-dhcp.network /etc/systemd/network/20-dhcp.network
+COPY runtime/ssh-host-keys.service /etc/systemd/system/ssh-host-keys.service
 # ttyd.service: the ttyd apt package enables its own unit by default
 # (127.0.0.1:7681, -O login) -- masuda doesn't use it, entrypoint.sh starts
 # its own ttyd on :7682 instead, so disable the package's to avoid running a
@@ -86,6 +101,9 @@ COPY runtime/fstab.vm /tmp/fstab.vm
 RUN cat /tmp/fstab.vm >> /etc/fstab \
  && rm /tmp/fstab.vm \
  && systemctl enable masuda-loop.service \
+ && systemctl enable systemd-networkd.service \
+ && systemctl enable ssh.service \
+ && systemctl enable ssh-host-keys.service \
  && systemctl disable ttyd.service
 
 # masuda CLI binary (see the masuda-builder stage above) -- orchestrator/*.py
