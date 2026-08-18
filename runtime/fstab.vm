@@ -1,0 +1,6 @@
+# Appended to /etc/fstab for the VM boot path (Issue #31 M5-1). The Docker
+# path never reads this -- dockerd bind-mounts /workspace and /masuda-state
+# directly, no fstab involved. Tags must match the --fs tag=... names the
+# VMBackend passes to cloud-hypervisor/virtiofsd (M5-3).
+workspace /workspace virtiofs defaults,nofail 0 0
+masuda-state /masuda-state virtiofs defaults,nofail 0 0

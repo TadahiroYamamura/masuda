@@ -1,0 +1,19 @@
+[Unit]
+Description=masuda self-loop entrypoint (VM boot path, Issue #31 M5-1)
+# entrypoint.sh assumes /workspace and /masuda-state are already populated
+# (it never mounts anything itself -- under Docker, dockerd's bind mount is
+# already in place before ENTRYPOINT runs). Under systemd, the equivalent
+# guarantee is these two virtiofs mount units finishing first.
+After=network.target workspace.mount masuda\x2dstate.mount
+Requires=workspace.mount masuda\x2dstate.mount
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/workspace
+ExecStart=/opt/masuda/runtime/entrypoint.sh
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

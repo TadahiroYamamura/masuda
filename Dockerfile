@@ -27,10 +27,17 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # used to back (ADR-0017's single blocking `inotifywait` call) was replaced
 # by a `mcp__masuda-gate__wait_for_gate_change` MCP tool call, backed by the
 # workspace's state daemon rather than a watched file (Issue #35).
+#
+# systemd + kmod are for the VM boot path only (Issue #31 M5-1) -- Docker
+# never invokes systemd as PID1 (ENTRYPOINT stays entrypoint.sh below), so
+# installing them has no effect on the Docker path. kmod (modprobe/depmod)
+# is what lets systemd-udevd auto-load virtiofs.ko when the VM's virtio-fs
+# PCI device is detected; without it there's no working module autoload and
+# a VM boot would need its own ad hoc module-loading step instead.
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git \
+ && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod \
  && rm -rf /var/lib/apt/lists/*
 
 # Claude CLI
@@ -65,6 +72,21 @@ RUN python3 -m venv venv \
 COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
 COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/
 RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh runtime/merge_claude_settings.py
+
+# VM boot path only (Issue #31 M5-1) -- see runtime/masuda-loop.service and
+# runtime/fstab.vm's own comments for why these are inert under Docker.
+# `systemctl enable` only edits a symlink on disk; it doesn't need systemd
+# actually running, so it's safe inside `docker build`.
+COPY runtime/masuda-loop.service /etc/systemd/system/masuda-loop.service
+COPY runtime/fstab.vm /tmp/fstab.vm
+# ttyd.service: the ttyd apt package enables its own unit by default
+# (127.0.0.1:7681, -O login) -- masuda doesn't use it, entrypoint.sh starts
+# its own ttyd on :7682 instead, so disable the package's to avoid running a
+# second, unused ttyd nobody asked for.
+RUN cat /tmp/fstab.vm >> /etc/fstab \
+ && rm /tmp/fstab.vm \
+ && systemctl enable masuda-loop.service \
+ && systemctl disable ttyd.service
 
 # masuda CLI binary (see the masuda-builder stage above) -- orchestrator/*.py
 # shells out to `masuda internal state ...` to reach this workspace's state
