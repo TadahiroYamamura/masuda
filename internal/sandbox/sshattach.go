@@ -70,6 +70,27 @@ func findLeaseIP(mac, leaseFilePath string) (string, error) {
 	return "", fmt.Errorf("mac %s not found in %s", mac, leaseFilePath)
 }
 
+// findLeaseMAC is findLeaseIP's inverse: given an IP, finds the MAC dnsmasq
+// currently has it leased to (Issue #11's egress proxy needs this direction
+// -- it sees a connecting VM's IP and has to work backward to "which
+// workspace is this").
+func findLeaseMAC(ip, leaseFilePath string) (string, error) {
+	data, err := os.ReadFile(leaseFilePath)
+	if err != nil {
+		return "", err
+	}
+	for line := range strings.SplitSeq(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		if fields[2] == ip {
+			return fields[1], nil
+		}
+	}
+	return "", fmt.Errorf("ip %s not found in %s", ip, leaseFilePath)
+}
+
 // SSHAttachArgs returns the argv for interactively attaching to a VM
 // guest's tmux session over SSH -- the VM path's equivalent of
 // DockerBackend's AttachArgs (`docker exec -it ... tmux attach`). Callers
