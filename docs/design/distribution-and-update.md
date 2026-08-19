@@ -2,15 +2,15 @@
 
 ## バージョン識別子
 
-masuda自身のバージョンはgitタグ（例: `v0.3.0`）を正とする。`cmd/masuda/main.go`の`var version = "dev"`が実体で、CIビルド時のみ`-ldflags "-X main.version=<タグ名>"`で書き換わる（`.github/workflows/release.yml:34-38`）。ローカルの`go build`/`make build`は`version`を渡さないため、常に`"dev"`のままビルドされる。この値は`masuda`コマンドの`--version`出力（cobraの`Version`フィールド）にそのまま使われるほか、`masuda update`が自分は最新かどうかを判定するキー、`masuda init`がどのReleaseを取得するかの選択キーとしても使われる。
+masuda自身のバージョンはgitタグ（例: `v0.3.0`）を正とする。`cmd/masuda/main.go`の`var version = "dev"`が実体で、CIビルド時のみ`-ldflags "-X main.version=<タグ名>"`で書き換わる（`.github/workflows/release.yml:42`）。ローカルの`go build`/`make build`は`version`を渡さないため、常に`"dev"`のままビルドされる。この値は`masuda`コマンドの`--version`出力（cobraの`Version`フィールド）にそのまま使われるほか、`masuda update`が自分は最新かどうかを判定するキー、`masuda init`がどのReleaseを取得するかの選択キーとしても使われる。
 
 ## CI/CDリリースパイプライン
 
 `.github/workflows/release.yml`は`v*`パターンのタグpushをトリガーに起動する。`linux/amd64`・`linux/arm64`のみが対象（macOS非対応）。
 
-- `build`ジョブ（`:18-67`）: OS/アーキ別に`masuda_<goos>_<goarch>`をビルドし、`cosign sign-blob --yes --new-bundle-format --bundle masuda_<goos>_<goarch>.bundle`で署名する。CIワークフロー自身の`id-token: write`権限によるGitHub Actions OIDCを使ったkeyless署名で、署名鍵の生成・保管は発生しない。バイナリと`.bundle`の両方をartifactとしてアップロードする
+- `build`ジョブ（`:18-61`）: OS/アーキ別に`masuda_<goos>_<goarch>`をビルドし、`cosign sign-blob --yes --new-bundle-format --bundle masuda_<goos>_<goarch>.bundle`で署名する。CIワークフロー自身の`id-token: write`権限によるGitHub Actions OIDCを使ったkeyless署名で、署名鍵の生成・保管は発生しない。バイナリと`.bundle`の両方をartifactとしてアップロードする
 - `reviews`ジョブ（`:68-88`）: `internal/perspectives/builtin/*.md`を`masuda_reviews.zip`にzip化し、同様に`masuda_reviews.zip.bundle`として署名する
-- `release`ジョブ（`:89-112`、`build`・`reviews`に依存）: 両ジョブの成果物をGitHub Releaseへアップロードする。同じタグに対する再実行に備え、`gh release create`は既存Releaseがあればスキップし、`gh release upload --clobber`で上書きアップロードする
+- `release`ジョブ（`:89-107`、`build`・`reviews`に依存）: 両ジョブの成果物をGitHub Releaseへアップロードする。同じタグに対する再実行に備え、`gh release create`は既存Releaseがあればスキップし、`gh release upload --clobber`で上書きアップロードする
 - `docker`ジョブ（`:113-135`、他ジョブと独立、`needs`なし）: リポジトリルート直下の`Dockerfile`（サンドボックスbaseイメージ）を`linux/amd64`・`linux/arm64`のマルチアーキでビルドし、Docker Hubの公開リポジトリ`tadahiroyamamura/masuda`へ`<タグ名>`と`latest`の2タグでpushする。このイメージはコンテナとして実行されることはなく、VMのrootfsへ変換する変換元としてのみ使われる（`docs/design/images-and-rootfs.md`参照）
 
 このパイプラインが1回のタグpushで生成するGitHub Release資産は、CLIバイナリ×2アーキ＋その署名バンドル×2、`masuda_reviews.zip`＋その署名バンドルの、計6ファイル。

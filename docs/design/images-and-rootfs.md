@@ -24,11 +24,11 @@
 
 ユーザー`ubuntu`（uid=1000、`ubuntu:24.04`に既存）を使う。`/workspace`（対象リポジトリのworktree用）・`/masuda-state`（状態ディレクトリ用）はvirtiofs共有のマウントポイントとして空けてあり、masuda自身の制御ファイル（venv・`orchestrator/`・`runtime/`）は`/opt/masuda`に置く。
 
-### orchestrator/・runtime/の焼き込み（`Dockerfile:99-121`）
+### orchestrator/・runtime/の焼き込み（`Dockerfile:99-124`）
 
 `COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/`と`COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/`で、`/opt/masuda`以下にビルド時焼き込みする。
 
-VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`・`runtime/vm-dhcp.network`・`runtime/ssh-host-keys.service`）は`/etc/systemd/system/`・`/etc/fstab`・`/etc/systemd/network/`へ配置し、`systemctl enable`でunit有効化する。`systemctl enable`はディスク上のシンボリックリンク操作のみで実際にsystemdが動いている必要はないため、`docker build`内で完結する。
+VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`・`runtime/vm-dhcp.network`・`runtime/ssh-host-keys.service`・`runtime/resolv-conf.service`）は`/etc/systemd/system/`・`/etc/fstab`・`/etc/systemd/network/`へ配置し、`systemctl enable`でunit有効化する。`systemctl enable`はディスク上のシンボリックリンク操作のみで実際にsystemdが動いている必要はないため、`docker build`内で完結する。
 
 `runtime/CLAUDE.md`（ループプロトコル本体）はこのCOPY対象に**含まれない**。`~/.claude/CLAUDE.md`として`masuda sandbox start`実行時にmasuda CLI側から配置される（VM起動の詳細は`docs/design/sandbox-vm.md`）。
 
@@ -36,11 +36,11 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 
 また、`orchestrator/`・`runtime/`はリポジトリルート直下に置く必要がある。ルート直下の`assets.go`が`go:embed`で`orchestrator/investigate_plan_graph.py`・`orchestrator/state_client.py`・`requirements.txt`・`runtime/CLAUDE.md`をmasuda CLIバイナリ自体に埋め込んでおり（Discovery/Blueprint段階のホスト側自己ループ用）、`go:embed`は宣言ファイル自身のディレクトリ以下（`..`不可）しか参照できないため、`assets.go`はリポジトリルートに置かれ、結果として埋め込み対象の`orchestrator/`・`runtime/`もルート直下という位置が固定されている。これはDockerfileの`COPY`が読む場所（ビルドコンテキストのルート）とも一致している。
 
-### Claudeプラグイン・マーケットプレイス登録（`Dockerfile:149`）
+### Claudeプラグイン・マーケットプレイス登録（`Dockerfile:152`）
 
 `USER ubuntu`に切り替えた後、`claude install`でネイティブClaudeバイナリをインストールし、`claude plugin marketplace add anthropics/claude-plugins-official`で公式マーケットプレイスを登録する。プラグイン本体（`gopls-lsp`等）はこの時点ではインストールしない。マーケットプレイス登録は公開GitHubリポジトリの`git clone`のみで完結し認証不要なため、ビルド時に行う。
 
-### エントリーポイント（`Dockerfile:157`）
+### エントリーポイント（`Dockerfile:160`）
 
 `ENTRYPOINT ["/opt/masuda/runtime/entrypoint.sh"]`。`WORKDIR /workspace`。
 
@@ -66,7 +66,7 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 ### 変換の流れ
 
 1. 前提コマンド（`docker`・`fakeroot`・`mkfs.ext4`・`depmod`）の存在チェック
-2. `dockerExport`（`internal/rootfs/build.go:182`）: `docker create <image>`で（起動はしない）コンテナを作り、`docker export -o rootfs.tar`でマージ済みファイルシステムをtar化する。コンテナはexport後（失敗時も）必ず`docker rm -f`で削除する
+2. `dockerExport`（`internal/rootfs/build.go:185`）: `docker create <image>`で（起動はしない）コンテナを作り、`docker export -o rootfs.tar`でマージ済みファイルシステムをtar化する。コンテナはexport後（失敗時も）必ず`docker rm -f`で削除する
 3. tarのレギュラーファイル合計バイト数からイメージサイズを見積もる。ext4メタデータ分の余裕として実サイズの20%（`sizeSlackNumerator/Denominator = 6/5`）+ 固定256MiBを加算し、下限512MiB（`minImageSizeMiB`）を保証する
 4. `ExtraFile`（下記）をホスト上のステージングディレクトリに書き出し、所有権を`"<uid>\t<gid>\t<path>"`形式のマニフェスト（TSV）に記録する
 5. `extractAndFormat`（`internal/rootfs/build.go:277`）: 単一の`fakeroot`セッション内で

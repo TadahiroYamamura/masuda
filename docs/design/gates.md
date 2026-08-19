@@ -66,9 +66,9 @@ triageゲートは`_resolve_triage`が同じ2段階構造を独自実装で持�
   4. 「生成される可能性のある副産物ファイル」: `expected_byproducts`（ADR-0028）が1件以上あるときだけ追加
   さらに`gate.Show`側で、`artifact:DEVIATION.md`キーが存在すれば`# G1 reopened — deviation reported (ADR-0010)`を先頭に前置する（`Show`本体のPlan分岐の外、共通処理として）
 - **review**: `artifactPaths[Review] = "review_results/final_report.md"`をそのまま読んで返す（整形なし）
-- **triage**: `renderTriageConcern(stateDir)`が`triage_concern.json`（`agent`/`phase`/`description`/`evidence`/`reported_at`）を読み、Markdownの見出し＋箇条書きに整形する。planと異なり前置ロジックはなく、`triage_concern.json`の内容をそのまま整形するだけ
+- **triage**: `renderTriageConcern(stateDir)`が`triage_concern.json`（`agent`/`phase`/`description`/`evidence`/`reported_at`）を読み、Markdownの`#`見出し＋`**ラベル**: 値`の行＋`##`小見出しに整形する（箇条書きは使わない）。planと異なり前置ロジックはなく、`triage_concern.json`の内容をそのまま整形するだけ
 
-**同期制約**: `renderPlan`と同じ組み立てロジックが`orchestrator/implement_review_graph.py`の`_render_plan_text()`にも独立実装として存在する。実装フェーズのサブエージェントに`masuda plan show`相当のplan全体コンテキストを与えるために使われ、Go側とは共通コード化されていない。両者が組み立てる本体（summary.md本文→「変更するファイル一覧」→「実装のステップ分解」→`expected_byproducts`、の順・見出し文言）は一致していなければならない（`_render_plan_text`は`artifact:DEVIATION.md`の前置は行わない——`gate.Show`側だけがCLI表示用にこれを追加で前置する別レイヤーの処理）。`renderPlan`または`_render_plan_text`の組み立て順・見出し・フィールド名のどれかを変更するときは、もう一方も追随させること。
+**同期制約**: `renderPlan`と同じ組み立てロジックが`orchestrator/implement_review_graph.py`の`_render_plan_text()`にも独立実装として存在する。実装フェーズのサブエージェントに`masuda plan show`相当のplan全体コンテキストを与えるために使われ、Go側とは共通コード化されていない。両者が組み立てる本体（summary.md本文→「変更するファイル一覧」→「実装のステップ分解」→`expected_byproducts`、の順・見出し文言）は一致していなければならない（既知の差分は2つ。(a) `_render_plan_text`は`artifact:DEVIATION.md`の前置を行わない——これは`gate.Show`側がCLI表示用に追加する別レイヤーの処理で、意図された差分。(b) `_render_plan_text`はTDDステップへの`（TDDモード）`付与を行わない——こちらは意図された差分ではなく、「既知の問題」節を参照）。`renderPlan`または`_render_plan_text`の組み立て順・見出し・フィールド名のどれかを変更するときは、もう一方も追随させること。
 
 ## ゲート操作CLI
 
@@ -80,7 +80,7 @@ triageゲートは`_resolve_triage`が同じ2段階構造を独自実装で持�
 
 いずれも`gateStateDir(id)`でワークスペースIDを状態ディレクトリの絶対パスへ解決してから`internal/gate`パッケージへ委譲する。worktree自体のパスではなく状態ディレクトリを扱う。
 
-triageは別コマンドグループ`cmd/masuda/triage.go`の`newTriageCommand`（`masuda triage ...`）で、show/dismiss/redo/haltの4つ。`dismiss`は`gate.Approve`、`redo`は`gate.Reject`をそのまま呼ぶラッパーで、`halt`だけが`gate.Halt`という別関数を呼ぶ（他の3つと違い、サンドボックス停止もworktree操作も一切行わない——ADR-0029の設計で、人間が手動で調査する以外の自動復帰経路を持たせないため）。
+triageは別コマンドグループ`cmd/masuda/triage.go`の`newTriageCommand`（`masuda triage ...`）で、show/dismiss/redo/haltの4つ。`dismiss`は`gate.Approve`、`redo`は`gate.Reject`をそのまま呼ぶラッパーで、`halt`だけが`gate.Halt`という別関数を呼ぶ（triageの4サブコマンドはいずれも、plan/reviewの`approve`と違いサンドボックス停止・worktree操作を一切行わない——ADR-0029の設計で、人間が手動で調査する以外の自動復帰経路を持たせないため）。
 
 ## トリアージゲート機構の重複実装
 
@@ -119,3 +119,5 @@ Discovery/Blueprint段階（ホスト側で動く、サンドボックスなし�
   - `orchestrator/implement_review_graph.py:2333`（review gate到達時のTASK.md）
 
   あわせて `orchestrator/tests/test_investigate_plan_graph.py:322` と `test_implement_review_graph.py:1588` が旧コマンド名をアサートしているため、修正時はテストも直す必要がある
+
+- **`renderPlan`（Go）と`_render_plan_text()`（Python）が食い違っている**: `internal/gate/gate.go:155` はステップの`mode`が`"tdd"`のときラベルへ`（TDDモード）`を付けるが、`orchestrator/implement_review_graph.py:343-370` の`_render_plan_text()`は`mode`を一切参照しない。同じプランを人間（`masuda plan show`）とサブエージェント（実装時のコンテキスト）へ見せる2実装なのに、後者ではTDDステップかどうかが区別できない

@@ -89,7 +89,7 @@ explorerのLSPツールが正しく機能するには、対象リポジトリが
 
 `Build`は未解決の指摘だけを注釈化する（`fixed`済みの観点は`result_*.json`が修正後に書き直されないため、注釈がずれた古いコードを指すことになる——ADR-0011により自動修正しない横断的チェックの指摘には元々この制約がないので無条件で全件含める）。1つの観点の指摘は`result_{pid}_attempt{attempt}.json`の`issues[]`から、横断的チェックの指摘は`cross_cutting_verified.json`から読み、`{newRange:[startLine,endLine], summary:description, rationale:"[severity] suggestion", author}`という注釈に変換してファイルパスごとにグルーピングする（`byFile`）。
 
-**既知の不整合**: `hunkcontext.go`の`readReviewState`は`<stateDir>/.masuda-review-state.json`という平ファイルを読み、`Unresolved`要素を`{idx int, reason}`・`RedoCounts`を`map[string]int`（intのキー文字列）として解釈する実装のまま止まっている。現在のオーケストレーターは観点の識別子をファイル名由来の文字列ID（例: `secret-hardcode`）に統一しており（前掲）、レビュー状態自体も状態daemonの`internal:review-state`キー（`<stateDir>/internal/review-state`に保存、平ファイルの`.masuda-review-state.json`は存在しない）に移っている。`hunkcontext.Build`はこの平ファイルが無い、または見つかってもidが文字列でintではないため、意図通りに動作しない。
+**既知の不整合**: `hunkcontext.go`の`readReviewState`は`<stateDir>/.masuda-review-state.json`という平ファイルを読み、`Unresolved`要素を`{idx int, reason}`・`RedoCounts`を`map[string]int`（intのキー文字列）として解釈する実装のまま止まっている。現在のオーケストレーターは観点の識別子をファイル名由来の文字列ID（例: `secret-hardcode`）に統一しており（前掲）、レビュー状態自体も状態daemonの`internal:review-state`キー（`<stateDir>/store/internal/review-state`に保存、平ファイルの`.masuda-review-state.json`は存在しない）に移っている。`hunkcontext.Build`はこの平ファイルが無い、または見つかってもidが文字列でintではないため、意図通りに動作しない。
 
 ## レビュー単体実行
 
