@@ -66,15 +66,17 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 
 ## VMホスト一次セットアップ
 
-`scripts/setup-vm-host.sh`は再実行しても安全な冪等スクリプト。**masuda自身のコードはこのスクリプトを呼ばない**——sudoを要する手順は人間が明示的に一度（またはmasuda-net-helperを再ビルドしてcapabilityが失われた時に再度）実行するものとして切り離されている。実行コマンド自体は`docs/INSTALLATION.md`「3.5. VM実行基盤のセットアップ」節を参照。ここでは各ステップが何をするかだけを示す（`setup-vm-host.sh:164-168`の実行順）。
+`scripts/setup-vm-host.sh`は再実行しても安全な冪等スクリプト。**masuda自身のコードはこのスクリプトを呼ばない**——sudoを要する手順は人間が明示的に一度（またはmasuda-net-helperを再ビルドしてcapabilityが失われた時に再度）実行するものとして切り離されている。実行コマンド自体は`docs/INSTALLATION.md`「3.5. VM実行基盤のセットアップ」節を参照。ここでは各ステップが何をするかだけを示す（`setup-vm-host.sh:278-284`の実行順、7ステップ）。
 
-- **`step_rootfs_build_deps`**（`:52-63`）: `fakeroot`・`mkfs.ext4`（`e2fsprogs`）が無ければaptでインストールする。`internal/rootfs.Build`が使う。
-- **`step_kernel`**（`:68-86`）: `/boot/vmlinuz-*-generic`の最新版を探し（無ければ`linux-image-generic`をaptでインストールしてから再取得）、`$XDG_DATA_HOME/masuda/vmlinuz-<version>`へmode 0644・実行ユーザー所有でコピーする。
-- **`step_network`**（`:92-118`）: bridge `br-masuda0`（`192.168.200.1/24`）が無ければ作成・起動し、`net.ipv4.ip_forward=1`を設定する。デフォルトルートのインターフェースを`ip route show default`から検出し、`192.168.200.0/24`向けのoutbound NAT（MASQUERADE）とFORWARDルールを`iptables`へ追加する（`iptables -t nat -C`での存在チェック込みの冪等）。
-- **`step_net_helper`**（`:125-131`）: `cmd/masuda-net-helper`を`~/.local/bin/masuda-net-helper`へ`go build`し、`sudo setcap cap_net_admin+ep`を無条件に毎回適用する。
-- **`step_dnsmasq`**（`:137-162`）: `dnsmasq`が無ければaptでインストールする。`/etc/dnsmasq.d/masuda-vm.conf`を次の内容で書く（既存内容と一致していれば書き換えない）: `interface=br-masuda0`・`bind-interfaces`・`except-interface=lo`・`dhcp-range=192.168.200.10,192.168.200.200,12h`・`dhcp-leasefile=/var/lib/misc/masuda-dnsmasq.leases`。書いた後`systemctl enable --now dnsmasq`・`systemctl restart dnsmasq`を実行する。
+- **`step_rootfs_build_deps`**（`:56-67`）: `fakeroot`・`mkfs.ext4`（`e2fsprogs`）が無ければaptでインストールする。`internal/rootfs.Build`が使う。
+- **`step_kernel`**（`:72-90`）: `/boot/vmlinuz-*-generic`の最新版を探し（無ければ`linux-image-generic`をaptでインストールしてから再取得）、`$XDG_DATA_HOME/masuda/vmlinuz-<version>`へmode 0644・実行ユーザー所有でコピーする。
+- **`step_network`**（`:96-129`）: bridge `br-masuda0`（`192.168.200.1/24`）が無ければ作成・起動し、`net.ipv4.ip_forward=1`を設定する。デフォルトルートのインターフェースを`ip route show default`から検出し、`192.168.200.0/24`向けのoutbound NAT（MASQUERADE）とFORWARDルールを`iptables`へ追加する（`iptables -t nat -C`での存在チェック込みの冪等）。
+- **`step_egress_filtering`**（`:156-212`）: ブリッジ発のTCP 443を`masuda-egress-proxy`へREDIRECTするiptablesルール、およびDNS（UDP/TCP 53）以外のブリッジegressを制限するFORWARDルールを設定する。仕組みの詳細・関連ADRは`docs/design/egress-filter.md`を参照
+- **`step_net_helper`**（`:219-225`）: `cmd/masuda-net-helper`を`~/.local/bin/masuda-net-helper`へ`go build`し、`sudo setcap cap_net_admin+ep`を無条件に毎回適用する。
+- **`step_egress_proxy`**（`:231-237`）: `cmd/masuda-egress-proxy`を`~/.local/bin/masuda-egress-proxy`へ`go build`する（setcap不要、詳細は`docs/design/egress-filter.md`）。
+- **`step_dnsmasq`**（`:242-276`）: `dnsmasq`が無ければaptでインストールする。`/etc/dnsmasq.d/masuda-vm.conf`を次の内容で書く（既存内容と一致していれば書き換えない）: `interface=br-masuda0`・`bind-interfaces`・`except-interface=lo`・`dhcp-range=192.168.200.10,192.168.200.200,12h`・`dhcp-leasefile=/var/lib/misc/masuda-dnsmasq.leases`。書いた後`systemctl enable --now dnsmasq`・`systemctl restart dnsmasq`を実行する。
 
-スクリプト冒頭の`require_cmd`（`:42-47`）は`sudo`・`ip`・`iptables`・`go`・`cloud-hypervisor`・`virtiofsd`の存在を確認するのみで、後二者（標準aptパッケージが無い）は自動インストールしない。
+スクリプト冒頭の`require_cmd`（`:46-51`）は`sudo`・`ip`・`iptables`・`go`・`cloud-hypervisor`・`virtiofsd`の存在を確認するのみで、後二者（標準aptパッケージが無い）は自動インストールしない。
 
 ## 既知の問題
 

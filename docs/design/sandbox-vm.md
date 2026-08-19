@@ -2,7 +2,7 @@
 
 masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VMBackend`）として動く。Dockerはこのmicrovmのrootfs元イメージを作る（`docker build`/`docker export`）ためだけに使い、コンテナとして起動することはない（ADR-0044）。
 
-ネットワーク（TAPデバイス・bridge・NAT・ゲストIP解決、SSH接続のargv組み立て）は`docs/design/networking.md`を参照。rootfsのext4変換・Dockerイメージの中身は`docs/design/images-and-rootfs.md`を参照。状態デーモンの中身は`docs/design/state-daemon-mcp.md`を参照。
+ネットワーク（TAPデバイス・bridge・NAT・ゲストIP解決、SSH接続のargv組み立て）は`docs/design/networking.md`を参照。rootfsのext4変換・Dockerイメージの中身は`docs/design/images-and-rootfs.md`を参照。状態デーモンの中身は`docs/design/state-daemon-mcp.md`を参照。ゲストの外向きTLS通信を制限するegressフィルタの仕組みは`docs/design/egress-filter.md`を参照。
 
 ## Backendインターフェース
 
@@ -12,7 +12,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 
 ## VM起動（vmStart）
 
-`vmStart(id, worktreeDir, stateDir, repoRoot, image)`（`internal/sandbox/vmbackend.go:196-389`）はワークスペースID単位で冪等に動く。既に`vmIsRunning(id)`なら何もせず即座に`Handle`を返す。新規起動時の手順は次の順に並ぶ。
+`vmStart(id, worktreeDir, stateDir, repoRoot, image)`（`internal/sandbox/vmbackend.go:227-441`）はワークスペースID単位で冪等に動く。既に`vmIsRunning(id)`なら何もせず即座に`Handle`を返す。新規起動時の手順は次の順に並ぶ。
 
 1. `cloud-hypervisor`バイナリの存在確認、`findKernel()`でホストの`~/.local/share/masuda/vmlinuz-*`から最新カーネルを選ぶ
 2. `vmWorkDir(id)`（`~/.local/share/masuda/vm/<id>/`、`workspace.DataHome`配下）を確保。stateDir（`/masuda-state`として共有される状態ディレクトリ）とは別で、rootfsイメージ・virtiofsd/mcp-relayのソケットとログ・cloud-hypervisorのpidfileなど、ゲストに見える必要のないものだけを置く
@@ -24,8 +24,9 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 8. `StartVirtiofs`を`/workspace`（worktreeDir）→`/masuda-state`（stateDir）の順に起動。以後はvirtiofs節を参照
 9. `ClaudeOAuthTokenPath()`にトークンファイルがあれば、`vmClaudeSecretsDir(workDir)`へコピーし`/masuda-secrets`用のvirtiofsdをもう1つ起動する。トークンが未登録なら`/masuda-secrets`共有自体をスキップし、これはエラー扱いにしない
 10. `freePort()`でmcp-relay用ポートを取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ...)`をホスト側プロセスとして起動する（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。`relayPort`はランダム割り当てのため`vmRelayPortFile(workDir)`に書き残し、後続の`vmStop`（別プロセス起動）が参照する
-11. `cloud-hypervisor`をカーネル・rootfs・`--fs`（workspace/masuda-state/[claude-secrets]の3タグ）・`--net`（TAP＋`MACFor(id)`のMACアドレス）・`--cmdline`（`masuda.mcp_relay=<relay.Addr>`を含む）付きで起動し、`startBackgroundProcess`でpidfile化する
-12. `LookupGuestIP(mac, vmDHCPLeaseFile, vmBootTimeout)`（30秒）でDHCPリースが付くまで待つ。付かなければ起動失敗としてロールバックする
+11. `EnsureEgressProxy()`でホスト共有のegress-proxyプロセスが起動済みか確認し、無ければ起動する（`internal/sandbox/egressproxy.go`、冪等——2台目以降のVMは既に起動済みのものを見つけるだけ）。ゲスト側にこのプロキシのアドレスを渡す必要は無い——REDIRECTルールが自動的に443番宛のトラフィックをそこへ届けるため、`--cmdline`にmcp-relayのような明示的なアドレス引数は無い。仕組み自体は`docs/design/egress-filter.md`を参照
+12. `cloud-hypervisor`をカーネル・rootfs・`--fs`（workspace/masuda-state/[claude-secrets]の3タグ）・`--net`（TAP＋`MACFor(id)`のMACアドレス）・`--cmdline`（`masuda.mcp_relay=<relay.Addr>`を含む）付きで起動し、`startBackgroundProcess`でpidfile化する
+13. `LookupGuestIP(mac, vmDHCPLeaseFile, vmBootTimeout)`（30秒）でDHCPリースが付くまで待つ。付かなければ起動失敗としてロールバックする
 
 手順7以降の各ステップは失敗時に、そこまでに確保したリソース（tap・virtiofsdプロセス群・mcp-relay）を逆順でベストエフォートに解放してからエラーを返す。DHCPリース待ちの失敗だけは`vmStop(id)`をまるごと呼ぶ形でロールバックする。
 

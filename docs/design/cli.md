@@ -75,6 +75,10 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/Docke
 
 `list|approve|reject <server-name>`。ワークスペース単位ではなくリポジトリ直下の`.masuda/settings.local.json`を直接操作する。`approve`は`--env KEY=VALUE`（繰り返し可、既存キーへは上書きでなくマージ）で不足する環境変数値を埋められる。中身は`docs/design/mcp-child-servers.md`を参照。
 
+### `masuda egress`
+
+`list|approve|reject <hostname>`。`mcp`と同じdeclare/approve構造（`.masuda/settings.json`の`egressAllowlist`が宣言、`.masuda/settings.local.json`の`egressAllowlist`がこのユーザーの承認）で、`mcp`同様ワークスペース単位ではなくリポジトリ直下のファイルを直接読み書きする。`mcp approve`の`--env`に相当するフラグは無い——ホスト名エントリには埋めるべき可変値が無いため。`approve`は`.masuda/settings.json`側に未宣言のホスト名を渡すとエラーになる。承認は稼働中のVMへ即座には伝わらず、対象ワークスペースのVMを再起動して初めて反映される（`approve`自身がその旨を出力する）。宣言・承認がサンドボックスVMのegressフィルタへどう反映されるかは`docs/design/egress-filter.md`を参照。
+
 ## 内部コマンド（`masuda internal ...`）
 
 masuda自身のコード（Go CLI・サンドボックスのentrypoint・`orchestrator/*.py`）だけが呼ぶ配管用コマンド群。`newInternalCommand`（`cmd/masuda/statedaemon.go:90`）に`Hidden: true`でぶら下がり、`--help`には出ない。**通常は直接叩かない。**

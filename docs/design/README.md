@@ -16,6 +16,7 @@ masudaが**現在**どう動いているかを記述する。「なぜそうな�
 | `internal/config/`、`runtime/merge_claude_settings.py` | [config.md](config.md) |
 | `internal/sandbox/` のVM起動・virtiofs・SSH鍵・認証、`runtime/entrypoint.sh` | [sandbox-vm.md](sandbox-vm.md) |
 | `internal/sandbox/vmnet.go`、`cmd/masuda-net-helper/`、`scripts/setup-vm-host.sh` | [networking.md](networking.md) |
+| `internal/egressproxy/`、`cmd/masuda-egress-proxy/`、`internal/sandbox/egressproxy.go`、`cmd/masuda/egress.go` | [egress-filter.md](egress-filter.md) |
 | `Dockerfile`、`docker/*/Dockerfile`、`internal/rootfs/` | [images-and-rootfs.md](images-and-rootfs.md) |
 | `internal/statedaemon/`（KVストア・MCP 2面） | [state-daemon-mcp.md](state-daemon-mcp.md) |
 | `internal/statedaemon/mcpaggregator/`、`cmd/masuda/mcp.go` | [mcp-child-servers.md](mcp-child-servers.md) |

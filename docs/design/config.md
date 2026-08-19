@@ -8,12 +8,13 @@
 
 対象リポジトリがコミットするファイルであり、masuda自身が発行・署名するものではない。したがって**信用されない宣言**として扱う（Issue #19）——読み込み側はここに書かれた値を無条件に実行してよい設定とみなさない。この原則が最も直接に効くのは`mcpServers`フィールドで、宣言だけでは何も起動せずユーザー側の別ファイルでの承認を要求する（後述）。
 
-フィールドは4つ。
+フィールドは5つ。
 
 - **`image`**（string）: `masuda sandbox start`・`masuda review start`等サンドボックスを起動するコマンドが使うDockerイメージのタグ名。ここが指すのは**実行時に使う、既にビルド済みのローカルイメージタグ名**であり、Dockerfile自体（`.masuda/Dockerfile`）ではない——Dockerfileのビルド・タグ付けは`docs/design/distribution-and-update.md`を参照
 - **`base`**（string）: リポジトリのtrunk branch名。`--base`（新規ワークスペースの起点ブランチ）と`--into`（mergeの着地先ブランチ）の両方のデフォルトに使われる。実務上この2つはほぼ常に同じブランチのため、フィールドは1つ
 - **`claudeSettings`**（`json.RawMessage`）: サンドボックス内で起動する`claude`コマンドの`--settings`フラグへ渡す不透明ペイロード。masuda自身はこの中身を一切解釈しない——キーの意味・妥当性はClaude Code側の仕様であり、masudaのコード上は`json.RawMessage`のまま素通りする
 - **`mcpServers`**（`map[string]MCPServerDecl`）: 子MCPサーバーの宣言。フィールドの存在とスキーマ（`MCPServerDecl{Command, Args, Env []string, Tools []string}`）はここで扱うが、承認フロー・状態デーモンへの取り込みは`docs/design/mcp-child-servers.md`を参照。承認は`settings.local.json`という別ファイルに分離されている
+- **`egressAllowlist`**（`[]string`）: サンドボックスVMがTLSで到達可能になるホスト名の宣言。`mcpServers`と同じくdeclare/approve分離で、承認は`settings.local.json`側に分離されている（後述）。SNI判定・iptables・DNSまわりの仕組み自体は`docs/design/egress-filter.md`を参照
 
 ### 優先順位解決
 
@@ -45,7 +46,10 @@
 
 `internal/config.LocalSettings`（`internal/config/local.go:26-105`）がオンディスク形式。`settings.json`が対象リポジトリの委託する宣言であるのに対し、こちらはその宣言に対する**ユーザー本人の承認と、承認に紐づく実際の秘密情報**を持つ、gitignore対象の別ファイル。
 
-現時点で唯一のフィールドは`mcpServers`（`map[string]MCPServerApproval`）で、`MCPServerApproval{Approved bool, DeclHash string, Env map[string]string}`を持つ。`DeclHash`は承認対象の宣言（`config.DeclHash`が計算するsha256）への紐付け、`Env`は`settings.json`側の`MCPServerDecl.Env`が名前だけ列挙する環境変数の実値——masudaの設定ファイル群の中で唯一、実際の秘密情報を保持する場所になる。承認の判定ロジック・状態デーモンへの取り込みは`docs/design/mcp-child-servers.md`を参照。
+フィールドは2つ、`mcpServers`と`egressAllowlist`。両方とも`settings.json`側の対応する宣言に対するこのユーザーの承認を持つが、値の構造は異なる。
+
+- **`mcpServers`**（`map[string]MCPServerApproval`）: `MCPServerApproval{Approved bool, DeclHash string, Env map[string]string}`を持つ。`DeclHash`は承認対象の宣言（`config.DeclHash`が計算するsha256）への紐付け、`Env`は`settings.json`側の`MCPServerDecl.Env`が名前だけ列挙する環境変数の実値——masudaの設定ファイル群の中で唯一、実際の秘密情報を保持する場所になる。承認の判定ロジック・状態デーモンへの取り込みは`docs/design/mcp-child-servers.md`を参照
+- **`egressAllowlist`**（`[]string`）: `settings.json`側`EgressAllowlist`の承認済み部分集合を並べた単純なリスト。ホスト名がサンドボックスVMから到達可能になるのは、宣言側・承認側の両方のリストに同じホスト名が含まれる場合のみ（`internal/sandbox`の`resolveEgressAllowlist`）。`mcpServers`と異なり`DeclHash`に相当するフィールドを持たない——ホスト名エントリ自体には`MCPServerDecl`の`Command`/`Args`/`Env`のような別途変化しうるペイロードがなく、宣言側が改変されればホスト名そのものが変わる（＝それは単に別の未承認エントリになる）ため、承認をどの版の宣言に対するものか紐付ける対象がそもそも無い。仕組みの詳細は`docs/design/egress-filter.md`を参照
 
 `config.LoadLocal`は`settings.json`同様、ファイル不在をエラーにせずゼロ値（「何も承認されていない」）を返す。書き込みは`config.SaveLocal`が担う。
 
