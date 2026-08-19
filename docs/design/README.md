@@ -10,7 +10,7 @@ masudaが**現在**どう動いているかを記述する。「なぜそうな�
 |---|---|
 | `orchestrator/investigate_plan_graph.py`、`internal/hostloop/` | [discovery-blueprint.md](discovery-blueprint.md) |
 | `orchestrator/implement_review_graph.py` のステップ実行・TDD・バックストップ | [build.md](build.md) |
-| 同ファイルの観点レビュー・横断的チェック・synthesize、`internal/perspectives/`、`internal/hunkcontext/` | [review.md](review.md) |
+| 同ファイルの観点レビュー・横断的チェック・synthesize、`internal/perspectives/` | [review.md](review.md) |
 | `internal/gate/`、`cmd/masuda/gate.go`、`cmd/masuda/triage.go`、`runtime/CLAUDE.md` | [gates.md](gates.md) |
 | `internal/workspace/`、`internal/worktree/`、`cmd/masuda/workspace.go` | [workspace.md](workspace.md) |
 | `internal/config/`、`runtime/merge_claude_settings.py` | [config.md](config.md) |

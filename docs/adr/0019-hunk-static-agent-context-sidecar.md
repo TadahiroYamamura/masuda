@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (2026-07-30)
+Superseded by [[0052-remove-hunk-integration]]
 
 ## Context
 

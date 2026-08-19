@@ -60,13 +60,13 @@
 - **[0003](0003-mechanical-vs-complex-review-nodes.md)** レビューノードを「機械的チェック」と「横断的・複雑なチェック」の2区分にする
 - **[0004](0004-checker-fixer-role-separation.md)** 機械的な指摘の自動修正でcheckerとfixerの役割を分離する
 - **[0011](0011-iteration-budget-per-subagent-invocation.md)** 予算管理の単位を「サブエージェント起動1回」に統一し、横断的チェックにredoを持たせない — *一部改訂: 0021, 0027*
-- **[0019](0019-hunk-static-agent-context-sidecar.md)** Hunk統合はホストCLIが起動する静的agent-contextサイドカー方式を採る
 - **[0020](0020-structured-file-line-schema-for-findings.md)** 指摘のlocationをfile+startLine+endLineの構造化スキーマに変える
 - **[0021](0021-parallel-perspective-review-batching.md)** 観点のreview/check/fix/recheckを1ラウンドごとにバッチ並列委譲する
 - **[0024](0024-file-based-perspectives-mechanical-checker-prompt.md)** レビュー観点を`.masuda/reviews/`のファイル群として展開し、checker_promptは機械的テンプレートで生成する — *一部改訂: 0025, 0027, 0033*
 - **[0025](0025-drop-unused-category-severity-from-perspective-frontmatter.md)** 観点frontmatterから未使用のcategory・severityを削除する
 - **[0033](0033-perspective-enable-flag-and-release-asset-sync.md)** 観点の無効化は`enable`フィールドで表現し、`masuda update`はReleaseアセットから追加のみ同期する — *一部改訂: 0038*
 - **[0046](0046-review-only-entrypoint-reuses-provision-to-review.md)** `masuda review start`はProvision〜Reviewの既存機構をそのまま再利用し、専用のレビュー実行パスは作らない
+- **[0052](0052-remove-hunk-integration.md)** `masuda review hunk`（Hunk統合）を削除する
 
 ### ワークスペース・git操作
 

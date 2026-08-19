@@ -80,17 +80,6 @@ explorerのLSPツールが正しく機能するには、対象リポジトリが
 
 `.masuda/reviews/*.md`ファイル自体の配布・`masuda update`による新規観点の追加同期（追加のみ・上書きなし）は`docs/design/distribution-and-update.md`「レビュー観点の配布・同期」節が所有する。このドキュメントが扱うのは、既にリポジトリに存在するファイルをオーケストレーターがどう解釈・実行するかまで。
 
-## Hunkコンテキスト連携
-
-`masuda review hunk <workspace-id>`（`cmd/masuda/review.go:97`）は`masuda review show`（`final_report.md`のテキスト表示）の代替として、外部ツール[Hunk](https://hunk.dev)のTUI上に指摘をdiff注釈として表示する（ADR-0019）。ホストの`hunk`コマンドがPATHに必要——未インストールでも`review show`は引き続き機能する。
-
-1. `hunkcontext.Build(stateDir)`（`internal/hunkcontext/hunkcontext.go:88`）が`review_results/hunk-context.json`（Hunkの`--agent-context`サイドカースキーマ、ADR-0019）を生成する
-2. `worktree.Dir(root, id)`へ`os.Chdir`した上で`hunk diff --agent-context <生成パス>`を`syscall.Exec`する（`masuda chat`の`attach()`と同じプロセス置き換え方式）
-
-`Build`は未解決の指摘だけを注釈化する（`fixed`済みの観点は`result_*.json`が修正後に書き直されないため、注釈がずれた古いコードを指すことになる——ADR-0011により自動修正しない横断的チェックの指摘には元々この制約がないので無条件で全件含める）。1つの観点の指摘は`result_{pid}_attempt{attempt}.json`の`issues[]`から、横断的チェックの指摘は`cross_cutting_verified.json`から読み、`{newRange:[startLine,endLine], summary:description, rationale:"[severity] suggestion", author}`という注釈に変換してファイルパスごとにグルーピングする（`byFile`）。
-
-**既知の不整合**: `hunkcontext.go`の`readReviewState`は`<stateDir>/.masuda-review-state.json`という平ファイルを読み、`Unresolved`要素を`{idx int, reason}`・`RedoCounts`を`map[string]int`（intのキー文字列）として解釈する実装のまま止まっている。現在のオーケストレーターは観点の識別子をファイル名由来の文字列ID（例: `secret-hardcode`）に統一しており（前掲）、レビュー状態自体も状態daemonの`internal:review-state`キー（`<stateDir>/store/internal/review-state`に保存、平ファイルの`.masuda-review-state.json`は存在しない）に移っている。`hunkcontext.Build`はこの平ファイルが無い、または見つかってもidが文字列でintではないため、意図通りに動作しない。
-
 ## レビュー単体実行
 
 `masuda review start <branch-or-ref> [--base develop]`（`cmd/masuda/review.go:30`）は、Provision（worktree作成）〜Review（レビュー）の機構をそのまま使い回しつつ、Build段階を丸ごとスキップして直接Reviewから始める既存ブランチ向けの入口（ADR-0046）。
@@ -103,5 +92,4 @@ explorerのLSPツールが正しく機能するには、対象リポジトリが
 
 未調査。修正時はここから消す。
 
-- **`masuda review hunk` が機能していない**: `internal/hunkcontext/hunkcontext.go:186` の `readReviewState` は `<stateDir>/.masuda-review-state.json` を読むが、この平ファイルを**書く箇所はコードベースのどこにも無い**（`grep` で確認できるのは読む側のこの1箇所のみ）。レビュー状態は状態デーモンのキー `internal:review-state`（`orchestrator/implement_review_graph.py:242`）へ移行済み。さらに `hunkcontext.go:16-` のスキーマは観点識別子を整数 `idx` として解釈しており、ファイル名由来の文字列ID（ADR-0024）とも噛み合わない。状態デーモン移行の際に取り残されたもの
 - **`orchestrator/implement_review_graph.py:19` のモジュールdocstringが「13-perspective」のまま**。実際は14観点

@@ -55,7 +55,6 @@ func newRootCommand() *cobra.Command {
 
 	reviewCmd := newGateCommand(gate.Review)
 	reviewCmd.AddCommand(newReviewStartCommand())
-	reviewCmd.AddCommand(newReviewHunkCommand())
 	root.AddCommand(reviewCmd)
 
 	root.AddCommand(newTriageCommand())
@@ -106,7 +105,7 @@ func resolveImage(cmd *cobra.Command, root, flagImage, fall string) (string, err
 
 // completeWorkspaceIDs is a shared cobra.Command.ValidArgsFunction for every
 // subcommand whose first positional argument is a <workspace-id> (chat,
-// plan/review show|approve|reject, review hunk, sandbox start|stop,
+// plan/review show|approve|reject, sandbox start|stop,
 // workspace merge|remove, plan start's resume form): it looks up every
 // workspace known to the current repo (internal/workspace.List, the same
 // source `masuda workspace list` prints) instead of leaving the user to

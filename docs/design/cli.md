@@ -4,7 +4,7 @@
 
 ## ルートコマンドの組み立て
 
-`newRootCommand`（`cmd/masuda/main.go:37`）がcobraのルートコマンドを組み立てる。トップレベルへ直接ぶら下がるのは`init`・`internal`（隠しコマンド、後述）・`workspace`・`sandbox`・`chat`・`update`・`triage`・`mcp`の各コマンドグループ。`plan`・`review`は`newGateCommand(gate.Name)`（`cmd/masuda/gate.go`）が組み立てる共通のshow/approve/rejectサブコマンド群に、`plan`側は`plan start`、`review`側は`review start`・`review hunk`をそれぞれ追加登録したもの——「plan/reviewのゲート操作」と「plan/reviewの開始」はコード上別ファイル（`plan.go`/`review.go`）の別関数で、`main.go`がこの2つを1つのコマンドグループへ合流させている。
+`newRootCommand`（`cmd/masuda/main.go:37`）がcobraのルートコマンドを組み立てる。トップレベルへ直接ぶら下がるのは`init`・`internal`（隠しコマンド、後述）・`workspace`・`sandbox`・`chat`・`update`・`triage`・`mcp`の各コマンドグループ。`plan`・`review`は`newGateCommand(gate.Name)`（`cmd/masuda/gate.go`）が組み立てる共通のshow/approve/rejectサブコマンド群に、`plan`側は`plan start`、`review`側は`review start`をそれぞれ追加登録したもの——「plan/reviewのゲート操作」と「plan/reviewの開始」はコード上別ファイル（`plan.go`/`review.go`）の別関数で、`main.go`がこの2つを1つのコマンドグループへ合流させている。
 
 ## 共通ヘルパー
 
@@ -14,7 +14,7 @@
 
 ## `masuda chat`: セッションアタッチ
 
-`newChatCommand`（`cmd/masuda/chat.go:21`）はゲート名を引数に取らない唯一のセッション操作コマンド。1ワークスペースにつき生きているtmuxセッションは常に高々1つだが、それがDiscovery/Blueprint段階のホストループ（`internal/hostloop`）にあるかScaffold/Build/Review段階のサンドボックスVMにあるかは呼び出し時点では分からない——plan gateは初回到達時はホストループ側で待つが、Build段階での再オープン（ADR-0010の逸脱検知）はサンドボックス側で待つため、同じ「plan gate待ち」でもどちらのセッションが生きているかが変わる。そのため`hostloop.IsRunning(id)`を先に試し、なければ`sandboxBackend.IsRunning(id)`を試すという順に固定して判別し、見つかった方の`AttachArgs`を`syscall.Exec`で自プロセスに被せる（`attach`ヘルパー、`cmd/masuda/gate.go:164`。`masuda review hunk`の`hunk diff`起動も同じ関数を使う）。どちらも生きていなければエラーで、次に打つべきコマンド（`plan start`か`sandbox start`)を案内する。
+`newChatCommand`（`cmd/masuda/chat.go:21`）はゲート名を引数に取らない唯一のセッション操作コマンド。1ワークスペースにつき生きているtmuxセッションは常に高々1つだが、それがDiscovery/Blueprint段階のホストループ（`internal/hostloop`）にあるかScaffold/Build/Review段階のサンドボックスVMにあるかは呼び出し時点では分からない——plan gateは初回到達時はホストループ側で待つが、Build段階での再オープン（ADR-0010の逸脱検知）はサンドボックス側で待つため、同じ「plan gate待ち」でもどちらのセッションが生きているかが変わる。そのため`hostloop.IsRunning(id)`を先に試し、なければ`sandboxBackend.IsRunning(id)`を試すという順に固定して判別し、見つかった方の`AttachArgs`を`syscall.Exec`で自プロセスに被せる（`attach`ヘルパー、`cmd/masuda/gate.go:164`）。どちらも生きていなければエラーで、次に打つべきコマンド（`plan start`か`sandbox start`)を案内する。
 
 ## 利用者向けコマンド
 
@@ -64,8 +64,6 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/Docke
 `show|approve|reject <id>`もゲート共通コマンド。`approve`だけは`n == gate.Review`のとき追加で`finalizeReviewApproval`（`cmd/masuda/gate.go:119`）を実行する——サンドボックス停止（起動中なら）→`worktree.Commit`（Review段階のfixerが加えた分だけ。Build段階の各ステップは既に個別commit済み）→`worktree.Pull`（fast-forwardのみ）→`worktree.Remove`（`deleteBranch=false`でブランチ自体は残す、ADR-0023）→`workspace.Remove`、の順。いずれかが失敗すると後続は実行されない。詳細は`docs/design/gates.md`を参照。
 
 `start <branch-or-ref>`は既存の（新規作成ではない）ブランチに対し、Provision〜Reviewの機構を使い回してReviewだけを単体実行する入口。`branch-or-ref`が存在しなければエラー（`masuda plan start`と違い、存在しないブランチを新規作成することはしない）。`seedReviewOnly`で`implementation_result.json`を`{"status":"done"}`で事前投入することでBuild段階を丸ごとスキップし、直接サンドボックスを起動してReviewへ入る。中身の詳細（diff基準refの違い、機械的バックストップが自動スキップされる理由）は`docs/design/review.md`「レビュー単体実行」節を参照。
-
-`hunk <workspace-id>`は`review show`の代替表示手段。中身は`docs/design/review.md`「Hunkコンテキスト連携」節を参照（既知の不具合あり）。
 
 ### `masuda triage`
 
