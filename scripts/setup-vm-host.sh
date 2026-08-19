@@ -89,10 +89,10 @@ step_kernel() {
 	fi
 }
 
-# Bridge + outbound NAT: shared, host-level infrastructure (Issue #31 M4).
-# Individual per-workspace TAP devices are *not* created here -- those are
-# created/destroyed dynamically per VM by masuda-net-helper (M5-2), the
-# bridge is the one thing all of them share.
+# Bridge + outbound NAT: shared, host-level infrastructure. Individual
+# per-workspace TAP devices are *not* created here -- those are created and
+# destroyed dynamically per VM by masuda-net-helper. Why the split:
+# docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md
 step_network() {
 	if ip link show "$BRIDGE" >/dev/null 2>&1; then
 		log "bridge $BRIDGE already exists"
@@ -211,11 +211,11 @@ step_egress_filtering() {
 	fi
 }
 
-# masuda-net-helper: build + setcap (Issue #31 M5-2). CAP_NET_ADMIN goes on
-# this small, single-purpose binary -- never on masuda itself -- so a bug
-# anywhere else in masuda's much larger codebase can't reach it. Rebuilding
-# the binary always clears its capability (a Linux property, not a masuda
-# choice), so this step re-applies setcap unconditionally every run.
+# masuda-net-helper: build + setcap. CAP_NET_ADMIN goes on this small,
+# single-purpose binary -- never on masuda itself
+# (docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md).
+# Rebuilding the binary always clears its capability (a Linux property, not a
+# masuda choice), so this step re-applies setcap unconditionally every run.
 step_net_helper() {
 	log "building masuda-net-helper"
 	mkdir -p "$(dirname "$NET_HELPER")"
@@ -235,10 +235,10 @@ step_egress_proxy() {
 	go build -o "$egress_proxy" ./cmd/masuda-egress-proxy
 }
 
-# dnsmasq: DHCP for VM guests (Issue #31 M5-5). Bound only to $BRIDGE, so it
-# has no bearing on the host's other networks. Guest IPs come from DHCP
-# rather than static per-VM config so masuda doesn't need its own IP
-# allocator with multiple workspaces potentially running concurrently.
+# dnsmasq: DHCP for VM guests. Bound only to $BRIDGE, so it has no bearing on
+# the host's other networks. Guest IPs come from DHCP rather than static
+# per-VM config:
+# docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md
 step_dnsmasq() {
 	if ! command -v dnsmasq >/dev/null 2>&1; then
 		log "installing dnsmasq"

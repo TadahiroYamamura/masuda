@@ -2,30 +2,24 @@
 // device operations Issue #31's VM backend needs (create+attach-to-bridge,
 // delete), so masuda itself never needs elevated privileges.
 //
-// Deliberately its own small binary, not a masuda subcommand: a Linux file
-// capability granted via setcap applies to a binary, not to one code path
-// within it. Folding this into masuda's single large CLI binary would hand
-// CAP_NET_ADMIN to all of masuda's code -- every subcommand, every
-// subagent-invoked helper -- not just TAP management. Keeping this binary
-// tiny and single-purpose keeps that blast radius small and auditable.
+// Keep this binary tiny and single-purpose: a Linux file capability applies
+// to a whole binary, not to one code path within it, so anything added here
+// runs with CAP_NET_ADMIN too.
 //
-// All TAP/bridge operations go through the netlink library directly
-// (github.com/vishvananda/netlink), not by shelling out to `ip`: a setcap'd
-// binary's capability is only in *its own* effective set, and does not
-// propagate to a plain exec.Command child (that needs the capability to
-// already be in the calling process's inheritable set too, which a normal
-// unprivileged shell never has -- confirmed live: PR_CAP_AMBIENT_RAISE
-// fails with EPERM from a plain shell-launched process no matter what
-// setcap flags are used). Doing the netlink calls in-process, where
-// CAP_NET_ADMIN is actually held, sidesteps that entirely.
+// All TAP/bridge operations must stay in-process via the netlink library
+// (github.com/vishvananda/netlink) -- never shell out to `ip`. A setcap'd
+// binary's capability lives only in its own effective set and does not
+// propagate to an exec.Command child.
 //
 // Not part of the public CLI surface -- masuda's Go code invokes it (see
 // internal/sandbox.EnsureTap/ReleaseTap), a human isn't meant to type it
-// directly. Requires, once, after building it:
+// directly. Requires, once, after building it (and again after every
+// rebuild, which clears the capability):
 //
 //	sudo setcap cap_net_admin+ep <path to this binary>
 //
-// See docs/CONTRIBUTING.md.
+// Rationale and the alternative that was weighed:
+// docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md
 package main
 
 import (

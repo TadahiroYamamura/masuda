@@ -39,11 +39,11 @@ func pidPath(identity string) string {
 // left behind -- see startBackgroundProcess.
 //
 // --sandbox=none: virtiofsd's own default (--sandbox=namespace) needs
-// newuidmap/newgidmap (the uidmap package), which isn't installed and isn't
-// yet a documented masuda host dependency (docs/CONTRIBUTING.md). This is a
-// known, intentional compromise carried over from the Issue #31 spike, not
-// a final security posture -- revisit alongside Issue #11 (sandbox network/
-// isolation hardening), which is scheduled right after M1-M6 complete.
+// newuidmap/newgidmap (the uidmap package), which isn't a masuda host
+// dependency. This is a known, intentional compromise, not a final security
+// posture -- the shared directories are served without the namespace
+// isolation the default would add. Rationale and the alternative that was
+// weighed: docs/adr/0049-virtiofsd-sandbox-none.md
 func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 	if _, err := exec.LookPath(virtiofsdBinary); err != nil {
 		return nil, fmt.Errorf("%s not found on PATH (required for VM shared directories, Issue #31): %w", virtiofsdBinary, err)

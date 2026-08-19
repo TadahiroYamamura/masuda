@@ -13,15 +13,12 @@ import (
 // as a masuda subcommand.
 const netHelperBinary = "masuda-net-helper"
 
-// TapName derives the persistent TAP device name for a workspace id,
-// mirroring ContainerName: one deterministic name per workspace, derived
-// from the id alone. This is what makes EnsureTap's "delete any stale
-// leftover, then create" sequence work as the sole mechanism for
-// allocation, release, *and* crash recovery -- a TAP orphaned by a
-// previous run (masuda crashed, host rebooted) is just a name collision
-// the next EnsureTap for the same workspace id clears on its own. No
-// separate pool or PID-liveness bookkeeping is needed, the same way
-// Start's "docker rm -f the previous Exited container" needs none.
+// TapName derives the persistent TAP device name for a workspace id: one
+// deterministic name per workspace, derived from the id alone. Keeping it
+// deterministic is what lets EnsureTap's "delete any stale leftover, then
+// create" sequence serve as the sole mechanism for allocation, release,
+// *and* crash recovery, with no separate pool or PID-liveness bookkeeping
+// (docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md).
 //
 // Linux interface names are capped at IFNAMSIZ-1 (15) bytes; "tap-" plus a
 // workspace id (6 hex chars, internal/workspace.NewID) leaves comfortable

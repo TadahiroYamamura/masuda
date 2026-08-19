@@ -46,7 +46,7 @@
 
 DNS解決自体はホスト名で制限しない。ブリッジのFORWARDチェーンはUDP/TCP 53を無条件にuplinkへ通す（前述）ため、許可リストに無いホストのAレコードも普通に引ける。実際に効くのは、そのホストへTLS接続（443番）を試みた時点でのSNIチェックのみ。
 
-ゲスト内部の名前解決は`runtime/resolv-conf.service`が担う。
+ゲスト内部の名前解決は`runtime/resolv-conf.service`が担う（ADR-0051）。
 
 - ゲストのrootfsに焼き込まれた`/etc/resolv.conf`はDockerビルドホスト由来の値で、VM内では意味を持たない。このunitは起動時に`/etc/resolv.conf`を削除し、`/run/systemd/resolve/stub-resolv.conf`へのシンボリックリンクに差し替える（`ExecStart`、`resolv-conf.service:42`）
 - 実際にDNSサーバーのアドレス（ブリッジのゲートウェイIP）を教えるのは`systemd-networkd`のDHCPクライアント（`runtime/vm-dhcp.network`、`docs/design/networking.md`参照）。このunitはstub resolverへの向き先を切り替えるだけで、DNSサーバー自体の設定は行わない

@@ -85,6 +85,7 @@
 - **[0045](0045-redirect-over-tproxy-for-egress-interception.md)** egressプロキシへのパケット転送はTPROXYではなくiptables REDIRECTを使う
 - **[0048](0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md)** VMネットワークはホスト共有のbridge+NATとワークスペースごとの動的TAPに分離し、CAP_NET_ADMINは専用ヘルパーバイナリに隔離する
 - **[0049](0049-virtiofsd-sandbox-none.md)** virtiofsdを`--sandbox=none`で起動し、`newuidmap`/`newgidmap`をホスト前提条件に加えない
+- **[0051](0051-resolv-conf-fixed-at-vm-boot-in-sysinit-layer.md)** `/etc/resolv.conf`の差し替えはVM起動時のoneshot unitで行い、systemd-resolvedと同じsysinit層に置く
 
 ### 設定・配布・自己更新
 
