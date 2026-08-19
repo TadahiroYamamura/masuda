@@ -159,7 +159,7 @@ Verify afterwards:
 # index line count == ADR files minus superseded ones
 grep -cE '^- \*\*\[[0-9]{4}\]' docs/adr/README.md
 ls docs/adr/[0-9]*.md | wc -l
-grep -l 'Superseded by' docs/adr/[0-9]*.md | wc -l
+grep -lE '^Superseded by ' docs/adr/[0-9]*.md | wc -l   # 行頭一致。本文で語彙として言及しているADRを拾わないため
 
 # every index link resolves
 grep -ohE '\]\([0-9]{4}[^)]*\.md\)' docs/adr/README.md | sed 's/](//; s/)//' | while read f; do test -f "docs/adr/$f" || echo "MISSING: $f"; done

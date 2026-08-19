@@ -30,6 +30,7 @@
 - **[0007](0007-loop-protocol-claude-md-in-user-scope.md)** ループ仕様CLAUDE.mdは対象リポジトリではなく`~/.claude/CLAUDE.md`に置く — *一部改訂: 0044*
 - **[0012](0012-worktree-created-before-investigation.md)** worktree作成は調査より前に行う — *一部改訂: 0044*
 - **[0047](0047-file-placement-decided-by-consumer.md)** ファイルの配置は「誰が消費するか」で決め、「masudaの動作に必要かどうか」では決めない
+- **[0050](0050-design-docs-hold-current-state-adrs-hold-rationale.md)** 現在の設計は`docs/design/`が、判断の経緯は`docs/adr/`が持ち、CLAUDE.mdはどちらも持たない
 
 ### ゲート・エスカレーション
 
@@ -38,7 +39,7 @@
 - **[0013](0013-review-rejection-reopens-implementation.md)** review gate却下はBuild段階を再オープンする — *一部改訂: 0027*
 - **[0029](0029-immediate-stop-escalation-dedicated-gate.md)** 最優先即時停止エスカレーションは専用ゲート（`masuda triage`）で解決する
 - **[0039](0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite.md)** redoの遷移は専用pendingマーカーでゲートマーカー消費と成果物書き換えを橋渡しする
-- **[0042](0042-mcp-tool-call-replaces-inotifywait-gate-wait.md)** GATE待機はinotifywaitではなくMCP tool呼び出しで行う
+- **[0042](0042-mcp-tool-call-replaces-inotifywait-gate-wait.md)** GATE待機はinotifywaitではなくMCP tool呼び出しで行う — *一部改訂: 0050*
 
 ### Discovery / Blueprint（調査・プラン）
 

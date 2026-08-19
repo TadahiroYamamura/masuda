@@ -4,6 +4,8 @@
 
 Accepted (2026-08-17)
 
+- 一部改訂: [[0050-design-docs-hold-current-state-adrs-hold-rationale]] — Consequencesが「CLAUDE.mdの『ADRは番号順に読むと議論の経緯が追える』という既存の案内が[[0017-inotifywait-for-gate-wait-polling]]と本ADRを繋ぐ」としている点。その案内はCLAUDE.mdから削除され、現在は`docs/adr/README.md`の索引が入口になっている。0017は索引から削除済み（Supersededのため）で、到達経路は本ADRのContextからの`[[...]]`リンクのみ
+
 ## Context
 
 [[0017-inotifywait-for-gate-wait-polling]]は、`runtime/CLAUDE.md`・`internal/hostloop/system_prompt.md.tmpl`両方のGATE:\<name\>待機ステップを、ゲートマーカーファイルに対する単発ブロッキングの`inotifywait`呼び出しとして実装していた。[[0040-per-workspace-state-daemon-for-masuda-owned-state]]がゲートマーカーを状態デーモンへ移したことで、Dockerサンドボックス・フェーズ1-2ホストループのどちらの経路でも、もはや監視対象のファイル自体が存在しない——[[0040-per-workspace-state-daemon-for-masuda-owned-state]]・[[0041-mcp-protocol-with-trusted-and-curated-surfaces]]が実装されコミットされた時点で、GATE待機は実際には機能しなくなっていた。本ADRはその置き換えの記録である。
