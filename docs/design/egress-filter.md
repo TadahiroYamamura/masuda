@@ -65,7 +65,13 @@ DNS解決自体はホスト名で制限しない。ブリッジのFORWARDチェ�
 - `EGRESS_PROXY_PORT`は`setup-vm-host.sh`と`internal/sandbox/egressproxy.go`の2箇所にハードコードされている。片方だけ変更するとREDIRECT先とプロキシの待受ポートがずれ、全接続がタイムアウトする
 - `masuda egress approve`は`restart this workspace's VM to pick it up`と表示するが、`resolveEgressAllowlist`は接続のたびにディスクから読み直す純粋な解決ロジックであり、明示的なキャッシュは無い。VM再起動が本当に必要かどうかはこのメッセージだけでは判断できない
 - 443以外のポート（平文HTTPの80番等）は、REDIRECT・FORWARD ACCEPTのいずれの対象にもなっていない。ブリッジからの到達可否はホストのFORWARDチェーンのデフォルトポリシー（`setup-vm-host.sh`は設定しない）に依存する
-- `masuda-egress-proxy`は`VMBackend.Stop`では止まらない。動作確認のためにプロキシを再起動したい場合、pidfile（`workspace.DataHome()/egress-proxy.pid`）を手動でkillするか、ホストを再起動する必要がある
+- **egress関連のコードを変更したら、`masuda-egress-proxy`プロセスを手動でkillしてから再起動すること。** `EnsureEgressProxy`は「既にリスンしているか」だけを見る冪等性しか持たず、バイナリのビルド日時を見ないため、`scripts/setup-vm-host.sh`（バイナリを再ビルドするだけ）を実行しても既存プロセスは古いロジックのまま動き続ける。`VMBackend.Stop`でも止まらないので、pidfile（`workspace.DataHome()/egress-proxy.pid`）を手動でkillするかホストを再起動する必要がある。踏むと「実装したはずの許可判定が効かず常に拒否される」といった、コードを読んでも原因が分からない形で出る（`orchestrator/`・`runtime/`変更後のイメージ再ビルドと同種の罠——`docs/design/images-and-rootfs.md`）
+
+## 実機検証
+
+`internal/sandbox/zz_manual_egress_filter_test.go`の`TestManualEgressFiltering`が、REDIRECTルールと`masuda-egress-proxy`がゲストのTLS通信を実際に横取りし、宣言/承認の許可リストをend-to-endで強制することを確認する（Issue #11 M3〜M5）。宣言・承認の両方に含まれるホスト名へは到達でき、どちらにも無いホスト名は拒否される、という2点を実VMで検証する。
+
+環境変数`MASUDA_MANUAL_VM_TEST=1`を設定したときだけ実行され、通常の`go test ./...`ではskipされる（実VMの起動とホスト側の一次セットアップ完了を前提とするため）。実行前に上記の「触る人が事故る制約」——特に`masuda-egress-proxy`の手動再起動——を確認すること。
 
 ## 既知の問題
 
