@@ -73,9 +73,4 @@ DNS解決自体はホスト名で制限しない。ブリッジのFORWARDチェ�
 
 環境変数`MASUDA_MANUAL_VM_TEST=1`を設定したときだけ実行され、通常の`go test ./...`ではskipされる（実VMの起動とホスト側の一次セットアップ完了を前提とするため）。実行前に上記の「触る人が事故る制約」——特に`masuda-egress-proxy`の手動再起動——を確認すること。
 
-## 既知の問題
-
-未調査。修正時はここから消す。
-
-- **`masuda egress approve` の案内が実装と合っていない可能性が高い**: `cmd/masuda/egress.go` の `approve` は「このワークスペースのVMを再起動すると反映される」と表示するが、`internal/sandbox.resolveEgressAllowlist` / `NewEgressAllowlistFunc` は接続のたびに `settings.json`・`settings.local.json` をディスクから読み直しており、`internal/egressproxy`・`internal/sandbox` のどこにもキャッシュが無い。実際には次の接続から反映されるはず。`masuda mcp approve`（こちらはデーモン再起動が必要）の文言をそのまま流用した結果と見られる
-- **`step_egress_filtering` のコメントが実際の設定より強い保証を主張している**: `scripts/setup-vm-host.sh` の同ステップのコメントはブリッジのFORWARDチェーンについて「それ以外はすべて既定で拒否」と述べるが、このスクリプトは `iptables -P FORWARD DROP` 等の既定拒否ポリシーを一切設定せず、DNS向けのACCEPTルールを足すだけ。443番以外（平文HTTPの80番等）が実際に遮断されるかどうかは、ホスト側に元からあるFORWARDポリシー次第になる。egressフィルタはセキュリティ境界として位置づけられているため、実際の遮断範囲を実機で確認する必要がある
+`step_egress_filtering`は、ブリッジ発のFORWARDトラフィックに対する明示的なcatch-all DROPルール（`-i $BRIDGE -j DROP`、DNS ACCEPTルールの後に追加）を持つ。これが無いと「443・DNS以外はすべて既定で拒否」という保証は、このホストの FORWARD チェーンがたまたまDROPを既定にしている（Dockerのインストールが設定する副作用）ことに依存してしまい、masuda自身のスクリプトが保証するものではなくなる——実機で80番ポートへの到達がこのルール追加前後どちらでも拒否されることを確認済み（前者はDockerの副作用、後者はmasuda自身のルールによる）。

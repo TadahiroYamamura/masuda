@@ -210,6 +210,24 @@ step_egress_filtering() {
 		sudo iptables -A FORWARD -i "$BRIDGE" -o "$uplink" -p udp --dport 53 -j ACCEPT
 		sudo iptables -A FORWARD -i "$BRIDGE" -o "$uplink" -p tcp --dport 53 -j ACCEPT
 	fi
+
+	# Explicit catch-all: everything from the bridge that didn't match one
+	# of the ACCEPT rules above (443 doesn't need one -- REDIRECT above
+	# hands it to the local proxy before FORWARD ever sees it) is dropped
+	# here, scoped to $BRIDGE only (not a global FORWARD policy change,
+	# which would reach unrelated Docker workloads on a shared host).
+	# Without this rule, "everything else denied by default" depended
+	# entirely on this host's FORWARD chain already defaulting to DROP --
+	# true here only as a side effect of Docker's own installation setting
+	# it, not because this script asked for it. This rule makes the
+	# default-deny masuda's own, independent of whatever else happens to
+	# be installed on the host.
+	if sudo iptables -C FORWARD -i "$BRIDGE" -j DROP 2>/dev/null; then
+		log "bridge catch-all DROP rule already present"
+	else
+		log "adding explicit catch-all DROP for bridge egress not otherwise accepted"
+		sudo iptables -A FORWARD -i "$BRIDGE" -j DROP
+	fi
 }
 
 # masuda-net-helper: build + setcap. CAP_NET_ADMIN goes on this small,
