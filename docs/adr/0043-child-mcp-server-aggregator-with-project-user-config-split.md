@@ -4,6 +4,8 @@
 
 Accepted (2026-08-17)
 
+- 訂正: 本文が漏洩経路として挙げる「フェーズ4/5の`git add -A`ステップコミットへ秘密情報が漏れ出す」という説明は誤り。Build段階のステップコミットは[[0027-phase4-step-based-implement-review-commit-loop]]により`git add -- <changed_files>`の限定stageで行われ、`-A`は使わない。無条件の`git add -A`を実行するのはreview gate承認時の`internal/worktree.Commit`のみ。ADR-0027は本ADRより前（2026-08-04）なので、これは後からの陳腐化ではなく執筆時点の事実誤認にあたる。`.masuda/settings.local.json`をクローンへ複製しないという決定自体は有効
+
 ## Context
 
 [[0041-mcp-protocol-with-trusted-and-curated-surfaces]]は、状態デーモンのワイヤプロトコルをMCPに統一した動機として「Claudeへ外部tool（例: GitHub Issue読み取り）を持たせたい場合、既製のMCPサーバーをデーモンの下にアグリゲータとして取り込める」拡張性を挙げ、Consequencesで「curated setは現状意図的に2toolしかない。子MCPサーバーのアグリゲータ化はGitHub Issue #35のコメントに設計方針のみ記録、未実装」「trusted側の設定（子MCPサーバーの起動コマンド・トークン等）を対象リポジトリの`.masuda/settings.json`に書けるようにする案も検討したが、これは対象リポジトリ側の`settings.json`が無条件に信頼される既存の未解決課題（GitHub Issue #19）を悪化させるため、プロジェクトの宣言とユーザーの承認・秘密情報を分離する設計（`repoRoot/.masuda/settings.local.json`）を構想したのみで、本ADR・本セッションでは未実装」と明記していた。本ADRはその実装で、Issue #35のclose要件として着手した。

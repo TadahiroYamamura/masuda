@@ -1,6 +1,6 @@
 ---
 name: adr-author
-description: Write a new ADR in masuda's docs/adr/, and keep the existing collection honest. Use when — the user asks for an ADR to be written or recorded; you have established via adr-triage that something is an ADR; a new decision changes or reverses an earlier ADR, so that ADR's Status and the index in docs/adr/README.md have to be updated; or you notice an ADR Status, the index in docs/adr/README.md, or an ADR pointer in docs/design/ that has gone stale or inconsistent. Step A-0 re-checks that the content really is ADR material even when the request came in as "write an ADR", and hands off to adr-triage when it is not.
+description: Write a new ADR in masuda's docs/adr/, and keep the existing collection honest. Use when — the user asks for an ADR to be written or recorded; you have established via doc-placement that something is an ADR; a new decision changes or reverses an earlier ADR, so that ADR's Status and the index in docs/adr/README.md have to be updated; or you notice an ADR Status, the index in docs/adr/README.md, or an ADR pointer in docs/design/ that has gone stale or inconsistent. Step A-0 re-checks that the content really is ADR material even when the request came in as "write an ADR", and hands off to doc-placement when it is not.
 ---
 
 # Writing and maintaining masuda's ADRs
@@ -13,12 +13,12 @@ Two independent jobs live here. **A** fires when writing a new ADR; **B** fires 
 
 ## A-0: Confirm it is actually an ADR — even when you were asked for one directly
 
-"ADRを書いて" is a reasonable request that is sometimes wrong about the content behind it, and this skill can be reached without `adr-triage` ever running. Check both before writing:
+"ADRを書いて" is a reasonable request that is sometimes wrong about the content behind it, and this skill can be reached without `doc-placement` ever running. Check both before writing:
 
 1. **Is there a real alternative that was seriously considered and rejected?** Not a hypothetical strawman.
 2. **Is the "why" invisible from just reading the current code?**
 
-If either is "no", **stop and run `adr-triage`** — the content probably belongs in a code comment, `docs/design/`, or the commit message instead. Say which, and why, rather than writing the ADR anyway.
+If either is "no", **stop and run `doc-placement`** — the content probably belongs in a code comment, `docs/design/`, or the commit message instead. Say which, and why, rather than writing the ADR anyway.
 
 This gate is worth the friction because the error is one-way: ADRs are never deleted, so one written for a gotcha or a bug story stays in the directory and in the index permanently, and every later reader has to work out that it should not have been there. Declining to write one costs nothing — the content still gets recorded, just somewhere it is actually read.
 
@@ -43,9 +43,15 @@ Skipping this produces two ADRs that decide the same thing in different words, w
 
 ```bash
 ls docs/adr/
+git log --all --oneline --name-only --diff-filter=A -- 'docs/adr/0*.md' | grep '^docs/adr/' | sort -u | tail -5
 ```
 
-Take the highest existing `NNNN` and use `NNNN + 1`, zero-padded to 4 digits. **Read the numbers off the directory, not off `docs/adr/README.md`** — superseded ADRs are removed from the index (B-2) but keep their file and their number, so the index will hand you a number that is already taken.
+Take the highest number either command reports, and use `+ 1`, zero-padded to 4 digits. Both commands are needed:
+
+- **Read the numbers off the directory, not off `docs/adr/README.md`** — superseded ADRs are removed from the index (B-2) but keep their file and their number, so the index would hand you a number that is already taken.
+- **Check every branch, not just yours.** masuda is worked on in several branches/worktrees at once, and an ADR added on another branch — especially one not yet pushed — is invisible to `ls` here. This has already happened once: two different ADR-0045s were written in parallel and the collision was caught only just before commit. Renumbering afterwards means touching the file, its title line, the index, and every `（ADR-NNNN）` pointer in `docs/design/`.
+
+If a collision is unavoidable because the other branch is not visible from here at all, say so rather than assuming — the number is cheap to shift before commit and expensive after.
 
 Filename: `NNNN-kebab-case-summary-of-the-decision.md`. Name it after the decision (`0018-git-clone-local-over-linked-worktree.md`), not the topic area.
 
@@ -118,6 +124,14 @@ The body (Context / Decision / Alternatives Considered / Consequences) is frozen
   ```
 
   Be concrete about *which part*. "0027により変更された" is useless to someone deciding whether to open the file; "ステップ位置の追跡は`git rev-list --count`ではなく`masuda-step-<workspace-id>-<N>`というgit tagの数" is what they need.
+
+- **The body states something that was already factually wrong when it was written** — no later decision changed it, it was simply incorrect. Keep the `Accepted (date)` line and append:
+
+  ```markdown
+  - 訂正: <what the body claims> は誤り。<what is actually true, and where to see it>
+  ```
+
+  This is not `一部改訂:` — nothing was decided differently, so no ADR is cited as the cause. The decision itself still holds, so the index line stays exactly as it is (unlike `Superseded by`, which removes it). Reach for this whenever you find an error in an ADR you are reading: fixing the body is not an option, and a correction recorded anywhere else will not reach the person who opens that ADR.
 
 Touch only the Status section. Everything from `## Context` down stays byte-for-byte as it was.
 

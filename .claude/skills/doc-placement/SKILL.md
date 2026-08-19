@@ -1,6 +1,6 @@
 ---
-name: adr-triage
-description: Decide where a piece of masuda project knowledge belongs — docs/adr/, docs/design/, a code comment, CLAUDE.md, or the commit message. Use PROACTIVELY and BEFORE finishing the sentence, whenever what you are about to write explains why one approach was chosen over another that was genuinely considered ("〜という理由で", "〜ではなく〜を採用した", "検討した結果", "当初は〜だったが", "instead of", "we chose X because", "we considered Y but"), or whenever you are unsure whether something rises to the level of an ADR. masuda's CLAUDE.md has repeatedly drifted into an implementation log because this kind of content kept landing there, so treat this as a required checkpoint, not an optional one. When the answer is "this is an ADR", hand off to the adr-author skill.
+name: doc-placement
+description: Decide where a piece of masuda project knowledge belongs — docs/design/, docs/adr/, a code comment, CLAUDE.md, or the commit message. Use BEFORE writing, whenever you are about to add content to CLAUDE.md or to a file under docs/design/, whenever the sentence you are about to write explains why one approach was chosen over another that was genuinely considered ("〜という理由で", "〜ではなく〜を採用した", "検討した結果", "当初は〜だったが", "instead of", "we chose X because", "we considered Y but"), or whenever you are unsure which of those five places something belongs in. masuda's CLAUDE.md has repeatedly grown into an implementation log because this kind of content kept landing there instead, so treat this as a required checkpoint, not an optional one. When the answer is "this is an ADR", hand off to the adr-author skill.
 ---
 
 # Where does this belong?
