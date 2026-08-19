@@ -1,9 +1,9 @@
 // Command masuda is the host-side CLI for the AI-collaborative development
-// sandbox: workspace lifecycle management, sandbox container startup, and
-// G1/G2 gate operations, driving the 6-phase investigate/plan/implement/review
+// sandbox: workspace lifecycle management, sandbox VM startup, and gate
+// operations, driving the Provision/Discovery/Blueprint/Scaffold/Build/Review
 // pipeline (orchestrator/investigate_plan_graph.py, implement_review_graph.py).
-// See docs/design/sandbox-workflow.md and CLAUDE.md's 現状 section for the
-// full picture.
+// See docs/design/pipeline.md for the full picture and docs/design/cli.md for
+// this package.
 package main
 
 import (

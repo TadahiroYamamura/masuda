@@ -1,7 +1,7 @@
 # インストール手順
 
 masudaをローカルPCで動かすためのセットアップ手順。全体設計は
-`docs/design/sandbox-workflow.md`、個々の設計判断は`docs/adr/`を参照。
+`docs/design/pipeline.md`、個々の設計判断は`docs/adr/README.md`（索引）を参照。
 
 ## 前提条件
 

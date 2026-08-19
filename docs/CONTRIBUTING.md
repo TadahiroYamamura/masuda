@@ -1,6 +1,6 @@
 # masuda自体の開発に参加する
 
-これはmasudaを**使う**ための手順（`docs/INSTALLATION.md`）ではなく、masuda自身のコード・ドキュメントに変更を加える人向けの手順。全体アーキテクチャは`docs/design/sandbox-workflow.md`、用語は`docs/glossary.md`、個々の設計判断は`docs/adr/`、現状の実装構成は`CLAUDE.md`「現状の構成」節を参照。
+これはmasudaを**使う**ための手順（`docs/INSTALLATION.md`）ではなく、masuda自身のコード・ドキュメントに変更を加える人向けの手順。全体アーキテクチャは`docs/design/pipeline.md`（詳細は`docs/design/`配下の各ファイル）、用語は`docs/glossary.md`、個々の設計判断は`docs/adr/README.md`（索引）を参照。
 
 ## 開発環境
 

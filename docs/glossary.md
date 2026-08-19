@@ -16,9 +16,9 @@ masudaのパイプライン・ゲート・エスカレーションは、開発�
 | **Discovery** | 調査。タスク内容から`INVESTIGATION.md`を作る | サブエージェント（read-only） | 不要 |
 | **Blueprint** | プラン作成。`INVESTIGATION.md`から`plan/summary.md`・`plan/steps.json`を作る | サブエージェント | 不要 |
 | *(plan gateで人間承認)* | | | |
-| **Scaffold** | プロジェクト初期化（依存解決・LSP起動）。**未実装・予約名**。現状はBuild/Reviewの各サブエージェントが自タスク内で必要に応じて行う | Go CLI / entrypoint.sh | Docker起動 |
-| **Build** | 実装。`plan/steps.json`のステップを1つずつ「実装→バックストップ→トリガー式軽量レビュー→commit」で処理する | サブエージェント（write/Edit/Bash可） | Docker |
-| **Review** | レビュー。13観点のreview/check往復＋横断的チェックで`final_report.md`を作る | サブエージェント群 | Docker |
+| **Scaffold** | プロジェクト初期化（依存解決・LSP起動）。**未実装・予約名**。現状はBuild/Reviewの各サブエージェントが自タスク内で必要に応じて行う | Go CLI / entrypoint.sh | microVM起動 |
+| **Build** | 実装。`plan/steps.json`のステップを1つずつ「実装→バックストップ→トリガー式軽量レビュー→commit」で処理する | サブエージェント（write/Edit/Bash可） | microVM |
+| **Review** | レビュー。14観点のreview/check往復＋横断的チェックで`final_report.md`を作る | サブエージェント群 | microVM |
 | *(review gateで人間承認)* | | | |
 
 Discovery↔Blueprintの往復（調査不足時のredo）、Build内でのステップループ、Review内でのcheck/fix/recheckループは、それぞれの段階の内部設計であり別段階ではない。
@@ -69,8 +69,8 @@ blocking escalationとrecorded escalationはどちらも既存のゲート（pla
 
 連番の問題を持たないため今回リネームしていない用語。詳細な定義は`docs/backlog-agent.md`「用語集」節を参照。
 
-- **ワークスペース (workspace)**: ワークスペースID・gitチェックアウト・状態ディレクトリ（Scaffold以降はDockerサンドボックスコンテナも含む）をまとめた複合的な単位
-- **サンドボックス (sandbox)**: Scaffold以降で使うDockerコンテナ
+- **ワークスペース (workspace)**: ワークスペースID・gitチェックアウト・状態ディレクトリ（Scaffold以降はサンドボックスVMも含む）をまとめた複合的な単位
+- **サンドボックス (sandbox)**: Scaffold以降で使うCloud Hypervisor microVM
 - **観点 (perspective)**: Reviewが読み込むレビュー観点（`.masuda/reviews/*.md`）
 - **バックストップ (backstop)**: 自己申告に頼らない機械的な逸脱検知（Build段階、[[0010-plan-deviation-reopens-plan-gate]]）
 - **redo**: 前段への差し戻し（Discovery↔Blueprint、check_nodeのredo等）
@@ -78,4 +78,6 @@ blocking escalationとrecorded escalationはどちらも既存のゲート（pla
 
 ## 適用範囲についてのメモ
 
-この用語集の正式名称は`CLAUDE.md`・`docs/design/sandbox-workflow.md`・`docs/backlog-agent.md`には反映済み。既存43本のADR本文は文脈判断（番号の振り直しそのものを記述している箇所を機械的に書き換えると経緯が読めなくなる）が必要なため、意図的に未着手のまま残している。ADRを読む際は上記の「旧称対応表」を翻訳表として使うこと。
+この用語集の正式名称は`CLAUDE.md`・`docs/design/`配下には反映済み。ADR本文は凍結対象（`docs/adr/README.md`の運用ルール）のため、旧称のまま残る。ADRを読む際は上記の「旧称対応表」を翻訳表として使うこと。
+
+`docs/backlog-agent.md`は未反映。
