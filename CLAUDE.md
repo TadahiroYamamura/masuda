@@ -82,6 +82,7 @@ AIとの協同開発（Provision→Discovery→Blueprint→Scaffold→Build→Re
   - `docker/python/Dockerfile`・`docker/typescript/Dockerfile`: `pyright`・`typescript-language-server`はnpm配布のためbase imageのNode.jsに乗るだけで済むが、npmのグローバルインストール先（`/usr/lib/node_modules`）がroot所有のため、そのステップだけ`USER root`に戻す必要がある
   - `docker/full/Dockerfile`: 上記3つを1つにまとめたkitchen sinkバリアント。複数言語混在repo向け
 - **開発時の注意**: `orchestrator/`はDockerイメージのビルド時に`COPY`で焼き込まれ、そのイメージから変換されたVMのrootfsの中身が後から変わることはない。オーケストレーター（`investigate_plan_graph.py`・`implement_review_graph.py`）や`runtime/`配下のコードを変更した後に実機テストを行う場合、`masuda-loop:latest`（base）と使用する言語バリアントイメージの両方を必ず再ビルドしてからVMを起動し直すこと。再ビルドを忘れると、古いコードのままVMが動き続け、新しい段階が一切実行されずに次の段階へ直行するなど、原因が分かりにくい形で不具合が出る
+- 同種の罠が`masuda-egress-proxy`（Issue #11）にもある。`EnsureEgressProxy`は「既にリスンしていれば何もしない」という冪等性しか見ておらず、バイナリのビルド日時とは無関係に既存プロセスをそのまま使い続ける。`internal/egressproxy`や`internal/sandbox`のegress関連コードを変更した後は、`scripts/setup-vm-host.sh`（バイナリの再ビルドのみ行う）を実行するだけでは不十分——既存の`masuda-egress-proxy`プロセスを手動で`kill`してから再起動しない限り、古いロジックのまま動き続ける（M4実装直後の実機検証で実際に踏んだ: `resolveEgressAllowlist`を実装済みなのに常に拒否される、という原因が分かりにくい形で発覚した）
 
 ## 開発環境
 
