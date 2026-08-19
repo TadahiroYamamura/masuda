@@ -30,6 +30,15 @@ type LocalSettings struct {
 	// Approved: false, means the daemon must never start that server --
 	// see internal/statedaemon/mcpaggregator.
 	MCPServers map[string]MCPServerApproval `json:"mcpServers,omitempty"`
+
+	// EgressAllowlist is this user's approved subset of
+	// Config.EgressAllowlist (Issue #11 M4). A hostname the sandbox VM
+	// may reach is one that appears in *both* lists -- declared by the
+	// repo and approved by the user -- see internal/sandbox's
+	// resolveEgressAllowlist. Unlike MCPServers, this is a plain list,
+	// not a map: there is no per-entry payload (env values, a decl hash)
+	// to carry alongside the approval, just the hostname itself.
+	EgressAllowlist []string `json:"egressAllowlist,omitempty"`
 }
 
 // MCPServerApproval is one user's decision about one declared MCP server.

@@ -108,6 +108,7 @@ COPY runtime/masuda-loop.service /etc/systemd/system/masuda-loop.service
 COPY runtime/fstab.vm /tmp/fstab.vm
 COPY runtime/vm-dhcp.network /etc/systemd/network/20-dhcp.network
 COPY runtime/ssh-host-keys.service /etc/systemd/system/ssh-host-keys.service
+COPY runtime/resolv-conf.service /etc/systemd/system/resolv-conf.service
 # ttyd.service: the ttyd apt package enables its own unit by default
 # (127.0.0.1:7681, -O login) -- masuda doesn't use it, entrypoint.sh starts
 # its own ttyd on :7682 instead, so disable the package's to avoid running a
@@ -116,8 +117,10 @@ RUN cat /tmp/fstab.vm >> /etc/fstab \
  && rm /tmp/fstab.vm \
  && systemctl enable masuda-loop.service \
  && systemctl enable systemd-networkd.service \
+ && systemctl enable systemd-resolved.service \
  && systemctl enable ssh.service \
  && systemctl enable ssh-host-keys.service \
+ && systemctl enable resolv-conf.service \
  && systemctl disable ttyd.service
 
 # masuda CLI binary (see the masuda-builder stage above) -- orchestrator/*.py

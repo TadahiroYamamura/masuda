@@ -44,6 +44,22 @@ func TestSaveLocalRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSaveLocalRoundTripEgressAllowlist(t *testing.T) {
+	dir := t.TempDir()
+	want := LocalSettings{EgressAllowlist: []string{"github.com"}}
+	if err := SaveLocal(dir, want); err != nil {
+		t.Fatalf("SaveLocal() error = %v, want nil", err)
+	}
+
+	got, err := LoadLocal(dir)
+	if err != nil {
+		t.Fatalf("LoadLocal() error = %v, want nil", err)
+	}
+	if len(got.EgressAllowlist) != 1 || got.EgressAllowlist[0] != "github.com" {
+		t.Fatalf("EgressAllowlist = %v, want [github.com]", got.EgressAllowlist)
+	}
+}
+
 func TestSaveLocalPermissions0600(t *testing.T) {
 	dir := t.TempDir()
 	if err := SaveLocal(dir, LocalSettings{}); err != nil {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	masuda "github.com/TadahiroYamamura/masuda"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/rootfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -176,6 +177,36 @@ func vmWorkspaceSocketPath(workDir string) string {
 }
 func vmStateSocketPath(workDir string) string { return filepath.Join(workDir, "virtiofs-state.sock") }
 func vmRelayPortFile(workDir string) string   { return filepath.Join(workDir, "mcp-relay.port") }
+
+// resolveEgressAllowlist returns the hostnames workspace repoRoot's VM is
+// allowed to reach over TLS (Issue #11 M4): the intersection of
+// config.Config.EgressAllowlist (repoRoot's committed declaration) and
+// config.LocalSettings.EgressAllowlist (this user's approval, `masuda
+// egress approve`) -- a hostname absent from either side is denied.
+// Neither file existing is not an error, matching config.Load/LoadLocal's
+// own "missing means empty" treatment -- a repo with no declaration, or a
+// user who has approved nothing, both simply get no allowed hostnames.
+func resolveEgressAllowlist(repoRoot string) ([]string, error) {
+	cfg, err := config.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	local, err := config.LoadLocal(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	approved := make(map[string]bool, len(local.EgressAllowlist))
+	for _, h := range local.EgressAllowlist {
+		approved[h] = true
+	}
+	var allowed []string
+	for _, h := range cfg.EgressAllowlist {
+		if approved[h] {
+			allowed = append(allowed, h)
+		}
+	}
+	return allowed, nil
+}
 
 // vmClaudeSecretsDir/vmClaudeSecretsSocketPath stage the `claude
 // setup-token` OAuth token (see internal/sandbox/claudetoken.go) for
@@ -345,6 +376,25 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		return Handle{}, fmt.Errorf("recording mcp-relay port: %w", err)
 	}
 
+	// Egress proxy (Issue #11): one shared process for the whole host, not
+	// one per workspace -- see internal/sandbox/egressproxy.go's doc
+	// comment for why. The guest never learns its address either: once
+	// scripts/setup-vm-host.sh's REDIRECT rule is in place, the guest's
+	// own outbound 443 traffic gets redirected to it, so there's nothing
+	// to pass via --cmdline the way mcp-relay's address is.
+	// EnsureEgressProxy is idempotent -- after the first VM on this host
+	// starts one, every later Start just finds it already running.
+	if err := EnsureEgressProxy(); err != nil {
+		if secretsVF != nil {
+			_ = secretsVF.Stop()
+		}
+		_ = relay.Stop()
+		_ = stateVF.Stop()
+		_ = wsVF.Stop()
+		_ = ReleaseTap(id)
+		return Handle{}, fmt.Errorf("ensuring egress-proxy is running: %w", err)
+	}
+
 	mac := MACFor(id)
 	cmdline := fmt.Sprintf("console=ttyS0 root=/dev/vda rw masuda.mcp_relay=%s", relay.Addr)
 	fsArgs := []string{
@@ -370,6 +420,9 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	)
 	cmd := exec.Command(cloudHypervisorBinary, cmdArgs...)
 	if err := startBackgroundProcess(cmd, chPIDPath(workDir)); err != nil {
+		// egress-proxy is deliberately not stopped here -- it's shared
+		// host-wide (EnsureEgressProxy's own doc comment), other
+		// workspaces' VMs may depend on it staying up.
 		if secretsVF != nil {
 			_ = secretsVF.Stop()
 		}
@@ -425,6 +478,9 @@ func vmStop(id string) error {
 		addr := vmBridgeGatewayIP + ":" + strings.TrimSpace(string(port))
 		stopKnownProcess(addr)
 	}
+	// egress-proxy is deliberately NOT stopped here -- see
+	// EnsureEgressProxy's doc comment: it's a shared, host-wide process,
+	// not scoped to this workspace.
 
 	if err := ReleaseTap(id); err != nil {
 		return fmt.Errorf("releasing VM network interface: %w", err)
