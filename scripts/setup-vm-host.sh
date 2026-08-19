@@ -5,11 +5,12 @@
 # This is NOT invoked by masuda itself -- masuda's own code never runs sudo
 # on its own initiative (established while designing the VM backend: masuda
 # should never silently self-elevate). This script exists for a human to
-# read and run explicitly. See docs/CONTRIBUTING.md for the design/rationale
-# behind each step below.
+# read and run explicitly. See docs/design/networking.md for the design/
+# rationale behind each step below (docs/INSTALLATION.md has the plain
+# instructions for running this script, not the why).
 #
 # Requires: linux-image-generic and Cloud Hypervisor/virtiofsd already
-# installed (docs/CONTRIBUTING.md) -- this script doesn't fetch those
+# installed (docs/INSTALLATION.md) -- this script doesn't fetch those
 # itself; the former is a simple apt package this script *does* install,
 # the latter two have no standard apt package and need a manual download,
 # which this script won't guess a URL for.
@@ -43,12 +44,12 @@ if [ ! -f go.mod ] || [ ! -d cmd/masuda-net-helper ]; then
 	exit 1
 fi
 
-require_cmd sudo "this script needs sudo for a handful of one-time host-level steps (see docs/CONTRIBUTING.md)"
+require_cmd sudo "this script needs sudo for a handful of one-time host-level steps (see docs/INSTALLATION.md)"
 require_cmd ip "install iproute2"
 require_cmd iptables "install iptables"
 require_cmd go "install the Go toolchain first"
-require_cmd cloud-hypervisor "install Cloud Hypervisor first (docs/CONTRIBUTING.md) -- no standard apt package, this script won't guess a download URL"
-require_cmd virtiofsd "install virtiofsd first (docs/CONTRIBUTING.md) -- same reason as cloud-hypervisor above"
+require_cmd cloud-hypervisor "install Cloud Hypervisor first (docs/INSTALLATION.md) -- no standard apt package, this script won't guess a download URL"
+require_cmd virtiofsd "install virtiofsd first (docs/INSTALLATION.md) -- same reason as cloud-hypervisor above"
 
 # fakeroot/e2fsprogs: internal/rootfs.Build's dependencies (Issue #31 M2).
 # Ordinary apt packages, safe for this script to install directly (unlike
@@ -283,4 +284,4 @@ step_net_helper
 step_egress_proxy
 step_dnsmasq
 
-log "done. See docs/CONTRIBUTING.md for what each step configured and why."
+log "done. See docs/design/networking.md for what each step configured and why."

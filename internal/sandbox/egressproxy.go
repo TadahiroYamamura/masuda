@@ -75,7 +75,7 @@ func EnsureEgressProxy() error {
 	}
 
 	if _, err := exec.LookPath(egressProxyBinary); err != nil {
-		return fmt.Errorf("%s not found on PATH (required for VM egress filtering, Issue #11 -- see docs/CONTRIBUTING.md): %w", egressProxyBinary, err)
+		return fmt.Errorf("%s not found on PATH (required for VM egress filtering, Issue #11 -- see docs/INSTALLATION.md): %w", egressProxyBinary, err)
 	}
 	pidPathVal, err := egressProxyPIDPath()
 	if err != nil {

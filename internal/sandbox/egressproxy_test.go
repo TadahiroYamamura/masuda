@@ -19,7 +19,7 @@ import (
 func requireEgressProxyBinary(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath(egressProxyBinary); err != nil {
-		t.Skipf("%s not installed (see docs/CONTRIBUTING.md)", egressProxyBinary)
+		t.Skipf("%s not installed (see docs/INSTALLATION.md)", egressProxyBinary)
 	}
 }
 
@@ -79,10 +79,9 @@ func TestResolveWorkspaceByIPUnknown(t *testing.T) {
 }
 
 // TestEnsureEgressProxyIsIdempotent exercises EnsureEgressProxy end to end
-// against the real masuda-egress-proxy binary (setcap'd with
-// CAP_NET_ADMIN, see docs/CONTRIBUTING.md): the first call starts it, a
-// second call finds it already running rather than erroring or starting a
-// duplicate.
+// against the real masuda-egress-proxy binary (see docs/INSTALLATION.md):
+// the first call starts it, a second call finds it already running rather
+// than erroring or starting a duplicate.
 func TestEnsureEgressProxyIsIdempotent(t *testing.T) {
 	requireTestBridge(t, testBridge) // egressProxyBind is the bridge gateway IP
 	requireEgressProxyBinary(t)

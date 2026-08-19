@@ -1794,7 +1794,7 @@ G1ゲート（`masuda plan show`）のstatusがpendingでなくなるまで待�
 {reason}
 
 人間は `masuda plan show <workspace-id>` で理由とプランを確認し、
-`masuda plan chat <workspace-id>` で対話するか、
+`masuda chat <workspace-id>` で対話するか、
 `masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """
 
@@ -2330,7 +2330,7 @@ _TERMINAL = {
 G2ゲート（`masuda review show`）のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda review show <workspace-id>` で{FINAL_REPORT_MD.name}を確認し、
-`masuda review chat <workspace-id>` で対話するか、
+`masuda chat <workspace-id>` で対話するか、
 `masuda review approve <workspace-id>` / `masuda review reject <workspace-id> "<feedback>"` で応答してください。
 承認時はローカルmerge・worktree削除まで自動で行われます（ADR-0005）。
 却下時はフェーズ4に差し戻され、フィードバックを踏まえて再実装します（ADR-0013）。

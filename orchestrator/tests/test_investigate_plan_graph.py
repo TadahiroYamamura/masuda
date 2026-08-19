@@ -319,7 +319,7 @@ def test_await_g1_is_a_gate_not_a_terminal_done():
 def test_await_g1_mentions_plan_cli_commands():
     ipg.write_task_md({"phase": "await_g1", "retries": 0, "questions": []})
     content = ipg.TASK_MD.read_text(encoding="utf-8")
-    assert "masuda plan chat" in content
+    assert "masuda chat" in content
     assert "masuda plan approve" in content
     assert "masuda plan reject" in content
 

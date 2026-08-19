@@ -26,7 +26,7 @@ func MACFor(id string) string {
 const guestIPPollInterval = 200 * time.Millisecond
 
 // LookupGuestIP polls dnsmasq's lease file (leaseFilePath, see
-// docs/CONTRIBUTING.md's dnsmasq setup) for an entry matching mac, up to
+// docs/INSTALLATION.md's dnsmasq setup) for an entry matching mac, up to
 // timeout. masuda doesn't allocate the guest's IP itself -- with multiple
 // workspaces potentially running concurrently, DHCP's own lease/conflict
 // handling is what actually solves that (Issue #31 M5-5); this just reads

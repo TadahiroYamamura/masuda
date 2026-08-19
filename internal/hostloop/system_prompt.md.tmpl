@@ -17,7 +17,7 @@
    （`plan`または`triage`）を渡して、人間がゲートを解決するまでブロッキング待機する（Issue #35：
    ADR-0017の`inotifywait`単発ブロッキング呼び出しに相当する、状態デーモン経由のMCPツール呼び出し。
    ツール呼び出し自体が単発のブロッキング呼び出しなので、`while`ループもMonitorツールも不要）。
-   - 待機中に人間が`tmux attach`（`masuda plan chat`）で接続し、対話の中で「進めていい」と伝えられた場合は、
+   - 待機中に人間が`tmux attach`（`masuda chat <workspace-id>`）で接続し、対話の中で「進めていい」と伝えられた場合は、
      上記の待機を打ち切り、自分自身で`mcp__masuda-gate__resolve_gate_from_chat`ツール（`name`・
      `status`（`"approved"`または`"rejected"`）・`feedback`（対話の要約））を呼んでゲートを解決してよい。
    - ただし`triage`ゲート（ADR-0029）はこの限りではない。懸念の対象となっている

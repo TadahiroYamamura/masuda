@@ -23,14 +23,14 @@ func requireNetHelper(t *testing.T) {
 // requireTestBridge skips unless a bridge named name already exists --
 // EnsureTap attaches to an existing bridge, it doesn't create one (the
 // bridge itself is shared, host-level, one-time setup; see
-// docs/CONTRIBUTING.md). Rather than creating/tearing down a throwaway
+// docs/INSTALLATION.md). Rather than creating/tearing down a throwaway
 // bridge (itself a CAP_NET_ADMIN operation this test has no privileged way
 // to do), this test relies on the same br-masuda0 a developer following the
 // VM setup instructions already has.
 func requireTestBridge(t *testing.T, name string) {
 	t.Helper()
 	if err := exec.Command("ip", "link", "show", name).Run(); err != nil {
-		t.Skipf("bridge %s not found (see docs/CONTRIBUTING.md's VM network setup)", name)
+		t.Skipf("bridge %s not found (see docs/INSTALLATION.md's VM network setup)", name)
 	}
 }
 

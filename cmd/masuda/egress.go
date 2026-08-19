@@ -96,7 +96,7 @@ func newEgressApproveCommand() *cobra.Command {
 				return err
 			}
 			warnIfNotGitignored(cmd, root, config.SettingsLocalPath(root))
-			fmt.Fprintf(cmd.OutOrStdout(), "approved %q -- restart this workspace's VM to pick it up\n", host)
+			fmt.Fprintf(cmd.OutOrStdout(), "approved %q -- takes effect on the VM's next connection attempt, no restart needed\n", host)
 			return nil
 		},
 	}

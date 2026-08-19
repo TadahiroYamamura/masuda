@@ -491,7 +491,7 @@ _TERMINAL = {
 G1ゲート（`masuda plan show`）のstatusがpendingでなくなるまで待機してください。
 
 人間は `masuda plan show <workspace-id>` でプランを確認し、
-`masuda plan chat <workspace-id>` で対話するか、
+`masuda chat <workspace-id>` で対話するか、
 `masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """,
     "g1_approved": """# DONE (G1 approved)

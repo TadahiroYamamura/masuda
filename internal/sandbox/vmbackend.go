@@ -20,7 +20,7 @@ import (
 )
 
 // Host-level, not-yet-configurable constants matching scripts/setup-vm-host.sh
-// and docs/CONTRIBUTING.md (Issue #31 M4/M5-5). A per-repo .masuda/settings.json
+// and docs/INSTALLATION.md (Issue #31 M4/M5-5). A per-repo .masuda/settings.json
 // knob for these belongs to a later step once there's a second real value to
 // choose between; for now, VMBackend only works if the host was set up
 // exactly this way.
@@ -91,9 +91,9 @@ func vmWorkDir(id string) (string, error) {
 }
 
 // findKernel returns the newest vmlinuz-* under masuda's data home
-// (scripts/setup-vm-host.sh puts it there, copied to a location this
-// process can read -- see docs/CONTRIBUTING.md for why the one under
-// /boot itself isn't usable directly).
+// (scripts/setup-vm-host.sh's step_kernel puts it there, copied to a
+// location this process can read -- see that step's own comment for why
+// the one under /boot itself isn't usable directly).
 func findKernel() (string, error) {
 	dataHome, err := workspace.DataHome()
 	if err != nil {

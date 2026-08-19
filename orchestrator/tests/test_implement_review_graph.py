@@ -1585,7 +1585,7 @@ def test_await_g2_is_a_gate_not_a_terminal_done():
 def test_await_g2_mentions_review_cli_commands():
     irg.write_task_md({"phase": "await_g2", "reason": ""})
     content = irg.TASK_MD.read_text(encoding="utf-8")
-    assert "masuda review chat" in content
+    assert "masuda chat" in content
     assert "masuda review approve" in content
     assert "masuda review reject" in content
 

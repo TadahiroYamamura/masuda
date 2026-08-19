@@ -53,7 +53,7 @@ func ReleaseTap(id string) error {
 
 func runNetHelper(args ...string) (string, error) {
 	if _, err := exec.LookPath(netHelperBinary); err != nil {
-		return "", fmt.Errorf("%s not found on PATH (required for VM networking, Issue #31 -- see docs/CONTRIBUTING.md): %w", netHelperBinary, err)
+		return "", fmt.Errorf("%s not found on PATH (required for VM networking, Issue #31 -- see docs/INSTALLATION.md): %w", netHelperBinary, err)
 	}
 	cmd := exec.Command(netHelperBinary, args...)
 	var stdout, stderr bytes.Buffer
