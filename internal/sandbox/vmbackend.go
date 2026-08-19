@@ -13,6 +13,7 @@ import (
 	"time"
 
 	masuda "github.com/TadahiroYamamura/masuda"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/rootfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -178,14 +179,33 @@ func vmStateSocketPath(workDir string) string { return filepath.Join(workDir, "v
 func vmRelayPortFile(workDir string) string   { return filepath.Join(workDir, "mcp-relay.port") }
 
 // resolveEgressAllowlist returns the hostnames workspace repoRoot's VM is
-// allowed to reach over TLS (Issue #11). Placeholder until M4 wires this
-// to .masuda/settings.json (declaration) + .masuda/settings.local.json
-// (approval), following the same declare/approve split Issue #35's child
-// MCP servers use -- returns an empty allowlist for now, meaning that once
-// M3's REDIRECT rule forces all guest egress through the proxy, everything
-// is denied by default until M4 lands.
+// allowed to reach over TLS (Issue #11 M4): the intersection of
+// config.Config.EgressAllowlist (repoRoot's committed declaration) and
+// config.LocalSettings.EgressAllowlist (this user's approval, `masuda
+// egress approve`) -- a hostname absent from either side is denied.
+// Neither file existing is not an error, matching config.Load/LoadLocal's
+// own "missing means empty" treatment -- a repo with no declaration, or a
+// user who has approved nothing, both simply get no allowed hostnames.
 func resolveEgressAllowlist(repoRoot string) ([]string, error) {
-	return nil, nil
+	cfg, err := config.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	local, err := config.LoadLocal(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	approved := make(map[string]bool, len(local.EgressAllowlist))
+	for _, h := range local.EgressAllowlist {
+		approved[h] = true
+	}
+	var allowed []string
+	for _, h := range cfg.EgressAllowlist {
+		if approved[h] {
+			allowed = append(allowed, h)
+		}
+	}
+	return allowed, nil
 }
 
 // vmClaudeSecretsDir/vmClaudeSecretsSocketPath stage the `claude

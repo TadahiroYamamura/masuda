@@ -8,15 +8,14 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // requireEgressProxyBinary skips the test unless masuda-egress-proxy is on
-// PATH. Skipping (not failing) keeps `go test ./...` usable without the
-// one-time `sudo setcap` step -- same reasoning as requireNetHelper
-// (masuda has no CI job that runs `go test`). This doesn't confirm the
-// binary actually carries CAP_NET_ADMIN -- if it doesn't, EnsureEgressProxy
-// itself fails with a clear error at that point instead.
+// PATH. Skipping (not failing) keeps `go test ./...` usable on a machine
+// that hasn't run scripts/setup-vm-host.sh -- same reasoning as
+// requireNetHelper (masuda has no CI job that runs `go test`).
 func requireEgressProxyBinary(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath(egressProxyBinary); err != nil {
@@ -109,4 +108,51 @@ func TestEnsureEgressProxyIsIdempotent(t *testing.T) {
 		t.Fatalf("dialing egress-proxy: %v", err)
 	}
 	conn.Close()
+}
+
+// TestResolveEgressAllowlistRequiresBothDeclarationAndApproval confirms the
+// declare/approve intersection (Issue #11 M4): a hostname the repo declares
+// but the user hasn't approved, or the user has approved but the repo no
+// longer declares, is denied either way -- only the overlap is allowed.
+func TestResolveEgressAllowlistRequiresBothDeclarationAndApproval(t *testing.T) {
+	repoRoot := t.TempDir()
+	writeSettingsJSON(t, repoRoot, `{"egressAllowlist": ["github.com", "declared-not-approved.example"]}`)
+	if err := config.SaveLocal(repoRoot, config.LocalSettings{
+		EgressAllowlist: []string{"github.com", "approved-not-declared.example"},
+	}); err != nil {
+		t.Fatalf("SaveLocal() error = %v", err)
+	}
+
+	got, err := resolveEgressAllowlist(repoRoot)
+	if err != nil {
+		t.Fatalf("resolveEgressAllowlist() error = %v", err)
+	}
+	if len(got) != 1 || got[0] != "github.com" {
+		t.Fatalf("resolveEgressAllowlist() = %v, want [github.com]", got)
+	}
+}
+
+// TestResolveEgressAllowlistNoFilesReturnsEmpty confirms a repo with
+// neither settings.json nor settings.local.json (both files entirely
+// absent, the state of a freshly cloned repo before anyone runs `masuda
+// egress approve`) resolves to an empty allowlist rather than an error.
+func TestResolveEgressAllowlistNoFilesReturnsEmpty(t *testing.T) {
+	got, err := resolveEgressAllowlist(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolveEgressAllowlist() error = %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("resolveEgressAllowlist() = %v, want empty", got)
+	}
+}
+
+func writeSettingsJSON(t *testing.T, repoRoot, content string) {
+	t.Helper()
+	dir := filepath.Join(repoRoot, config.DirName)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.SettingsPath(repoRoot), []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }

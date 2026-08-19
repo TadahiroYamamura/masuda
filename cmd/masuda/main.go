@@ -60,6 +60,7 @@ func newRootCommand() *cobra.Command {
 
 	root.AddCommand(newTriageCommand())
 	root.AddCommand(newMCPCommand())
+	root.AddCommand(newEgressCommand())
 	return root
 }
 

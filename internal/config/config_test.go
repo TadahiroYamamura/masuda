@@ -129,6 +129,20 @@ func TestDeclHashStableAndSensitiveToChange(t *testing.T) {
 	}
 }
 
+func TestLoadReadsEgressAllowlist(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, `{"egressAllowlist": ["github.com", "api.anthropic.com"]}`)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatalf("Load() error = %v, want nil", err)
+	}
+	want := []string{"github.com", "api.anthropic.com"}
+	if len(cfg.EgressAllowlist) != len(want) || cfg.EgressAllowlist[0] != want[0] || cfg.EgressAllowlist[1] != want[1] {
+		t.Fatalf("EgressAllowlist = %v, want %v", cfg.EgressAllowlist, want)
+	}
+}
+
 func TestDockerfilePath(t *testing.T) {
 	got := DockerfilePath("/repo")
 	want := filepath.Join("/repo", DirName, DockerfileName)

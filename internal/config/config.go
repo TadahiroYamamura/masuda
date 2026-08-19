@@ -88,6 +88,20 @@ type Config struct {
 	// exists in repoRoot/.masuda/settings.local.json (see LoadLocal) --
 	// see DeclHash.
 	MCPServers map[string]MCPServerDecl `json:"mcpServers,omitempty"`
+
+	// EgressAllowlist declares the TLS hostnames this repo's sandbox VM
+	// needs to reach (Issue #11 M4). Same declare/approve split as
+	// MCPServers, for the same reason (Issue #19: this file is committed
+	// to the target repository, so it can't unilaterally grant network
+	// access) -- but no hash-pinning here (contrast MCPServerDecl/
+	// DeclHash): a hostname entry carries no separate mutable payload the
+	// way a server's command/args/env do, so there is nothing for a
+	// malicious edit to change out from under an already-approved name
+	// without the name itself changing (which is just a different,
+	// unapproved entry). A hostname is allowed only when it appears in
+	// both this list and LocalSettings.EgressAllowlist -- see
+	// internal/sandbox's resolveEgressAllowlist.
+	EgressAllowlist []string `json:"egressAllowlist,omitempty"`
 }
 
 // MCPServerDecl is one entry in Config.MCPServers: how to launch a child
