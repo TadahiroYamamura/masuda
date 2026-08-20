@@ -47,16 +47,7 @@ masuda自身のオーケレータースクリプト・`CLAUDE.md`はこのバイ
 docker build -t masuda-loop .
 ```
 
-対象リポジトリの言語に応じてLSPツール同梱の言語バリアント（ADR-0015）を追加でビルドできる。いずれもベースイメージ`masuda-loop:latest`から派生するため、先に上記のベースビルドを済ませておくこと。
-
-```bash
-docker build -f docker/go/Dockerfile         -t masuda-loop:go         .
-docker build -f docker/python/Dockerfile     -t masuda-loop:python     .
-docker build -f docker/typescript/Dockerfile -t masuda-loop:typescript .
-docker build -f docker/full/Dockerfile       -t masuda-loop:full       .
-```
-
-言語バリアントを使わない場合、この手順は不要（`masuda-loop`のみで動く）。
+対象リポジトリの言語に応じたツールチェーン・LSPプラグインは、対象リポジトリ側の`.masuda/images/default/Dockerfile`に書く（ADR-0054）。`masuda init`が書き出す雛形に手本がコメントで入っている。
 
 ## 3.5. VM実行基盤のセットアップ（Issue #31）
 
@@ -110,11 +101,11 @@ masudaで作業したい対象リポジトリのルートで`masuda init`を実�
 
 ```bash
 cd <対象リポジトリ>
-masuda init --image masuda-loop:go --base main
+masuda init --base main
 ```
 
-- `.masuda/settings.json`: `--image`・`--base`フラグの毎回指定を省略できる（ADR-0015）
-  - `image`: `masuda sandbox start` / `masuda review start`が使うサンドボックスVMの元イメージ（未指定時は`masuda-loop`）
+- `.masuda/settings.json`: `--base`フラグの毎回指定を省略できる（ADR-0015）
+  - `image`: `masuda sandbox start` / `masuda review start`が使うイメージエントリ名（`.masuda/images/<name>/`、ADR-0054。`masuda init`は`default`を書き出す）
   - `base`: worktree作成・マージ先のデフォルトブランチ（未指定時は`develop`）
 - `.masuda/reviews/`: フェーズ5（レビュー）が使う観点をMarkdownファイルとして1観点1ファイルで持つ。masuda内蔵の14観点が展開される。プロジェクト固有の観点を追加したい場合はファイルを追加し、不要な観点はfrontmatterに`enable: false`を設定する（ADR-0033。ファイルは残るので、後から`masuda update`が新しい組み込み観点を取り込む際に「まだ導入されていない観点」と正しく区別できる）
 

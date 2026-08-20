@@ -36,10 +36,6 @@ install: build
 
 docker-images:
 	docker build -t masuda-loop:latest .
-	docker build -f docker/go/Dockerfile         -t masuda-loop:go         .
-	docker build -f docker/python/Dockerfile     -t masuda-loop:python     .
-	docker build -f docker/typescript/Dockerfile -t masuda-loop:typescript .
-	docker build -f docker/full/Dockerfile       -t masuda-loop:full       .
 
 # Reproduces .github/workflows/release.yml's `reviews` job locally (ADR-0033)
 # -- zips internal/perspectives/builtin/*.md the same way CI does, so you
