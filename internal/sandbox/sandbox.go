@@ -15,12 +15,8 @@ import (
 	"regexp"
 )
 
-const (
-	// DefaultImage is the masuda sandbox image built from the repo's Dockerfile.
-	DefaultImage = "masuda-loop"
-	// tmuxSession must match runtime/entrypoint.sh's SESSION.
-	tmuxSession = "claude-work"
-)
+// tmuxSession must match runtime/entrypoint.sh's SESSION.
+const tmuxSession = "claude-work"
 
 // Handle identifies a running sandbox.
 type Handle struct {

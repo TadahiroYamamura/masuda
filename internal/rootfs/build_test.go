@@ -50,7 +50,7 @@ func TestBuildProducesBootableOwnershipCorrectImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "nested", "rootfs.img")
-	if err := Build("alpine:latest", outputPath, nil); err != nil {
+	if err := Build("alpine:latest", outputPath, nil, 0); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestBuildUnknownImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
-	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath, nil)
+	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath, nil, 0)
 	if err == nil {
 		t.Fatal("Build() with an unknown image succeeded, want an error")
 	}
@@ -106,7 +106,7 @@ func TestBuildWritesExtraFiles(t *testing.T) {
 	extra := []ExtraFile{
 		{GuestPath: "home/ubuntu/.ssh/authorized_keys", Content: []byte("ssh-ed25519 AAAAtest test-key\n"), Mode: 0o600, UID: 1000, GID: 1000},
 	}
-	if err := Build("alpine:latest", outputPath, extra); err != nil {
+	if err := Build("alpine:latest", outputPath, extra, 0); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestBuildRegeneratesModulesDep(t *testing.T) {
 	extra := []ExtraFile{
 		{GuestPath: filepath.Join("lib/modules", version, relInModulesDir), Content: content, Mode: 0o644, UID: 0, GID: 0},
 	}
-	if err := Build("alpine:latest", outputPath, extra); err != nil {
+	if err := Build("alpine:latest", outputPath, extra, 0); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -187,5 +187,33 @@ func TestImageSizeMiBFloor(t *testing.T) {
 	}
 	if got != minImageSizeMiB {
 		t.Errorf("imageSizeMiB() = %d, want the floor %d", got, minImageSizeMiB)
+	}
+}
+
+// The size override is a floor, and it has a ceiling (ADR-0054). Neither
+// needs docker: both are decided before Build touches anything external, so
+// this runs everywhere unlike the rest of this file.
+func TestBuildRejectsSizeOutsideBounds(t *testing.T) {
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+
+	if err := Build("alpine:latest", outputPath, nil, -1); err == nil {
+		t.Fatal("Build() with a negative size = nil error, want an error")
+	}
+	if err := Build("alpine:latest", outputPath, nil, maxImageSizeMiB+1); err == nil {
+		t.Fatal("Build() above the size ceiling = nil error, want an error")
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("Build() wrote an output file before validating its size: %v", err)
+	}
+}
+
+func TestImageSizeFloorApplies(t *testing.T) {
+	// imageSizeMiB's own floor is minImageSizeMiB; the override raises it
+	// further, and a smaller override never lowers the computed size.
+	if got := max(minImageSizeMiB, 128); got != minImageSizeMiB {
+		t.Fatalf("floor = %d, want the computed size %d to win", got, minImageSizeMiB)
+	}
+	if got := max(minImageSizeMiB, 4096); got != 4096 {
+		t.Fatalf("floor = %d, want the override 4096 to win", got)
 	}
 }

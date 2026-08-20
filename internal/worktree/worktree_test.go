@@ -53,7 +53,7 @@ func readFile(t *testing.T, path string) string {
 
 func TestCreateCopiesUncommittedSettings(t *testing.T) {
 	repoRoot := initTestRepo(t, "main")
-	writeFile(t, config.SettingsPath(repoRoot), `{"image": "masuda-loop:go"}`)
+	writeFile(t, config.SettingsPath(repoRoot), `{"image": "default"}`)
 
 	dir, err := Create(repoRoot, "ws1", "feature", "main")
 	if err != nil {
@@ -61,7 +61,7 @@ func TestCreateCopiesUncommittedSettings(t *testing.T) {
 	}
 
 	got := readFile(t, config.SettingsPath(dir))
-	want := `{"image": "masuda-loop:go"}`
+	want := `{"image": "default"}`
 	if got != want {
 		t.Fatalf("clone settings.json = %q, want %q", got, want)
 	}
@@ -138,9 +138,9 @@ func TestCreateSkipsGitignoreWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestCreateExcludesDockerfileAndWorktrees(t *testing.T) {
+func TestCreateExcludesImagesAndWorktrees(t *testing.T) {
 	repoRoot := initTestRepo(t, "main")
-	writeFile(t, config.DockerfilePath(repoRoot), "FROM masuda-loop:latest\n")
+	writeFile(t, config.ImageDockerfilePath(repoRoot, "default"), "FROM masuda-loop:latest\n")
 	// Simulate another, already-existing sibling workspace living under
 	// repoRoot/.masuda/worktrees/ — this must never end up inside the new
 	// clone's own .masuda/ directory.
@@ -151,8 +151,8 @@ func TestCreateExcludesDockerfileAndWorktrees(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	if _, err := os.Stat(config.DockerfilePath(dir)); !os.IsNotExist(err) {
-		t.Fatalf("clone's Dockerfile stat error = %v, want IsNotExist", err)
+	if _, err := os.Stat(config.ImagesDir(dir)); !os.IsNotExist(err) {
+		t.Fatalf("clone's .masuda/images stat error = %v, want IsNotExist", err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".masuda", "worktrees")); !os.IsNotExist(err) {
 		t.Fatalf("clone's .masuda/worktrees stat error = %v, want IsNotExist", err)

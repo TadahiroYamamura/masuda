@@ -208,6 +208,28 @@ func resolveEgressAllowlist(repoRoot string) ([]string, error) {
 	return allowed, nil
 }
 
+// resolveImageEntry turns the image *entry name* every caller now passes
+// (ADR-0054) into the local Docker reference to export a rootfs from, plus
+// that entry's build parameters. The entry's directory must exist: the
+// derived tag is meaningless on its own, and letting `docker create` fail
+// on a tag nobody ever built produces an error that says nothing about
+// which masuda command the user skipped.
+func resolveImageEntry(repoRoot, entry string) (string, config.ImageConfig, error) {
+	if _, err := os.Stat(config.ImageDockerfilePath(repoRoot, entry)); err != nil {
+		return "", config.ImageConfig{}, fmt.Errorf("image entry %q has no Dockerfile at %s -- run `masuda init` (new project) or `masuda sandbox build` (built elsewhere): %w",
+			entry, config.ImageDockerfilePath(repoRoot, entry), err)
+	}
+	tag, err := config.ImageTag(repoRoot, entry)
+	if err != nil {
+		return "", config.ImageConfig{}, err
+	}
+	cfg, err := config.LoadImage(repoRoot, entry)
+	if err != nil {
+		return "", config.ImageConfig{}, err
+	}
+	return tag, cfg, nil
+}
+
 // vmClaudeSecretsDir/vmClaudeSecretsSocketPath stage the `claude
 // setup-token` OAuth token (see internal/sandbox/claudetoken.go) for
 // sharing into the guest at /masuda-secrets (runtime/fstab.vm's
@@ -283,7 +305,11 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		{GuestPath: "home/ubuntu/.claude/CLAUDE.md", Content: masuda.ClaudeMD, Mode: 0o644, UID: 1000, GID: 1000},
 		virtiofsModule,
 	}
-	if err := rootfs.Build(image, rootfsPath, extra); err != nil {
+	imageTag, imageCfg, err := resolveImageEntry(repoRoot, image)
+	if err != nil {
+		return Handle{}, err
+	}
+	if err := rootfs.Build(imageTag, rootfsPath, extra, imageCfg.RootfsSizeMiB); err != nil {
 		return Handle{}, fmt.Errorf("building VM rootfs: %w", err)
 	}
 

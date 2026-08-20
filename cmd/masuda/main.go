@@ -60,6 +60,8 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newTriageCommand())
 	root.AddCommand(newMCPCommand())
 	root.AddCommand(newEgressCommand())
+	root.AddCommand(newImageCommand())
+	root.AddCommand(newPrivilegedCommandCommand())
 	return root
 }
 
@@ -81,8 +83,9 @@ func loadConfig(root string) (config.Config, error) {
 	return cfg, nil
 }
 
-// resolveImage returns the Docker image a sandbox-starting command should
-// use: the --image flag if the user passed it explicitly, otherwise
+// resolveImage returns the .masuda/images/ entry name a sandbox-starting
+// command should build its rootfs from (ADR-0054 -- an entry name, not a
+// Docker tag): the --image flag if the user passed it explicitly, otherwise
 // .masuda/settings.json's declared image (internal/config), otherwise fall.
 // Letting the target repository commit its own default here means masuda
 // doesn't need any language-detection logic of its own to pick an image

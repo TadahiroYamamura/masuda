@@ -32,6 +32,17 @@ const rootfsLabel = "masuda-rootfs"
 // few writes during boot.
 const minImageSizeMiB = 512
 
+// maxImageSizeMiB caps what a caller may ask for (Build's minSizeMiB), and
+// therefore what a target repository's own .masuda/images/<entry>/
+// settings.json can ask for (ADR-0054). Every other field a repository
+// declares only changes what happens inside the sandbox; a rootfs size
+// consumes host disk directly. mkfs.ext4 leaves the image sparse, but its
+// metadata (inode tables, bitmaps, journal) is written for real and scales
+// with the declared size, so a value off by a few digits costs real disk
+// immediately. This is a guard against a typo, not a considered ceiling on
+// legitimate use -- raise it when a real workload needs more.
+const maxImageSizeMiB = 64 * 1024
+
 // sizeSlackNumerator/Denominator and sizeSlackFixedMiB pad the image beyond
 // the exported content's exact byte count: ext4 metadata (inode tables,
 // journal, block bitmaps) isn't part of that count, and the image needs
@@ -95,7 +106,20 @@ type ExtraFile struct {
 // real recorded ownership, not the invoking user's. Confirmed against a
 // real masuda sandbox image with debugfs: /etc/shadow lands as
 // user=0/group=42 (shadow), not the host user's uid/gid.
-func Build(image, outputPath string, extra []ExtraFile) error {
+// minSizeMiB raises the size Build would otherwise compute from the
+// exported content. It is a floor, not a replacement: a value below what
+// the content needs could only produce a failed mkfs.ext4 or a VM that
+// boots with no free space, so there is nothing to gain from honouring it
+// literally (ADR-0054). Zero means "use the computed size." Values above
+// maxImageSizeMiB are rejected rather than clamped -- a caller asking for
+// 4TiB has a typo, and silently building 64GiB instead would hide it.
+func Build(image, outputPath string, extra []ExtraFile, minSizeMiB int) error {
+	if minSizeMiB < 0 {
+		return fmt.Errorf("rootfs size %d MiB is negative", minSizeMiB)
+	}
+	if minSizeMiB > maxImageSizeMiB {
+		return fmt.Errorf("rootfs size %d MiB exceeds masuda's %d MiB ceiling", minSizeMiB, maxImageSizeMiB)
+	}
 	for _, bin := range requiredBinaries {
 		if _, err := exec.LookPath(bin); err != nil {
 			return fmt.Errorf("%s not found on PATH (required to build a rootfs image): %w", bin, err)
@@ -121,6 +145,7 @@ func Build(image, outputPath string, extra []ExtraFile) error {
 	if err != nil {
 		return fmt.Errorf("sizing image from %s: %w", tarPath, err)
 	}
+	sizeMiB = max(sizeMiB, minSizeMiB)
 
 	extractDir := filepath.Join(workDir, "extracted")
 	if err := os.Mkdir(extractDir, 0o755); err != nil {

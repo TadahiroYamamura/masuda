@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TadahiroYamamura/masuda/internal/sandbox"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -67,7 +67,7 @@ show|chat|approve|reject.`,
 			if err != nil {
 				return err
 			}
-			resolvedImage, err := resolveImage(cmd, root, image, sandbox.DefaultImage)
+			resolvedImage, err := resolveImage(cmd, root, image, config.DefaultImageEntry)
 			if err != nil {
 				return err
 			}
@@ -80,7 +80,7 @@ show|chat|approve|reject.`,
 		},
 	}
 	cmd.Flags().StringVar(&base, "base", defaultBase, "ref to diff and review against")
-	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to build the VM rootfs from")
+	cmd.Flags().StringVar(&image, "image", config.DefaultImageEntry, "name of the .masuda/images/ entry to build the VM rootfs from")
 	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only, shown in `workspace list`/`info`)")
 	return cmd
 }

@@ -171,7 +171,7 @@ func DownloadAndReplace(execPath, url string, verify func(data []byte) error) er
 	return nil
 }
 
-// RebuildDockerfile builds dockerfilePath (typically <repo>/.masuda/Dockerfile)
+// RebuildDockerfile builds dockerfilePath (typically <repo>/.masuda/images/<entry>/Dockerfile)
 // against contextDir with --pull, so FROM always resolves to the latest
 // published base image, and tags the result as tag.
 func RebuildDockerfile(dockerfilePath, contextDir, tag string, stdout, stderr io.Writer) error {

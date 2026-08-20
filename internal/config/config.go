@@ -31,16 +31,6 @@ func SettingsPath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, SettingsFileName)
 }
 
-// DockerfileName is the optional per-project sandbox Dockerfile's name
-// within DirName (ADR-0032). masuda init materializes a starting template
-// here (mirroring .masuda/reviews/); masuda update rebuilds it if present.
-const DockerfileName = "Dockerfile"
-
-// DockerfilePath returns the absolute path to repoRoot's .masuda/Dockerfile.
-func DockerfilePath(repoRoot string) string {
-	return filepath.Join(repoRoot, DirName, DockerfileName)
-}
-
 // GitignoreFileName is the optional, user-authored .gitignore's name within
 // DirName -- not written by masuda init, but some repos add one (typically
 // `*`) to keep DirName's own contents out of git entirely (ADR-0036).
@@ -55,8 +45,11 @@ func GitignorePath(repoRoot string) string {
 // optional — an absent file, or an absent field within one, means "use
 // masuda's built-in default."
 type Config struct {
-	// Image is the Docker image `masuda sandbox start` / `masuda review
-	// start` run when --image isn't passed explicitly.
+	// Image is the name of the .masuda/images/ entry `masuda sandbox
+	// start` / `masuda review start` build their VM rootfs from when
+	// --image isn't passed explicitly (ADR-0054). Not a Docker tag: the
+	// local tag is derived from the entry name (see ImageTag), so nothing
+	// here has to be kept in sync with what `masuda update` built.
 	Image string `json:"image,omitempty"`
 	// Base is the repo's trunk branch, used as the default for both --base
 	// (the branch new work starts from) and --into (the branch a merge
@@ -102,6 +95,23 @@ type Config struct {
 	// both this list and LocalSettings.EgressAllowlist -- see
 	// internal/sandbox's resolveEgressAllowlist.
 	EgressAllowlist []string `json:"egressAllowlist,omitempty"`
+
+	// PrivilegedCommands declares commands this repo needs to run with
+	// capabilities the main sandbox VM deliberately never grants -- root, a
+	// Docker daemon (ADR-0053). Each declared command runs in a fresh,
+	// single-purpose VM destroyed immediately afterwards; the VM the AI
+	// session itself lives in never gains the privilege. The map key is the
+	// command's name, used both as the `masuda privileged-command approve
+	// <name>` argument and as the only thing the AI-facing
+	// run_privileged_command tool may name -- the AI never passes a command
+	// string, so what actually runs always comes from this declaration.
+	//
+	// Same declare/approve split as MCPServers, and hash-pinned for the
+	// same reason (see DeclHash): unlike an EgressAllowlist hostname, an
+	// entry here carries a mutable payload (the command line, the image)
+	// that a project-side edit could swap out from under an approval
+	// granted against something else.
+	PrivilegedCommands map[string]PrivilegedCommandDecl `json:"privilegedCommands,omitempty"`
 }
 
 // MCPServerDecl is one entry in Config.MCPServers: how to launch a child
@@ -126,23 +136,89 @@ type MCPServerDecl struct {
 	Tools []string `json:"tools,omitempty"`
 }
 
+// PrivilegedCommandDecl is one entry in Config.PrivilegedCommands: what
+// to run, and which disposable VM image to run it in (ADR-0053). Like
+// MCPServerDecl it never carries secret values -- but where a child MCP
+// server at least needs the *names* of the credentials it wants, a
+// privileged command needs none at all: its VM is deliberately given none
+// of the session's long-lived assets (no /masuda-secrets, no MCP relay,
+// no SSH), so there is nothing for a credential name to refer to.
+type PrivilegedCommandDecl struct {
+	// Command is the command line to run inside the disposable VM, against
+	// a snapshot copy of the workspace tree.
+	Command string `json:"command"`
+	// Image names the .masuda/images/ entry this command runs in
+	// (ADR-0054). Required: masuda carries no built-in fallback image,
+	// following the same principle as ClaudeSettings (ADR-0031) -- masuda
+	// itself must not make an implicit configuration decision on the
+	// user's behalf. `masuda init` materializes the entry as a directory
+	// the user sees, edits, and commits, so a declaration here always
+	// points at something real in the repository.
+	Image string `json:"image"`
+	// TimeoutSeconds bounds a single run. Zero means the runner's own
+	// default applies -- unlike a missing Image, a missing timeout cannot
+	// cause something other than what the user reviewed to execute, so
+	// there is nothing here for an implicit default to undermine.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
+	// Outputs lists paths, relative to /workspace, to collect from the
+	// disposable VM's workspace snapshot once the command finishes
+	// (ADR-0053). Collected files land in a per-run directory under the
+	// workspace state directory -- never back onto the live worktree,
+	// which the main VM's session may have moved on from since the
+	// snapshot was taken.
+	Outputs []string `json:"outputs,omitempty"`
+}
+
+// PinnedDecl is the set of declaration types whose approvals are pinned to
+// the exact declaration they were granted against. A closed union rather
+// than `any` keeps DeclHash from silently accepting some unrelated value
+// that merely happens to marshal.
+type PinnedDecl interface {
+	MCPServerDecl | PrivilegedCommandDecl
+}
+
 // DeclHash returns a stable fingerprint of decl (sha256 of its canonical
-// JSON encoding). `masuda mcp approve` records this alongside a user's
-// approval (MCPServerApproval.DeclHash) so the daemon can tell whether
-// repoRoot's settings.json changed a server's declaration since it was
-// last approved -- e.g. a malicious commit swapping an already-approved
+// JSON encoding). `masuda mcp approve` and `masuda privileged-command
+// approve` record this alongside a user's approval (MCPServerApproval /
+// PrivilegedCommandApproval.DeclHash) so masuda can tell whether
+// repoRoot's settings.json changed that declaration since it was last
+// approved -- e.g. a malicious commit swapping an already-approved
 // server's command/args. A hash mismatch is treated the same as "never
 // approved" (see internal/statedaemon/mcpaggregator), without which
 // approval-by-name alone would let a project-side change silently
 // escalate a previously-reviewed declaration, reintroducing the
 // "settings.json blindly trusted" problem this project/user split exists
 // to avoid (Issue #19).
-func DeclHash(decl MCPServerDecl) (string, error) {
+func DeclHash[T PinnedDecl](decl T) (string, error) {
 	data, err := json.Marshal(decl)
 	if err != nil {
 		return "", err
 	}
 	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+// PrivilegedCommandHash returns the value `masuda privileged-command
+// approve` records, and that a run request must match before any disposable
+// VM is started: DeclHash(decl) combined with the digest of the image entry
+// decl names (ADR-0053).
+//
+// Pinning the declaration alone would leave a hole. What actually runs with
+// privilege is determined by the command line *and* by the contents of the
+// image it runs in, and the image is declared in the same untrusted,
+// project-committed .masuda/ tree (Issue #19) -- so an approval pinned only
+// to {command, image name, ...} would survive that image's Dockerfile being
+// replaced with something the user never reviewed.
+func PrivilegedCommandHash(repoRoot string, decl PrivilegedCommandDecl) (string, error) {
+	declHash, err := DeclHash(decl)
+	if err != nil {
+		return "", err
+	}
+	imageDigest, err := ImageDigest(repoRoot, decl.Image)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(declHash + "\x00" + imageDigest))
 	return hex.EncodeToString(sum[:]), nil
 }
 

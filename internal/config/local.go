@@ -39,6 +39,12 @@ type LocalSettings struct {
 	// not a map: there is no per-entry payload (env values, a decl hash)
 	// to carry alongside the approval, just the hostname itself.
 	EgressAllowlist []string `json:"egressAllowlist,omitempty"`
+
+	// PrivilegedCommands maps a command name (matching a
+	// Config.PrivilegedCommands key) to this user's approval of it
+	// (ADR-0053). A name absent here, or present with Approved: false,
+	// means no disposable VM is ever started for it.
+	PrivilegedCommands map[string]PrivilegedCommandApproval `json:"privilegedCommands,omitempty"`
 }
 
 // MCPServerApproval is one user's decision about one declared MCP server.
@@ -51,6 +57,18 @@ type MCPServerApproval struct {
 	// lists. This is the one place in masuda's config surface expected to
 	// carry real credentials -- see SaveLocal's permissions.
 	Env map[string]string `json:"env,omitempty"`
+}
+
+// PrivilegedCommandApproval is one user's decision about one declared
+// privileged command. Unlike MCPServerApproval it carries no Env: the
+// disposable VM gets none of the session's long-lived assets, so this
+// approval has no secret values to supply (see PrivilegedCommandDecl).
+type PrivilegedCommandApproval struct {
+	Approved bool `json:"approved"`
+	// DeclHash pins this approval to the exact
+	// Config.PrivilegedCommands[name] declaration it was granted against
+	// (see DeclHash).
+	DeclHash string `json:"declHash,omitempty"`
 }
 
 // LoadLocal reads repoRoot's .masuda/settings.local.json. A missing file

@@ -19,3 +19,13 @@ var Requirements []byte
 
 //go:embed runtime/CLAUDE.md
 var ClaudeMD []byte
+
+// DockerTemplate is the starting content of an image entry whose VM runs a
+// Docker daemon (.masuda/images/<entry>/Dockerfile, ADR-0053/0054). It
+// lives under templates/ rather than docker/ to keep the distinction
+// visible: docker/{go,python,typescript,full}/Dockerfile are masuda's own
+// build inputs, while this one is never built here -- it is copied into a
+// target repository, where it becomes that project's file to edit.
+//
+//go:embed templates/docker.Dockerfile
+var DockerTemplate []byte

@@ -10,7 +10,6 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
-	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
 	"github.com/TadahiroYamamura/masuda/internal/verify"
 )
@@ -40,7 +39,8 @@ import (
 // (ADR-0034).
 const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": [], "disabledMcpjsonServers": [], "skipDangerousModePermissionPrompt": true}`
 
-// dockerfileTemplate is .masuda/Dockerfile's starting content (ADR-0032):
+// dockerfileTemplate is a materialized image entry's Dockerfile content
+// (ADR-0032 for the pinning, ADR-0054 for the location):
 // FROM the publicly published masuda base image, pinned to tag. Pinned (not
 // "latest") so two `docker build`s of an unchanged Dockerfile give the same
 // result; `masuda update` bumps the pin via
@@ -48,13 +48,30 @@ const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServer
 // pattern as .masuda/reviews/ -- the user is free to add language
 // toolchains, LSP plugins, etc. on top, same as
 // docker/{go,python,typescript,full}/Dockerfile already do against the old
-// locally-built masuda-loop tag.
+// locally-built masuda-loop tag. The entry's directory is what makes an
+// image nameable at all (ADR-0054): nothing here is keyed to a tag the user
+// has to keep in sync.
 func dockerfileTemplate(tag string) string {
-	return fmt.Sprintf(`# Sandbox image for this project. Customize freely -- add language
-# toolchains, LSP plugins, etc. "masuda sandbox build" (or "masuda update")
-# bumps the pinned tag below to the latest published release and rebuilds
-# this file.
+	return fmt.Sprintf(`# Sandbox image for this project. Customize freely. "masuda sandbox build"
+# (or "masuda update") bumps the pinned tag below to the latest published
+# release and rebuilds this file.
 FROM %s:%s
+
+# Add the toolchain your project needs, plus the matching Claude Code LSP
+# plugin: masuda has no language detection of its own (ADR-0015), so this
+# file is where a project states what it wants. Installing to /usr/local
+# needs root; switch back to ubuntu for the user-scoped steps. For Go:
+#
+#   USER root
+#   RUN curl -fsSL https://go.dev/dl/go1.26.5.linux-amd64.tar.gz -o /tmp/go.tar.gz \
+#    && tar -C /usr/local -xzf /tmp/go.tar.gz && rm /tmp/go.tar.gz
+#   USER ubuntu
+#   ENV PATH="/usr/local/go/bin:/home/ubuntu/go/bin:$PATH"
+#   RUN go install golang.org/x/tools/gopls@latest && go clean -modcache -cache
+#   RUN claude plugin install gopls-lsp@claude-plugins-official --scope user
+#
+# The official marketplace is registered in the base image already; other
+# plugins there include pyright-lsp and typescript-lsp.
 `, selfupdate.DefaultDockerImage, tag)
 }
 
@@ -63,7 +80,8 @@ FROM %s:%s
 // (the image/base fields .masuda.json used to hold, now read exclusively
 // from here, plus a claudeSettings default), .masuda/reviews/ (masuda's 14
 // built-in review perspectives, written out as individually
-// editable/deletable files — see internal/perspectives), and .masuda/Dockerfile.
+// editable/deletable files — see internal/perspectives), and one image
+// entry under .masuda/images/ (ADR-0054).
 //
 // ADR-0033: the review perspectives and the Dockerfile's pinned FROM tag
 // both come from the same GitHub Release (internal/selfupdate), pinned to
@@ -78,7 +96,7 @@ FROM %s:%s
 // already-initialized project is `masuda update`'s job (ADR-0033), not this
 // command's.
 func newInitCommand() *cobra.Command {
-	var image, base string
+	var base string
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize .masuda/ in the current repository (settings + built-in review perspectives)",
@@ -125,17 +143,18 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			// Materialized explicitly even when --image wasn't passed, rather
-			// than leaving Image empty for some later reader to implicitly
-			// fall back to sandbox.DefaultImage at its own point of use —
-			// masuda doesn't carry implicit defaults for values a project's
-			// own committed settings.json can just state outright (ADR-0031's
-			// principle, applied here to Image too).
-			resolvedImage := image
-			if resolvedImage == "" {
-				resolvedImage = sandbox.DefaultImage
-			}
-			cfg := config.Config{Image: resolvedImage, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
+			// Written out explicitly rather than left empty for some later
+			// reader to implicitly fall back to the default entry at its own
+			// point of use — masuda doesn't carry implicit defaults for
+			// values a project's own committed settings.json can just state
+			// outright (ADR-0031's principle, applied here to Image too).
+			// There is no flag for this: since ADR-0054 an entry name is a
+			// label on a directory init itself creates from one fixed
+			// template, so choosing a different one here would only rename
+			// what init just wrote -- the same edit the user can make
+			// afterwards. (`sandbox start --image` still selects among
+			// entries that already exist, which is a different question.)
+			cfg := config.Config{Image: config.DefaultImageEntry, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
 			data, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
 				return err
@@ -151,15 +170,28 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			if err := os.WriteFile(config.DockerfilePath(root), []byte(dockerfileTemplate(release.TagName)), 0o644); err != nil {
+			// The image entry's own settings file is materialized empty
+			// rather than with a concrete rootfsSizeMiB: masuda sizes the
+			// rootfs from the built image's contents, and writing a number
+			// here would freeze a value the user has no basis to choose
+			// yet. What the materialization is for is making the file's
+			// existence — and therefore the fact that it can be edited —
+			// discoverable (ADR-0054), the same reason .masuda/reviews/
+			// ships as files rather than staying built in.
+			if err := os.MkdirAll(config.ImageDir(root, config.DefaultImageEntry), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(config.ImageDockerfilePath(root, config.DefaultImageEntry), []byte(dockerfileTemplate(release.TagName)), 0o644); err != nil {
+				return err
+			}
+			if err := os.WriteFile(config.ImageSettingsPath(root, config.DefaultImageEntry), []byte("{}\n"), 0o644); err != nil {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, Dockerfile) from release %s\n", dir, release.TagName)
+			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, images/%s/) from release %s\n", dir, config.DefaultImageEntry, release.TagName)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&image, "image", "", "docker image to record in .masuda/settings.json (optional)")
 	cmd.Flags().StringVar(&base, "base", "", "trunk branch to record in .masuda/settings.json (optional)")
 	return cmd
 }

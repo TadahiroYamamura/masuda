@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -54,7 +53,7 @@ func newSandboxStartCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			resolvedImage, err := resolveImage(cmd, root, image, sandbox.DefaultImage)
+			resolvedImage, err := resolveImage(cmd, root, image, config.DefaultImageEntry)
 			if err != nil {
 				return err
 			}
@@ -66,7 +65,7 @@ func newSandboxStartCommand() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&image, "image", sandbox.DefaultImage, "docker image to build the VM rootfs from")
+	cmd.Flags().StringVar(&image, "image", config.DefaultImageEntry, "name of the .masuda/images/ entry to build the VM rootfs from")
 	return cmd
 }
 
@@ -82,33 +81,36 @@ func newSandboxStopCommand() *cobra.Command {
 	}
 }
 
-// newSandboxBuildCommand rebuilds the current project's .masuda/Dockerfile
-// on demand, independent of `masuda update`: early in a project, sandbox
+// newSandboxBuildCommand rebuilds the current project's declared image
+// entries on demand, independent of `masuda update`: early in a project, sandbox
 // tooling (language toolchains, LSP plugins, ...) tends to change often,
 // and `masuda update`'s machine-wide running-workspace block (ADR-0032,
 // there for the CLI binary replace) has no bearing on a per-project image
 // rebuild, so it shouldn't gate this. Unlike `masuda update`'s silent skip
-// when .masuda/Dockerfile is absent, this command errors -- the user
-// explicitly asked to build one.
+// when a project declares no image entries, this command errors -- the user
+// explicitly asked to build them.
 func newSandboxBuildCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "build",
-		Short: "Rebuild this project's .masuda/Dockerfile against the latest published base image",
+		Short: "Rebuild this project's .masuda/images/ entries against the latest published base image",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := repoRoot()
 			if err != nil {
 				return err
 			}
-			dockerfilePath := config.DockerfilePath(root)
-			if _, err := os.Stat(dockerfilePath); err != nil {
-				return fmt.Errorf("%s not found — run `masuda init` first", dockerfilePath)
+			entries, err := config.ListImageEntries(root)
+			if err != nil {
+				return err
+			}
+			if len(entries) == 0 {
+				return fmt.Errorf("no image entries declared under %s — run `masuda init` first", config.ImagesDir(root))
 			}
 			release, err := selfupdate.FetchLatestRelease(selfupdate.DefaultAPIBase, selfupdate.DefaultRepo)
 			if err != nil {
 				return err
 			}
-			return rebuildDockerfileForRelease(cmd, root, dockerfilePath, release)
+			return rebuildImagesForRelease(cmd, root, entries, release)
 		},
 	}
 }

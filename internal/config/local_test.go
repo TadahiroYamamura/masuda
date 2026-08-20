@@ -60,6 +60,30 @@ func TestSaveLocalRoundTripEgressAllowlist(t *testing.T) {
 	}
 }
 
+func TestSaveLocalRoundTripPrivilegedCommands(t *testing.T) {
+	dir := t.TempDir()
+	want := LocalSettings{
+		PrivilegedCommands: map[string]PrivilegedCommandApproval{
+			"e2e": {Approved: true, DeclHash: "abc123"},
+		},
+	}
+	if err := SaveLocal(dir, want); err != nil {
+		t.Fatalf("SaveLocal() error = %v, want nil", err)
+	}
+
+	got, err := LoadLocal(dir)
+	if err != nil {
+		t.Fatalf("LoadLocal() error = %v, want nil", err)
+	}
+	approval, ok := got.PrivilegedCommands["e2e"]
+	if !ok {
+		t.Fatal("PrivilegedCommands[\"e2e\"] missing after round trip")
+	}
+	if !approval.Approved || approval.DeclHash != "abc123" {
+		t.Fatalf("approval = %+v, want Approved=true DeclHash=abc123", approval)
+	}
+}
+
 func TestSaveLocalPermissions0600(t *testing.T) {
 	dir := t.TempDir()
 	if err := SaveLocal(dir, LocalSettings{}); err != nil {

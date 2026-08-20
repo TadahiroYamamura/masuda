@@ -124,8 +124,9 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 // committed too, so `git clone` reproduces it there without help; this only
 // matters for the same not-yet-committed .masuda/ case as settings.json.
 //
-// .masuda/Dockerfile is excluded -- docker build always reads it from
-// repoRoot directly (cmd/masuda/sandbox.go, update.go), never from a clone.
+// .masuda/images/ (ADR-0054) is excluded -- docker build always reads an
+// entry's Dockerfile from repoRoot directly (cmd/masuda/sandbox.go,
+// update.go), never from a clone.
 // .masuda/worktrees/ (sibling workspaces' own clones, including dir itself)
 // is excluded to avoid copying it into itself.
 //
