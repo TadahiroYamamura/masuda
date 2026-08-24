@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -50,7 +51,7 @@ func TestBuildProducesBootableOwnershipCorrectImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "nested", "rootfs.img")
-	if err := Build("alpine:latest", outputPath, nil, 0); err != nil {
+	if err := Build("alpine:latest", outputPath, Options{}); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -76,7 +77,7 @@ func TestBuildUnknownImage(t *testing.T) {
 	requireRootfsTools(t)
 
 	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
-	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath, nil, 0)
+	err := Build("masuda-rootfs-test-image-that-does-not-exist:latest", outputPath, Options{})
 	if err == nil {
 		t.Fatal("Build() with an unknown image succeeded, want an error")
 	}
@@ -106,7 +107,7 @@ func TestBuildWritesExtraFiles(t *testing.T) {
 	extra := []ExtraFile{
 		{GuestPath: "home/ubuntu/.ssh/authorized_keys", Content: []byte("ssh-ed25519 AAAAtest test-key\n"), Mode: 0o600, UID: 1000, GID: 1000},
 	}
-	if err := Build("alpine:latest", outputPath, extra, 0); err != nil {
+	if err := Build("alpine:latest", outputPath, Options{ExtraFiles: extra}); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -157,7 +158,7 @@ func TestBuildRegeneratesModulesDep(t *testing.T) {
 	extra := []ExtraFile{
 		{GuestPath: filepath.Join("lib/modules", version, relInModulesDir), Content: content, Mode: 0o644, UID: 0, GID: 0},
 	}
-	if err := Build("alpine:latest", outputPath, extra, 0); err != nil {
+	if err := Build("alpine:latest", outputPath, Options{ExtraFiles: extra}); err != nil {
 		t.Fatalf("Build() error = %v", err)
 	}
 
@@ -171,6 +172,78 @@ func TestBuildRegeneratesModulesDep(t *testing.T) {
 	}
 }
 
+// TestBuildInjectsExtraDir confirms a whole host directory lands in the
+// image with root ownership and reaches depmod -- the path a disposable
+// privileged VM needs for the guest kernel's module tree (ADR-0053).
+// Ownership matters as much as presence here: modprobe reads a tree it
+// expects to be root-owned, and the copy happens inside the fakeroot
+// session precisely so it lands that way without an explicit chown.
+func TestBuildInjectsExtraDir(t *testing.T) {
+	requireRootfsTools(t)
+
+	hostModules, err := filepath.Glob("/lib/modules/*/kernel/fs/fuse/virtiofs.ko*")
+	if err != nil || len(hostModules) == 0 {
+		t.Skip("no kernel module tree on this host to use as a test fixture")
+	}
+	version := strings.Split(strings.TrimPrefix(hostModules[0], "/lib/modules/"), "/")[0]
+
+	// A small subtree rather than the whole ~155MiB tree: the mechanism is
+	// the same and the test stays fast.
+	hostDir := filepath.Join("/lib/modules", version, "kernel/fs/fuse")
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+	if err := Build("alpine:latest", outputPath, Options{
+		ExtraDirs: []ExtraDir{{HostPath: hostDir, GuestPath: filepath.Join("lib/modules", version, "kernel/fs/fuse")}},
+	}); err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	// debugfs pads its columns, so match the ownership loosely rather than
+	// depending on its exact spacing.
+	rootOwned := regexp.MustCompile(`User:\s+0\s+Group:\s+0`)
+	var lastOut []byte
+	found := false
+	for _, name := range []string{"virtiofs.ko.zst", "virtiofs.ko"} {
+		out, err := exec.Command("debugfs", "-R", "stat /lib/modules/"+version+"/kernel/fs/fuse/"+name, outputPath).CombinedOutput()
+		lastOut = out
+		if err == nil && rootOwned.Match(out) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("injected module not present as root-owned:\n%s", lastOut)
+	}
+}
+
+// TestBuildInjectsExtraSymlink covers the one thing ExtraFile cannot do:
+// enabling a systemd unit, which is a symlink in a .wants directory and
+// nothing else (ADR-0053's disposable VM depends on it).
+func TestBuildInjectsExtraSymlink(t *testing.T) {
+	requireRootfsTools(t)
+
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+	if err := Build("alpine:latest", outputPath, Options{
+		ExtraFiles: []ExtraFile{{GuestPath: "etc/systemd/system/unit.service", Content: []byte("[Unit]\n"), Mode: 0o644}},
+		ExtraSymlinks: []ExtraSymlink{{
+			GuestPath: "etc/systemd/system/multi-user.target.wants/unit.service",
+			Target:    "/etc/systemd/system/unit.service",
+		}},
+	}); err != nil {
+		t.Fatalf("Build() error = %v", err)
+	}
+
+	out, err := exec.Command("debugfs", "-R", "stat /etc/systemd/system/multi-user.target.wants/unit.service", outputPath).CombinedOutput()
+	if err != nil {
+		t.Fatalf("debugfs stat: %v\n%s", err, out)
+	}
+	if !bytes.Contains(out, []byte("symlink")) && !bytes.Contains(out, []byte("Fast link dest")) {
+		t.Fatalf("injected path is not a symlink:\n%s", out)
+	}
+	if !bytes.Contains(out, []byte("/etc/systemd/system/unit.service")) {
+		t.Fatalf("symlink does not point at the unit:\n%s", out)
+	}
+}
+
 func TestImageSizeMiBFloor(t *testing.T) {
 	requireRootfsTools(t)
 
@@ -181,12 +254,64 @@ func TestImageSizeMiBFloor(t *testing.T) {
 		t.Fatalf("writing empty tar: %v", err)
 	}
 
-	got, err := imageSizeMiB(tarPath)
+	got, err := imageSizeMiB(tarPath, 0)
 	if err != nil {
 		t.Fatalf("imageSizeMiB() error = %v", err)
 	}
 	if got != minImageSizeMiB {
 		t.Errorf("imageSizeMiB() = %d, want the floor %d", got, minImageSizeMiB)
+	}
+}
+
+// Injected content is invisible to the tar, so without counting it the size
+// would depend on the slack margin happening to be larger than whatever a
+// caller injects -- a kernel module tree is ~155MiB (ADR-0053).
+func TestImageSizeMiBCountsInjectedContent(t *testing.T) {
+	dir := t.TempDir()
+	tarPath := filepath.Join(dir, "empty.tar")
+	if err := os.WriteFile(tarPath, make([]byte, 1024), 0o644); err != nil {
+		t.Fatalf("writing empty tar: %v", err)
+	}
+
+	const injected = 2 * 1024 * 1024 * 1024 // well past the floor
+	got, err := imageSizeMiB(tarPath, injected)
+	if err != nil {
+		t.Fatalf("imageSizeMiB() error = %v", err)
+	}
+	if got <= injected/(1024*1024) {
+		t.Errorf("imageSizeMiB() = %d MiB, want more than the %d MiB injected", got, injected/(1024*1024))
+	}
+}
+
+func TestInjectedBytesCountsFilesAndDirs(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "tree", "nested")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "mod.ko"), make([]byte, 4096), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := injectedBytes(Options{
+		ExtraFiles: []ExtraFile{{GuestPath: "etc/x", Content: make([]byte, 100)}},
+		ExtraDirs:  []ExtraDir{{HostPath: filepath.Join(dir, "tree"), GuestPath: "lib/modules/x"}},
+	})
+	if err != nil {
+		t.Fatalf("injectedBytes() error = %v", err)
+	}
+	if got != 4196 {
+		t.Fatalf("injectedBytes() = %d, want 4196", got)
+	}
+}
+
+func TestBuildRejectsMissingExtraDir(t *testing.T) {
+	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
+	err := Build("alpine:latest", outputPath, Options{
+		ExtraDirs: []ExtraDir{{HostPath: filepath.Join(t.TempDir(), "nonexistent"), GuestPath: "lib/modules/x"}},
+	})
+	if err == nil {
+		t.Fatal("Build() with a missing ExtraDir = nil error, want an error")
 	}
 }
 
@@ -196,10 +321,10 @@ func TestImageSizeMiBFloor(t *testing.T) {
 func TestBuildRejectsSizeOutsideBounds(t *testing.T) {
 	outputPath := filepath.Join(t.TempDir(), "rootfs.img")
 
-	if err := Build("alpine:latest", outputPath, nil, -1); err == nil {
+	if err := Build("alpine:latest", outputPath, Options{MinSizeMiB: -1}); err == nil {
 		t.Fatal("Build() with a negative size = nil error, want an error")
 	}
-	if err := Build("alpine:latest", outputPath, nil, maxImageSizeMiB+1); err == nil {
+	if err := Build("alpine:latest", outputPath, Options{MinSizeMiB: maxImageSizeMiB + 1}); err == nil {
 		t.Fatal("Build() above the size ceiling = nil error, want an error")
 	}
 	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {

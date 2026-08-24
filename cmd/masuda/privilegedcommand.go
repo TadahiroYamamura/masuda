@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -114,29 +113,9 @@ func validatePrivilegedCommandDecl(root string, decl config.PrivilegedCommandDec
 		return fmt.Errorf(`"timeoutSeconds" is negative (%d)`, decl.TimeoutSeconds)
 	}
 	for _, out := range decl.Outputs {
-		if err := validateOutputPath(out); err != nil {
+		if err := config.ValidateOutputPath(out); err != nil {
 			return err
 		}
-	}
-	return nil
-}
-
-// validateOutputPath rejects an "outputs" entry that could name something
-// outside the disposable VM's workspace snapshot. Collection runs on the
-// host, against a directory the host itself made (ADR-0053), so a path
-// escaping that directory would have the host copy out of wherever it
-// landed -- checked here, at approve time, in addition to whatever the
-// collector re-checks when it actually walks the tree.
-func validateOutputPath(out string) error {
-	if strings.TrimSpace(out) == "" {
-		return errors.New(`"outputs" contains an empty path`)
-	}
-	if filepath.IsAbs(out) {
-		return fmt.Errorf(`"outputs" entry %q must be relative to /workspace`, out)
-	}
-	clean := filepath.Clean(out)
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Errorf(`"outputs" entry %q escapes the workspace`, out)
 	}
 	return nil
 }

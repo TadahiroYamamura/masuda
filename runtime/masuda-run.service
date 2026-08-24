@@ -1,0 +1,26 @@
+[Unit]
+Description=Run this VM's one masuda privileged command, then power off
+# After multi-user.target, not After/Requires=docker.service: an image
+# entry does not have to contain Docker at all (a privileged command may
+# need nothing more than root), and requiring a unit the image lacks would
+# cancel this one silently. multi-user.target is reached only once
+# docker.service has finished activating where it *is* present -- it is
+# Type=notify -- so ordering here still means "after the daemon is up".
+#
+# There is no [Install] section: masuda injects this unit into the rootfs
+# image after the image was built, so no `systemctl enable` ever runs
+# against it. masuda writes the multi-user.target.wants symlink itself
+# (internal/rootfs.ExtraSymlink), which is exactly what enabling would
+# have produced.
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/masuda-run
+# The runner enforces the declared timeout itself and always powers the VM
+# off; systemd killing it first would leave no exit code behind for the
+# host to read. The host keeps its own wall-clock backstop for the case
+# where this VM never comes back at all.
+TimeoutStartSec=infinity
+StandardOutput=journal
+StandardError=journal

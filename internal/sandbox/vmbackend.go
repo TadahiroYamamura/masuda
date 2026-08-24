@@ -309,7 +309,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	if err != nil {
 		return Handle{}, err
 	}
-	if err := rootfs.Build(imageTag, rootfsPath, extra, imageCfg.RootfsSizeMiB); err != nil {
+	if err := rootfs.Build(imageTag, rootfsPath, rootfs.Options{ExtraFiles: extra, MinSizeMiB: imageCfg.RootfsSizeMiB}); err != nil {
 		return Handle{}, fmt.Errorf("building VM rootfs: %w", err)
 	}
 

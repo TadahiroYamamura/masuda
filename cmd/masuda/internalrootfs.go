@@ -40,7 +40,7 @@ func newInternalRootfsBuildCommand() *cobra.Command {
 			if image == "" {
 				return fmt.Errorf("--image is required")
 			}
-			if err := rootfs.Build(image, output, nil, sizeMiB); err != nil {
+			if err := rootfs.Build(image, output, rootfs.Options{MinSizeMiB: sizeMiB}); err != nil {
 				return err
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "wrote %s\n", output)

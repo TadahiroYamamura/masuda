@@ -122,17 +122,29 @@ const maxNewIDAttempts = 100
 // existing workspace's metadata, since Create's os.MkdirAll/os.WriteFile are
 // both unconditional).
 func NewID() (string, error) {
-	suffix := make([]byte, 3)
 	for range maxNewIDAttempts {
-		if _, err := rand.Read(suffix); err != nil {
+		id, err := NewRandomID()
+		if err != nil {
 			return "", fmt.Errorf("generating workspace ID: %w", err)
 		}
-		id := hex.EncodeToString(suffix)
 		if !Exists(id) {
 			return id, nil
 		}
 	}
 	return "", fmt.Errorf("generating workspace ID: %d consecutive collisions, giving up", maxNewIDAttempts)
+}
+
+// NewRandomID returns 6 random hex characters -- the identifier shape
+// ADR-0030 settled on for workspaces, exported so anything else masuda
+// names per-instance (a privileged command's run, ADR-0053) looks the same
+// to a human reading it. Collision handling belongs to the caller, which is
+// the only side that knows what "already taken" means.
+func NewRandomID() (string, error) {
+	suffix := make([]byte, 3)
+	if _, err := rand.Read(suffix); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(suffix), nil
 }
 
 // Create persists a new workspace's metadata and returns it. Call once per

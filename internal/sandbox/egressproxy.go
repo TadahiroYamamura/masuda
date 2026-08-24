@@ -139,7 +139,79 @@ func ResolveWorkspaceByIP(clientIP net.IP, leaseFilePath string) (id, repoRoot s
 			return info.ID, info.RepoRoot, true, nil
 		}
 	}
+	// A disposable privileged-command VM (ADR-0053) is not a workspace and
+	// never appears in that list, but it runs on the same bridge and is
+	// meant to reach exactly the same declared hosts. Without this it would
+	// be denied outright, since there is no host-wide default allowlist.
+	if repoRoot, ok := lookupPrivilegedVM(mac); ok {
+		return "", repoRoot, true, nil
+	}
 	return "", "", false, nil
+}
+
+// privilegedVMRegistryDir holds one file per *running* disposable VM,
+// named after its MAC address and containing the repository whose egress
+// allowlist applies. A file rather than in-memory state because the egress
+// proxy is a separate, host-wide process (EnsureEgressProxy) from the one
+// that started the VM.
+func privilegedVMRegistryDir() (string, error) {
+	dataHome, err := workspace.DataHome()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(dataHome, "privileged-vms")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+func privilegedVMRegistryPath(mac string) (string, error) {
+	dir, err := privilegedVMRegistryDir()
+	if err != nil {
+		return "", err
+	}
+	// ':' is legal in a filename but noisy to read and to shell-quote.
+	return filepath.Join(dir, strings.ReplaceAll(strings.ToLower(mac), ":", "-")), nil
+}
+
+// registerPrivilegedVM records that mac belongs to a disposable VM running
+// on behalf of repoRoot, for as long as it runs.
+func registerPrivilegedVM(mac, repoRoot string) error {
+	path, err := privilegedVMRegistryPath(mac)
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, []byte(repoRoot), 0o644); err != nil {
+		return fmt.Errorf("registering the disposable VM for egress: %w", err)
+	}
+	return nil
+}
+
+// unregisterPrivilegedVM removes that record. Called as the VM is torn
+// down, so a finished run's MAC can never keep granting egress -- the
+// registry is meant to describe what is running now, not what has ever run.
+func unregisterPrivilegedVM(mac string) error {
+	path, err := privilegedVMRegistryPath(mac)
+	if err != nil {
+		return err
+	}
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+func lookupPrivilegedVM(mac string) (string, bool) {
+	path, err := privilegedVMRegistryPath(mac)
+	if err != nil {
+		return "", false
+	}
+	repoRoot, err := os.ReadFile(path)
+	if err != nil {
+		return "", false
+	}
+	return string(repoRoot), true
 }
 
 // NewEgressAllowlistFunc returns an egressproxy.AllowlistFunc (taking that

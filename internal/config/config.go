@@ -15,9 +15,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // DirName is the config directory's name, expected at a repository's root.
@@ -196,6 +198,29 @@ func DeclHash[T PinnedDecl](decl T) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// ValidateOutputPath rejects a PrivilegedCommandDecl.Outputs entry that
+// could name something outside the disposable VM's workspace snapshot.
+//
+// Lives here, rather than next to either caller, because two very different
+// moments have to agree on it: `masuda privileged-command approve` refuses
+// to record an approval for a declaration it would later refuse to honour,
+// and the host-side collector re-checks every entry when it walks the
+// snapshot -- the approval could have been recorded by an older masuda, and
+// the collector is the side that actually touches the filesystem.
+func ValidateOutputPath(out string) error {
+	if strings.TrimSpace(out) == "" {
+		return errors.New(`"outputs" contains an empty path`)
+	}
+	if filepath.IsAbs(out) {
+		return fmt.Errorf(`"outputs" entry %q must be relative to /workspace`, out)
+	}
+	clean := filepath.Clean(out)
+	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+		return fmt.Errorf(`"outputs" entry %q escapes the workspace`, out)
+	}
+	return nil
 }
 
 // PrivilegedCommandHash returns the value `masuda privileged-command

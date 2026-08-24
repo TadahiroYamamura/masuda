@@ -20,6 +20,18 @@ var Requirements []byte
 //go:embed runtime/CLAUDE.md
 var ClaudeMD []byte
 
+// PrivilegedRunner and PrivilegedRunnerUnit are injected into a disposable
+// VM's rootfs (ADR-0053) rather than being part of the image the target
+// repository declares: they are masuda's protocol for handing a command in
+// and getting an exit code and log back, and must not depend on -- or be
+// breakable by -- a Dockerfile the project owns.
+//
+//go:embed runtime/masuda-run.sh
+var PrivilegedRunner []byte
+
+//go:embed runtime/masuda-run.service
+var PrivilegedRunnerUnit []byte
+
 // DockerTemplate is the starting content of an image entry whose VM runs a
 // Docker daemon (.masuda/images/<entry>/Dockerfile, ADR-0053/0054). It
 // lives under templates/ rather than docker/ to keep the distinction

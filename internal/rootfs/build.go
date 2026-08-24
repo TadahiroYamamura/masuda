@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -87,6 +88,69 @@ type ExtraFile struct {
 	UID, GID int
 }
 
+// ExtraDir is a whole host directory copied into the image, for content too
+// large or too numerous to pass as individual ExtraFiles -- the guest
+// kernel's module tree (ADR-0053) being the case this exists for: Ubuntu's
+// distribution kernel keeps overlay, bridge, veth and the netfilter chains
+// as modules, so a guest that has to run a Docker daemon needs the whole
+// tree that matches the vmlinuz masuda boots.
+//
+// Unlike ExtraFile there is no UID/GID: the copy happens inside the same
+// fakeroot session as everything else, where the copying process already
+// *is* uid 0, so a `cp -a` of a root-owned host tree lands as root-owned.
+// ExtraFile needs its explicit chown precisely because its content is
+// staged by masuda's own unprivileged process first (see stageExtraFiles).
+type ExtraDir struct {
+	// HostPath is the directory to copy from, on the host.
+	HostPath string
+	// GuestPath is where its *contents* land, relative to the image root
+	// (no leading slash), e.g. "lib/modules/6.8.0-138-generic".
+	GuestPath string
+}
+
+// ExtraSymlink is a symbolic link created inside the image. ExtraFile
+// cannot express one -- it writes file content -- and some things only
+// exist as links: enabling a systemd unit means placing a link in a
+// <target>.wants/ directory, which is how masuda activates the injected
+// runner in a disposable VM (ADR-0053).
+//
+// The kernel command line would be the obvious alternative
+// (systemd.wants=), and it does not work here: `docker export` carries
+// /.dockerenv into the rootfs, systemd therefore reports "Detected
+// virtualization docker", and a systemd that believes it is in a container
+// deliberately ignores systemd.* options on /proc/cmdline -- that command
+// line belongs to the host, not to it. Confirmed live: the unit never ran.
+type ExtraSymlink struct {
+	// GuestPath is the link itself, relative to the image root (no
+	// leading slash).
+	GuestPath string
+	// Target is what it points at, as the guest will resolve it.
+	Target string
+}
+
+// Options carries everything Build needs beyond the image and output path.
+// A struct rather than more positional parameters: the list has grown from
+// "extra files" to also cover injected directories and a size floor, and
+// each of those is optional for most callers.
+type Options struct {
+	// ExtraFiles are individual files overlaid onto the exported image.
+	ExtraFiles []ExtraFile
+	// ExtraDirs are host directories copied in wholesale.
+	ExtraDirs []ExtraDir
+	// ExtraSymlinks are created after all content is in place, so a link
+	// may point at something another field put there.
+	ExtraSymlinks []ExtraSymlink
+	// MinSizeMiB raises the size Build would otherwise compute from the
+	// content. It is a floor, not a replacement: a value below what the
+	// content needs could only produce a failed mkfs.ext4 or a VM that
+	// boots with no free space, so there is nothing to gain from honouring
+	// it literally (ADR-0054). Zero means "use the computed size." Values
+	// above maxImageSizeMiB are rejected rather than clamped -- a caller
+	// asking for 4TiB has a typo, and silently building 64GiB instead
+	// would hide it.
+	MinSizeMiB int
+}
+
 // Build exports image's container filesystem and writes it as a raw ext4
 // disk image at outputPath, ready to hand to a VM as a virtio-blk root
 // device. outputPath is written atomically: the image is built at
@@ -106,19 +170,17 @@ type ExtraFile struct {
 // real recorded ownership, not the invoking user's. Confirmed against a
 // real masuda sandbox image with debugfs: /etc/shadow lands as
 // user=0/group=42 (shadow), not the host user's uid/gid.
-// minSizeMiB raises the size Build would otherwise compute from the
-// exported content. It is a floor, not a replacement: a value below what
-// the content needs could only produce a failed mkfs.ext4 or a VM that
-// boots with no free space, so there is nothing to gain from honouring it
-// literally (ADR-0054). Zero means "use the computed size." Values above
-// maxImageSizeMiB are rejected rather than clamped -- a caller asking for
-// 4TiB has a typo, and silently building 64GiB instead would hide it.
-func Build(image, outputPath string, extra []ExtraFile, minSizeMiB int) error {
-	if minSizeMiB < 0 {
-		return fmt.Errorf("rootfs size %d MiB is negative", minSizeMiB)
+func Build(image, outputPath string, opts Options) error {
+	if opts.MinSizeMiB < 0 {
+		return fmt.Errorf("rootfs size %d MiB is negative", opts.MinSizeMiB)
 	}
-	if minSizeMiB > maxImageSizeMiB {
-		return fmt.Errorf("rootfs size %d MiB exceeds masuda's %d MiB ceiling", minSizeMiB, maxImageSizeMiB)
+	if opts.MinSizeMiB > maxImageSizeMiB {
+		return fmt.Errorf("rootfs size %d MiB exceeds masuda's %d MiB ceiling", opts.MinSizeMiB, maxImageSizeMiB)
+	}
+	for _, dir := range opts.ExtraDirs {
+		if _, err := os.Stat(dir.HostPath); err != nil {
+			return fmt.Errorf("injecting %s into the rootfs: %w", dir.HostPath, err)
+		}
 	}
 	for _, bin := range requiredBinaries {
 		if _, err := exec.LookPath(bin); err != nil {
@@ -141,11 +203,15 @@ func Build(image, outputPath string, extra []ExtraFile, minSizeMiB int) error {
 		return err
 	}
 
-	sizeMiB, err := imageSizeMiB(tarPath)
+	extraBytes, err := injectedBytes(opts)
+	if err != nil {
+		return fmt.Errorf("sizing injected content: %w", err)
+	}
+	sizeMiB, err := imageSizeMiB(tarPath, extraBytes)
 	if err != nil {
 		return fmt.Errorf("sizing image from %s: %w", tarPath, err)
 	}
-	sizeMiB = max(sizeMiB, minSizeMiB)
+	sizeMiB = max(sizeMiB, opts.MinSizeMiB)
 
 	extractDir := filepath.Join(workDir, "extracted")
 	if err := os.Mkdir(extractDir, 0o755); err != nil {
@@ -163,14 +229,30 @@ func Build(image, outputPath string, extra []ExtraFile, minSizeMiB int) error {
 	// `cp -a`'s own ownership-preservation can't be trusted here).
 	stagingDir := filepath.Join(workDir, "extra")
 	ownerManifestPath := filepath.Join(workDir, "extra-owners.tsv")
-	if err := stageExtraFiles(stagingDir, ownerManifestPath, extra); err != nil {
+	if err := stageExtraFiles(stagingDir, ownerManifestPath, opts.ExtraFiles); err != nil {
 		return fmt.Errorf("staging extra files: %w", err)
+	}
+
+	// Directories are *not* staged: they are copied straight from their
+	// host path inside the fakeroot session. Staging them would mean
+	// copying the same bytes twice (the kernel module tree is ~155MiB) and
+	// holding both copies at once, for no gain -- unlike ExtraFile content,
+	// which masuda materializes from memory and therefore has to write
+	// somewhere first.
+	dirManifestPath := filepath.Join(workDir, "extra-dirs.tsv")
+	if err := writeDirManifest(dirManifestPath, opts.ExtraDirs); err != nil {
+		return fmt.Errorf("recording directories to inject: %w", err)
+	}
+
+	linkManifestPath := filepath.Join(workDir, "extra-links.tsv")
+	if err := writeLinkManifest(linkManifestPath, opts.ExtraSymlinks); err != nil {
+		return fmt.Errorf("recording symlinks to inject: %w", err)
 	}
 
 	tmpImagePath := outputPath + ".tmp"
 	defer os.Remove(tmpImagePath) // no-op once the rename below succeeds
 
-	if err := extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, tmpImagePath, sizeMiB); err != nil {
+	if err := extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, dirManifestPath, linkManifestPath, tmpImagePath, sizeMiB); err != nil {
 		return err
 	}
 
@@ -237,11 +319,16 @@ func firstLine(s string) string {
 }
 
 // imageSizeMiB sums the regular-file content bytes recorded in the tar at
-// tarPath and returns a padded image size in MiB (see the sizeSlack*
-// constants). Reading tar headers directly, rather than extracting first,
-// avoids doing the multi-gigabyte extraction twice (once to measure, once
-// for real inside extractAndFormat's fakeroot session).
-func imageSizeMiB(tarPath string) (int, error) {
+// tarPath, adds extraBytes (content injected from outside the image, which
+// the tar knows nothing about), and returns a padded image size in MiB (see
+// the sizeSlack* constants). Reading tar headers directly, rather than
+// extracting first, avoids doing the multi-gigabyte extraction twice (once
+// to measure, once for real inside extractAndFormat's fakeroot session).
+//
+// Counting extraBytes matters as soon as anything large is injected: with
+// only the tar counted, a caller adding a kernel module tree would be
+// relying on the slack margin happening to be bigger than the injection.
+func imageSizeMiB(tarPath string, extraBytes int64) (int, error) {
 	f, err := os.Open(tarPath)
 	if err != nil {
 		return 0, err
@@ -263,8 +350,60 @@ func imageSizeMiB(tarPath string) (int, error) {
 		}
 	}
 
+	total += extraBytes
 	mib := int(total*sizeSlackNumerator/sizeSlackDenominator/(1024*1024)) + sizeSlackFixedMiB
 	return max(mib, minImageSizeMiB), nil
+}
+
+// injectedBytes totals what Build adds on top of the exported image: every
+// ExtraFile's content, plus every regular file under every ExtraDir.
+func injectedBytes(opts Options) (int64, error) {
+	var total int64
+	for _, f := range opts.ExtraFiles {
+		total += int64(len(f.Content))
+	}
+	for _, d := range opts.ExtraDirs {
+		if err := filepath.WalkDir(d.HostPath, func(_ string, entry fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !entry.Type().IsRegular() {
+				return nil
+			}
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			total += info.Size()
+			return nil
+		}); err != nil {
+			return 0, err
+		}
+	}
+	return total, nil
+}
+
+// writeDirManifest records each ExtraDir as a "<host path>\t<guest path>"
+// line for extractAndFormat's fakeroot script to read, the same shape as
+// the ownership manifest. Passing them as positional shell arguments would
+// cap how many can be injected and make the script's argument indices
+// depend on the caller.
+// writeLinkManifest records each ExtraSymlink as a "<link>\t<target>" line,
+// same shape and same reason as writeDirManifest.
+func writeLinkManifest(path string, links []ExtraSymlink) error {
+	var buf bytes.Buffer
+	for _, l := range links {
+		fmt.Fprintf(&buf, "%s\t%s\n", strings.TrimPrefix(l.GuestPath, "/"), l.Target)
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o644)
+}
+
+func writeDirManifest(path string, dirs []ExtraDir) error {
+	var buf bytes.Buffer
+	for _, d := range dirs {
+		fmt.Fprintf(&buf, "%s\t%s\n", d.HostPath, strings.TrimPrefix(d.GuestPath, "/"))
+	}
+	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
 // extractAndFormat extracts tarPath into extractDir, overlays stagingDir's
@@ -299,7 +438,7 @@ func imageSizeMiB(tarPath string) (int, error) {
 // session on the same copy. Fixed by chowning explicitly afterward, the
 // same way ownership already has to be set explicitly for anything else
 // this session didn't inherit correctly on its own.
-func extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, imagePath string, sizeMiB int) error {
+func extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, dirManifestPath, linkManifestPath, imagePath string, sizeMiB int) error {
 	const script = `set -e
 tar -C "$1" -xpf "$2"
 if [ -n "$(ls -A "$3" 2>/dev/null)" ]; then
@@ -309,6 +448,16 @@ if [ -n "$(ls -A "$3" 2>/dev/null)" ]; then
     chown "$owner_uid:$owner_gid" "$1/$rel"
   done < "$7"
 fi
+while IFS="$(printf '\t')" read -r host_dir guest_rel; do
+  [ -z "$guest_rel" ] && continue
+  mkdir -p "$1/$guest_rel"
+  cp -a "$host_dir"/. "$1/$guest_rel"/
+done < "$8"
+while IFS="$(printf '\t')" read -r link target; do
+  [ -z "$target" ] && continue
+  mkdir -p "$(dirname "$1/$link")"
+  ln -sfn "$target" "$1/$link"
+done < "$9"
 if [ -d "$1/lib/modules" ]; then
   for moddir in "$1"/lib/modules/*/; do
     [ -d "$moddir" ] || continue
@@ -318,7 +467,7 @@ fi
 mkfs.ext4 -q -F -d "$1" -L "$4" "$5" "$6"M
 `
 	cmd := exec.Command("fakeroot", "sh", "-c", script, "sh",
-		extractDir, tarPath, stagingDir, rootfsLabel, imagePath, strconv.Itoa(sizeMiB), ownerManifestPath)
+		extractDir, tarPath, stagingDir, rootfsLabel, imagePath, strconv.Itoa(sizeMiB), ownerManifestPath, dirManifestPath, linkManifestPath)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
