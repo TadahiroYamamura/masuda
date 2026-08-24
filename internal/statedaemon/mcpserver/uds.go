@@ -20,9 +20,11 @@ func ServeUDS(ctx context.Context, store *statedaemon.Store, socketPath string) 
 
 // ServeCuratedUDS serves store's curated, Claude-facing MCP tool set
 // (NewCurated) over a Unix domain socket at socketPath, blocking until ctx
-// is cancelled or the listener fails.
+// is cancelled or the listener fails. No privileged-command runner, so that
+// tool is not offered -- the real daemon builds the server itself and
+// passes one (see ServeCuratedServerUDS and runStatedaemon).
 func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {
-	return ServeCuratedServerUDS(ctx, NewCurated(store), socketPath)
+	return ServeCuratedServerUDS(ctx, NewCurated(store, nil), socketPath)
 }
 
 // ServeCuratedServerUDS serves an already-constructed curated *mcp.Server

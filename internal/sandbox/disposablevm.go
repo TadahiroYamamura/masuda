@@ -102,6 +102,44 @@ type PrivilegedRunResult struct {
 	OutputsError string
 }
 
+// ResolveApprovedPrivilegedCommand returns the declaration a run request may
+// use for name, or an error explaining why it may not run. Every refusal
+// here is the same refusal `masuda privileged-command list` would show, and
+// the wording matters: the AI session is the caller, and the only thing it
+// can do about a refusal is tell the human which command to look at.
+//
+// The check that carries the weight is the hash: an approval is granted
+// against one exact declaration *and* one exact image (ADR-0053,
+// config.PrivilegedCommandHash), so a project-side edit after approval
+// leaves the name approved but the hash stale, which is treated as
+// unapproved rather than silently honoured.
+func ResolveApprovedPrivilegedCommand(repoRoot, name string) (config.PrivilegedCommandDecl, error) {
+	cfg, err := config.Load(repoRoot)
+	if err != nil {
+		return config.PrivilegedCommandDecl{}, err
+	}
+	decl, ok := cfg.PrivilegedCommands[name]
+	if !ok {
+		return config.PrivilegedCommandDecl{}, fmt.Errorf("no privileged command %q is declared in %s", name, config.SettingsPath(repoRoot))
+	}
+	local, err := config.LoadLocal(repoRoot)
+	if err != nil {
+		return config.PrivilegedCommandDecl{}, err
+	}
+	approval, ok := local.PrivilegedCommands[name]
+	if !ok || !approval.Approved {
+		return config.PrivilegedCommandDecl{}, fmt.Errorf("privileged command %q is declared but not approved -- a human must run `masuda privileged-command approve %s`", name, name)
+	}
+	want, err := config.PrivilegedCommandHash(repoRoot, decl)
+	if err != nil {
+		return config.PrivilegedCommandDecl{}, err
+	}
+	if approval.DeclHash != want {
+		return config.PrivilegedCommandDecl{}, fmt.Errorf("privileged command %q changed since it was approved (its declaration or its image entry) -- a human must review it again with `masuda privileged-command approve %s`", name, name)
+	}
+	return decl, nil
+}
+
 // RunPrivilegedCommand builds, boots, waits for, and tears down one
 // disposable VM. It blocks for the length of the run.
 func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error) {

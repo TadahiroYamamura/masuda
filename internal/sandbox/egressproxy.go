@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -177,12 +178,23 @@ func privilegedVMRegistryPath(mac string) (string, error) {
 
 // registerPrivilegedVM records that mac belongs to a disposable VM running
 // on behalf of repoRoot, for as long as it runs.
+//
+// The record carries the pid of the masuda process supervising that VM, not
+// just the repository. Removing the record is a deferred cleanup, and a
+// deferred cleanup does not run when the process is killed -- observed
+// live, from a test run stopped with a signal. A record left behind that
+// way would keep granting egress to a MAC address nothing is using, which
+// another guest could then take for itself to borrow an allowlist that was
+// never meant for it. Pairing the record with a pid makes the staleness
+// detectable instead (see lookupPrivilegedVM), the same way
+// startBackgroundProcess treats a leftover pid file.
 func registerPrivilegedVM(mac, repoRoot string) error {
 	path, err := privilegedVMRegistryPath(mac)
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(path, []byte(repoRoot), 0o644); err != nil {
+	record := strconv.Itoa(os.Getpid()) + "\n" + repoRoot
+	if err := os.WriteFile(path, []byte(record), 0o644); err != nil {
 		return fmt.Errorf("registering the disposable VM for egress: %w", err)
 	}
 	return nil
@@ -202,16 +214,40 @@ func unregisterPrivilegedVM(mac string) error {
 	return nil
 }
 
+// lookupPrivilegedVM returns the repository a live disposable VM is running
+// for. A record whose supervising process is gone is treated as absent and
+// deleted on the spot: the VM it described cannot still be running, since
+// nothing else would keep it alive.
 func lookupPrivilegedVM(mac string) (string, bool) {
 	path, err := privilegedVMRegistryPath(mac)
 	if err != nil {
 		return "", false
 	}
-	repoRoot, err := os.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", false
 	}
-	return string(repoRoot), true
+	pidText, repoRoot, ok := strings.Cut(string(data), "\n")
+	if !ok {
+		_ = os.Remove(path)
+		return "", false
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(pidText))
+	if err != nil || !processAlive(pid) {
+		_ = os.Remove(path)
+		return "", false
+	}
+	return repoRoot, true
+}
+
+// processAlive reports whether pid is a live process. Signal 0 performs the
+// permission and existence checks without delivering anything.
+func processAlive(pid int) bool {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return proc.Signal(syscall.Signal(0)) == nil
 }
 
 // NewEgressAllowlistFunc returns an egressproxy.AllowlistFunc (taking that

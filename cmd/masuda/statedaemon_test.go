@@ -79,7 +79,7 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, "") }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -154,7 +154,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, "") }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -265,7 +265,7 @@ func TestRunStatedaemonAggregatesApprovedMCPServer(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, repoRoot) }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, repoRoot, "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {

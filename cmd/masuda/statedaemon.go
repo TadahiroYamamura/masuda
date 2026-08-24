@@ -14,10 +14,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
+	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
 // daemonPIDName/daemonLogName/daemonStoreDirName are the well-known
@@ -44,7 +46,7 @@ const (
 // pytest-fixture use of this command (see newInternalStatedaemonCommand's
 // --state-dir doc comment) has no associated repository to read either
 // file from.
-func runStatedaemon(ctx context.Context, stateDir, repoRoot string) error {
+func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string) error {
 	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
 	if err != nil {
 		return err
@@ -56,11 +58,21 @@ func runStatedaemon(ctx context.Context, stateDir, repoRoot string) error {
 	// Built once, up front, so both ServeCuratedServerUDS and
 	// mcpaggregator.Start (which registers proxy tools onto it as child
 	// servers become ready) share the same *mcp.Server instance.
-	curated := mcpserver.NewCurated(store)
+	// The privileged-command tool needs a workspace to act on: a repository
+	// to read the declaration and its approval from, and the worktree to
+	// snapshot into the disposable VM (ADR-0053). Without both, the tool
+	// stays unregistered rather than being offered and always failing.
+	var runPrivileged mcpserver.PrivilegedRunner
+	if repoRoot != "" && worktreeDir != "" {
+		runPrivileged = privilegedRunner(repoRoot, worktreeDir, stateDir)
+	}
+	curated := mcpserver.NewCurated(store, runPrivileged)
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
-	go func() { errCh <- mcpserver.ServeCuratedServerUDS(ctx, curated, statedaemon.CuratedSocketPath(stateDir)) }()
+	go func() {
+		errCh <- mcpserver.ServeCuratedServerUDS(ctx, curated, statedaemon.CuratedSocketPath(stateDir))
+	}()
 
 	var agg *mcpaggregator.Aggregator
 	if repoRoot != "" {
@@ -103,7 +115,7 @@ func newInternalCommand() *cobra.Command {
 }
 
 func newInternalStatedaemonCommand() *cobra.Command {
-	var stateDir, repoRoot string
+	var stateDir, repoRoot, worktreeDir string
 	cmd := &cobra.Command{
 		Use:    "statedaemon",
 		Hidden: true,
@@ -115,7 +127,7 @@ func newInternalStatedaemonCommand() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			err := runStatedaemon(ctx, stateDir, repoRoot)
+			err := runStatedaemon(ctx, stateDir, repoRoot, worktreeDir)
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
@@ -134,7 +146,43 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	// settings(.local).json from.
 	cmd.Flags().StringVar(&repoRoot, "repo-root", "",
 		"target repository root to read .masuda/settings.json + settings.local.json's child MCP server declarations from (optional; omit to disable the aggregator)")
+	// Optional for the same reason as --repo-root: without a worktree to
+	// snapshot there is nothing for a privileged command to run against, so
+	// that tool stays unoffered rather than failing on every call.
+	cmd.Flags().StringVar(&worktreeDir, "worktree-dir", "",
+		"this workspace's clone, snapshotted into the disposable VM a privileged command runs in (optional; omit to disable run_privileged_command)")
 	return cmd
+}
+
+// privilegedRunner adapts internal/sandbox's disposable-VM run to the
+// callback the curated MCP server takes. The wiring lives here because this
+// is the one place that already depends on both packages -- mcpserver
+// cannot import internal/sandbox, whose own tests import mcpserver.
+func privilegedRunner(repoRoot, worktreeDir, stateDir string) mcpserver.PrivilegedRunner {
+	return func(_ context.Context, name string) (mcpserver.PrivilegedRunResult, error) {
+		decl, err := sandbox.ResolveApprovedPrivilegedCommand(repoRoot, name)
+		if err != nil {
+			return mcpserver.PrivilegedRunResult{}, err
+		}
+		result, err := sandbox.RunPrivilegedCommand(sandbox.PrivilegedRunRequest{
+			Name:        name,
+			Decl:        decl,
+			RepoRoot:    repoRoot,
+			WorktreeDir: worktreeDir,
+			StateDir:    stateDir,
+		})
+		if err != nil {
+			return mcpserver.PrivilegedRunResult{}, err
+		}
+		return mcpserver.PrivilegedRunResult{
+			ExitCode:     result.ExitCode,
+			Log:          result.Log,
+			ResultsDir:   result.GuestDir,
+			Outputs:      result.Outputs,
+			OutputsError: result.OutputsError,
+			TimedOut:     result.TimedOut,
+		}, nil
+	}
 }
 
 // startDaemon spawns workspace id's state daemon as a detached background
@@ -172,7 +220,11 @@ func startDaemon(id string) error {
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(exe, "internal", "statedaemon", "--state-dir", stateDir, "--repo-root", info.RepoRoot)
+	cmd := exec.Command(exe, "internal", "statedaemon",
+		"--state-dir", stateDir,
+		"--repo-root", info.RepoRoot,
+		"--worktree-dir", worktree.Dir(info.RepoRoot, id),
+	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
