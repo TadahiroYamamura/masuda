@@ -34,6 +34,12 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   ビルド/テスト自己修正ループの手順（ADR-0009、最大3回）・完了条件
   （`_implementation_completion_section`: `changed_files`を含む`{"status":"done",...}`を
   `implementation_result.json`へ）を含む。
+- ビルド/テスト自己修正ループの節には`_PRIVILEGED_COMMAND_SECTION`が続く。root権限や
+  Dockerデーモンを要するテストはこのVMでは動かないため、宣言・承認済みの特権コマンドを
+  `run_privileged_command`で実行するか、それが無ければ自己修正ループを空回りさせずに
+  `build_test_failed`で人間の承認が要る旨を報告する、という指示（`docs/design/privileged-commands.md`）。
+  TDDモード（`_tdd_self_verify_section`）の3フェーズすべてと、レビュー指摘の修正プロンプトにも
+  同じ節が入る。
 - `_finalize_step`の後、`detect_phase`をゼロから呼び直して次のフェーズを再導出する
   （commit/tagという実際のgit状態を再度読むだけで、次に見るべきステップが1つ進む）。
 

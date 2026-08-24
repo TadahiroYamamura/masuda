@@ -1473,6 +1473,22 @@ _TRIAGE_SELF_REPORT_SECTION = f"""## セキュリティ上の懸念の自己申�
 {{"agent": "<自分の役割>", "phase": "<今何をしていたか>", "description": "<何が疑わしいか、具体的に>", "evidence": "<疑わしい箇所の引用>", "reported_at": "<ISO8601形式の現在時刻>"}}"""
 
 
+_PRIVILEGED_COMMAND_SECTION = """## rootやDockerを要するテスト（ADR-0053）
+このVMにはroot権限もDockerデーモンも無い。テストがDockerを要求する場合（testcontainers等）、
+パッケージのインストールや`dockerd`の起動を試みても解決しない。
+
+`/workspace/.masuda/settings.json`の`privilegedCommands`に該当する宣言があれば、
+`mcp__masuda-gate__run_privileged_command`ツールにそのキーを`name`として渡して実行する
+（root権限とDockerデーモンを持つ使い捨てのVMで実行される。戻り値はexit code・ログ・
+`resultsDir`で、全文のログと回収された成果物は`resultsDir`配下にファイルとして残る）。
+
+宣言が無い場合、または「承認されていない」というエラーが返った場合は自分では解決できない
+（承認はホスト側で人間が行う操作で、`/workspace`のファイルを編集しても承認にはならない）。
+自己修正ループを空回りさせず、`build_test_failed`の`details`に「どのコマンドがroot/Dockerを
+要するか」と「人間が`masuda privileged-command approve <name>`を実行する必要があること」を
+書いて終了せよ。"""
+
+
 _COMMENT_STYLE_SECTION = """## コメントの書き方
 コードコメントは現在のコードの意図（コードからは読み取れない背景情報・複数の選択肢の中で
 なぜこの実装を選んだか・トレードオフ）だけを説明すること。上記の差し戻し・追加対応の指示に
@@ -1548,6 +1564,8 @@ def _implement_step_task(step_index: int, redo_feedback: str | None = None) -> s
 `{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
 {{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
 
+{_PRIVILEGED_COMMAND_SECTION}
+
 {_TRIAGE_SELF_REPORT_SECTION}
 
 {_implementation_completion_section()}
@@ -1613,13 +1631,17 @@ def _tdd_self_verify_section(phase: str) -> str:
 確認せよ。構文エラー等、意図と無関係な理由でテストが実行できない場合は自己修正して
 再実行せよ。最大3回まで試し、それでも意図した形で失敗させられない場合は
 `{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
-{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}"""
+{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
+
+{_PRIVILEGED_COMMAND_SECTION}"""
     verb = "実装後" if phase == "green" else "変更した場合"
     return f"""## ビルド/テストの自己修正ループ（ADR-0009）
 {verb}、自分でビルド・テストを実行し、失敗したら自己修正して再実行せよ（テストは
 引き続きgreenのままである必要がある）。最大3回まで試し、それでもグリーンにならない
 場合は`{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
-{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}"""
+{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
+
+{_PRIVILEGED_COMMAND_SECTION}"""
 
 
 def _tdd_completion_section(phase: str) -> str:
@@ -1777,6 +1799,8 @@ def _implement_g2_redo_task(feedback: str) -> str:
 最大3回まで試し、それでもグリーンにならない場合は
 `{IMPLEMENTATION_RESULT_JSON}`に以下を書き出して終了せよ:
 {{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
+
+{_PRIVILEGED_COMMAND_SECTION}
 
 {_TRIAGE_SELF_REPORT_SECTION}
 

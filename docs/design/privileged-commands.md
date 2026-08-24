@@ -72,6 +72,22 @@ curated MCPツール`run_privileged_command(name)`（`internal/statedaemon/mcpse
 
 戻り値は`exitCode`・`log`（切り詰め済み）・`truncated`・`resultsDir`（**メインVMから見たパス**、`/masuda-state/privilegedCommands/<name>/<run-id>`）・`outputs`・`outputsError`・`timedOut`。
 
+## ループ側からの見え方
+
+AIセッションがこの機構の存在を知る経路は2つある。
+
+- `runtime/CLAUDE.md`（`~/.claude/CLAUDE.md`として起動時に配置される、ADR-0007）の
+  「rootやDockerを要する処理」節。宣言の探し方（`/workspace/.masuda/settings.json`の
+  `privilegedCommands`）・ツールの呼び方・宣言が無い場合は人間の承認が要ること・見えているのは
+  worktreeのスナップショットであることを述べる
+- Build段階の各プロンプトに入る`_PRIVILEGED_COMMAND_SECTION`（`orchestrator/implement_review_graph.py`）。
+  ビルド/テスト自己修正ループ（ADR-0009）の直後に置かれ、Dockerを要するテストで3回の
+  リトライを空回りさせず`build_test_failed`として報告させる（`docs/design/build.md`）
+
+`.masuda/settings.local.json`はワークスペースのcloneへ同期されないため、**セッション側からは
+どれが承認済みかを読めない**。承認されていないコマンドを名指しした場合は、ツールが拒否を
+返すことで分かる。
+
 ## ネットワーク
 
 使い捨てVMはワークスペースではないため、egressプロキシの「IP→DHCPリース→MAC→ワークスペース」という解決に載らない。実行中だけMACとリポジトリの対応を`$XDG_DATA_HOME/masuda/privileged-vms/<mac>`へ記録し、`ResolveWorkspaceByIP`がワークスペースに一致しなかった場合に参照する（`internal/sandbox/egressproxy.go`）。許可リスト自体はそのリポジトリの`egressAllowlist`をそのまま使う（`docs/design/egress-filter.md`）。

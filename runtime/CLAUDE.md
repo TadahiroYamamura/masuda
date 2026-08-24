@@ -50,6 +50,34 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
 MASUDA_STATE_DIR=/masuda-state /opt/masuda/venv/bin/python /opt/masuda/orchestrator/implement_review_graph.py
 ```
 
+## rootやDockerを要する処理
+
+このVMには**root権限もDockerデーモンも無い**。`sudo`は`systemctl poweroff`以外では通らず、
+`dockerd`は起動できない。インストールや起動を試みても解決しないので、試さないこと。
+
+対象リポジトリのテストがDockerを要求する場合（testcontainers等）、その実行は
+**宣言・承認された特権コマンド**として、rootとDockerデーモンを持つ使い捨てのVMで行う
+（ADR-0053）。
+
+1. `/workspace/.masuda/settings.json`の`privilegedCommands`を読み、必要な処理が宣言されて
+   いるか確認する（キーが名前）
+2. 宣言されていれば`mcp__masuda-gate__run_privileged_command`ツールを呼び、`name`にその
+   キーを渡す。実行が終わるまでブロッキングし、数分かかることがある
+3. 戻り値は`exitCode`・`log`（末尾を切り詰めたもの）・`resultsDir`・`outputs`。全文のログと
+   回収された成果物は`resultsDir`配下にあるので、必要なら**ファイルとして読む**
+
+渡せるのは宣言の名前だけで、コマンド文字列は渡せない。実際に実行されるのは人間が承認した
+宣言そのものであり、こちらから内容を変えることはできない。
+
+**必要な処理が宣言されていない場合、または「承認されていない」というエラーが返った場合、
+自分では解決できない。** 承認はホスト側で人間が`masuda privileged-command approve <name>`を
+実行する操作であり、`/workspace`側のファイルを編集しても承認にはならない。何が必要かを
+報告し、人間の対応を待つこと（ゲート待機と同じ扱い）。
+
+なお、そのVMが見るのは`/workspace`の**スナップショット（コピー）**である。特権コマンドが
+書いたファイルはこちらのworktreeには現れない——戻ってくるのは宣言された`outputs`だけで、
+それも`resultsDir`配下に置かれる。コードの修正を特権コマンドにやらせても意味が無い。
+
 ## 注意
 
 masuda自身の制御ファイル（TASK.md・`plan/`・`review_results/`等）は`/masuda-state`配下に
