@@ -17,7 +17,8 @@ masudaが**現在**どう動いているかを記述する。「なぜそうな�
 | `internal/sandbox/` のVM起動・virtiofs・SSH鍵・認証、`runtime/entrypoint.sh` | [sandbox-vm.md](sandbox-vm.md) |
 | `internal/sandbox/vmnet.go`、`cmd/masuda-net-helper/`、`scripts/setup-vm-host.sh` | [networking.md](networking.md) |
 | `internal/egressproxy/`、`cmd/masuda-egress-proxy/`、`internal/sandbox/egressproxy.go`、`cmd/masuda/egress.go` | [egress-filter.md](egress-filter.md) |
-| `Dockerfile`、`docker/*/Dockerfile`、`internal/rootfs/` | [images-and-rootfs.md](images-and-rootfs.md) |
+| `Dockerfile`、`templates/`、`internal/rootfs/`、`cmd/masuda/image.go` | [images-and-rootfs.md](images-and-rootfs.md) |
+| `internal/sandbox/disposablevm.go`、`cmd/masuda/privilegedcommand.go`、`runtime/masuda-run.*` | [privileged-commands.md](privileged-commands.md) |
 | `internal/statedaemon/`（KVストア・MCP 2面） | [state-daemon-mcp.md](state-daemon-mcp.md) |
 | `internal/statedaemon/mcpaggregator/`、`cmd/masuda/mcp.go` | [mcp-child-servers.md](mcp-child-servers.md) |
 | `internal/selfupdate/`、`internal/verify/`、`cmd/masuda/update.go`・`init.go`、`.github/workflows/` | [distribution-and-update.md](distribution-and-update.md) |

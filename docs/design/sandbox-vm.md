@@ -19,16 +19,17 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 3. `WriteGitIdentity(stateDir, repoRoot)`でgit identityをstateDir直下に書き込む（後述）
 4. `EnsureSSHKeypair()`でホスト全体で共有するVM用SSH鍵ペア（初回のみ生成）を確保し、公開鍵を読む
 5. `virtiofsModuleExtraFile(kernelVersion)`でホストの`/lib/modules/<version>/kernel/fs/fuse/virtiofs.ko*`を読み、ゲストのrootfsへ`usr/lib/modules/<version>/...`として注入する`rootfs.ExtraFile`を組み立てる。ゲストパスを`usr/lib/modules/...`にしているのは、masuda-loopイメージ（Ubuntu 24.04、usrmerge）で`/lib`が`/usr/lib`へのシンボリックリンクであり、`lib/...`のまま実ディレクトリを重ねようとするとrootfs構築側の`cp -a`がシンボリックリンクをディレクトリで上書きしようとして失敗するため
-6. `rootfs.Build(image, rootfsPath, extra)`でrootfsイメージを毎回ゼロから構築する。`extra`にはSSH公開鍵（`home/ubuntu/.ssh/authorized_keys`）・`~/.claude/CLAUDE.md`（`masuda.ClaudeMD`、`go:embed`されたループ仕様、ADR-0007）・上記virtiofsモジュールの3つを渡す
-7. `EnsureTap(id, vmBridge, username)`でネットワークインターフェースを確保（詳細は`networking.md`）
-8. `StartVirtiofs`を`/workspace`（worktreeDir）→`/masuda-state`（stateDir）の順に起動。以後はvirtiofs節を参照
-9. `ClaudeOAuthTokenPath()`にトークンファイルがあれば、`vmClaudeSecretsDir(workDir)`へコピーし`/masuda-secrets`用のvirtiofsdをもう1つ起動する。トークンが未登録なら`/masuda-secrets`共有自体をスキップし、これはエラー扱いにしない
-10. `freePort()`でmcp-relay用ポートを取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ...)`をホスト側プロセスとして起動する（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。`relayPort`はランダム割り当てのため`vmRelayPortFile(workDir)`に書き残し、後続の`vmStop`（別プロセス起動）が参照する
-11. `EnsureEgressProxy()`でホスト共有のegress-proxyプロセスが起動済みか確認し、無ければ起動する（`internal/sandbox/egressproxy.go`、冪等——2台目以降のVMは既に起動済みのものを見つけるだけ）。ゲスト側にこのプロキシのアドレスを渡す必要は無い——REDIRECTルールが自動的に443番宛のトラフィックをそこへ届けるため、`--cmdline`にmcp-relayのような明示的なアドレス引数は無い。仕組み自体は`docs/design/egress-filter.md`を参照
-12. `cloud-hypervisor`をカーネル・rootfs・`--fs`（workspace/masuda-state/[claude-secrets]の3タグ）・`--net`（TAP＋`MACFor(id)`のMACアドレス）・`--cmdline`（`masuda.mcp_relay=<relay.Addr>`を含む）付きで起動し、`startBackgroundProcess`でpidfile化する
-13. `LookupGuestIP(mac, vmDHCPLeaseFile, vmBootTimeout)`（30秒）でDHCPリースが付くまで待つ。付かなければ起動失敗としてロールバックする
+6. `resolveImageEntry(repoRoot, image)`で、渡されたイメージ**エントリ名**（ADR-0054）をローカルDockerタグとそのエントリのビルドパラメータへ解決する。エントリの`Dockerfile`が存在しなければ、`masuda init`か`masuda sandbox build`を促すエラーで止まる
+7. `rootfs.Build(tag, rootfsPath, rootfs.Options{ExtraFiles: ..., MinSizeMiB: ...})`でrootfsイメージを毎回ゼロから構築する。`ExtraFiles`はSSH公開鍵（`home/ubuntu/.ssh/authorized_keys`）・`~/.claude/CLAUDE.md`（`masuda.ClaudeMD`、`go:embed`されたループ仕様、ADR-0007）・上記virtiofsモジュールの3つ。`MinSizeMiB`はエントリの`settings.json`の`rootfsSizeMiB`
+8. `EnsureTap(id, vmBridge, username)`でネットワークインターフェースを確保（詳細は`networking.md`）
+9. `StartVirtiofs`を`/workspace`（worktreeDir）→`/masuda-state`（stateDir）の順に起動。以後はvirtiofs節を参照
+10. `ClaudeOAuthTokenPath()`にトークンファイルがあれば、`vmClaudeSecretsDir(workDir)`へコピーし`/masuda-secrets`用のvirtiofsdをもう1つ起動する。トークンが未登録なら`/masuda-secrets`共有自体をスキップし、これはエラー扱いにしない
+11. `freePort()`でmcp-relay用ポートを取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ...)`をホスト側プロセスとして起動する（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。`relayPort`はランダム割り当てのため`vmRelayPortFile(workDir)`に書き残し、後続の`vmStop`（別プロセス起動）が参照する
+12. `EnsureEgressProxy()`でホスト共有のegress-proxyプロセスが起動済みか確認し、無ければ起動する（`internal/sandbox/egressproxy.go`、冪等——2台目以降のVMは既に起動済みのものを見つけるだけ）。ゲスト側にこのプロキシのアドレスを渡す必要は無い——REDIRECTルールが自動的に443番宛のトラフィックをそこへ届けるため、`--cmdline`にmcp-relayのような明示的なアドレス引数は無い。仕組み自体は`docs/design/egress-filter.md`を参照
+13. `cloud-hypervisor`をカーネル・rootfs・`--fs`（workspace/masuda-state/[claude-secrets]の3タグ）・`--net`（TAP＋`MACFor(id)`のMACアドレス）・`--cmdline`（`masuda.mcp_relay=<relay.Addr>`を含む）付きで起動し、`startBackgroundProcess`でpidfile化する
+14. `LookupGuestIP(mac, vmDHCPLeaseFile, vmBootTimeout)`（30秒）でDHCPリースが付くまで待つ。付かなければ起動失敗としてロールバックする
 
-手順7以降の各ステップは失敗時に、そこまでに確保したリソース（tap・virtiofsdプロセス群・mcp-relay）を逆順でベストエフォートに解放してからエラーを返す。DHCPリース待ちの失敗だけは`vmStop(id)`をまるごと呼ぶ形でロールバックする。
+手順8以降の各ステップは失敗時に、そこまでに確保したリソース（tap・virtiofsdプロセス群・mcp-relay）を逆順でベストエフォートに解放してからエラーを返す。DHCPリース待ちの失敗だけは`vmStop(id)`をまるごと呼ぶ形でロールバックする。
 
 ## VM停止（vmStop）とステータス確認
 

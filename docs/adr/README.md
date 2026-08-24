@@ -75,22 +75,24 @@
 - **[0018](0018-git-clone-local-over-linked-worktree.md)** worktreeは`git worktree add`ではなく`git clone --local`で作る — *一部改訂: 0036*
 - **[0023](0023-review-approve-fast-forward-not-local-merge.md)** review承認時のブランチ反映をローカルmergeからfast-forward限定に変える
 - **[0030](0030-workspace-id-drops-branch-name-prefix.md)** ワークスペースIDからbranch名プレフィックスを外し乱数のみにする
-- **[0036](0036-sync-uncommitted-masuda-config-into-clone.md)** clone作成時にrepoRootの`.masuda/`設定を常に上書きコピーする — *一部改訂: 0043*
+- **[0036](0036-sync-uncommitted-masuda-config-into-clone.md)** clone作成時にrepoRootの`.masuda/`設定を常に上書きコピーする — *一部改訂: 0043, 0054*
 
 ### サンドボックス実行基盤
 
-- **[0015](0015-native-lsp-plugins-and-repo-declared-image.md)** 横断的チェックはネイティブLSPプラグイン方式を採用し、イメージはrepo側の宣言に委ねる — *一部改訂: 0024, 0044*
+- **[0015](0015-native-lsp-plugins-and-repo-declared-image.md)** 横断的チェックはネイティブLSPプラグイン方式を採用し、イメージはrepo側の宣言に委ねる — *一部改訂: 0024, 0044, 0054*
 - **[0022](0022-build-essential-in-base-image.md)** build-essentialはバリアントごとではなく共通baseイメージに1回だけ入れる
 - **[0044](0044-remove-docker-execution-runtime-vmbackend-only.md)** Dockerの実行基盤を完全に削除しサンドボックスはVMBackendのみにする
 - **[0045](0045-redirect-over-tproxy-for-egress-interception.md)** egressプロキシへのパケット転送はTPROXYではなくiptables REDIRECTを使う
 - **[0048](0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md)** VMネットワークはホスト共有のbridge+NATとワークスペースごとの動的TAPに分離し、CAP_NET_ADMINは専用ヘルパーバイナリに隔離する
 - **[0049](0049-virtiofsd-sandbox-none.md)** virtiofsdを`--sandbox=none`で起動し、`newuidmap`/`newgidmap`をホスト前提条件に加えない
 - **[0051](0051-resolv-conf-fixed-at-vm-boot-in-sysinit-layer.md)** `/etc/resolv.conf`の差し替えはVM起動時のoneshot unitで行い、systemd-resolvedと同じsysinit層に置く
+- **[0053](0053-privileged-commands-declared-and-run-in-disposable-vm.md)** target repoが要求する特権操作は、宣言＋承認された使い捨てVMで実行し、メインサンドボックスVMには一切root/Docker権限を与えない
+- **[0054](0054-vm-images-declared-as-directories-under-masuda-images.md)** VMイメージは`.masuda/images/<name>/`のディレクトリ単位で宣言し、`settings.json`の`image`はそのエントリ名を指す
 
 ### 設定・配布・自己更新
 
 - **[0031](0031-claude-settings-field-init-materialized-no-implicit-default.md)** Claude Code設定は`claudeSettings`フィールドとして`init`が実体化し、暗黙のデフォルトを持たない — *一部改訂: 0034, 0043, 0044*
-- **[0032](0032-masuda-self-update-via-github-release-and-dockerhub-pull.md)** `masuda update`はGitHub Releaseのバイナリと公開Docker Hub baseイメージで自己更新する — *一部改訂: 0033, 0038, 0044*
+- **[0032](0032-masuda-self-update-via-github-release-and-dockerhub-pull.md)** `masuda update`はGitHub Releaseのバイナリと公開Docker Hub baseイメージで自己更新する — *一部改訂: 0033, 0038, 0044, 0054*
 - **[0034](0034-skip-dangerous-mode-permission-prompt-over-tmux-polling.md)** bypass permissionsダイアログは`skipDangerousModePermissionPrompt`設定キーで回避する
 - **[0038](0038-cosign-keyless-blob-verification-for-self-update.md)** 自己更新が取得するアセットをcosign keyless署名で検証する
 

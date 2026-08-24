@@ -5,6 +5,7 @@
 Accepted (2026-08-06)
 
 - 一部改訂: [[0043-child-mcp-server-aggregator-with-project-user-config-split]] — 新設された`.masuda/settings.local.json`（秘密情報を含む）は、意図的にコピー対象から除外する
+- 一部改訂: [[0054-vm-images-declared-as-directories-under-masuda-images]] — 同期対象外として名指ししている`.masuda/Dockerfile`は`.masuda/images/`に置き換わる（`repoRoot`基準でビルドするため除外する、という判断自体は不変）
 
 ## Decision
 

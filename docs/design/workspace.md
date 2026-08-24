@@ -9,7 +9,7 @@
 `internal/workspace/workspace.go`。
 
 - **ID発行**: `NewID()`（`:124`）が3バイトの乱数を16進エンコードした6桁hex文字列を生成する。`Exists(id)`で既存ワークスペースとの衝突を確認し、衝突時は再試行する（`maxNewIDAttempts = 100`で打ち切り）。branch名は含まない（ADR-0030）。
-- **状態ディレクトリ**: `StateDir(id)`（`:98`）は`DataHome()/workspaces/<id>`を返す。`DataHome()`（`:80`）は`$XDG_DATA_HOME`（未設定時`~/.local/share`）配下の`masuda`。対象リポジトリのworktree外に置かれる——masuda自身の制御ファイル（TASK.md・plan/・review_results/等）がこのディレクトリに集約される。
+- **状態ディレクトリ**: `StateDir(id)`（`:98`）は`DataHome()/workspaces/<id>`を返す。`DataHome()`（`:80`）は`$XDG_DATA_HOME`（未設定時`~/.local/share`）配下の`masuda`。対象リポジトリのworktree外に置かれる——masuda自身の制御ファイル（TASK.md・plan/・review_results/等）がこのディレクトリに集約される。特権コマンドの実行結果も`privilegedCommands/<name>/<run-id>/`としてここに積まれる（`docs/design/privileged-commands.md`）。
 - **メタデータ**: `Info`構造体（`:37`、`ID`/`Name`/`Branch`/`Base`/`RepoRoot`/`CreatedAt`）が`workspace.json`としてJSON永続化される。`Create(repoRoot, id, branch, base, name)`（`:144`）が状態ディレクトリを作成し、`workspace.json`と`.masuda-base-ref`（`BaseRefFileName`、baseブランチ名だけを書いたプレーンテキスト——`orchestrator/*.py`がGo側のJSONをパースせず直接読むための専用ファイル）の2つを書く。
 - **`Load(id)`**（`:167`）: `workspace.json`を読み戻す。`Exists(id)`（`:207`）は`Load`のエラー有無だけを見る——`masuda plan start <arg>`/`masuda review start <arg>`が`arg`を「既存ワークスペースIDとして再開」と「新規ブランチ名」のどちらとして扱うかを、この関数1つで判別している。
 - **`Rename(id, name)`**（`:186`）: `Info.Name`だけを書き換える唯一の変更操作。`Name`はid/branch/baseと違い表示専用ラベルで、ワークスペースの名前解決には一切関与しない。
@@ -70,7 +70,7 @@
 
   **明示的に対象外**:
   - `.masuda/settings.local.json`（`config.SettingsLocalPath`）: `config.MCPServerApproval.Env`など実秘密情報を持つファイル。クローンへコピーすると、`Commit`（後述）の無条件`git add -A`でワークスペースのブランチ履歴に秘密情報が漏れる経路になるため、意図的に同期対象から外している。状態デーモンは`workspace.Info.RepoRoot`経由でrepoRootから直接このファイルを読む。
-  - `.masuda/Dockerfile`: `docker build`は常にrepoRootから直接読む（`cmd/masuda/sandbox.go`・`update.go`）。
+  - `.masuda/images/`: `docker build`は常にrepoRootから直接読む（`cmd/masuda/sandbox.go`・`update.go`）。
   - `.masuda/worktrees/`: 自分自身（他ワークスペースのクローンを含む）を巻き込まないための除外。
 
 ## 自動化されるgit操作の範囲

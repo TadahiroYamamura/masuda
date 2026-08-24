@@ -32,7 +32,7 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 
 `runtime/CLAUDE.md`（ループプロトコル本体）はこのCOPY対象に**含まれない**。`~/.claude/CLAUDE.md`として`masuda sandbox start`実行時にmasuda CLI側から配置される（VM起動の詳細は`docs/design/sandbox-vm.md`）。
 
-**制約: `orchestrator/`と`runtime/`はイメージビルド時に`COPY`で焼き込まれるため、これらを変更した後は`masuda-loop:latest`（base）と使用する言語バリアントイメージの両方を再ビルドしないと反映されない。** 再ビルドを忘れると、古いコードのままVMが起動し、新しい段階が実行されずに次の段階へ直行するなど原因が分かりにくい形で不具合が出る。
+**制約: `orchestrator/`と`runtime/`はイメージビルド時に`COPY`で焼き込まれるため、これらを変更した後はbaseイメージと、それを`FROM`する対象リポジトリのイメージエントリの両方を再ビルドしないと反映されない。** 再ビルドを忘れると、古いコードのままVMが起動し、新しい段階が実行されずに次の段階へ直行するなど原因が分かりにくい形で不具合が出る。
 
 また、`orchestrator/`・`runtime/`はリポジトリルート直下に置く必要がある。ルート直下の`assets.go`が`go:embed`で`orchestrator/investigate_plan_graph.py`・`orchestrator/state_client.py`・`requirements.txt`・`runtime/CLAUDE.md`をmasuda CLIバイナリ自体に埋め込んでおり（Discovery/Blueprint段階のホスト側自己ループ用）、`go:embed`は宣言ファイル自身のディレクトリ以下（`..`不可）しか参照できないため、`assets.go`はリポジトリルートに置かれ、結果として埋め込み対象の`orchestrator/`・`runtime/`もルート直下という位置が固定されている。これはDockerfileの`COPY`が読む場所（ビルドコンテキストのルート）とも一致している。
 
@@ -44,30 +44,48 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 
 `ENTRYPOINT ["/opt/masuda/runtime/entrypoint.sh"]`。`WORKDIR /workspace`。
 
-## 言語別サンドボックスイメージバリアント
+## 対象リポジトリのイメージエントリ
 
-`docker/{go,python,typescript,full}/Dockerfile`は`FROM masuda-loop:latest`から派生し、言語別のツールチェーンとClaude公式LSPプラグインを追加する（ADR-0015）。対象リポジトリは`.masuda/settings.json`の`image`フィールドまたは`--image`フラグでどのバリアントを使うか選ぶ（解決順序は`docs/design/config.md`参照）。
+対象リポジトリは、使うイメージを`.masuda/images/<entry>/`というディレクトリ単位で宣言する（ADR-0054）。エントリ1つにつき2ファイル。
 
-| バリアント | 追加するツールチェーン | インストールするプラグイン |
+| ファイル | 内容 |
+|---|---|
+| `.masuda/images/<entry>/Dockerfile` | イメージの中身。`masuda init`が`default`エントリの雛形を書き出し、以後はユーザーが編集する |
+| `.masuda/images/<entry>/settings.json` | そのイメージのビルドパラメータ（`internal/config.ImageConfig`）。現在のフィールドは`rootfsSizeMiB`のみ |
+
+`.masuda/settings.json`の`image`フィールドと`--image`フラグが指すのは、Dockerのタグ名ではなく**このエントリ名**である（解決順序は`docs/design/config.md`参照）。エントリ名は`[a-z0-9][a-z0-9-]*`に制約される（`config.ValidateImageEntry`）。
+
+ローカルのDockerタグはmasudaが導出する（`config.ImageTag`）。形は`masuda-<repoRootのディレクトリ名>-<repoRootの絶対パスのsha256先頭6桁>:<entry>`で、ユーザーが目にする識別子ではない。
+
+雛形は2種類あり、CLIバイナリに埋め込まれている（`assets.go`）。
+
+| テンプレート | 実体 | 内容 |
 |---|---|---|
-| `docker/go/Dockerfile` | Go（`/usr/local/go`）+ `gopls` | `gopls-lsp@claude-plugins-official` |
-| `docker/python/Dockerfile` | `pyright`（npm配布、base既存のNode.jsに乗る） | `pyright-lsp@claude-plugins-official` |
-| `docker/typescript/Dockerfile` | `typescript` + `typescript-language-server`（npm配布） | `typescript-lsp@claude-plugins-official` |
-| `docker/full/Dockerfile` | 上記3言語すべて（3つのDockerfileをFROMで合成するのではなく、各インストール手順をこのファイル1つに repeat したもの） | 上記3プラグインすべて |
+| `default` | `cmd/masuda/init.go`の`dockerfileTemplate` | 公開baseイメージへの`FROM`（タグ固定）＋ツールチェーン追加のコメント例 |
+| `docker` | `templates/docker.Dockerfile` | `FROM ubuntu:24.04`から組む、Dockerデーモンを動かせるゲスト（特権コマンド用、`docs/design/privileged-commands.md`） |
 
-各バリアントは`USER root`でツールチェーンをインストールした後`USER ubuntu`に戻し、`claude plugin install <name>@claude-plugins-official --scope user`でユーザースコープにプラグインを入れる。
+エントリの追加は`masuda image add <entry> [--template default|docker]`、一覧は`masuda image list`（`cmd/masuda/image.go`）。宣言されたエントリは`masuda update`・`masuda sandbox build`がすべてビルドする（`docs/design/distribution-and-update.md`）。
 
-**CIでは`docker/{go,python,typescript,full}/Dockerfile`は一切ビルドされない。** `.github/workflows/release.yml`の`docker`ジョブが`docker buildx build`でDocker Hub（`tadahiroyamamura/masuda`）へ公開するのはリポジトリルート直下の`Dockerfile`（ベースイメージ）のみで、言語バリアントは公開対象に含まれていない。
+`.masuda/images/`はワークスペースのcloneへ同期されない。ビルドは常に`repoRoot`基準で行われる（`internal/worktree`の`syncMasudaConfig`、ADR-0036）。
 
 ## Dockerイメージ→VM rootfs変換
 
-`internal/rootfs.Build`（`internal/rootfs/build.go:98`）が、指定したDockerイメージのファイルシステムをブート可能なext4ディスクイメージへ変換する。VMBackend（`internal/sandbox/vmbackend.go`）が起動のたびにこの関数を直接呼ぶほか、隠しCLIサブコマンド`masuda internal rootfs build --image --output`（`cmd/masuda/internalrootfs.go`）からも同じ関数を呼べる。
+`internal/rootfs.Build(image, outputPath string, opts Options) error`が、指定したDockerイメージのファイルシステムをブート可能なext4ディスクイメージへ変換する。VMBackend（`internal/sandbox/vmbackend.go`）が起動のたびにこの関数を直接呼ぶほか、使い捨て特権VM（`internal/sandbox/disposablevm.go`）と、デバッグ用の隠しCLIサブコマンド`masuda internal rootfs build --image --output [--size-mib]`（`cmd/masuda/internalrootfs.go`）も同じ関数を呼ぶ。
+
+`Options`の4フィールドが、Dockerイメージに無いものをイメージへ足す経路になる。
+
+| フィールド | 用途 |
+|---|---|
+| `ExtraFiles []ExtraFile` | 個々のファイル。所有権（UID/GID）を指定でき、fakerootセッション内で明示的に`chown`される |
+| `ExtraDirs []ExtraDir` | ホストのディレクトリを丸ごと。ステージングを経由せず直接コピーされ、所有権はコピー元のまま（fakeroot内ではコピー主体がuid 0のため） |
+| `ExtraSymlinks []ExtraSymlink` | シンボリックリンク。すべての内容を配置した後に作られる |
+| `MinSizeMiB int` | イメージサイズの**下限**。自動計算値との大きい方が使われる。上限は`maxImageSizeMiB`（64GiB）で、超過は`Build`がエラーにする |
 
 ### 変換の流れ
 
 1. 前提コマンド（`docker`・`fakeroot`・`mkfs.ext4`・`depmod`）の存在チェック
 2. `dockerExport`（`internal/rootfs/build.go:185`）: `docker create <image>`で（起動はしない）コンテナを作り、`docker export -o rootfs.tar`でマージ済みファイルシステムをtar化する。コンテナはexport後（失敗時も）必ず`docker rm -f`で削除する
-3. tarのレギュラーファイル合計バイト数からイメージサイズを見積もる。ext4メタデータ分の余裕として実サイズの20%（`sizeSlackNumerator/Denominator = 6/5`）+ 固定256MiBを加算し、下限512MiB（`minImageSizeMiB`）を保証する
+3. tarのレギュラーファイル合計バイト数に、`Options`が注入する分（`ExtraFiles`の内容量と`ExtraDirs`配下の通常ファイル量、`injectedBytes`）を足してイメージサイズを見積もる。ext4メタデータ分の余裕として実サイズの20%（`sizeSlackNumerator/Denominator = 6/5`）+ 固定256MiBを加算し、下限512MiB（`minImageSizeMiB`）を保証する。`Options.MinSizeMiB`が指定されていれば、その値との大きい方を採る
 4. `ExtraFile`（下記）をホスト上のステージングディレクトリに書き出し、所有権を`"<uid>\t<gid>\t<path>"`形式のマニフェスト（TSV）に記録する
 5. `extractAndFormat`（`internal/rootfs/build.go:277`）: 単一の`fakeroot`セッション内で
    - tarを展開（`tar -xpf`、tar内の所有権情報をfakerootが偽装保持）
@@ -78,9 +96,19 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 
 tar展開とmkfs.ext4を同一`fakeroot`セッション内で行っているのは、`/etc/shadow`（`root:shadow`）やsetuidバイナリなど、非特権ユーザーの`tar -x`では再現できない所有権を保ったままイメージへ焼き込むため。
 
-### ExtraFile
+### 注入されるもの
 
-`rootfs.ExtraFile{GuestPath, Content, Mode, UID, GID}`は、共有の`Dockerfile`/Dockerイメージには属さない、VM boot専用のファイルをrootfsへ追加注入する仕組み。`GuestPath`はイメージルートからの相対パス（先頭スラッシュなし）。呼び出し側（例: VMBackendがゲストの`~/.ssh/authorized_keys`やvirtiofsカーネルモジュールを注入する経路）の詳細は`docs/design/sandbox-vm.md`を参照。
+`GuestPath`はいずれもイメージルートからの相対パス（先頭スラッシュなし）。
+
+| 型 | フィールド | 使われ方 |
+|---|---|---|
+| `ExtraFile` | `{GuestPath, Content, Mode, UID, GID}` | VMBackendがゲストの`~/.ssh/authorized_keys`・`~/.claude/CLAUDE.md`・virtiofsカーネルモジュールを注入する（`docs/design/sandbox-vm.md`）。使い捨て特権VMはrunnerとそのunitを注入する（`docs/design/privileged-commands.md`） |
+| `ExtraDir` | `{HostPath, GuestPath}` | 使い捨て特権VMがゲストカーネルのモジュールツリー全体（約155MiB）を入れる |
+| `ExtraSymlink` | `{GuestPath, Target}` | 使い捨て特権VMがrunner unitの`multi-user.target.wants`リンクを作る |
+
+`ExtraDir`が所有権フィールドを持たないのは、コピーがfakerootセッション内で行われ、そこではコピー主体が既にuid 0であるため。`ExtraFile`はmasudaの非特権プロセスが先にステージングするので、明示的な`chown`が要る。
+
+`usr/lib/...`と`lib/...`の使い分けに注意する。Ubuntuイメージはusrmergeで`/lib`がシンボリックリンクのため、モジュールツリーの注入先は`usr/lib/modules/<version>`でなければならない。
 
 ### rootfsLabel
 
@@ -88,6 +116,4 @@ tar展開とmkfs.ext4を同一`fakeroot`セッション内で行っているの�
 
 ## 既知の問題
 
-未調査。修正時はここから消す。
-
-- **`cmd/masuda/internalrootfs.go:12-18` のdocコメントが陳腐化している**: 「masudaにはまだこのイメージを使うVMサンドボックスバックエンドが無い（M2はイメージ作成のみ、M3でVM起動、M5でVMBackendを配線）」と書かれているが、VMBackendは実装済みで唯一のバックエンド（ADR-0044）
+現在把握しているものは無い。

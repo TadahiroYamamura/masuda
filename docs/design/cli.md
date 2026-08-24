@@ -30,15 +30,22 @@
 
 `start <workspace-id>`/`stop <workspace-id>`はVMBackend（`internal/sandbox.VMBackend`）へそのまま委譲する。内部手順・仕組みは`docs/design/sandbox-vm.md`を参照。
 
-`build`は`.masuda/Dockerfile`を最新公開Releaseに対して単体で再ビルドするコマンドで、`masuda update`の3ステップ（バイナリ更新→Dockerfile再ビルド→レビュー観点同期）のうちDockerfile再ビルドの部分（`rebuildDockerfileForRelease`、`cmd/masuda/update.go:157`）だけを`masuda update`から独立して呼ぶ。手順は次の通り。
+`build`は`.masuda/images/`配下の全エントリを最新公開Releaseに対して単体で再ビルドするコマンドで、`masuda update`の3ステップ（バイナリ更新→イメージ再ビルド→レビュー観点同期）のうちイメージ再ビルドの部分（`rebuildImagesForRelease`）だけを`masuda update`から独立して呼ぶ。手順は次の通り。
 
-1. `.masuda/Dockerfile`が存在しなければエラー（`masuda update`と違い、無言でスキップしない——明示的にbuildを頼んだ以上、存在しないのはユーザーの誤りとして報告する）
+1. `config.ListImageEntries`が空ならエラー（`masuda update`と違い、無言でスキップしない——明示的にbuildを頼んだ以上、エントリが無いのはユーザーの誤りとして報告する）
 2. `FetchLatestRelease`で最新Releaseを取得
-3. `.masuda/Dockerfile`のFROM行のタグを最新Releaseのタグへ書き換える（`selfupdate.UpdateDockerfileFromTag`）
-4. `.masuda/settings.json`の`image`フィールドが空ならエラー（暗黙のフォールバックはしない）
-5. `docker build --pull`で`.masuda/Dockerfile`をビルドし、`image`フィールドの値でタグ付けする（`selfupdate.RebuildDockerfile`）
+3. 各エントリの`Dockerfile`のFROM行のタグを最新Releaseのタグへ書き換える（`selfupdate.UpdateDockerfileFromTag`。masudaのbaseイメージを参照していない行は書き換えない）
+4. `docker build --pull`で各エントリをビルドし、`config.ImageTag`が導出するタグを付ける（`selfupdate.RebuildDockerfile`）
 
-`masuda update`のDockerfile再ビルドステップは対象プロジェクトが未初期化なら無言でスキップするのに対し、`build`は`masuda update`が持つ「稼働中ワークスペースがあれば全ステップ拒否」という機械全体の締め出しを経由しない——それはCLIバイナリ置換のために存在する制約で、プロジェクト単位のイメージ再ビルドには関係がないため。詳細な共有ロジックは`docs/design/distribution-and-update.md`を参照。
+`masuda update`のイメージ再ビルドステップは対象プロジェクトが未初期化なら無言でスキップするのに対し、`build`は`masuda update`が持つ「稼働中ワークスペースがあれば全ステップ拒否」という機械全体の締め出しを経由しない——それはCLIバイナリ置換のために存在する制約で、プロジェクト単位のイメージ再ビルドには関係がないため。詳細な共有ロジックは`docs/design/distribution-and-update.md`を参照。
+
+### `masuda image`
+
+`add <entry> [--template default|docker]`が`.masuda/images/<entry>/`を作り、`list`が宣言済みエントリと導出されるDockerタグ・rootfsサイズを並べる（`cmd/masuda/image.go`）。`add`は既存エントリを上書きしない。テンプレートとエントリの実体は`docs/design/images-and-rootfs.md`を参照。
+
+### `masuda privileged-command`
+
+`list`/`approve <name>`/`reject <name>`。`masuda mcp`・`masuda egress`と同型で、対象リポジトリの宣言に対するこのユーザーの承認を`.masuda/settings.local.json`へ記録する。承認が固定するもの・実行の流れは`docs/design/privileged-commands.md`を参照。
 
 ### `masuda chat`
 
@@ -46,7 +53,7 @@
 
 ### `masuda update`
 
-masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/Dockerfile`再ビルド（存在すれば）→`.masuda/reviews/`への新規組み込み観点の追加同期（存在すれば）、の3ステップを順に実行する。稼働中ワークスペースが1つでもあれば全ステップとも実行せず拒否する。詳細は`docs/design/distribution-and-update.md`を参照。
+masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/images/`配下の全エントリ再ビルド（宣言があれば）→`.masuda/reviews/`への新規組み込み観点の追加同期（存在すれば）、の3ステップを順に実行する。稼働中ワークスペースが1つでもあれば全ステップとも実行せず拒否する。詳細は`docs/design/distribution-and-update.md`を参照。
 
 ### `masuda plan`
 

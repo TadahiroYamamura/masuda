@@ -9,13 +9,15 @@
 | ソケット | ファイル名 | 公開するツール | 誰が繋ぐか |
 |---|---|---|---|
 | trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_wait_for_change`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く） |
-| curated | `daemon-curated.sock` | `wait_for_gate_change`/`resolve_gate_from_chat`（2tool、`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
+| curated | `daemon-curated.sock` | `wait_for_gate_change`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
 
 両ソケットとも`internal/statedaemon/mcpserver/uds.go`の`serveUDS`が待ち受ける。バインド前に同名の残存ソケットファイルを削除してから`net.Listen("unix", ...)`し、`os.Chmod(socketPath, 0o600)`で他ユーザーからのアクセスを塞ぐ。`mcp.NewStreamableHTTPHandler`でMCPサーバーをHTTP over UDSとして配線しており、tool定義の中身には関知しない——`ServeCuratedServerUDS`はどんな`*mcp.Server`でも受け取れる形になっている。
 
 curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のURLしか受け付けない）へ直接は渡せない。`masuda internal mcp-relay`がTCP↔UDS中継を行い、Claude側からはTCP経由でこのcuratedソケットへ届く（中継の実装詳細は`docs/design/networking.md`参照）。
 
 `daemon.sock`へ承認済みの子MCPサーバーのtoolがプロキシ登録される仕組み（`internal/statedaemon/mcpaggregator`）は`docs/design/mcp-child-servers.md`を参照。
+
+`run_privileged_command`は`NewCurated`の第2引数（`PrivilegedRunner`）がnilでない場合にのみ登録される。`runStatedaemon`が`--repo-root`と`--worktree-dir`の両方を受け取ったときだけ実体を渡すため、対象リポジトリを持たない単独起動（pytestフィクスチャ等）ではツール自体が現れない。実体は`cmd/masuda/statedaemon.go`の`privilegedRunner`が組み立てる——`internal/statedaemon/mcpserver`から`internal/sandbox`をimportすると、後者のテストが前者をimportしているためテストで循環参照になる。ツールの中身は`docs/design/privileged-commands.md`を参照。
 
 ## 汎用KVストア
 

@@ -7,6 +7,7 @@ Accepted (2026-08-05)
 - 一部改訂: [[0033-perspective-enable-flag-and-release-asset-sync]] — `masuda init`/`masuda update`のreviews展開はGitHub Releaseアセット経由になり、`masuda init`にネットワーク接続が必須になった
 - 一部改訂: [[0038-cosign-keyless-blob-verification-for-self-update]] — ダウンロードしたCLIバイナリ・reviewsアセットは、cosign keyless署名の検証を通さない限り書き込まれない
 - 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — Docker Hubのbaseイメージは、コンテナ実行用ではなくVMのrootfsを作る変換元として使われる
+- 一部改訂: [[0054-vm-images-declared-as-directories-under-masuda-images]] — 固定パス`.masuda/Dockerfile`は`.masuda/images/<name>/Dockerfile`に置き換わり、`masuda update`のFROM行書き換えは`.masuda/images/*/Dockerfile`の走査になる
 
 ## Context
 

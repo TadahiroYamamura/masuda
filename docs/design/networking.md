@@ -11,6 +11,8 @@ VMゲストとホストの間の到達性を扱う。ホスト共有のbridge+NA
 
 いずれもID一つにつき値一つで、他の状態（実行中かどうか等）を参照しない純粋な導出関数。
 
+使い捨ての特権コマンドVM（`docs/design/privileged-commands.md`）も同じ2つの関数を使うが、渡すIDはワークスペースIDではなくその実行のID（`"p" + <run-id>`、`privilegedNetID`）である。ワークスペースのVMは同時に動いているため、同じIDを使うと同名・同MACのインターフェースがブリッジ上に2つ並ぶことになる。
+
 ### 確保・解放・クラッシュ復旧
 
 - `EnsureTap(id, bridge, ownerUser)`（`internal/sandbox/vmnet.go:39-48`）がTAP確保の唯一の入口。呼ぶたびに必ず`delete-tap`→`create-tap`の順で実行する。同じ名前の既存TAP（前回実行のクラッシュ等で残ったもの）があれば先に消してから作るため、この一つの関数呼び出しが「確保」と「クラッシュ復旧」を兼ねる。`VMBackend`の起動処理（`internal/sandbox/vmbackend.go:259`）から呼ばれる。

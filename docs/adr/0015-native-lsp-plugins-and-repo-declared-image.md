@@ -6,6 +6,7 @@ Accepted (2026-07-27)
 
 - 一部改訂: [[0024-file-based-perspectives-mechanical-checker-prompt]] — 設定ファイルは`.masuda.json`ではなく`.masuda/settings.json`
 - 一部改訂: [[0044-remove-docker-execution-runtime-vmbackend-only]] — `image`が指すDockerイメージはコンテナとして起動されず、VMのrootfsを作る変換元としてのみ使われる。LSPプラグイン同梱というイメージ設計の意図自体は不変
+- 一部改訂: [[0054-vm-images-declared-as-directories-under-masuda-images]] — `image`フィールドが指すのはDockerイメージのタグ名ではなく`.masuda/images/`配下のエントリ名。同梱の言語バリアント（`docker/{go,python,typescript,full}/Dockerfile`）は選択経路が無くなったため削除し、ツールチェーン＋LSPプラグインの導入は対象リポジトリ側のイメージエントリに書く形へ移した（`masuda init`の雛形にコメントで手本を残している）
 
 ## Context
 

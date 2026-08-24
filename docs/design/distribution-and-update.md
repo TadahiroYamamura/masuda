@@ -44,13 +44,13 @@ CLIバイナリの`.bundle`欠如・検証失敗は常にハードフェイル�
 
 `cmd/masuda/init.go`が実装する。対象リポジトリの`.masuda/`ディレクトリに以下の3点を一度きり展開する。
 
-1. `settings.json`: `image`（`--image`未指定時は`internal/sandbox.DefaultImage`＝`"masuda-loop"`）・`base`（`--base`）・`claudeSettings`（固定のデフォルト値、`defaultClaudeSettings`）を書き込む
+1. `settings.json`: `image`（常に`config.DefaultImageEntry`＝`"default"`。フラグは無い）・`base`（`--base`）・`claudeSettings`（固定のデフォルト値、`defaultClaudeSettings`）を書き込む
 2. `reviews/`: 内蔵14観点のzipを取得・検証して展開する（後述「レビュー観点の配布・同期」）
 3. `Dockerfile`: `FROM tadahiroyamamura/masuda:<タグ>`を書いたテンプレート
 
 `.masuda/`が既に存在する場合はエラーで停止し、再実行を拒否する（マージ・同期はしない一度きりの操作）。
 
-**取得するReleaseの選び方**: 実行バイナリの`version`が`"dev"`でなければ、`FetchReleaseByTag(apiBase, repo, version)`で**自分自身のバージョンに一致するタグ**のReleaseを取得する。`version == "dev"`（ローカルビルド）の場合のみ`FetchLatestRelease`にフォールバックする。この選び方により、`.masuda/Dockerfile`のFROMタグと展開される観点セットは常にその`masuda init`を実行したCLIバイナリ自身のバージョンと対応する。
+**取得するReleaseの選び方**: 実行バイナリの`version`が`"dev"`でなければ、`FetchReleaseByTag(apiBase, repo, version)`で**自分自身のバージョンに一致するタグ**のReleaseを取得する。`version == "dev"`（ローカルビルド）の場合のみ`FetchLatestRelease`にフォールバックする。この選び方により、イメージエントリのFROMタグと展開される観点セットは常にその`masuda init`を実行したCLIバイナリ自身のバージョンと対応する。
 
 `masuda init`の実行には**ネットワーク接続が必須**。reviews資産の取得に署名バンドルが伴わない場合はハードフェイルする（アセット自体が無い場合の警告緩和は`masuda init`には適用されない——`init`は`reviewsAsset`が見つからない時点でエラーを返す）。
 
@@ -59,14 +59,14 @@ CLIバイナリの`.bundle`欠如・検証失敗は常にハードフェイル�
 `cmd/masuda/update.go`が実装する。3ステップを順に実行する。
 
 1. **CLIバイナリの更新**（`updateBinary`）: `FetchLatestRelease`で最新Releaseを取得し、`release.TagName == version`なら何もせず終了する。異なれば実行中OS/アーキ用アセットと対応する`.bundle`をダウンロードし、`internal/selfupdate.DownloadAndReplace`で検証・置換する。**`.bundle`が見つからない場合はバイナリ置換自体を拒否する**（ハードフェイル、警告緩和なし）。置換は同一ディレクトリへの一時ファイル書き込み＋`os.Rename`によるatomic置換で、`os.Executable()`（シンボリックリンクなら`EvalSymlinks`で解決）が指すパスを直接上書きする
-2. **`.masuda/Dockerfile`の再ビルド**（`refreshProjectDockerfile`）: 現在のカレントディレクトリが対象プロジェクトのチェックアウト内で、かつ`.masuda/Dockerfile`が存在する場合のみ動く。無ければ何もしない（`masuda init`以前に作られたプロジェクトはこのファイルを持たない）。FROM行のタグを最新Releaseの`TagName`へ書き換えてから`docker build --pull`し、`.masuda/settings.json`の`image`フィールドが指すタグとしてtagする
+2. **イメージエントリの再ビルド**（`refreshProjectImages`）: 現在のカレントディレクトリが対象プロジェクトのチェックアウト内で、かつ`.masuda/images/`にエントリがある場合のみ動く。無ければ何もしない（ADR-0054以前に作られたプロジェクトはこのディレクトリを持たない）。**宣言された全エントリ**が対象で、`settings.json`の`image`が指す1つに限らない——特権コマンド用のイメージはトップレベルの`image`が指さないエントリだが、そのコマンドを実行する前にビルド済みである必要がある。各エントリのFROM行のタグを最新Releaseの`TagName`へ書き換えてから`docker build --pull`し、`config.ImageTag`が導出するタグとしてtagする
 3. **レビュー観点の同期**（`syncProjectReviews`）: `.masuda/reviews/`が存在する場合のみ動く。最新Releaseの`masuda_reviews.zip`を取得・検証し、`.masuda/reviews/`に**存在しないファイルだけ**追加する
 
 いずれのステップも対象は`repoRoot()`（`masuda`コマンドを実行しているカレントディレクトリのチェックアウト）だが、ステップ1（CLIバイナリ置換）だけは`repoRoot()`を使わない——masuda自身の実行ファイルを更新する操作であり、対象プロジェクトのリポジトリとは無関係のため。
 
 **稼働中ワークスペースが1つでもあれば、`masuda update`は3ステップとも一切実行せず拒否する**（`selfupdate.BlockingWorkspaces`が`internal/workspace.ListAll()`の全ワークスペースを対象repoを問わず横断的に見て、ホストループ実行中（`hostloop.IsRunning`）またはサンドボックス起動中（`sandboxBackend.IsRunning`）のものを検出する）。警告して続行する経路はない。CLIバイナリが機械全体で共有される単一の実行ファイルであるため。
 
-## `.masuda/Dockerfile`のFROM行
+## イメージエントリのFROM行
 
 `masuda init`が書き出すテンプレート（`dockerfileTemplate`、`cmd/masuda/init.go`）は次の1行を含む。
 
@@ -74,9 +74,9 @@ CLIバイナリの`.bundle`欠如・検証失敗は常にハードフェイル�
 FROM tadahiroyamamura/masuda:<タグ>
 ```
 
-このタグは常に固定のバージョンタグで、`latest`のようなfloatingタグは使わない——同じ`.masuda/Dockerfile`を変更せず2回`docker build`した結果が一致することを保つため。
+このタグは常に固定のバージョンタグで、`latest`のようなfloatingタグは使わない——同じDockerfileを変更せず2回`docker build`した結果が一致することを保つため。
 
-`masuda update`の`internal/selfupdate.UpdateDockerfileFromTag`は、`FROM tadahiroyamamura/masuda:\S+`にマッチする行を正規表現で検出し、最新Releaseのタグへ書き換える。**マッチする行が無ければ何もしない**——ユーザーが`.masuda/Dockerfile`のFROM行を独自のベースイメージに差し替えている場合、`masuda update`はそれを上書きしない。書き換え後、`docker build --pull -t <cfg.Image> -f <Dockerfile> <repoRoot>`を実行する。`cfg.Image`（`.masuda/settings.json`の`image`フィールド）が空の場合はビルドせずエラーにする（暗黙のフォールバックは持たない——`masuda init`が常に明示的に書き込むフィールドのため、空なら「ユーザーが意図的に消した」とみなす）。
+`masuda update`の`internal/selfupdate.UpdateDockerfileFromTag`は、`FROM tadahiroyamamura/masuda:\S+`にマッチする行を正規表現で検出し、最新Releaseのタグへ書き換える。**マッチする行が無ければ何もしない**——ユーザーが独自のベースイメージへ差し替えている場合も、masudaのbaseから派生しないエントリ（`docker`テンプレート由来の`FROM ubuntu:24.04`など）も、この条件で自然に対象外になる。書き換え後、`docker build --pull -t <config.ImageTag(repoRoot, entry)> -f <Dockerfile> <repoRoot>`を実行する。
 
 ## レビュー観点の配布・同期
 
