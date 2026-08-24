@@ -71,6 +71,8 @@ DNS解決自体はホスト名で制限しない。ブリッジのFORWARDチェ�
 
 `internal/sandbox/zz_manual_egress_filter_test.go`の`TestManualEgressFiltering`が、REDIRECTルールと`masuda-egress-proxy`がゲストのTLS通信を実際に横取りし、宣言/承認の許可リストをend-to-endで強制することを確認する（Issue #11 M3〜M5）。宣言・承認の両方に含まれるホスト名へは到達でき、どちらにも無いホスト名は拒否される、という2点を実VMで検証する。
 
+同じファイルの`TestManualPrivilegedCommandEgressAlongsideMainVM`は、使い捨て特権VM（`docs/design/privileged-commands.md`）からのegressを、ワークスペース自身のVMが稼働している状態で確認する。宣言・承認したホスト（`auth.docker.io`・`registry-1.docker.io`・`production.cloudfront.docker.com`の3つ——1回の`docker pull`が3つの別ホストへTLS接続する）を通してイメージを取得し、コンテナが起動するところまでを見る。使い捨てVMはワークスペースではないため、`ResolveWorkspaceByIP`のレジストリへのフォールバックが実際のパケットで効いていることの確認でもある。
+
 環境変数`MASUDA_MANUAL_VM_TEST=1`を設定したときだけ実行され、通常の`go test ./...`ではskipされる（実VMの起動とホスト側の一次セットアップ完了を前提とするため）。実行前に上記の「触る人が事故る制約」——特に`masuda-egress-proxy`の手動再起動——を確認すること。
 
 `step_egress_filtering`は、ブリッジ発のFORWARDトラフィックに対する明示的なcatch-all DROPルール（`-i $BRIDGE -j DROP`、DNS ACCEPTルールの後に追加）を持つ。これが無いと「443・DNS以外はすべて既定で拒否」という保証は、このホストの FORWARD チェーンがたまたまDROPを既定にしている（Dockerのインストールが設定する副作用）ことに依存してしまい、masuda自身のスクリプトが保証するものではなくなる——実機で80番ポートへの到達がこのルール追加前後どちらでも拒否されることを確認済み（前者はDockerの副作用、後者はmasuda自身のルールによる）。
