@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -140,35 +139,82 @@ func TestPutRejectedForInvalidKeyOverMCP(t *testing.T) {
 	}
 }
 
-func TestWaitForChangeOverMCP(t *testing.T) {
+func TestApplyOverMCP(t *testing.T) {
 	session := connect(t)
-
-	type waitResult struct {
-		Value string `json:"value"`
-		Found bool   `json:"found"`
-	}
-	done := make(chan waitResult, 1)
-	go func() {
-		var out waitResult
-		callTool(t, session, "state_wait_for_change", map[string]any{"key": "gate:plan"}, &out)
-		done <- out
-	}()
-
-	select {
-	case <-done:
-		t.Fatal("state_wait_for_change returned before any state_put")
-	case <-time.After(100 * time.Millisecond):
-	}
 
 	var putOut struct{}
 	callTool(t, session, "state_put", map[string]any{"key": "gate:plan", "value": `{"status":"approved"}`}, &putOut)
 
-	select {
-	case out := <-done:
-		if !out.Found || out.Value != `{"status":"approved"}` {
-			t.Fatalf("state_wait_for_change = %+v, want found=true value=%q", out, `{"status":"approved"}`)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("state_wait_for_change did not return after state_put")
+	consume := []map[string]any{
+		{"op": "check", "key": "gate:plan", "value": `{"status":"approved"}`},
+		{"op": "put", "key": "internal:plan-approved", "value": `{"status":"approved"}`},
+		{"op": "delete", "key": "gate:plan"},
+	}
+	var applyOut struct {
+		Applied bool `json:"applied"`
+	}
+	callTool(t, session, "state_apply", map[string]any{"ops": consume}, &applyOut)
+	if !applyOut.Applied {
+		t.Fatal("state_apply applied = false, want true")
+	}
+
+	var getOut struct {
+		Value string `json:"value"`
+		Found bool   `json:"found"`
+	}
+	callTool(t, session, "state_get", map[string]any{"key": "gate:plan"}, &getOut)
+	if getOut.Found {
+		t.Error("gate:plan still found after the apply that consumed it")
+	}
+	callTool(t, session, "state_get", map[string]any{"key": "internal:plan-approved"}, &getOut)
+	if !getOut.Found || getOut.Value != `{"status":"approved"}` {
+		t.Errorf("internal:plan-approved = %+v, want the consumed decision", getOut)
+	}
+
+	// Replaying the same consume now that the marker is gone must lose on the
+	// check rather than write the durable record a second time.
+	callTool(t, session, "state_apply", map[string]any{"ops": consume}, &applyOut)
+	if applyOut.Applied {
+		t.Error("state_apply applied = true on a replay, want false")
+	}
+}
+
+func TestApplyCheckWithoutValueMeansAbsentOverMCP(t *testing.T) {
+	session := connect(t)
+
+	var applyOut struct {
+		Applied bool `json:"applied"`
+	}
+	callTool(t, session, "state_apply", map[string]any{"ops": []map[string]any{
+		{"op": "check", "key": "gate:plan"},
+		{"op": "put", "key": "gate:plan", "value": "v"},
+	}}, &applyOut)
+	if !applyOut.Applied {
+		t.Fatal("state_apply applied = false while gate:plan was absent, want true")
+	}
+
+	callTool(t, session, "state_apply", map[string]any{"ops": []map[string]any{
+		{"op": "check", "key": "gate:plan"},
+		{"op": "put", "key": "gate:review", "value": "v"},
+	}}, &applyOut)
+	if applyOut.Applied {
+		t.Error("state_apply applied = true with an absent-check on a present key, want false")
+	}
+}
+
+func TestApplyRejectsPutWithoutValue(t *testing.T) {
+	session := connect(t)
+
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "state_apply",
+		Arguments: map[string]any{"ops": []map[string]any{
+			{"op": "put", "key": "gate:plan"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
+	}
+	if !res.IsError {
+		t.Fatal("state_apply with a valueless put: IsError = false, want true")
 	}
 }

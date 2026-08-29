@@ -124,30 +124,6 @@ func TestInternalStateList(t *testing.T) {
 	}
 }
 
-func TestInternalStateWait(t *testing.T) {
-	socketPath := startTestDaemon(t)
-
-	done := make(chan string, 1)
-	go func() { done <- runState(t, socketPath, "wait", "gate:plan") }()
-
-	select {
-	case <-done:
-		t.Fatal("wait returned before any put")
-	case <-time.After(100 * time.Millisecond):
-	}
-
-	runState(t, socketPath, "put", "gate:plan", "approved")
-
-	select {
-	case out := <-done:
-		if !strings.Contains(out, `"found":true`) || !strings.Contains(out, "approved") {
-			t.Fatalf("wait output = %q, want found=true value containing %q", out, "approved")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("wait did not return after put")
-	}
-}
-
 func TestInternalStateUsesMasudaStateDirEnvVar(t *testing.T) {
 	socketPath := startTestDaemon(t)
 	t.Setenv("MASUDA_STATE_DIR", filepath.Dir(socketPath))
@@ -159,5 +135,60 @@ func TestInternalStateUsesMasudaStateDirEnvVar(t *testing.T) {
 	cmd.SetArgs([]string{"put", "gate:plan", "v"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("put without --socket, via MASUDA_STATE_DIR: %v (output: %s)", err, out.String())
+	}
+}
+
+// runStateStdin is runState with a body on stdin, for `apply` -- whose ops
+// are JSON, which the subcommand deliberately takes on stdin rather than as
+// an argument.
+func runStateStdin(t *testing.T, socketPath, stdin string, args ...string) string {
+	t.Helper()
+	cmd := newInternalStateCommand()
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetArgs(append(args, "--socket", socketPath))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("masuda internal state %v: %v (output: %s)", args, err, out.String())
+	}
+	return strings.TrimSpace(out.String())
+}
+
+func TestInternalStateApply(t *testing.T) {
+	socketPath := startTestDaemon(t)
+	runState(t, socketPath, "put", "gate:plan", "approved")
+
+	const ops = `[{"op":"check","key":"gate:plan","value":"approved"},
+	              {"op":"put","key":"internal:plan-approved","value":"approved"},
+	              {"op":"delete","key":"gate:plan"}]`
+
+	if out := runStateStdin(t, socketPath, ops, "apply"); !strings.Contains(out, `"applied":true`) {
+		t.Fatalf("apply output = %q, want applied=true", out)
+	}
+	if out := runState(t, socketPath, "get", "gate:plan"); !strings.Contains(out, `"found":false`) {
+		t.Errorf("get gate:plan after apply = %q, want found=false", out)
+	}
+	if out := runState(t, socketPath, "get", "internal:plan-approved"); !strings.Contains(out, "approved") {
+		t.Errorf("get internal:plan-approved after apply = %q, want the consumed decision", out)
+	}
+	if out := runStateStdin(t, socketPath, ops, "apply"); !strings.Contains(out, `"applied":false`) {
+		t.Errorf("replayed apply output = %q, want applied=false", out)
+	}
+}
+
+// TestInternalStateApplyCheckWithoutValueMeansAbsent pins down that the
+// absent-vs-empty-string distinction survives the JSON round trip through
+// stdin, which is the whole reason the wire form uses an optional field
+// rather than an empty string.
+func TestInternalStateApplyCheckWithoutValueMeansAbsent(t *testing.T) {
+	socketPath := startTestDaemon(t)
+
+	const ops = `[{"op":"check","key":"gate:plan"},{"op":"put","key":"gate:plan","value":"v"}]`
+	if out := runStateStdin(t, socketPath, ops, "apply"); !strings.Contains(out, `"applied":true`) {
+		t.Fatalf("apply output = %q, want applied=true while gate:plan is absent", out)
+	}
+	if out := runStateStdin(t, socketPath, ops, "apply"); !strings.Contains(out, `"applied":false`) {
+		t.Errorf("apply output = %q, want applied=false once gate:plan exists", out)
 	}
 }

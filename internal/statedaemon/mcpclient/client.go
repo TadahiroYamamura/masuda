@@ -1,7 +1,7 @@
 // Package mcpclient is a Go client for the trusted tool set
 // internal/statedaemon/mcpserver exposes (state_get/state_put/state_delete/
-// state_list/state_wait_for_change), reached over the workspace's daemon
-// Unix domain socket.
+// state_list/state_apply), reached over the workspace's daemon Unix domain
+// socket.
 //
 // This is the one place that speaks the MCP wire protocol on the client
 // side, used both in-process by cmd/masuda's Go commands and, via the
@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -110,15 +111,26 @@ func (c *Client) List(ctx context.Context, prefix string) ([]string, error) {
 	return out.Keys, nil
 }
 
-// WaitForChange blocks until the next Put or Delete on key, then returns its
-// new value (found is false if the key was deleted).
-func (c *Client) WaitForChange(ctx context.Context, key string) (value string, found bool, err error) {
+// Apply performs ops as one atomic step, reporting whether it applied. A
+// false return means one of the ops' checks did not hold and nothing was
+// changed -- the caller should read the keys again and decide again, not
+// treat it as a failure.
+func (c *Client) Apply(ctx context.Context, ops []statedaemon.Op) (applied bool, err error) {
+	wire := make([]map[string]any, 0, len(ops))
+	for _, op := range ops {
+		o := map[string]any{"op": string(op.Kind), "key": op.Key}
+		// Left out entirely rather than sent as null when nil, so a check
+		// keeps meaning "this key must not exist" on the wire.
+		if op.Value != nil {
+			o["value"] = string(op.Value)
+		}
+		wire = append(wire, o)
+	}
 	var out struct {
-		Value string `json:"value"`
-		Found bool   `json:"found"`
+		Applied bool `json:"applied"`
 	}
-	if err := c.call(ctx, "state_wait_for_change", map[string]any{"key": key}, &out); err != nil {
-		return "", false, err
+	if err := c.call(ctx, "state_apply", map[string]any{"ops": wire}, &out); err != nil {
+		return false, err
 	}
-	return out.Value, out.Found, nil
+	return out.Applied, nil
 }

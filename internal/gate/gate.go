@@ -222,13 +222,18 @@ func renderTriageConcern(stateDir string) (string, error) {
 // daemon-backed (see the package doc).
 const deviationKey = artifactPrefix + "DEVIATION.md"
 
-// Status is one of the marker's possible states. Halted is triage-only
-// (ADR-0029) — a fourth, deliberately terminal state with no equivalent on
-// the plan/review gates.
+// Status is the decision a marker records. Halted is triage-only (ADR-0029)
+// — a deliberately terminal outcome with no equivalent on the plan/review
+// gates.
+//
+// There is no "pending": a gate that nobody has decided on has no marker at
+// all. That is not just a spelling choice — a marker means "a decision is
+// waiting to be taken", which is what lets the daemon answer "has this gate
+// been resolved" by looking at whether the key exists, and what lets the
+// consumer delete it as its acknowledgement.
 type Status string
 
 const (
-	Pending  Status = "pending"
 	Approved Status = "approved"
 	Rejected Status = "rejected"
 	Halted   Status = "halted"
@@ -348,27 +353,4 @@ func Halt(ctx context.Context, stateDir string, n Name, reason string) error {
 	}
 	defer c.Close()
 	return writeMarker(ctx, c, n, Marker{Status: Halted, Feedback: reason, DecidedAt: time.Now()})
-}
-
-// Read returns the current marker for gate n, or a zero-value Pending Marker
-// if no decision has been recorded yet.
-func Read(ctx context.Context, stateDir string, n Name) (Marker, error) {
-	c, err := dial(ctx, stateDir)
-	if err != nil {
-		return Marker{}, err
-	}
-	defer c.Close()
-
-	data, found, err := c.Get(ctx, n.gateKey())
-	if err != nil {
-		return Marker{}, err
-	}
-	if !found {
-		return Marker{Status: Pending}, nil
-	}
-	var m Marker
-	if err := json.Unmarshal([]byte(data), &m); err != nil {
-		return Marker{}, fmt.Errorf("parsing marker %s: %w", n.gateKey(), err)
-	}
-	return m, nil
 }

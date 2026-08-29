@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"syscall"
@@ -92,16 +93,44 @@ func newInternalStateCommand() *cobra.Command {
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "wait <key>",
-		Short: "Block until the next put/delete on key, then print {\"value\":..,\"found\":..} as JSON",
-		Args:  cobra.ExactArgs(1),
+		Use:   "apply",
+		Short: "Apply a JSON array of ops (read from stdin) atomically, then print {\"applied\":..} as JSON",
+		Args:  cobra.NoArgs,
+		Long: "Reads the ops as a JSON array on stdin, e.g.\n" +
+			"  [{\"op\":\"check\",\"key\":\"gate:plan\",\"value\":\"...\"},{\"op\":\"delete\",\"key\":\"gate:plan\"}]\n" +
+			"Every \"check\" is evaluated before any \"put\"/\"delete\" lands; applied=false means a check did not\n" +
+			"hold and nothing was changed. Ops arrive on stdin rather than as arguments because they carry\n" +
+			"arbitrary JSON values, which would otherwise have to survive a shell quoting round trip.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			data, err := io.ReadAll(cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			var wire []struct {
+				Op    string  `json:"op"`
+				Key   string  `json:"key"`
+				Value *string `json:"value"`
+			}
+			if err := json.Unmarshal(data, &wire); err != nil {
+				return fmt.Errorf("decoding ops from stdin: %w", err)
+			}
+			ops := make([]statedaemon.Op, 0, len(wire))
+			for _, w := range wire {
+				op := statedaemon.Op{Kind: statedaemon.OpKind(w.Op), Key: w.Key}
+				if w.Value != nil {
+					op.Value = []byte(*w.Value)
+					if op.Value == nil {
+						op.Value = []byte{}
+					}
+				}
+				ops = append(ops, op)
+			}
 			return withClient(cmd, socket, func(ctx context.Context, c *mcpclient.Client) error {
-				value, found, err := c.WaitForChange(ctx, args[0])
+				applied, err := c.Apply(ctx, ops)
 				if err != nil {
 					return err
 				}
-				return printJSON(cmd, map[string]any{"value": value, "found": found})
+				return printJSON(cmd, map[string]any{"applied": applied})
 			})
 		},
 	})

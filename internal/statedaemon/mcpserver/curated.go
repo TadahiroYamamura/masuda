@@ -78,8 +78,8 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.S
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "wait_for_gate_change",
 		Description: "Block until the given gate (\"plan\", \"review\", or \"triage\") is resolved by a human, " +
-			"then return its new status. The equivalent of ADR-0017's single blocking inotifywait call for the " +
-			"GATE:<name> loop step -- one call per wait, no polling.",
+			"then return its status. Returns immediately when the gate is already resolved, so calling it again " +
+			"after a dropped connection is safe and costs nothing. One call per wait, no polling.",
 	}, waitForGateChange(store))
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -166,15 +166,14 @@ func waitForGateChange(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateC
 			return nil, waitForGateChangeOutput{}, fmt.Errorf(
 				"wait_for_gate_change: unknown gate %q, want \"plan\", \"review\", or \"triage\"", in.Name)
 		}
-		value, found, err := store.WaitForChange(ctx, "gate:"+in.Name)
+		// An absent marker *is* the unresolved state (nothing ever writes a
+		// "pending" one -- orchestrator/*.py reads a missing key as pending
+		// and deletes the marker once it has consumed the decision), so
+		// waiting for the key to exist is exactly waiting for a human to
+		// decide.
+		value, err := store.WaitForPresence(ctx, "gate:"+in.Name)
 		if err != nil {
 			return nil, waitForGateChangeOutput{}, fmt.Errorf("wait_for_gate_change: %w", err)
-		}
-		if !found {
-			// Gate markers are only ever replaced with a new decision
-			// (Approve/Reject/Halt all Put), never deleted -- this would
-			// mean something else deleted the key out from under us.
-			return nil, waitForGateChangeOutput{}, fmt.Errorf("wait_for_gate_change: gate %q was cleared rather than resolved", in.Name)
 		}
 		var marker struct {
 			Status   string `json:"status"`

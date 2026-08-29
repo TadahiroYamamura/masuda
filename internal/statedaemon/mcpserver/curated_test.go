@@ -126,9 +126,9 @@ func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
 	}
 	done := make(chan waitResult, 1)
 	go func() {
-		value, found, err := store.WaitForChange(context.Background(), "gate:review")
-		if err != nil || !found {
-			t.Errorf("WaitForChange = (found=%v, err=%v), want found=true", found, err)
+		value, err := store.WaitForPresence(context.Background(), "gate:review")
+		if err != nil {
+			t.Errorf("WaitForPresence error = %v, want nil", err)
 			done <- waitResult{}
 			return
 		}
@@ -152,7 +152,7 @@ func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
 			t.Fatalf("marker written by resolve_gate_from_chat = %+v, want status=approved feedback=対話で承認", out)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("WaitForChange did not see resolve_gate_from_chat's write")
+		t.Fatal("WaitForPresence did not see resolve_gate_from_chat's write")
 	}
 }
 

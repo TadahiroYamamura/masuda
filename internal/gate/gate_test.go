@@ -2,6 +2,7 @@ package gate
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -290,16 +291,41 @@ func TestShowTriageMissingConcernErrors(t *testing.T) {
 	}
 }
 
+// readMarker is the tests' own accessor for what Approve/Reject/Halt wrote.
+// The package exposes no Read of its own on purpose: nothing in masuda reads
+// a marker through Go any more (orchestrator/*.py takes it over the daemon's
+// state_apply), and a reader would have to invent a value for "there is no
+// marker" -- which is exactly the "pending" status Status deliberately no
+// longer has.
+func readMarker(t *testing.T, stateDir string, n Name) Marker {
+	t.Helper()
+	c, err := mcpclient.Dial(context.Background(), statedaemon.SocketPath(stateDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	data, found, err := c.Get(context.Background(), n.gateKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !found {
+		t.Fatalf("no marker at %s, want one", n.gateKey())
+	}
+	var m Marker
+	if err := json.Unmarshal([]byte(data), &m); err != nil {
+		t.Fatalf("parsing marker %s: %v", n.gateKey(), err)
+	}
+	return m
+}
+
 func TestApproveDismissesTriage(t *testing.T) {
 	stateDir := newTestDaemon(t)
 	if err := Approve(context.Background(), stateDir, Triage, "誤検知でした"); err != nil {
 		t.Fatalf("Approve() error = %v, want nil", err)
 	}
 
-	m, err := Read(context.Background(), stateDir, Triage)
-	if err != nil {
-		t.Fatalf("Read() error = %v, want nil", err)
-	}
+	m := readMarker(t, stateDir, Triage)
 	if m.Status != Approved {
 		t.Errorf("Status = %q, want %q", m.Status, Approved)
 	}
@@ -314,10 +340,7 @@ func TestRejectRedoesTriage(t *testing.T) {
 		t.Fatalf("Reject() error = %v, want nil", err)
 	}
 
-	m, err := Read(context.Background(), stateDir, Triage)
-	if err != nil {
-		t.Fatalf("Read() error = %v, want nil", err)
-	}
+	m := readMarker(t, stateDir, Triage)
 	if m.Status != Rejected {
 		t.Errorf("Status = %q, want %q", m.Status, Rejected)
 	}
@@ -332,10 +355,7 @@ func TestHaltWritesHaltedMarker(t *testing.T) {
 		t.Fatalf("Halt() error = %v, want nil", err)
 	}
 
-	m, err := Read(context.Background(), stateDir, Triage)
-	if err != nil {
-		t.Fatalf("Read() error = %v, want nil", err)
-	}
+	m := readMarker(t, stateDir, Triage)
 	if m.Status != Halted {
 		t.Errorf("Status = %q, want %q", m.Status, Halted)
 	}

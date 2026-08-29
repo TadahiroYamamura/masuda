@@ -18,9 +18,10 @@ class StateError(RuntimeError):
     """Raised when `masuda internal state ...` exits non-zero."""
 
 
-def _run(*args: str) -> str:
+def _run(*args: str, stdin: str | None = None) -> str:
     result = subprocess.run(
         ["masuda", "internal", "state", *args],
+        input=stdin,
         capture_output=True,
         text=True,
     )
@@ -54,9 +55,38 @@ def list_keys(prefix: str) -> list[str]:
     return out["keys"]
 
 
-def wait(key: str) -> str | None:
-    """Blocks until the next put/delete on key, returning its new value (None
-    if it was deleted). The subprocess equivalent of ADR-0017's single
-    blocking inotifywait call."""
-    out = json.loads(_run("wait", key))
-    return out["value"] if out["found"] else None
+
+def apply(ops: list[dict]) -> bool:
+    """Applies ops as one atomic step, returning whether it applied.
+
+    False means one of the "check" ops did not hold and *nothing* was
+    changed -- an ordinary outcome (someone wrote the key between your read
+    and this call), not an error. Read again and decide again.
+    """
+    out = json.loads(_run("apply", stdin=json.dumps(ops)))
+    return out["applied"]
+
+
+def consume(key: str, follow_up=None) -> str | None:
+    """Takes key's current value and deletes it as one atomic step, returning
+    what was taken (None if key does not exist).
+
+    follow_up(value) returns extra ops to land in the same step: the durable
+    record of what the caller is about to do with the value. Those are puts,
+    which apply() lands *before* the delete, so a crash in the middle leaves
+    the value in place to be taken again rather than losing it. That is what
+    makes "the key exists" mean "there is a decision nobody has taken yet".
+
+    The loop only turns when the value was replaced between the read and the
+    apply, which takes a fresh write by someone else each time round.
+    """
+    while True:
+        value = get(key)
+        if value is None:
+            return None
+        ops = [{"op": "check", "key": key, "value": value}]
+        if follow_up is not None:
+            ops.extend(follow_up(value))
+        ops.append({"op": "delete", "key": key})
+        if apply(ops):
+            return value

@@ -129,34 +129,38 @@ func TestList(t *testing.T) {
 	}
 }
 
-func TestWaitForChange(t *testing.T) {
+func TestApply(t *testing.T) {
 	c := connect(t)
 	ctx := context.Background()
 
-	done := make(chan struct{})
-	var value string
-	var found bool
-	go func() {
-		value, found, _ = c.WaitForChange(context.Background(), "gate:plan")
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		t.Fatal("WaitForChange returned before any Put")
-	case <-time.After(100 * time.Millisecond):
-	}
-
-	if err := c.Put(ctx, "gate:plan", "approved"); err != nil {
+	if err := c.Put(ctx, "gate:plan", "rejected"); err != nil {
 		t.Fatal(err)
 	}
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("WaitForChange did not return after Put")
+	consume := []statedaemon.Op{
+		{Kind: statedaemon.OpCheck, Key: "gate:plan", Value: []byte("rejected")},
+		{Kind: statedaemon.OpPut, Key: "internal:plan-redo-pending", Value: []byte("try again")},
+		{Kind: statedaemon.OpDelete, Key: "gate:plan"},
 	}
-	if !found || value != "approved" {
-		t.Fatalf("WaitForChange() = (%q, %v), want (%q, true)", value, found, "approved")
+
+	applied, err := c.Apply(ctx, consume)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if !applied {
+		t.Fatal("Apply() applied = false, want true")
+	}
+	if _, found, err := c.Get(ctx, "gate:plan"); err != nil || found {
+		t.Errorf("Get(gate:plan) = (found=%v, err=%v), want found=false", found, err)
+	}
+	if v, found, err := c.Get(ctx, "internal:plan-redo-pending"); err != nil || !found || v != "try again" {
+		t.Errorf("Get(internal:plan-redo-pending) = (%q, %v, %v), want (%q, true, nil)", v, found, err, "try again")
+	}
+
+	applied, err = c.Apply(ctx, consume)
+	if err != nil {
+		t.Fatalf("Apply() error = %v", err)
+	}
+	if applied {
+		t.Error("Apply() applied = true on a replay, want false")
 	}
 }
