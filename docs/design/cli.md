@@ -89,7 +89,7 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 masuda自身のコード（Go CLI・サンドボックスのentrypoint・`orchestrator/*.py`）だけが呼ぶ配管用コマンド群。`newInternalCommand`（`cmd/masuda/statedaemon.go:90`）に`Hidden: true`でぶら下がり、`--help`には出ない。**通常は直接叩かない。**
 
 - **`statedaemon`**: ワークスペースの状態デーモンをフォアグラウンドで起動する。通常は`workspace create`が`startDaemon`（`cmd/masuda/statedaemon.go:153`）でこのコマンド自身をデタッチしたサブプロセスとして起動する形でのみ動き、人間が直接打つことは想定していない。状態デーモン自体の中身は`docs/design/state-daemon-mcp.md`を参照
-- **`state get|put|delete|list|wait`**: 状態デーモンのtrusted MCPツールをワンショットで叩く薄いCLIラッパー（`get/delete/wait <key>`・`put <key> <value>`・`list <prefix>`）。`orchestrator/*.py`（Python）が自前のMCPクライアントを持たずに済むよう、1操作につき1回このサブコマンドをsubprocess起動する形で使う
+- **`state get|put|delete|list|apply`**: 状態デーモンのtrusted MCPツールをワンショットで叩く薄いCLIラッパー（`get/delete <key>`・`put <key> <value>`・`list <prefix>`・`apply`はopのJSON配列をstdinから読む）。`orchestrator/*.py`（Python）が自前のMCPクライアントを持たずに済むよう、1操作につき1回このサブコマンドをsubprocess起動する形で使う
 - **`mcp-relay`**: `<bind>:<port>`のTCP接続をUnix domain socketへバイト単位で中継するだけのプロキシ。Claude Codeの`--mcp-config`がUDSを直接指せない制約を回避するために存在する。ネットワーク経路の詳細は`docs/design/networking.md`を参照
 - **`rootfs build`**: Dockerイメージのファイルシステムをbootableなext4ディスクイメージへ変換する。VMのrootfsを作る手順の一部。詳細は`docs/design/images-and-rootfs.md`を参照
 - **`vm-ssh-key rotate`**: masudaインストール単位（ホスト全体で1組）で持つVMゲスト接続用SSH鍵ペアを再生成する。ローテーションは既にビルド済みのrootfsイメージ・起動中のVMには遡って反映されない

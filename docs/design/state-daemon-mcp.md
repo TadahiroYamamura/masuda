@@ -8,7 +8,7 @@
 
 | ソケット | ファイル名 | 公開するツール | 誰が繋ぐか |
 |---|---|---|---|
-| trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_wait_for_change`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く） |
+| trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_apply`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く） |
 | curated | `daemon-curated.sock` | `wait_for_gate_change`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
 
 両ソケットとも`internal/statedaemon/mcpserver/uds.go`の`serveUDS`が待ち受ける。バインド前に同名の残存ソケットファイルを削除してから`net.Listen("unix", ...)`し、`os.Chmod(socketPath, 0o600)`で他ユーザーからのアクセスを塞ぐ。`mcp.NewStreamableHTTPHandler`でMCPサーバーをHTTP over UDSとして配線しており、tool定義の中身には関知しない——`ServeCuratedServerUDS`はどんな`*mcp.Server`でも受け取れる形になっている。
@@ -29,9 +29,12 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 - `Put(key, value) error`: ディスクへ書き込んでから`values`マップを更新し、`key`を待っている全goroutineを起こす
 - `Delete(key) error`: ファイルを削除。存在しないキーの削除はエラーにしない
 - `List(prefix) []string`: `prefix`前方一致のキーをソートして返す
-- `WaitForChange(ctx, key) (value []byte, ok bool, err error)`: 呼び出し時点以降の次の`Put`/`Delete`まで1回だけブロックする。ポーリングはしない（`inotifywait`単発呼び出しの置き換え、ADR-0042）。`ctx`がキャンセルされれば待機を中断する
+- `WaitForPresence(ctx, key) (value []byte, err error)`: `key`が存在するまでブロックし、**既に存在すれば即座に返る**。ポーリングはしない（ADR-0042の`inotifywait`置き換えを、事象待ちから条件待ちへ改めたもの。ADR-0055）。`ctx`がキャンセルされれば待機を中断する
+- `Apply(ops) (applied bool, err error)`: `check`/`put`/`delete`を1回の`s.mu`保持で適用する。`check`が1つでも成立しなければ何も変えずに`applied=false`を返す（エラーではない）。`put`は`delete`より先に適用される
 
-`Put`/`Delete`の通知はチャネルのクローズで実装されており、1回通知したら`waiters`から即座に削除される（次に待つ側は改めて`WaitForChange`を呼び直す必要がある——一発勝負のワンショット設計）。
+`Put`/`Delete`の通知はチャネルのクローズで実装されている。通知の意味は「待機を終わらせる」ではなく「もう一度見に行かせる」で、起こされた`WaitForPresence`は条件を再評価し、まだ満たされていなければ待ち直す（`Delete`で起こされた場合がこれにあたる）。
+
+`Apply`が原子的なのはこの`Store`の他の呼び出し元に対してであって、プロセスの死に対してではない——opごとに別のファイル書き込みになるため、途中で落ちれば部分適用が残る。`put`を`delete`より先に適用するのは、その場合に「マーカーが残る＝決定が再配送される」側へ倒すため（ADR-0055）。
 
 ## デーモンへ移った状態・ファイルのまま残る状態
 
@@ -56,12 +59,14 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 ## トラステッドMCPツール・クライアント
 
-トラステッド側5toolの定義は`internal/statedaemon/mcpserver/server.go`の`New(store)`。`state_get`/`state_list`/`state_wait_for_change`は`store`の対応メソッドをそのまま呼ぶだけ、`state_put`/`state_delete`はエラーを`fmt.Errorf`でラップして返す。
+トラステッド側5toolの定義は`internal/statedaemon/mcpserver/server.go`の`New(store)`。`state_get`/`state_list`は`store`の対応メソッドをそのまま呼ぶだけ、`state_put`/`state_delete`/`state_apply`はエラーを`fmt.Errorf`でラップして返す。ブロッキング待機はこちらには無い——待つ対象はゲートだけであり、それはcurated setの`wait_for_gate_change`が「何を待っているか」を言える形で持つ（ADR-0055）。
+
+`state_apply`のopは`{"op": "check"|"put"|"delete", "key": ..., "value": ...}`で、`value`は省略可能。`check`で省略すると「そのキーが存在しないこと」の表明になるため、「不在」と「空文字列」は区別される。
 
 クライアント実装は`internal/statedaemon/mcpclient/client.go`の`Client`型ひとつだけで、Go側・Python側両方がこれを最終的に経由する——ただし経由の仕方が非対称である。
 
 - **Go側**: `cmd/masuda`・`internal/gate`が`mcpclient.Dial(ctx, statedaemon.SocketPath(stateDir))`をin-processでimportして直接呼ぶ
-- **Python側**: `orchestrator/state_client.py`はMCPクライアントを自前実装せず、`masuda internal state get/put/delete/list/wait <key>`（`cmd/masuda/internalstate.go`の`newInternalStateCommand`、hidden subcommand）を`subprocess.run`で1操作1回呼び出す。ソケットパスは`--socket`省略時`$MASUDA_STATE_DIR`から`statedaemon.SocketPath`で解決される
+- **Python側**: `orchestrator/state_client.py`はMCPクライアントを自前実装せず、`masuda internal state get/put/delete/list/apply`（`cmd/masuda/internalstate.go`の`newInternalStateCommand`、hidden subcommand）を`subprocess.run`で1操作1回呼び出す。`apply`だけはopのJSON配列を引数ではなくstdinから受け取る（任意のJSON値がシェルのクォートを通らずに済む）。この上に`state_client.consume(key, follow_up)`があり、ゲートマーカーの消費はすべてこれを経由する（`docs/design/gates.md`）。ソケットパスは`--socket`省略時`$MASUDA_STATE_DIR`から`statedaemon.SocketPath`で解決される
 
 この非対称の帰結として、`orchestrator/*.py`を実行するVMのrootfsに`masuda`バイナリ自体が同梱されている必要がある（イメージビルド時にマルチステージビルドで焼き込み、ADR-0041）。MCPワイヤプロトコルの実装はGo側の`mcpclient`一箇所に集約されており、Pythonは`_run()`のJSONパース以上のことをしない。
 
@@ -69,7 +74,7 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 `internal/statedaemon/mcpserver/curated.go`の`NewCurated(store)`が返す2toolのみ。Claudeのメインセッション（サブエージェントには渡らない）が使う。
 
-- **`wait_for_gate_change`**（`waitForGateChange`）: `name`は`gateNames = {"plan", "review", "triage"}`のいずれかのみ許可。`store.WaitForChange(ctx, "gate:"+name)`をブロッキング呼び出しし、マーカーJSON（`status`/`feedback`）をパースして返す。マーカーは常に上書き（Put）で解決されるため、`found=false`（削除されたケース）はエラー扱い
+- **`wait_for_gate_change`**（`waitForGateChange`）: `name`は`gateNames = {"plan", "review", "triage"}`のいずれかのみ許可。`store.WaitForPresence(ctx, "gate:"+name)`をブロッキング呼び出しし、マーカーJSON（`status`/`feedback`）をパースして返す。マーカーの不在が未解決を意味するため、待つ条件は「キーが存在すること」そのものになる——既に解決済みのゲートに対しては即座に返り、接続断後の呼び直しも安全（ADR-0055）
 - **`resolve_gate_from_chat`**（`resolveGateFromChat`）: `masuda chat`での対話中に人間が「進めていい」と言った場合の自己承認用。`name`は`chatResolvableGateNames = {"plan", "review"}`のみ許可——**`"triage"`はサーバー側で拒否される**（ADR-0029: triage対象のエージェント自身がtriageゲートを閉じてはならないという規約を、この1点だけ技術的に強制する）。`status`は`"approved"`/`"rejected"`のみ許容し、`gate:`+nameへ`{status, feedback, decided_at}`をPutする
 
 `cmd/masuda/statedaemon.go`の`runStatedaemon`は`curated := mcpserver.NewCurated(store)`を1個だけ構築し、`ServeCuratedServerUDS`とマウント後の`mcpaggregator.Start`（子MCPサーバーのプロキシtool登録）の両方がこの同一インスタンスへツールを追加登録していく。子MCPサーバーの承認・集約の詳細は`docs/design/mcp-child-servers.md`を参照。
