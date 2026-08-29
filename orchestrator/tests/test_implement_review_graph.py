@@ -1254,6 +1254,24 @@ def test_final_report_approved_means_g2_approved():
     assert state["phase"] == "g2_approved"
 
 
+def test_g2_approval_survives_the_marker_being_taken():
+    """Same contract as G1's (test_g1_approval_survives_the_marker_being_taken
+    in test_investigate_plan_graph.py): the decision is taken off the gate,
+    and REVIEW_APPROVED_KEY is what re-derivation reads afterwards."""
+    mark_implementation_done_and_clean()
+    irg.FINAL_REPORT_MD.parent.mkdir(exist_ok=True)
+    irg.FINAL_REPORT_MD.write_text("# report", encoding="utf-8")
+    irg.COMMIT_MESSAGE_FILE.write_text("commit message", encoding="utf-8")
+    state_client.put(irg.REVIEW_GATE_KEY, json.dumps({"status": "approved"}))
+
+    first = irg.detect_phase({"phase": "", "reason": ""})
+    second = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert first["phase"] == second["phase"] == "g2_approved"
+    assert not state_client.exists(irg.REVIEW_GATE_KEY)
+    assert state_client.exists(irg.REVIEW_APPROVED_KEY)
+
+
 # --- write_task_md -----------------------------------------------------------
 
 def test_implement_step_task_includes_plan_and_step_content():
@@ -1327,18 +1345,21 @@ def test_mechanical_deviation_first_detection_opens_gate_without_clearing():
     assert not state_client.exists(irg.DEVIATION_KEY), "DEVIATION.md is written by write_task_md, not detect_phase"
 
 
-def test_mechanical_deviation_first_detection_clears_stale_gate_marker():
-    """Confirmed on a live run: the original G1 approval's marker is never
-    unlinked on the "approved" path (investigate_plan_graph.py's
-    detect_phase), so it's still sitting on disk, "approved", the first time
-    a later mechanical deviation reopens the gate. Left alone, the GATE:plan
-    wait condition ("not pending") would already be satisfied before a human
-    has looked at *this* deviation -- stale history silently standing in for
-    today's answer."""
+def test_mechanical_deviation_first_detection_finds_no_stale_marker():
+    """A live run once had the original G1 approval's marker still sitting on
+    disk, "approved", the moment a later mechanical deviation reopened the
+    gate -- stale history standing in for today's answer. That needed an
+    explicit defensive delete here.
+
+    It no longer does: a marker exists only while a decision is waiting to be
+    taken, so investigate_plan_graph.py's detect_phase has already taken the
+    G1 approval (recording it under its own PLAN_APPROVED_KEY) long before
+    this code runs. This pins that end of the invariant -- reopening finds a
+    clean gate without having to clear one.
+    """
     init_git_repo()
     pathlib.Path("unplanned.txt").write_text("oops", encoding="utf-8")
     irg.IMPLEMENTATION_RESULT_JSON.write_text(json.dumps({"status": "done"}), encoding="utf-8")
-    state_client.put(irg.PLAN_GATE_KEY, json.dumps({"status": "approved"}))
 
     state = irg.detect_phase({"phase": "", "reason": ""})
 
@@ -1675,10 +1696,9 @@ def test_triage_concern_present_opens_gate():
     assert state["reason"] == "怪しい指示を発見"
 
 
-def test_triage_gate_pending_marker_stays_await_triage():
+def test_triage_gate_without_a_marker_stays_await_triage():
     init_git_repo()
     write_triage_concern()
-    write_triage_marker("pending")
     state = irg.detect_phase({"phase": "", "reason": ""})
     assert state["phase"] == "await_triage"
 
@@ -1729,10 +1749,12 @@ def test_triage_halted_is_a_terminal_done_not_a_gate():
     assert "GATE:" not in content
 
 
-def test_triage_halted_does_not_consume_concern_or_marker():
-    """halt must leave everything for post-halt forensics (`masuda triage
-    show`) and be idempotent if detect_phase is somehow re-invoked (ADR-0029:
-    mirrors gate.Halt's Go-side contract of touching nothing else)."""
+def test_triage_halted_keeps_the_concern_and_records_the_decision():
+    """halt must leave the concern file for post-halt forensics (`masuda
+    triage show`, ADR-0029) and stay idempotent if detect_phase is re-invoked.
+    The marker itself is taken like every other decision -- what makes halt
+    re-derivable afterwards is TRIAGE_HALTED_KEY, not a marker left lying
+    around."""
     init_git_repo()
     write_triage_concern(description="深刻な懸念の詳細")
     write_triage_marker("halted", feedback="深刻な懸念")
@@ -1741,8 +1763,10 @@ def test_triage_halted_does_not_consume_concern_or_marker():
     second = irg.detect_phase({"phase": "", "reason": ""})
 
     assert first["phase"] == second["phase"] == "triage_halted"
+    assert first["reason"] == second["reason"] == "深刻な懸念"
     assert irg.TRIAGE_CONCERN_JSON.exists()
-    assert state_client.exists(irg.TRIAGE_GATE_KEY)
+    assert not state_client.exists(irg.TRIAGE_GATE_KEY)
+    assert json.loads(state_client.get(irg.TRIAGE_HALTED_KEY))["feedback"] == "深刻な懸念"
 
 
 def _setup_g1_reopen_needs_plan_review():

@@ -232,6 +232,12 @@ APPROVED_DEVIATIONS_KEY = "internal:approved-deviations"
 PLAN_GATE_KEY = "gate:plan"
 REVIEW_GATE_KEY = "gate:review"
 TRIAGE_GATE_KEY = "gate:triage"
+# A gate marker means "a human decided and nobody has acted on it yet", so it
+# is deleted the moment it is consumed. What the decision *was* has to
+# survive that, since detect_phase re-derives the phase from scratch on every
+# invocation -- these keys are where it survives.
+REVIEW_APPROVED_KEY = "internal:review-approved"
+TRIAGE_HALTED_KEY = "internal:triage-halted"
 # Shared with investigate_plan_graph.py's identically-named constants on
 # purpose -- both scripts operate on the same workspace's daemon, and only
 # one phase is ever active at a time, so one key each is enough (mirrors
@@ -644,13 +650,6 @@ def _iteration_budget() -> int:
     except FileNotFoundError:
         return BASE_BUDGET
     return BASE_BUDGET + PER_STEP_BUDGET * len(steps)
-
-
-def _read_gate_marker(key: str) -> dict | None:
-    value = state_client.get(key)
-    if value is None:
-        return None
-    return json.loads(value)
 
 
 # --- review/check/fix/recheck machinery (ADR-0004/0021), shared by phase 5's
@@ -1110,37 +1109,63 @@ def _detect_review_phase() -> State:
     return {"phase": "synthesize", "reason": ""}
 
 
+def _g2_redo_reason(feedback: str) -> str:
+    return f"G2（レビュー承認ゲート）で却下されました（ADR-0013）:\n{feedback}\n\n修正後はレビューを最初の観点からやり直す。"
+
+
+def _g2_follow_up(raw: str) -> list[dict]:
+    """The durable record that discharges a G2 decision, landed in the same
+    atomic step that takes the marker away.
+
+    ADR-0027: REVIEW_FEEDBACK_KEY is both the reason implement_g2_redo's
+    TASK.md shows *and* the durable marker that detect_phase is currently
+    inside a G2-redo cycle (never cleared until _finalize_g2_redo commits) --
+    distinguishing this single non-decomposed redo from phase 4's normal
+    per-step flow, which has no such key.
+    """
+    marker = json.loads(raw)
+    status = marker.get("status")
+    if status == "approved":
+        return [{"op": "put", "key": REVIEW_APPROVED_KEY, "value": raw}]
+    if status == "rejected":
+        return [{"op": "put", "key": REVIEW_FEEDBACK_KEY, "value": _g2_redo_reason(marker.get("feedback", ""))}]
+    raise ValueError(f"{REVIEW_GATE_KEY} carries an unrecognised status {status!r}")
+
+
 def _detect_post_implementation_phase() -> State:
     """Implementation is clean (or already was) -- figure out where phase 5 /
     G2 currently stands."""
     if not FINAL_REPORT_MD.exists() or not COMMIT_MESSAGE_FILE.exists():
         return _detect_review_phase()
 
-    marker = _read_gate_marker(REVIEW_GATE_KEY)
-    status = (marker or {}).get("status", "pending")
-    if status == "approved":
+    raw = state_client.get(REVIEW_GATE_KEY)
+    if raw is None:
+        # No decision waiting to be taken: either one already was (and
+        # REVIEW_APPROVED_KEY is the record of it) or nobody has decided.
+        if state_client.exists(REVIEW_APPROVED_KEY):
+            return {"phase": "g2_approved", "reason": ""}
+        return {"phase": "await_g2", "reason": ""}
+
+    if json.loads(raw).get("status") == "approved":
+        state_client.consume(REVIEW_GATE_KEY, _g2_follow_up)
         return {"phase": "g2_approved", "reason": ""}
-    if status == "rejected":
-        feedback = marker.get("feedback", "")
-        reason = f"G2（レビュー承認ゲート）で却下されました（ADR-0013）:\n{feedback}\n\n修正後はレビューを最初の観点からやり直す。"
-        state_client.delete(REVIEW_GATE_KEY)
-        _clear_review_state()
-        # ADR-0027: unlike the old single-shot design, implementation_result.json
-        # no longer lingers through all of phase 5 -- _finalize_step already
-        # consumed it the moment its step landed -- so it may already be gone
-        # by the time a G2 rejection reaches here.
-        if IMPLEMENTATION_RESULT_JSON.exists():
-            IMPLEMENTATION_RESULT_JSON.unlink()
-        if COMMIT_MESSAGE_FILE.exists():
-            COMMIT_MESSAGE_FILE.unlink()
-        # ADR-0027: this file is both the reason implement_g2_redo's TASK.md
-        # shows *and* the durable marker that detect_phase is currently
-        # inside a G2-redo cycle (never unlinked until _finalize_g2_redo
-        # commits) -- distinguishing this single non-decomposed redo from
-        # phase 4's normal per-step flow, which has no such file.
-        state_client.put(REVIEW_FEEDBACK_KEY, reason)
-        return {"phase": "implement_g2_redo", "reason": reason}
-    return {"phase": "await_g2", "reason": ""}
+
+    # Rejected. Unlinking COMMIT_MESSAGE_FILE is what makes the next
+    # detect_phase take the _detect_review_phase() branch above instead of
+    # coming back here, and a file is not something an apply can carry, so
+    # the cleanup goes first: taking the marker is the acknowledgement and
+    # has to come last.
+    _clear_review_state()
+    # ADR-0027: unlike the old single-shot design, implementation_result.json
+    # no longer lingers through all of phase 5 -- _finalize_step already
+    # consumed it the moment its step landed -- so it may already be gone
+    # by the time a G2 rejection reaches here.
+    if IMPLEMENTATION_RESULT_JSON.exists():
+        IMPLEMENTATION_RESULT_JSON.unlink()
+    if COMMIT_MESSAGE_FILE.exists():
+        COMMIT_MESSAGE_FILE.unlink()
+    taken = state_client.consume(REVIEW_GATE_KEY, _g2_follow_up)
+    return {"phase": "implement_g2_redo", "reason": _g2_redo_reason(json.loads(taken).get("feedback", ""))}
 
 
 def _resolve_gate_reopen(reason: str, on_approved, on_rejected) -> State:
@@ -1160,32 +1185,44 @@ def _resolve_gate_reopen(reason: str, on_approved, on_rejected) -> State:
     itself.
     """
     if not state_client.exists(DEVIATION_KEY):
-        # A marker may still be sitting in the daemon from an earlier,
-        # unrelated decision -- the original G1 approval
-        # (investigate_plan_graph.py's detect_phase never deletes an
-        # *approved* marker) or a previously resolved reopen. Left in place,
-        # the GATE:plan wait condition ("not pending") would already be
-        # satisfied before a human has looked at *this* deviation, letting
-        # stale history silently stand in for today's answer (confirmed on a
-        # live run: an "approved" marker from hours earlier, still sitting
-        # there the moment a fresh mechanical deviation opened the gate).
-        # Clear it so "not pending" can only mean a fresh decision on this
-        # reopen.
-        state_client.delete(PLAN_GATE_KEY)
+        # No stale-marker cleanup needed here any more: a marker exists only
+        # while a decision is waiting to be taken, so it can no longer be
+        # left over from the original G1 approval or an earlier reopen. That
+        # used to require an explicit delete, after a live run where an
+        # "approved" marker from hours earlier stood in for today's answer
+        # the moment a fresh mechanical deviation opened the gate.
         return {"phase": "plan_reopened", "reason": reason}
 
-    marker = _read_gate_marker(PLAN_GATE_KEY)
-    gate_status = (marker or {}).get("status", "pending")
-    if gate_status == "pending":
+    # The deviation and the marker go away together: what the decision means
+    # is carried out by on_approved/on_rejected below, which re-derive from
+    # disk if this process dies before they finish.
+    taken = state_client.consume(
+        PLAN_GATE_KEY, lambda _: [{"op": "delete", "key": DEVIATION_KEY}]
+    )
+    if taken is None:
         return {"phase": "plan_reopened", "reason": state_client.get(DEVIATION_KEY)}
 
-    feedback = (marker or {}).get("feedback", "")
-    state_client.delete(DEVIATION_KEY)
-    state_client.delete(PLAN_GATE_KEY)
-
-    if gate_status == "approved":
+    marker = json.loads(taken)
+    if marker.get("status") == "approved":
         return on_approved()
-    return on_rejected(feedback)
+    return on_rejected(marker.get("feedback", ""))
+
+
+def _triage_follow_up(raw: str) -> list[dict]:
+    """The durable record that discharges a triage decision, landed in the
+    same atomic step that takes the marker away. Raises on a status nobody
+    planned for, before anything is consumed -- see _g1_follow_up."""
+    marker = json.loads(raw)
+    status = marker.get("status")
+    if status == "halted":
+        return [{"op": "put", "key": TRIAGE_HALTED_KEY, "value": raw}]
+    if status == "rejected":
+        return [{"op": "put", "key": TRIAGE_REDO_FEEDBACK_KEY, "value": marker.get("feedback", "")}]
+    if status == "approved":
+        # `masuda triage dismiss`: nothing to carry forward, the concern file
+        # going away is the whole outcome.
+        return []
+    raise ValueError(f"{TRIAGE_GATE_KEY} carries an unrecognised status {status!r}")
 
 
 def _await_triage_state(description: str) -> State:
@@ -1215,20 +1252,24 @@ def _resolve_triage(resume_phase_fn) -> State:
     (so `masuda triage show` still works afterward, mirroring
     gate.Halt's Go-side contract of not calling clearDeviation) and never
     calls resume_phase_fn -- there is nothing left to resume."""
-    marker = _read_gate_marker(TRIAGE_GATE_KEY)
-    status = (marker or {}).get("status", "pending")
-    if status == "pending":
+    raw = state_client.get(TRIAGE_GATE_KEY)
+    if raw is None:
+        halted = state_client.get(TRIAGE_HALTED_KEY)
+        if halted is not None:
+            return _triage_halted_state(json.loads(halted).get("feedback", ""))
         concern = json.loads(TRIAGE_CONCERN_JSON.read_text(encoding="utf-8"))
         return _await_triage_state(concern.get("description", ""))
 
-    feedback = (marker or {}).get("feedback", "")
-    if status == "halted":
-        return _triage_halted_state(feedback)
+    if json.loads(raw).get("status") == "halted":
+        taken = state_client.consume(TRIAGE_GATE_KEY, _triage_follow_up)
+        return _triage_halted_state(json.loads(taken).get("feedback", ""))
 
+    # Removing the concern file is what stops the next detect_phase from
+    # re-entering this branch, and a file is not something an apply can
+    # carry, so it goes first: taking the marker is the acknowledgement and
+    # has to come last.
     TRIAGE_CONCERN_JSON.unlink()
-    state_client.delete(TRIAGE_GATE_KEY)
-    if status == "rejected":
-        state_client.put(TRIAGE_REDO_FEEDBACK_KEY, feedback)
+    state_client.consume(TRIAGE_GATE_KEY, _triage_follow_up)
     return resume_phase_fn()
 
 
@@ -2432,9 +2473,12 @@ def write_task_md(state: State) -> State:
         # State's shape can't carry it (see _resolve_triage), so it rides
         # this one-shot key instead, consumed exactly once here.
         content = f"## triage対応後の申し送り（ADR-0029）\n{triage_redo_note}\n\n---\n\n" + content
-        state_client.delete(TRIAGE_REDO_FEEDBACK_KEY)
 
     TASK_MD.write_text(content, encoding="utf-8")
+    if triage_redo_note is not None:
+        # Dropped only once TASK.md carries it: deleting first would lose the
+        # human's feedback outright if the write above never happened.
+        state_client.delete(TRIAGE_REDO_FEEDBACK_KEY)
     print(f"[orchestrator] TASK.md written (phase={phase})")
     return state
 

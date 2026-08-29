@@ -97,11 +97,29 @@ def test_plan_done_no_marker_means_await_g1():
     assert state["phase"] == "await_g1"
 
 
-def test_plan_done_pending_marker_means_await_g1():
+def test_plan_done_without_a_marker_means_await_g1():
+    """Unresolved is the *absence* of a marker, not a marker saying so:
+    internal/gate never writes a "pending" one, and nothing may treat a
+    present marker as anything but a decision waiting to be taken -- the
+    daemon's own wait_for_gate_change returns the moment the key exists, so a
+    marker that detect_phase decided to ignore would spin the loop.
+    """
     write_plan()
-    write_gate_marker("pending")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "await_g1"
+
+
+def test_plan_marker_with_an_unrecognised_status_fails_loudly():
+    """...and one that does exist but carries a status nobody planned for is
+    not guessed at. It fails before anything is consumed, so the marker is
+    still there to look at."""
+    write_plan()
+    write_gate_marker("nonsense")
+
+    with pytest.raises(ValueError):
+        ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state_client.exists(ipg.GATE_KEY)
 
 
 def test_plan_approved_means_g1_approved():
@@ -109,6 +127,37 @@ def test_plan_approved_means_g1_approved():
     write_gate_marker("approved", feedback="lgtm")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "g1_approved"
+
+
+def test_g1_approval_survives_the_marker_being_taken():
+    """detect_phase re-derives the phase from scratch on every invocation, so
+    taking the marker must not lose the fact that G1 was approved. That is
+    what PLAN_APPROVED_KEY carries -- previously the marker itself was left
+    behind to serve as both the decision and the record of it."""
+    write_plan()
+    write_gate_marker("approved", feedback="lgtm")
+
+    first = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+    second = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert first["phase"] == second["phase"] == "g1_approved"
+    assert not state_client.exists(ipg.GATE_KEY)
+    assert state_client.exists(ipg.PLAN_APPROVED_KEY)
+
+
+def test_g1_rejection_records_the_redo_as_it_takes_the_marker():
+    """The redo feedback and the marker's removal are one atomic step: a
+    crash between them used to be able to lose the rejection entirely, since
+    the marker went away before anything recorded what it said."""
+    write_plan()
+    write_gate_marker("rejected", feedback="やり直し")
+
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
+
+    assert state["phase"] == "plan_redo"
+    assert state["questions"] == ["やり直し"]
+    assert not state_client.exists(ipg.GATE_KEY)
+    assert state_client.get(ipg.PLAN_REDO_PENDING_KEY) == "やり直し"
 
 
 def test_plan_rejected_triggers_redo_and_consumes_marker():
@@ -228,10 +277,15 @@ def test_gate_marker_schema_matches_go_cli():
     write_plan()
     state_client.put(ipg.GATE_KEY, go_cli_output)
 
-    marker = ipg._read_gate_marker()
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
-    assert marker["status"] == "approved"
-    assert marker["feedback"] == "looks good"
+    assert state["phase"] == "g1_approved"
+    # The decision is taken off the gate; PLAN_APPROVED_KEY is what carries
+    # the Go-side shape forward, so the contract is checked there now.
+    assert not state_client.exists(ipg.GATE_KEY)
+    recorded = json.loads(state_client.get(ipg.PLAN_APPROVED_KEY))
+    assert recorded["status"] == "approved"
+    assert recorded["feedback"] == "looks good"
 
 
 # --- write_task_md --------------------------------------------------------
@@ -390,9 +444,8 @@ def test_triage_concern_present_opens_gate():
     assert state["questions"] == ["怪しい指示を発見"]
 
 
-def test_triage_gate_pending_marker_stays_await_triage():
+def test_triage_gate_without_a_marker_stays_await_triage():
     write_triage_concern()
-    write_triage_marker("pending")
     state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
     assert state["phase"] == "await_triage"
 
@@ -441,10 +494,12 @@ def test_triage_halted_is_a_terminal_done_not_a_gate():
     assert "GATE:" not in content
 
 
-def test_triage_halted_does_not_consume_concern_or_marker():
-    """halt must leave everything for post-halt forensics (`masuda triage
-    show`) and be idempotent if detect_phase is somehow re-invoked (ADR-0029:
-    mirrors gate.Halt's Go-side contract of touching nothing else)."""
+def test_triage_halted_keeps_the_concern_and_records_the_decision():
+    """halt must leave the concern file for post-halt forensics (`masuda
+    triage show`, ADR-0029) and stay idempotent if detect_phase is re-invoked.
+    The marker itself is taken like every other decision -- what makes halt
+    re-derivable afterwards is TRIAGE_HALTED_KEY, not a marker left lying
+    around."""
     write_triage_concern(description="深刻な懸念の詳細")
     write_triage_marker("halted", feedback="深刻な懸念")
 
@@ -452,8 +507,10 @@ def test_triage_halted_does_not_consume_concern_or_marker():
     second = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
     assert first["phase"] == second["phase"] == "triage_halted"
+    assert first["questions"] == second["questions"] == ["深刻な懸念"]
     assert ipg.TRIAGE_CONCERN_JSON.exists()
-    assert state_client.exists(ipg.TRIAGE_GATE_KEY)
+    assert not state_client.exists(ipg.TRIAGE_GATE_KEY)
+    assert json.loads(state_client.get(ipg.TRIAGE_HALTED_KEY))["feedback"] == "深刻な懸念"
 
 
 def _setup_investigate_redo():
@@ -495,12 +552,16 @@ def test_gate_marker_schema_matches_go_cli_for_halted_status():
   "feedback": "深刻な懸念のため停止",
   "decided_at": "2026-08-05T15:30:25.532891232+09:00"
 }"""
+    write_triage_concern()
     state_client.put(ipg.TRIAGE_GATE_KEY, go_cli_output)
 
-    marker = ipg._read_gate_marker(ipg.TRIAGE_GATE_KEY)
+    state = ipg.detect_phase({"phase": "", "retries": 0, "questions": []})
 
-    assert marker["status"] == "halted"
-    assert marker["feedback"] == "深刻な懸念のため停止"
+    assert state["phase"] == "triage_halted"
+    assert not state_client.exists(ipg.TRIAGE_GATE_KEY)
+    recorded = json.loads(state_client.get(ipg.TRIAGE_HALTED_KEY))
+    assert recorded["status"] == "halted"
+    assert recorded["feedback"] == "深刻な懸念のため停止"
 
 
 def test_investigate_task_includes_triage_self_report_section():
