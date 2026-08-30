@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -45,7 +46,7 @@ func connectUDS(t *testing.T) *mcp.ClientSession {
 		}
 	})
 
-	waitForSocket(t, socketPath)
+	waitForSocket(t, socketPath, serveErr)
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -65,16 +66,11 @@ func connectUDS(t *testing.T) *mcp.ClientSession {
 	return session
 }
 
-func waitForSocket(t *testing.T, path string) {
+func waitForSocket(t *testing.T, path string, serveErr <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(path, serveErr); err != nil {
+		t.Fatal(err)
 	}
-	t.Fatalf("socket %s never appeared", path)
 }
 
 func TestServeUDSRoundTrip(t *testing.T) {
@@ -146,7 +142,7 @@ func TestServeCuratedServerUDSServesGivenServer(t *testing.T) {
 			t.Error("ServeCuratedServerUDS did not stop after context cancellation")
 		}
 	})
-	waitForSocket(t, socketPath)
+	waitForSocket(t, socketPath, serveErr)
 
 	httpClient := &http.Client{
 		Transport: &http.Transport{
@@ -196,7 +192,7 @@ func TestServeUDSRemovesStaleSocket(t *testing.T) {
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- ServeUDS(ctx, store, socketPath) }()
 
-	waitForSocket(t, socketPath)
+	waitForSocket(t, socketPath, serveErr)
 
 	cancel()
 	select {

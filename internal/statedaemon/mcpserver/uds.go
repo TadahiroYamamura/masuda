@@ -14,13 +14,20 @@ import (
 // ServeUDS serves store's trusted MCP tool set (New) over a Unix domain
 // socket at socketPath, blocking until ctx is cancelled or the listener
 // fails.
+//
+// The socket file appears at bind(), a moment before this starts accepting,
+// so waiting for the file to exist is not the same as waiting for the
+// server: a test that does the former dials into that gap and fails with
+// ECONNREFUSED under load (Issue #42). Wait with
+// internal/testutil.WaitForUDS instead.
 func ServeUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {
 	return serveUDS(ctx, New(store), socketPath)
 }
 
 // ServeCuratedUDS serves store's curated, Claude-facing MCP tool set
 // (NewCurated) over a Unix domain socket at socketPath, blocking until ctx
-// is cancelled or the listener fails. No privileged-command runner, so that
+// is cancelled or the listener fails. ServeUDS's caveat about the socket
+// file appearing before the server accepts applies here too. No privileged-command runner, so that
 // tool is not offered -- the real daemon builds the server itself and
 // passes one (see ServeCuratedServerUDS and runStatedaemon).
 func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {
@@ -29,6 +36,8 @@ func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath s
 
 // ServeCuratedServerUDS serves an already-constructed curated *mcp.Server
 // over socketPath, blocking until ctx is cancelled or the listener fails.
+// ServeUDS's caveat about the socket file appearing before the server
+// accepts applies here too.
 // Unlike ServeCuratedUDS, the caller builds (and may keep mutating) the
 // server itself -- e.g. internal/statedaemon/mcpaggregator registering
 // child-MCP-server proxy tools onto it, potentially after serving has

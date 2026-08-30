@@ -65,6 +65,15 @@ func newInternalMCPRelayCommand() *cobra.Command {
 // runMCPRelay listens on bind:port and, for every accepted connection,
 // dials socketPath and pipes bytes bidirectionally until either side closes.
 // Blocks until ctx is cancelled.
+//
+// The port is chosen by the caller, which every caller does by binding port
+// zero and closing that listener (freeTCPPort here, internal/sandbox.freePort,
+// internal/hostloop.freeTCPPort). Besides the obvious TOCTOU those all
+// accept, that leftover listener stays in LISTEN for a moment after Close()
+// returns -- long enough to answer a readiness probe on behalf of a relay
+// that has not bound anything yet, which is what Issue #42's "connection
+// refused" turned out to be. A test waiting on this relay should retry the
+// thing it actually wants rather than probe the port.
 func runMCPRelay(ctx context.Context, socketPath, bind string, port int) error {
 	var lc net.ListenConfig
 	l, err := lc.Listen(ctx, "tcp", net.JoinHostPort(bind, strconv.Itoa(port)))

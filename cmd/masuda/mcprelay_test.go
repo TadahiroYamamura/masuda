@@ -13,6 +13,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -46,28 +47,53 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
-	waitForFile(t, socketPath)
+	if err := testutil.WaitForUDS(socketPath, serveErr); err != nil {
+		t.Fatal(err)
+	}
 
 	port := freeTCPPort(t)
 	relayErr := make(chan error, 1)
 	go func() { relayErr <- runMCPRelay(ctx, socketPath, "127.0.0.1", port) }()
-	waitForTCPPort(t, port)
 
-	transport := &mcp.StreamableClientTransport{Endpoint: fmt.Sprintf("http://127.0.0.1:%d/", port)}
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
-	session, err := client.Connect(context.Background(), transport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Retried rather than probed-then-connected. A TCP probe cannot tell the
+	// relay's listener from freeTCPPort's own: the socket freeTCPPort just
+	// closed stays in LISTEN for a moment after Close() returns, so the
+	// probe connects to that leftover, calls the relay ready, and the real
+	// connection then lands in the gap before the relay has bound anything.
+	// Confirmed in /proc/net/tcp -- the socket the probe reached carried the
+	// same inode as the one freeTCPPort had already closed, and the relay's
+	// listener appeared under a different inode only afterwards. What this
+	// test needs is an MCP session, so it asks for one until it gets it.
+	session := connectMCPOverTCP(t, port, relayErr, serveErr)
 	defer session.Close()
+
+	// Deferred after session.Close() so it runs before it (defers are LIFO):
+	// wait_for_gate_change only returns when a gate resolves, so a failed
+	// assertion below would leave the call in flight, and closing a
+	// connection with an outstanding call waits for that call forever. See
+	// statedaemon_test.go's equivalent for the full reasoning.
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	waitReturned := make(chan struct{})
+	defer func() {
+		cancelWait()
+		select {
+		case <-waitReturned:
+		case <-time.After(testutil.DefaultTimeout):
+			t.Error("wait_for_gate_change did not return after its context was cancelled")
+		}
+	}()
 
 	done := make(chan struct{})
 	var status string
 	go func() {
-		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		defer close(waitReturned)
+		res, err := session.CallTool(waitCtx, &mcp.CallToolParams{
 			Name:      "wait_for_gate_change",
 			Arguments: map[string]any{"name": "plan"},
 		})
+		if waitCtx.Err() != nil {
+			return // cancelled by the deferred cleanup; the real failure is already recorded
+		}
 		if err != nil || res.IsError {
 			t.Errorf("CallTool(wait_for_gate_change) via relay = (%+v, %v), want success", res, err)
 			close(done)
@@ -97,7 +123,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 		if status != "approved" {
 			t.Fatalf("status via relay = %q, want %q", status, "approved")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(testutil.DefaultTimeout):
 		t.Fatal("wait_for_gate_change via relay did not return after the gate was resolved")
 	}
 
@@ -133,51 +159,50 @@ func TestMCPRelayRespectsBindAddress(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 
-	go func() { _ = mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
-	waitForFile(t, socketPath)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
+	if err := testutil.WaitForUDS(socketPath, serveErr); err != nil {
+		t.Fatal(err)
+	}
 
 	const bind = "127.0.0.2"
 	port := freeTCPPort(t)
-	go func() { _ = runMCPRelay(ctx, socketPath, bind, port) }()
+	relayErr := make(chan error, 1)
+	go func() { relayErr <- runMCPRelay(ctx, socketPath, bind, port) }()
 
-	addr := net.JoinHostPort(bind, strconv.Itoa(port))
-	deadline := time.Now().Add(2 * time.Second)
+	// Reaching here at all is the assertion: waitForTCPAccepting fails the
+	// test if nothing ever accepts on the non-default bind address.
+	if err := testutil.WaitForTCP(net.JoinHostPort(bind, strconv.Itoa(port)), relayErr); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// connectMCPOverTCP opens an MCP session against the relay on port, retrying
+// until it succeeds or testutil.DefaultTimeout passes. On giving up it says which of
+// the two processes behind the port had stopped, if either had -- a bare
+// "connection refused" here is what Issue #42 spent a long time being.
+func connectMCPOverTCP(t *testing.T, port int, relayErr, serveErr <-chan error) *mcp.ClientSession {
+	t.Helper()
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d/", port)
+	deadline := time.Now().Add(testutil.DefaultTimeout)
 	var lastErr error
 	for time.Now().Before(deadline) {
-		conn, err := net.Dial("tcp", addr)
+		transport := &mcp.StreamableClientTransport{Endpoint: endpoint}
+		client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+		session, err := client.Connect(context.Background(), transport, nil)
 		if err == nil {
-			conn.Close()
-			return
+			return session
 		}
 		lastErr = err
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("nothing listening on %s (relay ignored --bind?): %v", addr, lastErr)
-}
-
-func waitForFile(t *testing.T, path string) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
+		select {
+		case relayStopped := <-relayErr:
+			t.Fatalf("connecting to the relay failed (%v) because the relay had stopped: %v", err, relayStopped)
+		case serveStopped := <-serveErr:
+			t.Fatalf("connecting to the relay failed (%v) because the curated socket had stopped: %v", err, serveStopped)
+		default:
 		}
-		time.Sleep(5 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("%s never appeared", path)
-}
-
-func waitForTCPPort(t *testing.T, port int) {
-	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	for time.Now().Before(deadline) {
-		conn, err := net.Dial("tcp", addr)
-		if err == nil {
-			conn.Close()
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatalf("nothing listening on %s", addr)
+	t.Fatalf("never opened an MCP session against %s while the relay and the curated socket both stayed up: %v", endpoint, lastErr)
+	return nil // unreachable: t.Fatalf ends the test goroutine
 }

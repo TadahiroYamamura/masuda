@@ -12,6 +12,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpclient"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 )
 
 // newTestDaemon starts a fresh Store-backed daemon over a short-lived state
@@ -47,15 +48,10 @@ func newTestDaemon(t *testing.T) string {
 		}
 	})
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(statedaemon.SocketPath(stateDir)); err == nil {
-			return stateDir
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(statedaemon.SocketPath(stateDir), serveErr); err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("daemon socket never appeared")
-	return ""
+	return stateDir
 }
 
 // put seeds a daemon key directly, standing in for orchestrator/*.py's own

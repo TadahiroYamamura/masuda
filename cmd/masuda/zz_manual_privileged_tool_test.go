@@ -14,6 +14,7 @@ import (
 	masuda "github.com/TadahiroYamamura/masuda"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -172,12 +173,8 @@ func startDaemonForPrivilegedTool(t *testing.T, repoRoot string) *mcp.ClientSess
 	})
 
 	curatedSocket := statedaemon.CuratedSocketPath(stateDir)
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(curatedSocket); err == nil {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	if err := testutil.WaitForUDS(curatedSocket, serveErr); err != nil {
+		t.Fatal(err)
 	}
 
 	httpClient := &http.Client{Transport: &http.Transport{

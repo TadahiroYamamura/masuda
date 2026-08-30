@@ -9,6 +9,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 )
 
 // connect starts a fresh ServeUDS-backed daemon and dials it, returning a
@@ -39,12 +40,8 @@ func connect(t *testing.T) *Client {
 		}
 	})
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(socketPath); err == nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(socketPath, serveErr); err != nil {
+		t.Fatal(err)
 	}
 
 	client, err := Dial(context.Background(), socketPath)

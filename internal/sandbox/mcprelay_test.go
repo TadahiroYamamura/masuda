@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"net"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 )
 
 // buildMasudaForTest builds a real masuda binary once, since StartMCPRelay
@@ -45,8 +45,9 @@ func TestStartMCPRelayAndStop(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	go func() { _ = mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
-	waitForFile(t, socketPath)
+	serveErr := make(chan error, 1)
+	go func() { serveErr <- mcpserver.ServeCuratedUDS(ctx, store, socketPath) }()
+	waitForSocketAccepting(t, socketPath, serveErr)
 
 	bind := "127.0.0.3" // loopback alias, needs no host network setup
 	l, err := net.Listen("tcp", "127.0.0.1:0")
@@ -80,17 +81,13 @@ func TestStartMCPRelayAndStop(t *testing.T) {
 	}
 }
 
-// waitForFile is shared with virtiofs_test.go's pattern of polling for a
-// file to appear, duplicated here rather than exported since both files
-// are internal to this package's tests.
-func waitForFile(t *testing.T, path string) {
+// waitForSocketAccepting wraps testutil.WaitForUDS so this package's tests
+// keep a t.Fatal-shaped call. Waiting for the socket file to appear (what
+// this used to do) is not the same as waiting for the server -- see
+// testutil.WaitForUDS.
+func waitForSocketAccepting(t *testing.T, path string, serveErr <-chan error) {
 	t.Helper()
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(path); err == nil {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(path, serveErr); err != nil {
+		t.Fatal(err)
 	}
-	t.Fatalf("%s never appeared", path)
 }

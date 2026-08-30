@@ -12,6 +12,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 )
 
 // startTestDaemon starts a fresh Store-backed daemon over a short-lived UDS
@@ -37,17 +38,13 @@ func startTestDaemon(t *testing.T) string {
 		cancel()
 		select {
 		case <-serveErr:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testutil.DefaultTimeout):
 			t.Error("ServeUDS did not stop after context cancellation")
 		}
 	})
 
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(socketPath); err == nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(socketPath, serveErr); err != nil {
+		t.Fatal(err)
 	}
 	return socketPath
 }

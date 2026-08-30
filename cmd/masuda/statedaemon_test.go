@@ -14,6 +14,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/testutil"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -84,18 +85,14 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 		cancel()
 		select {
 		case <-serveErr:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testutil.DefaultTimeout):
 			t.Error("runStatedaemon did not stop after context cancellation")
 		}
 	})
 
 	socketPath := statedaemon.SocketPath(stateDir)
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(socketPath); err == nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(socketPath, serveErr); err != nil {
+		t.Fatal(err)
 	}
 
 	httpClient := &http.Client{
@@ -159,21 +156,18 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 		cancel()
 		select {
 		case <-serveErr:
-		case <-time.After(2 * time.Second):
+		case <-time.After(testutil.DefaultTimeout):
 			t.Error("runStatedaemon did not stop after context cancellation")
 		}
 	})
 
 	trustedSocket := statedaemon.SocketPath(stateDir)
 	curatedSocket := statedaemon.CuratedSocketPath(stateDir)
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		_, err1 := os.Stat(trustedSocket)
-		_, err2 := os.Stat(curatedSocket)
-		if err1 == nil && err2 == nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(trustedSocket, serveErr); err != nil {
+		t.Fatal(err)
+	}
+	if err := testutil.WaitForUDS(curatedSocket, serveErr); err != nil {
+		t.Fatal(err)
 	}
 
 	dial := func(socketPath string) *mcp.ClientSession {
@@ -201,12 +195,37 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 	type waitResult struct {
 		Status string `json:"status"`
 	}
+	// wait_for_gate_change blocks until a human resolves the gate, so a
+	// failed assertion below would otherwise leave this call in flight --
+	// and closing a connection that still has an outstanding call waits for
+	// that call to finish, i.e. forever. Registered *after* dial()'s
+	// session-closing cleanups so that t.Cleanup's LIFO order runs this
+	// first, turning a one-line failure back into a one-line failure instead
+	// of a ten-minute package timeout that takes the other tests' results
+	// with it.
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	waitReturned := make(chan struct{})
+	t.Cleanup(func() {
+		cancelWait()
+		select {
+		case <-waitReturned:
+		case <-time.After(testutil.DefaultTimeout):
+			t.Error("wait_for_gate_change did not return after its context was cancelled")
+		}
+	})
+
 	done := make(chan waitResult, 1)
 	go func() {
-		res, err := curated.CallTool(context.Background(), &mcp.CallToolParams{
+		defer close(waitReturned)
+		res, err := curated.CallTool(waitCtx, &mcp.CallToolParams{
 			Name:      "wait_for_gate_change",
 			Arguments: map[string]any{"name": "plan"},
 		})
+		if waitCtx.Err() != nil {
+			// Cancelled by the cleanup above: the real failure is already
+			// recorded, and t.Errorf here would race the test finishing.
+			return
+		}
 		if err != nil || res.IsError {
 			t.Errorf("CallTool(wait_for_gate_change) = (%+v, %v), want success", res, err)
 			done <- waitResult{}
@@ -232,7 +251,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 		if out.Status != "approved" {
 			t.Fatalf("wait_for_gate_change result = %+v, want status=approved", out)
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(testutil.DefaultTimeout):
 		t.Fatal("wait_for_gate_change did not return after the trusted socket's state_put")
 	}
 }
@@ -270,18 +289,14 @@ func TestRunStatedaemonAggregatesApprovedMCPServer(t *testing.T) {
 		cancel()
 		select {
 		case <-serveErr:
-		case <-time.After(5 * time.Second):
+		case <-time.After(testutil.DefaultTimeout):
 			t.Error("runStatedaemon did not stop after context cancellation")
 		}
 	})
 
 	curatedSocket := statedaemon.CuratedSocketPath(stateDir)
-	deadline := time.Now().Add(2 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(curatedSocket); err == nil {
-			break
-		}
-		time.Sleep(5 * time.Millisecond)
+	if err := testutil.WaitForUDS(curatedSocket, serveErr); err != nil {
+		t.Fatal(err)
 	}
 
 	httpClient := &http.Client{
@@ -304,7 +319,7 @@ func TestRunStatedaemonAggregatesApprovedMCPServer(t *testing.T) {
 	// mcpaggregator.Start never blocks its caller) -- poll for the proxied
 	// tool to appear rather than assuming it's ready the instant the
 	// curated socket itself is up.
-	deadline = time.Now().Add(15 * time.Second)
+	deadline := time.Now().Add(15 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
 		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "fake__ping"})
