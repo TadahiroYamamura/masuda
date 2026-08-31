@@ -9,6 +9,23 @@
 # rationale behind each step below (docs/INSTALLATION.md has the plain
 # instructions for running this script, not the why).
 #
+# Two modes, because the steps below are not all the same kind of thing:
+#
+#   (no flag)        Everything. Run this once per machine, and again after
+#                    editing this script, moving the repository, or
+#                    rebuilding masuda-net-helper (a rebuild clears its
+#                    capability). It also installs the boot unit below.
+#   --runtime-only   Only the state the kernel forgets at every boot: the
+#                    bridge, ip_forward, the iptables rules, and dnsmasq's
+#                    configuration. This is what masuda-vm-host.service runs
+#                    at boot, and what `systemctl restart masuda-vm-host`
+#                    re-applies if something tears it down mid-session.
+#
+# The boot unit deliberately does *not* run the full script. Doing so would
+# put `apt-get` and `go build` on the boot path, which means host networking
+# would fail to come up whenever the working tree happens not to compile --
+# binding the machine's network to the state of a source checkout.
+#
 # Requires: linux-image-generic and Cloud Hypervisor/virtiofsd already
 # installed (docs/INSTALLATION.md) -- this script doesn't fetch those
 # itself; the former is a simple apt package this script *does* install,
@@ -23,12 +40,28 @@ BRIDGE_CIDR="$BRIDGE_ADDR/24"
 BRIDGE_SUBNET=192.168.200.0/24
 DHCP_RANGE_START=192.168.200.10
 DHCP_RANGE_END=192.168.200.200
-DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/masuda"
-NET_HELPER="$HOME/.local/bin/masuda-net-helper"
+# HOME is deliberately allowed to be unset here. systemd does not put it in
+# a unit's environment, and --runtime-only touches neither of these -- they
+# belong to step_kernel and step_net_helper, which only the full run
+# reaches. Under `set -u` a bare $HOME would abort the boot path before it
+# did anything (confirmed live: the unit failed on exactly this). The full
+# run checks for HOME explicitly instead, below.
+DATA_HOME="${XDG_DATA_HOME:-${HOME:-}/.local/share}/masuda"
+NET_HELPER="${HOME:-}/.local/bin/masuda-net-helper"
 # Must match internal/sandbox.egressProxyPort (Issue #11).
 EGRESS_PROXY_PORT=39218
 EGRESS_PROXY_MARK=0x1
 EGRESS_PROXY_RT_TABLE=100
+
+RUNTIME_ONLY=0
+case "${1:-}" in
+"") ;;
+--runtime-only) RUNTIME_ONLY=1 ;;
+*)
+	echo "usage: $0 [--runtime-only]" >&2
+	exit 2
+	;;
+esac
 
 log() { echo "[setup-vm-host] $*"; }
 
@@ -44,12 +77,14 @@ if [ ! -f go.mod ] || [ ! -d cmd/masuda-net-helper ]; then
 	exit 1
 fi
 
+# Only what both modes actually use. Anything a human's shell has but a
+# systemd unit's PATH does not (/usr/local/sbin:/usr/local/bin:/usr/sbin:
+# /usr/bin:/sbin:/bin, no $HOME) has to be required by the full run alone --
+# requiring `go` here made the boot path fail on a host where everything it
+# needed was present (confirmed live).
 require_cmd sudo "this script needs sudo for a handful of one-time host-level steps (see docs/INSTALLATION.md)"
 require_cmd ip "install iproute2"
 require_cmd iptables "install iptables"
-require_cmd go "install the Go toolchain first"
-require_cmd cloud-hypervisor "install Cloud Hypervisor first (docs/INSTALLATION.md) -- no standard apt package, this script won't guess a download URL"
-require_cmd virtiofsd "install virtiofsd first (docs/INSTALLATION.md) -- same reason as cloud-hypervisor above"
 
 # fakeroot/e2fsprogs: internal/rootfs.Build's dependencies (Issue #31 M2).
 # Ordinary apt packages, safe for this script to install directly (unlike
@@ -258,11 +293,21 @@ step_egress_proxy() {
 # the host's other networks. Guest IPs come from DHCP rather than static
 # per-VM config:
 # docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md
-step_dnsmasq() {
+# Split from step_dnsmasq so the boot path never reaches apt: installing a
+# package needs the network, which is the very thing this script is bringing
+# up.
+step_dnsmasq_install() {
 	if ! command -v dnsmasq >/dev/null 2>&1; then
 		log "installing dnsmasq"
 		sudo apt-get update
 		sudo apt-get install -y dnsmasq
+	fi
+}
+
+step_dnsmasq() {
+	if ! command -v dnsmasq >/dev/null 2>&1; then
+		echo "error: dnsmasq is not installed -- run this script without --runtime-only first" >&2
+		exit 1
 	fi
 	local conf=/etc/dnsmasq.d/masuda-vm.conf
 	local desired
@@ -294,12 +339,89 @@ CONF
 	sudo systemctl restart dnsmasq
 }
 
+# The unit runs this same script rather than duplicating its steps, so there
+# is one place that knows how the bridge and the rules are built. ExecStart
+# carries the absolute path this script was invoked from: move the
+# repository and the unit points at nothing, which is why the full run
+# rewrites it every time.
+#
+# RemainAfterExit=yes is what makes `systemctl status` answer "is the host
+# set up?" -- active (exited) means applied, inactive means not. Without it
+# a successful run leaves the unit looking dead, indistinguishable from
+# never having run. The cost is that `start` becomes a no-op once applied,
+# so re-applying is `restart`.
+#
+# `enable --now`, not plain `enable`: the full run has just applied the same
+# runtime state itself, so starting the unit here is redundant work (a
+# second, idempotent pass that reports everything already present). It is
+# worth that second because the alternative leaves the unit sitting at
+# inactive on a host that is in fact fully set up -- exactly the "looks
+# broken but isn't" reading this flag was added to prevent.
+step_boot_unit() {
+	local unit=/etc/systemd/system/masuda-vm-host.service
+	local script_path repo_root
+	script_path=$(readlink -f "$0")
+	# The script refuses to run outside the repository root (the go.mod
+	# check at the top), so the unit has to cd there for it.
+	repo_root=$(dirname "$(dirname "$script_path")")
+	local desired
+	desired=$(
+		cat <<UNIT
+[Unit]
+Description=masuda VM host networking (bridge, NAT, egress filtering, dnsmasq)
+Documentation=https://github.com/TadahiroYamamura/masuda/blob/main/docs/design/networking.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$repo_root
+ExecStart=$script_path --runtime-only
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+	)
+	if [ -f "$unit" ] && diff -q <(echo "$desired") "$unit" >/dev/null 2>&1; then
+		log "$unit already up to date"
+	else
+		log "writing $unit"
+		echo "$desired" | sudo tee "$unit" >/dev/null
+		sudo systemctl daemon-reload
+	fi
+	sudo systemctl enable --now masuda-vm-host.service
+}
+
+if [ "$RUNTIME_ONLY" = 1 ]; then
+	step_network
+	step_egress_filtering
+	step_dnsmasq
+	log "runtime state re-applied."
+	exit 0
+fi
+
+require_cmd go "install the Go toolchain first"
+require_cmd cloud-hypervisor "install Cloud Hypervisor first (docs/INSTALLATION.md) -- no standard apt package, this script won't guess a download URL"
+require_cmd virtiofsd "install virtiofsd first (docs/INSTALLATION.md) -- same reason as cloud-hypervisor above"
+
+if [ -z "${HOME:-}" ]; then
+	echo "error: HOME is not set. The full run needs it to place the kernel copy and masuda-net-helper;" >&2
+	echo "       only --runtime-only can work without it." >&2
+	exit 1
+fi
+
 step_rootfs_build_deps
 step_kernel
+step_dnsmasq_install
 step_network
 step_egress_filtering
 step_net_helper
 step_egress_proxy
 step_dnsmasq
+step_boot_unit
 
-log "done. See docs/design/networking.md for what each step configured and why."
+log "done. The boot unit will re-apply the runtime state on every start;"
+log "  systemctl status masuda-vm-host   -- was it applied?"
+log "  sudo systemctl restart masuda-vm-host   -- re-apply now"
+log "See docs/design/networking.md for what each step configured and why."

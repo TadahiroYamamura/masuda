@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -71,5 +72,25 @@ func TestEnsureTapAndReleaseTap(t *testing.T) {
 	// Not an error to release something already gone.
 	if err := ReleaseTap(id); err != nil {
 		t.Errorf("second ReleaseTap() error = %v, want nil", err)
+	}
+}
+
+// TestEnsureTapNamesTheFixWhenTheBridgeIsGone covers the case a reboot (or,
+// on WSL2, an idle shutdown) puts every developer in: the bridge that
+// scripts/setup-vm-host.sh created is kernel runtime state and is simply
+// gone. Needs no privileges and no setup, unlike the test above -- the
+// point is precisely that nothing is there.
+func TestEnsureTapNamesTheFixWhenTheBridgeIsGone(t *testing.T) {
+	_, err := EnsureTap("vmnettest02", "br-masuda-does-not-exist", "ubuntu")
+	if err == nil {
+		t.Fatal("EnsureTap() error = nil for a bridge that does not exist, want an error")
+	}
+	// The message has to carry the fix, not just the fact: a bare
+	// "no such device" from masuda-net-helper reads as a masuda bug rather
+	// than as "the host setup is gone" (Issue #40).
+	for _, want := range []string{"br-masuda-does-not-exist", "systemctl restart masuda-vm-host", "setup-vm-host.sh"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("EnsureTap() error = %q, want it to mention %q", err, want)
+		}
 	}
 }
