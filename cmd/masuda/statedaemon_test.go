@@ -195,7 +195,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 	type waitResult struct {
 		Status string `json:"status"`
 	}
-	// wait_for_gate_change blocks until a human resolves the gate, so a
+	// wait_for_gate_resolution blocks until a human resolves the gate, so a
 	// failed assertion below would otherwise leave this call in flight --
 	// and closing a connection that still has an outstanding call waits for
 	// that call to finish, i.e. forever. Registered *after* dial()'s
@@ -210,7 +210,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 		select {
 		case <-waitReturned:
 		case <-time.After(testutil.DefaultTimeout):
-			t.Error("wait_for_gate_change did not return after its context was cancelled")
+			t.Error("wait_for_gate_resolution did not return after its context was cancelled")
 		}
 	})
 
@@ -218,7 +218,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 	go func() {
 		defer close(waitReturned)
 		res, err := curated.CallTool(waitCtx, &mcp.CallToolParams{
-			Name:      "wait_for_gate_change",
+			Name:      "wait_for_gate_resolution",
 			Arguments: map[string]any{"name": "plan"},
 		})
 		if waitCtx.Err() != nil {
@@ -227,7 +227,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 			return
 		}
 		if err != nil || res.IsError {
-			t.Errorf("CallTool(wait_for_gate_change) = (%+v, %v), want success", res, err)
+			t.Errorf("CallTool(wait_for_gate_resolution) = (%+v, %v), want success", res, err)
 			done <- waitResult{}
 			return
 		}
@@ -249,10 +249,10 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 	select {
 	case out := <-done:
 		if out.Status != "approved" {
-			t.Fatalf("wait_for_gate_change result = %+v, want status=approved", out)
+			t.Fatalf("wait_for_gate_resolution result = %+v, want status=approved", out)
 		}
 	case <-time.After(testutil.DefaultTimeout):
-		t.Fatal("wait_for_gate_change did not return after the trusted socket's state_put")
+		t.Fatal("wait_for_gate_resolution did not return after the trusted socket's state_put")
 	}
 }
 

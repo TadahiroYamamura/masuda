@@ -10,7 +10,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// gateNames is the fixed, small set of gates wait_for_gate_change accepts --
+// gateNames is the fixed, small set of gates wait_for_gate_resolution accepts --
 // deliberately not "any key": exposing the generic store to Claude the way
 // the trusted tool set does would let it write (not just wait on) arbitrary
 // state, including the triage gate ADR-0029 says Claude must never resolve
@@ -76,11 +76,11 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.S
 	}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name: "wait_for_gate_change",
+		Name: "wait_for_gate_resolution",
 		Description: "Block until the given gate (\"plan\", \"review\", or \"triage\") is resolved by a human, " +
 			"then return its status. Returns immediately when the gate is already resolved, so calling it again " +
 			"after a dropped connection is safe and costs nothing. One call per wait, no polling.",
-	}, waitForGateChange(store))
+	}, waitForGateResolution(store))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "resolve_gate_from_chat",
@@ -151,20 +151,20 @@ func truncateLog(log string, max int) (string, bool) {
 	return log[len(log)-max:], true
 }
 
-type waitForGateChangeInput struct {
+type waitForGateResolutionInput struct {
 	Name string `json:"name" jsonschema:"the gate to wait on: \"plan\", \"review\", or \"triage\""`
 }
 
-type waitForGateChangeOutput struct {
+type waitForGateResolutionOutput struct {
 	Status   string `json:"status" jsonschema:"the gate's new status: approved, rejected, or halted"`
 	Feedback string `json:"feedback,omitempty" jsonschema:"human-provided feedback, if any"`
 }
 
-func waitForGateChange(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateChangeInput, waitForGateChangeOutput] {
-	return func(ctx context.Context, _ *mcp.CallToolRequest, in waitForGateChangeInput) (*mcp.CallToolResult, waitForGateChangeOutput, error) {
+func waitForGateResolution(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateResolutionInput, waitForGateResolutionOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, in waitForGateResolutionInput) (*mcp.CallToolResult, waitForGateResolutionOutput, error) {
 		if !gateNames[in.Name] {
-			return nil, waitForGateChangeOutput{}, fmt.Errorf(
-				"wait_for_gate_change: unknown gate %q, want \"plan\", \"review\", or \"triage\"", in.Name)
+			return nil, waitForGateResolutionOutput{}, fmt.Errorf(
+				"wait_for_gate_resolution: unknown gate %q, want \"plan\", \"review\", or \"triage\"", in.Name)
 		}
 		// An absent marker *is* the unresolved state (nothing ever writes a
 		// "pending" one -- orchestrator/*.py reads a missing key as pending
@@ -173,16 +173,16 @@ func waitForGateChange(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateC
 		// decide.
 		value, err := store.WaitForPresence(ctx, "gate:"+in.Name)
 		if err != nil {
-			return nil, waitForGateChangeOutput{}, fmt.Errorf("wait_for_gate_change: %w", err)
+			return nil, waitForGateResolutionOutput{}, fmt.Errorf("wait_for_gate_resolution: %w", err)
 		}
 		var marker struct {
 			Status   string `json:"status"`
 			Feedback string `json:"feedback,omitempty"`
 		}
 		if err := json.Unmarshal([]byte(value), &marker); err != nil {
-			return nil, waitForGateChangeOutput{}, fmt.Errorf("wait_for_gate_change: parsing marker: %w", err)
+			return nil, waitForGateResolutionOutput{}, fmt.Errorf("wait_for_gate_resolution: parsing marker: %w", err)
 		}
-		return nil, waitForGateChangeOutput{Status: marker.Status, Feedback: marker.Feedback}, nil
+		return nil, waitForGateResolutionOutput{Status: marker.Status, Feedback: marker.Feedback}, nil
 	}
 }
 

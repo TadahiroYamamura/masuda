@@ -1,6 +1,6 @@
 # ゲート
 
-plan gate・review gate・triage gateの3つについて、承認マーカーの管理、表示アーティファクトの整形、操作CLI、ループ側の待機プロトコルを扱う。待機の実体（`wait_for_gate_change`・KVストア）は`docs/design/state-daemon-mcp.md`、バックストップが逸脱を検知して再オープンする側の処理は`docs/design/build.md`、worktreeのcommit/pull/削除の実装は`docs/design/workspace.md`を参照。
+plan gate・review gate・triage gateの3つについて、承認マーカーの管理、表示アーティファクトの整形、操作CLI、ループ側の待機プロトコルを扱う。待機の実体（`wait_for_gate_resolution`・KVストア）は`docs/design/state-daemon-mcp.md`、バックストップが逸脱を検知して再オープンする側の処理は`docs/design/build.md`、worktreeのcommit/pull/削除の実装は`docs/design/workspace.md`を参照。
 
 ## ゲートマーカー
 
@@ -78,9 +78,9 @@ plan gateの再オープン（`orchestrator/implement_review_graph.py`の`_resol
 1. `/masuda-state/TASK.md`が存在しなければオーケストレーターを起動して生成させる
 2. `TASK.md`を読み、指示に従って作業する
 3. 作業完了後、**終了条件**（`TASK.md`本文に`DONE`という文字列を含む）と**ゲート条件**（`GATE:<name>`という文字列を含む、`<name>`は`plan`/`review`/`triage`のいずれか）を確認する。両者は排他——`DONE`ならtmuxセッションをkillしてセッション終了（コミット・質問・確認は不要）。`GATE:<name>`なら4へ。どちらもなければオーケストレーターを起動してTASK.mdを上書きさせ2へ戻る
-4. `mcp__masuda-gate__wait_for_gate_change`ツールを`name`にゲート名を渡して呼び、人間がゲートを解決するまでブロッキング待機する（ADR-0042。ゲートマーカーが存在するまで待つ1回のブロッキング呼び出しで、既に存在すれば即座に返る（ADR-0055）。ポーリングもwhileループも不要）
+4. `mcp__masuda-gate__wait_for_gate_resolution`ツールを`name`にゲート名を渡して呼び、人間がゲートを解決するまでブロッキング待機する（ADR-0042。ゲートマーカーが存在するまで待つ1回のブロッキング呼び出しで、既に存在すれば即座に返る（ADR-0055）。ポーリングもwhileループも不要）
    - 待機中に`masuda chat`で接続した人間が「進めていい」と伝えた場合、Claude自身が`mcp__masuda-gate__resolve_gate_from_chat`を呼んでよい（`name`・`status`（`"approved"`/`"rejected"`）・`feedback`）。ただし`triage`はこの経路を使えない（前述、サーバー側で拒否）
-   - `wait_for_gate_change`が返ったら（`resolve_gate_from_chat`経由・別ターミナルの`masuda plan/review/triage approve|reject|dismiss|redo|halt`経由のどちらでも）2へ戻る
+   - `wait_for_gate_resolution`が返ったら（`resolve_gate_from_chat`経由・別ターミナルの`masuda plan/review/triage approve|reject|dismiss|redo|halt`経由のどちらでも）2へ戻る
 
 Discovery/Blueprint段階（ホスト側で動く、サンドボックスなし）は`internal/hostloop/system_prompt.md.tmpl`が同じ仕組みを別テンプレートとして持つ。差分は次の2点のみ。
 

@@ -25,7 +25,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #
 # inotify-tools is deliberately NOT installed here -- the gate-wait step it
 # used to back (ADR-0017's single blocking `inotifywait` call) was replaced
-# by a `mcp__masuda-gate__wait_for_gate_change` MCP tool call, backed by the
+# by a `mcp__masuda-gate__wait_for_gate_resolution` MCP tool call, backed by the
 # workspace's state daemon rather than a watched file (Issue #35).
 #
 # systemd + kmod are for the VM boot path only (Issue #31 M5-1) -- Docker

@@ -2,7 +2,7 @@
 
 対象リポジトリが宣言した外部MCPサーバーを、ワークスペースの状態デーモンがChatクライアント（Claude）向けのcurated `*mcp.Server`へ集約し、tool群として取り込む仕組み。実装は`internal/statedaemon/mcpaggregator`（`aggregator.go`・`proxy.go`）、CLIは`cmd/masuda/mcp.go`。
 
-curated `*mcp.Server`自体・`wait_for_gate_change`等の組み込みtool・KVストアは`docs/design/state-daemon-mcp.md`を参照。`.masuda/settings.json`全体のスキーマは`docs/design/config.md`を参照（本書は`mcpServers`フィールドのみ扱う）。`.masuda/`のクローン同期全体は`docs/design/workspace.md`を参照。
+curated `*mcp.Server`自体・`wait_for_gate_resolution`等の組み込みtool・KVストアは`docs/design/state-daemon-mcp.md`を参照。`.masuda/settings.json`全体のスキーマは`docs/design/config.md`を参照（本書は`mcpServers`フィールドのみ扱う）。`.masuda/`のクローン同期全体は`docs/design/workspace.md`を参照。
 
 ## 宣言と承認の分離
 
@@ -47,7 +47,7 @@ curated `*mcp.Server`自体・`wait_for_gate_change`等の組み込みtool・KV�
 - プロキシ名の長さが`maxToolNameLen`（128、go-sdkの`validateToolName`と同じ上限）以内
 - `t.InputSchema`が`nil`でない
 
-`(*mcp.Server).AddTool`は低レベルの非ジェネリックAPIで、`InputSchema`が`nil`または`type`が`"object"`でない場合に**panicする**（go-sdk自身の実装）。子サーバーはtool名のallowlistで宣言されるだけでスキーマの中身までは検証されない信頼境界の外側にあるため、`registerProxy`は`AddTool`呼び出しを`defer recover()`で必ずガードする。1つの不正な子サーバーのスキーマが`wait_for_gate_change`等の既存curated toolごとデーモンプロセス全体を落とすことを防ぐためのガードであり、外すと他のワークスペースの操作にも波及しうる。
+`(*mcp.Server).AddTool`は低レベルの非ジェネリックAPIで、`InputSchema`が`nil`または`type`が`"object"`でない場合に**panicする**（go-sdk自身の実装）。子サーバーはtool名のallowlistで宣言されるだけでスキーマの中身までは検証されない信頼境界の外側にあるため、`registerProxy`は`AddTool`呼び出しを`defer recover()`で必ずガードする。1つの不正な子サーバーのスキーマが`wait_for_gate_resolution`等の既存curated toolごとデーモンプロセス全体を落とすことを防ぐためのガードであり、外すと他のワークスペースの操作にも波及しうる。
 
 ## CLI: `masuda mcp`
 

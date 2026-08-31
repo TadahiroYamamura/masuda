@@ -9,7 +9,7 @@
 | ソケット | ファイル名 | 公開するツール | 誰が繋ぐか |
 |---|---|---|---|
 | trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_apply`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く） |
-| curated | `daemon-curated.sock` | `wait_for_gate_change`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
+| curated | `daemon-curated.sock` | `wait_for_gate_resolution`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
 
 両ソケットとも`internal/statedaemon/mcpserver/uds.go`の`serveUDS`が待ち受ける。バインド前に同名の残存ソケットファイルを削除してから`net.Listen("unix", ...)`し、`os.Chmod(socketPath, 0o600)`で他ユーザーからのアクセスを塞ぐ。`mcp.NewStreamableHTTPHandler`でMCPサーバーをHTTP over UDSとして配線しており、tool定義の中身には関知しない——`ServeCuratedServerUDS`はどんな`*mcp.Server`でも受け取れる形になっている。
 
@@ -59,7 +59,7 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 ## トラステッドMCPツール・クライアント
 
-トラステッド側5toolの定義は`internal/statedaemon/mcpserver/server.go`の`New(store)`。`state_get`/`state_list`は`store`の対応メソッドをそのまま呼ぶだけ、`state_put`/`state_delete`/`state_apply`はエラーを`fmt.Errorf`でラップして返す。ブロッキング待機はこちらには無い——待つ対象はゲートだけであり、それはcurated setの`wait_for_gate_change`が「何を待っているか」を言える形で持つ（ADR-0055）。
+トラステッド側5toolの定義は`internal/statedaemon/mcpserver/server.go`の`New(store)`。`state_get`/`state_list`は`store`の対応メソッドをそのまま呼ぶだけ、`state_put`/`state_delete`/`state_apply`はエラーを`fmt.Errorf`でラップして返す。ブロッキング待機はこちらには無い——待つ対象はゲートだけであり、それはcurated setの`wait_for_gate_resolution`が「何を待っているか」を言える形で持つ（ADR-0055）。
 
 `state_apply`のopは`{"op": "check"|"put"|"delete", "key": ..., "value": ...}`で、`value`は省略可能。`check`で省略すると「そのキーが存在しないこと」の表明になるため、「不在」と「空文字列」は区別される。
 
@@ -74,14 +74,14 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 `internal/statedaemon/mcpserver/curated.go`の`NewCurated(store)`が返す2toolのみ。Claudeのメインセッション（サブエージェントには渡らない）が使う。
 
-- **`wait_for_gate_change`**（`waitForGateChange`）: `name`は`gateNames = {"plan", "review", "triage"}`のいずれかのみ許可。`store.WaitForPresence(ctx, "gate:"+name)`をブロッキング呼び出しし、マーカーJSON（`status`/`feedback`）をパースして返す。マーカーの不在が未解決を意味するため、待つ条件は「キーが存在すること」そのものになる——既に解決済みのゲートに対しては即座に返り、接続断後の呼び直しも安全（ADR-0055）
+- **`wait_for_gate_resolution`**（`waitForGateResolution`）: `name`は`gateNames = {"plan", "review", "triage"}`のいずれかのみ許可。`store.WaitForPresence(ctx, "gate:"+name)`をブロッキング呼び出しし、マーカーJSON（`status`/`feedback`）をパースして返す。マーカーの不在が未解決を意味するため、待つ条件は「キーが存在すること」そのものになる——既に解決済みのゲートに対しては即座に返り、接続断後の呼び直しも安全（ADR-0055）
 - **`resolve_gate_from_chat`**（`resolveGateFromChat`）: `masuda chat`での対話中に人間が「進めていい」と言った場合の自己承認用。`name`は`chatResolvableGateNames = {"plan", "review"}`のみ許可——**`"triage"`はサーバー側で拒否される**（ADR-0029: triage対象のエージェント自身がtriageゲートを閉じてはならないという規約を、この1点だけ技術的に強制する）。`status`は`"approved"`/`"rejected"`のみ許容し、`gate:`+nameへ`{status, feedback, decided_at}`をPutする
 
 `cmd/masuda/statedaemon.go`の`runStatedaemon`は`curated := mcpserver.NewCurated(store)`を1個だけ構築し、`ServeCuratedServerUDS`とマウント後の`mcpaggregator.Start`（子MCPサーバーのプロキシtool登録）の両方がこの同一インスタンスへツールを追加登録していく。子MCPサーバーの承認・集約の詳細は`docs/design/mcp-child-servers.md`を参照。
 
 ## MCPツール呼び出しのタイムアウト対策
 
-Claude Code自身のMCPクライアントは、ツール呼び出しに対して1分未満のハード・ウォールクロックタイムアウトを持つ（MCP側のprogress通知では延長されない）。人間のゲート承認待ちがこれを超えるのは通常のことなので、`wait_for_gate_change`を配線する`--mcp-config`の**サーバーごとの`"timeout"`フィールド**に`604800000`（7日、ミリ秒）を設定して上書きする必要がある。設定箇所は3つ、いずれも欠かすとゲート待機が数十秒で静かに失敗する。
+Claude Code自身のMCPクライアントは、ツール呼び出しに対して1分未満のハード・ウォールクロックタイムアウトを持つ（MCP側のprogress通知では延長されない）。人間のゲート承認待ちがこれを超えるのは通常のことなので、`wait_for_gate_resolution`を配線する`--mcp-config`の**サーバーごとの`"timeout"`フィールド**に`604800000`（7日、ミリ秒）を設定して上書きする必要がある。設定箇所は3つ、いずれも欠かすとゲート待機が数十秒で静かに失敗する。
 
 - `internal/hostloop/hostloop.go`の`mcpConfigJSON`（`mcpToolTimeoutMillis`定数）: Discovery/Blueprint段階のホストループ自身の`claude`プロセス向け
 - `runtime/entrypoint.sh`の`MCP_CONFIG`変数

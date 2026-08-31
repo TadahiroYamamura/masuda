@@ -183,14 +183,14 @@ func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
 }
 
 // mcpGateServerName is the name Claude's tool list shows the curated gate
-// MCP server under (e.g. mcp__masuda-gate__wait_for_gate_change) -- must
+// MCP server under (e.g. mcp__masuda-gate__wait_for_gate_resolution) -- must
 // match what runtime/CLAUDE.md and system_prompt.md.tmpl instruct Claude to
 // call.
 const mcpGateServerName = "masuda-gate"
 
 // mcpToolTimeoutMillis is the per-server "timeout" Claude Code's MCP client
 // enforces on every tool call to masuda-gate. Confirmed live: without this,
-// Claude Code aborts a wait_for_gate_change call on its own hard wall-clock
+// Claude Code aborts a wait_for_gate_resolution call on its own hard wall-clock
 // MCP_TOOL_TIMEOUT well under a minute ("MCP tool idle timeout" -- progress
 // notifications do NOT extend this one, per Claude Code's own error text),
 // long before any real human gets around to approving a gate. 7 days is a
@@ -422,7 +422,7 @@ func Start(id, worktreeDir, stateDir, task string) error {
 	// idle-timeout abort (distinct from the per-server "timeout" above,
 	// which covers the hard wall-clock one) as defense in depth -- belt and
 	// suspenders, since only the hard timeout was confirmed live to matter
-	// for wait_for_gate_change specifically.
+	// for wait_for_gate_resolution specifically.
 	claudeCmd := fmt.Sprintf(
 		"CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT=0 claude --allowedTools %s --agents %s --append-system-prompt-file %s --mcp-config %s",
 		shellQuote(allowedTools(stateDir)), shellQuote(agentsJSON), shellQuote(promptPath), shellQuote(mcpConfigJSON(relayPort)),

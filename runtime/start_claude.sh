@@ -15,7 +15,7 @@ fi
 # this container/VM's whole lifetime -- just resolve the same address again
 # rather than starting a second one. timeout (ms, 7 days): see
 # runtime/entrypoint.sh -- confirmed live that without this, Claude Code
-# aborts a wait_for_gate_change call on its own hard wall-clock MCP tool
+# aborts a wait_for_gate_resolution call on its own hard wall-clock MCP tool
 # timeout well under a minute.
 MCP_RELAY_ADDR=$(sed -n 's/.*masuda\.mcp_relay=\([^ ]*\).*/\1/p' /proc/cmdline)
 if [ -z "$MCP_RELAY_ADDR" ]; then

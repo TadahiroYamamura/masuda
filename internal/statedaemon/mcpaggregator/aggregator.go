@@ -40,7 +40,7 @@ const childStartTimeout = 30 * time.Second
 // spawned for repoRoot's approved, declared MCP servers, and the tools it
 // proxied from each onto the curated server. One broken or misconfigured
 // child must never prevent the daemon's own built-in curated tools
-// (wait_for_gate_change, resolve_gate_from_chat) from working -- every
+// (wait_for_gate_resolution, resolve_gate_from_chat) from working -- every
 // failure path in this package logs and skips rather than propagating an
 // error out of Start.
 type Aggregator struct {

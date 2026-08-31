@@ -64,7 +64,7 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
 1. `<stateDir>/TASK.md`が存在しなければオーケストレーター（後述の`MASUDA_STATE_DIR=<stateDir> <python> <script>`コマンド）を起動してTASK.mdを生成させ、2へ
 2. TASK.mdを読み、指示に従って作業する
 3. 終了条件（本文に`DONE`を含む）・ゲート条件（本文に`GATE:<name>`を含む、`plan`または`triage`）を確認する。終了条件ならtmuxセッションをkillして終了、ゲート条件なら4へ、どちらでもなければオーケストレーターを再起動して2へ戻る
-4. `mcp__masuda-gate__wait_for_gate_change`でブロッキング待機する
+4. `mcp__masuda-gate__wait_for_gate_resolution`でブロッキング待機する
 
 ゲート待機・解決（`resolve_gate_from_chat`、triageゲートの特別扱い等）の詳細は`docs/design/gates.md`を参照。このテンプレートは「オーケストレーター起動コマンドの組み立て」と「終了/ゲート条件の文字列規約」だけを担い、ゲートの承認/却下ロジック自体は持たない。
 

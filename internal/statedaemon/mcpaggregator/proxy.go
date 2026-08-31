@@ -15,7 +15,7 @@ const maxToolNameLen = 128
 // registerProxy registers a transparent proxy for child tool t onto
 // curated, namespaced as "<serverName>__<t.Name>" to avoid collisions
 // between child servers (and with curated's own built-in
-// wait_for_gate_change/resolve_gate_from_chat, which no server name can
+// wait_for_gate_resolution/resolve_gate_from_chat, which no server name can
 // equal since "__" never appears in a bare tool call). Uses the low-level,
 // non-generic (*mcp.Server).AddTool -- t's schema is only known at
 // runtime (it comes from ListTools against an external process, not a
@@ -28,7 +28,7 @@ const maxToolNameLen = 128
 // by name, not a schema review) -- AddTool panics on a missing or
 // malformed InputSchema (see its doc comment in go-sdk), and one
 // misbehaving child must never be able to crash the whole state daemon
-// (wait_for_gate_change and friends would go down with it). recover here
+// (wait_for_gate_resolution and friends would go down with it). recover here
 // turns that into a skip-and-log instead.
 //
 // Reports whether registration happened.

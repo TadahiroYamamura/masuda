@@ -101,7 +101,7 @@ def test_plan_done_without_a_marker_means_await_g1():
     """Unresolved is the *absence* of a marker, not a marker saying so:
     internal/gate never writes a "pending" one, and nothing may treat a
     present marker as anything but a decision waiting to be taken -- the
-    daemon's own wait_for_gate_change returns the moment the key exists, so a
+    daemon's own wait_for_gate_resolution returns the moment the key exists, so a
     marker that detect_phase decided to ignore would spin the loop.
     """
     write_plan()

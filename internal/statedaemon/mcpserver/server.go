@@ -2,7 +2,7 @@
 // full trusted tool set (state_get/state_put/state_list/state_delete/
 // state_apply). This is the "trusted" side of Issue #35's design
 // (host CLI, orchestrator/*.py) -- the curated, Claude-facing tool set
-// (e.g. wait_for_gate_change) is a separate, narrower server built on the
+// (e.g. wait_for_gate_resolution) is a separate, narrower server built on the
 // same Store, added in a later step.
 package mcpserver
 
@@ -17,7 +17,7 @@ import (
 // New returns an MCP server exposing store's Get/Put/Delete/List surface
 // as tools. Blocking waits are deliberately absent here: the only thing
 // anything waits on is a gate, and that belongs to the curated set
-// (NewCurated's wait_for_gate_change), which can state the condition it is
+// (NewCurated's wait_for_gate_resolution), which can state the condition it is
 // waiting for instead of asking for the next change to anything. Callers serve it over whatever transport
 // fits the caller (UDS today; see mcp.NewStreamableHTTPHandler).
 func New(store *statedaemon.Store) *mcp.Server {
@@ -33,7 +33,7 @@ func New(store *statedaemon.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "state_put",
-		Description: "Set a key's value, persist it, and wake anyone waiting on that key (e.g. the curated set's wait_for_gate_change).",
+		Description: "Set a key's value, persist it, and wake anyone waiting on that key (e.g. the curated set's wait_for_gate_resolution).",
 	}, put(store))
 
 	mcp.AddTool(server, &mcp.Tool{

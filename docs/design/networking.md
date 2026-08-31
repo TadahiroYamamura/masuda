@@ -51,7 +51,7 @@ masuda自身はゲストIPを割り当てない。ゲストは起動時にDHCP�
 
 ### 存在理由（機構のみ）
 
-Claude Codeの`--mcp-config`は`http://host:port`形式のURLしか受け付けず、Unix domain socketを直接指定できない。一方、Claudeが実際に呼ぶ`mcp__masuda-gate__wait_for_gate_change`等のcurated tool set（ADR-0042）は、ワークスペースごとの状態デーモンがUnix domain socket（`statedaemon.CuratedSocketPath`）でのみ提供する。この間を橋渡しするのが`masuda internal mcp-relay`。
+Claude Codeの`--mcp-config`は`http://host:port`形式のURLしか受け付けず、Unix domain socketを直接指定できない。一方、Claudeが実際に呼ぶ`mcp__masuda-gate__wait_for_gate_resolution`等のcurated tool set（ADR-0042）は、ワークスペースごとの状態デーモンがUnix domain socket（`statedaemon.CuratedSocketPath`）でのみ提供する。この間を橋渡しするのが`masuda internal mcp-relay`。
 
 ### 中継本体
 

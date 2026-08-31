@@ -15,7 +15,7 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
      ```
    - ゲート条件を満たしていれば → 4へ
    - どちらも満たしていなければ → LangGraph を起動して `/masuda-state/TASK.md` を上書きさせ、2 へ戻る
-4. `mcp__masuda-gate__wait_for_gate_change` ツールを呼び、`name`にTASK.mdの`GATE:<name>`
+4. `mcp__masuda-gate__wait_for_gate_resolution` ツールを呼び、`name`にTASK.mdの`GATE:<name>`
    （`plan`・`review`・`triage`のいずれか）を渡して、人間がゲートを解決するまでブロッキング
    待機する（Issue #35：ADR-0017の`inotifywait`単発ブロッキング呼び出しに相当する、状態
    デーモン経由のMCPツール呼び出し。ツール呼び出し自体が単発のブロッキング呼び出しなので、
@@ -32,7 +32,7 @@ worktree）ではなく`/masuda-state`配下に置かれる（下記「注意」
      コンテナで実行されているという、より広い意味での権限境界の欠如自体は残っている）。
      `masuda chat`は懸念の対話・事実確認に使ってよいが、最終判断は必ず人間がホスト側から
      `masuda triage dismiss/redo/halt`で独立に記録する。
-   - `wait_for_gate_change`が返ったら（自分で`resolve_gate_from_chat`を呼んだ場合・別ターミナルの
+   - `wait_for_gate_resolution`が返ったら（自分で`resolve_gate_from_chat`を呼んだ場合・別ターミナルの
      `masuda plan/review/triage approve|reject|dismiss|redo|halt`で解決された場合のどちらでも）、
      2へ戻ってLangGraphを起動する
 

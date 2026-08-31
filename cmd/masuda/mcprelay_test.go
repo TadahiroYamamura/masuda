@@ -68,7 +68,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	defer session.Close()
 
 	// Deferred after session.Close() so it runs before it (defers are LIFO):
-	// wait_for_gate_change only returns when a gate resolves, so a failed
+	// wait_for_gate_resolution only returns when a gate resolves, so a failed
 	// assertion below would leave the call in flight, and closing a
 	// connection with an outstanding call waits for that call forever. See
 	// statedaemon_test.go's equivalent for the full reasoning.
@@ -79,7 +79,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 		select {
 		case <-waitReturned:
 		case <-time.After(testutil.DefaultTimeout):
-			t.Error("wait_for_gate_change did not return after its context was cancelled")
+			t.Error("wait_for_gate_resolution did not return after its context was cancelled")
 		}
 	}()
 
@@ -88,14 +88,14 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	go func() {
 		defer close(waitReturned)
 		res, err := session.CallTool(waitCtx, &mcp.CallToolParams{
-			Name:      "wait_for_gate_change",
+			Name:      "wait_for_gate_resolution",
 			Arguments: map[string]any{"name": "plan"},
 		})
 		if waitCtx.Err() != nil {
 			return // cancelled by the deferred cleanup; the real failure is already recorded
 		}
 		if err != nil || res.IsError {
-			t.Errorf("CallTool(wait_for_gate_change) via relay = (%+v, %v), want success", res, err)
+			t.Errorf("CallTool(wait_for_gate_resolution) via relay = (%+v, %v), want success", res, err)
 			close(done)
 			return
 		}
@@ -110,7 +110,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Fatal("wait_for_gate_change returned before the gate was resolved")
+		t.Fatal("wait_for_gate_resolution returned before the gate was resolved")
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -124,7 +124,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 			t.Fatalf("status via relay = %q, want %q", status, "approved")
 		}
 	case <-time.After(testutil.DefaultTimeout):
-		t.Fatal("wait_for_gate_change via relay did not return after the gate was resolved")
+		t.Fatal("wait_for_gate_resolution via relay did not return after the gate was resolved")
 	}
 
 	cancel()

@@ -128,7 +128,7 @@ func TestMCPConfigJSONIsValidAndPointsAtTheGivenPort(t *testing.T) {
 		t.Fatalf("mcpConfigJSON(54321) server entry = %+v, want type=http url=http://127.0.0.1:54321/", server)
 	}
 	// Confirmed live: without a generous per-server timeout override,
-	// Claude Code aborts a wait_for_gate_change call on its own hard
+	// Claude Code aborts a wait_for_gate_resolution call on its own hard
 	// wall-clock MCP tool timeout well under a minute -- long before any
 	// real human gets around to approving a gate.
 	if server.Timeout < 60*60*1000 {

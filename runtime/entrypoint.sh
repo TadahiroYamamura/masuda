@@ -28,7 +28,7 @@ if [ -z "$MCP_RELAY_ADDR" ]; then
     MCP_RELAY_ADDR="127.0.0.1:$MCP_RELAY_PORT"
 fi
 # timeout (ms, 7 days): confirmed live that without a generous per-server
-# override, Claude Code aborts a wait_for_gate_change call on its own hard
+# override, Claude Code aborts a wait_for_gate_resolution call on its own hard
 # wall-clock MCP tool timeout well under a minute -- long before any real
 # human gets around to approving a gate.
 MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http://$MCP_RELAY_ADDR/\",\"timeout\":604800000}}}"
@@ -85,7 +85,7 @@ fi
 # timeout abort (distinct from MCP_CONFIG's per-server "timeout" above,
 # which covers the hard wall-clock one) as defense in depth -- belt and
 # suspenders, since only the hard timeout was confirmed live to matter for
-# wait_for_gate_change specifically.
+# wait_for_gate_resolution specifically.
 #
 # The `--` before the prompt is required: --mcp-config takes a
 # space-separated *list* of configs, so without a terminator Claude Code

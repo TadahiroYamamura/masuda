@@ -48,7 +48,7 @@ func TestCuratedExposesExactlyTheHumanApprovalFlowTools(t *testing.T) {
 	for i, tool := range res.Tools {
 		names[i] = tool.Name
 	}
-	want := map[string]bool{"wait_for_gate_change": true, "resolve_gate_from_chat": true}
+	want := map[string]bool{"wait_for_gate_resolution": true, "resolve_gate_from_chat": true}
 	if len(names) != len(want) {
 		t.Fatalf("curated tool list = %v, want exactly %v", names, want)
 	}
@@ -69,11 +69,11 @@ func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
 	done := make(chan waitResult, 1)
 	go func() {
 		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "wait_for_gate_change",
+			Name:      "wait_for_gate_resolution",
 			Arguments: map[string]any{"name": "plan"},
 		})
 		if err != nil || res.IsError {
-			t.Errorf("CallTool(wait_for_gate_change) = (%+v, %v), want success", res, err)
+			t.Errorf("CallTool(wait_for_gate_resolution) = (%+v, %v), want success", res, err)
 			done <- waitResult{}
 			return
 		}
@@ -85,7 +85,7 @@ func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
 
 	select {
 	case <-done:
-		t.Fatal("wait_for_gate_change returned before the gate was resolved")
+		t.Fatal("wait_for_gate_resolution returned before the gate was resolved")
 	case <-time.After(100 * time.Millisecond):
 	}
 
@@ -96,24 +96,24 @@ func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
 	select {
 	case out := <-done:
 		if out.Status != "approved" || out.Feedback != "lgtm" {
-			t.Fatalf("wait_for_gate_change result = %+v, want status=approved feedback=lgtm", out)
+			t.Fatalf("wait_for_gate_resolution result = %+v, want status=approved feedback=lgtm", out)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("wait_for_gate_change did not return after the gate was resolved")
+		t.Fatal("wait_for_gate_resolution did not return after the gate was resolved")
 	}
 }
 
 func TestWaitForGateChangeRejectsUnknownGateName(t *testing.T) {
 	_, session := connectCurated(t)
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "wait_for_gate_change",
+		Name:      "wait_for_gate_resolution",
 		Arguments: map[string]any{"name": "not-a-real-gate"},
 	})
 	if err != nil {
 		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
 	}
 	if !res.IsError {
-		t.Fatal("wait_for_gate_change with an unknown gate name: IsError = false, want true")
+		t.Fatal("wait_for_gate_resolution with an unknown gate name: IsError = false, want true")
 	}
 }
 
