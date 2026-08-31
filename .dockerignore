@@ -1,7 +1,16 @@
 venv/
-__pycache__/
-*.pyc
-*.pyo
+
+# Python artifacts, with the ** prefix that makes these match at any depth.
+# A bare "__pycache__/" or "*.pyc" matches only at the context root: Docker
+# tests each pattern against the whole relative path, and neither * nor a
+# trailing / crosses a directory separator. Without the prefix these looked
+# like they were working while every nested __pycache__ shipped anyway --
+# including .pyc files for modules that no longer exist in the source
+# (implement_graph.py, deleted long ago) and for throwaway test files.
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
 fizzbuzz.py
 test_fizzbuzz.py
 TASK.md
