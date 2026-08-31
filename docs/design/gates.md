@@ -14,7 +14,7 @@ plan gate・review gate・triage gateの3つについて、承認マーカーの
 
 `internal/gate.Marker`（`{status, feedback, decided_at}`のJSON）が値。`Status`は`approved`・`rejected`・`halted`の3値で、`halted`はtriage専用（後述）で plan/review では使わない。**`pending`は存在しない**——まだ誰も判断していないゲートはキーそのものが無い（ADR-0055）。
 
-- `Approve(ctx, stateDir, n, feedback)` / `Reject(ctx, stateDir, n, feedback)`: マーカーを`approved`/`rejected`で書き込む。両方とも先に`clearDeviation`（後述の`artifact:DEVIATION.md`削除）を呼ぶ
+- `Approve(ctx, stateDir, n, feedback)` / `Reject(ctx, stateDir, n, feedback)`: マーカーを`approved`/`rejected`で書き込むだけで、`artifact:DEVIATION.md`を含む他のキーには触らない。逸脱の理由は決定に付属するものであり、決定を消費する側がマーカーと一緒に消す（後述）
 - `Halt(ctx, stateDir, n, reason)`: `halted`で書き込む。他のマーカー・ファイルは一切変更しない（triage_concern.jsonも残す）
 
 懸念内容そのもの（`triage_concern.json`）だけは例外で、サブエージェントが直接書くプレーンファイルのまま状態ディレクトリ直下に置かれる。これはmasuda自身のコード（Go CLI・`orchestrator/*.py`）だけがデーモンキーの読み書きをする、という設計境界の外側にある（サブエージェントはデーモンへの書き込み手段を持たない）。

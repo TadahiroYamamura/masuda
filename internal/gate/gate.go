@@ -305,23 +305,22 @@ func writeMarker(ctx context.Context, c *mcpclient.Client, n Name, m Marker) err
 	return c.Put(ctx, n.gateKey(), string(data))
 }
 
-// clearDeviation removes deviationKey if present — once a human has decided
-// on a reopened G1, the reason that reopened it no longer needs to keep
-// showing up on `masuda plan show`.
-func clearDeviation(ctx context.Context, c *mcpclient.Client) error {
-	return c.Delete(ctx, deviationKey)
-}
-
 // Approve writes an approved marker for gate n. feedback may be empty.
+//
+// It leaves deviationKey alone, as Reject and Halt do. Writing a decision
+// and consuming one are different jobs: the reason a reopened G1 is open
+// belongs to the decision until whoever acts on that decision takes both
+// away together (orchestrator/implement_review_graph.py's
+// _resolve_gate_reopen, in one state_apply). Clearing it here used to make
+// the orchestrator see a gate with a decision but no reason, read that as
+// "not opened yet", and reopen it -- which discarded the human's approval
+// outright until ADR-0055, and still cost a wasted round after it.
 func Approve(ctx context.Context, stateDir string, n Name, feedback string) error {
 	c, err := dial(ctx, stateDir)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-	if err := clearDeviation(ctx, c); err != nil {
-		return err
-	}
 	return writeMarker(ctx, c, n, Marker{Status: Approved, Feedback: feedback, DecidedAt: time.Now()})
 }
 
@@ -334,18 +333,14 @@ func Reject(ctx context.Context, stateDir string, n Name, feedback string) error
 		return err
 	}
 	defer c.Close()
-	if err := clearDeviation(ctx, c); err != nil {
-		return err
-	}
 	return writeMarker(ctx, c, n, Marker{Status: Rejected, Feedback: feedback, DecidedAt: time.Now()})
 }
 
 // Halt writes a halted marker for gate n (ADR-0029: triage-only in practice,
-// but generic over Name like Approve/Reject). Unlike Approve/Reject, this
-// deliberately clears nothing — halt's whole point is a dead end a human
-// must investigate manually, so every other piece of on-disk state
-// (including the triage_concern.json a human may still want to re-read via
-// `masuda triage show`) is left exactly as found.
+// but generic over Name like Approve/Reject). Halt's whole point is a dead
+// end a human must investigate manually, so every other piece of on-disk
+// state (including the triage_concern.json a human may still want to re-read
+// via `masuda triage show`) is left exactly as found.
 func Halt(ctx context.Context, stateDir string, n Name, reason string) error {
 	c, err := dial(ctx, stateDir)
 	if err != nil {

@@ -360,16 +360,40 @@ func TestHaltWritesHaltedMarker(t *testing.T) {
 	}
 }
 
-func TestHaltDoesNotClearDeviation(t *testing.T) {
-	stateDir := newTestDaemon(t)
-	put(t, stateDir, deviationKey, "既存の逸脱理由")
+// TestDecisionsLeaveTheDeviationForItsConsumer pins the half of the G1-reopen
+// protocol that lives on this side. orchestrator/implement_review_graph.py's
+// _resolve_gate_reopen reads "artifact:DEVIATION.md exists" as "this gate is
+// open", and deletes it together with the marker in the one state_apply that
+// takes the decision. A decision that cleared the deviation on its way in
+// therefore left the orchestrator looking at a gate that had an answer but no
+// question, which it read as "not opened yet" and reopened -- discarding the
+// human's approval outright before ADR-0055, and costing a wasted round after
+// it. Halt is here for the same reason it always was (ADR-0029: it clears
+// nothing at all), but the contract is no longer Halt-specific.
+func TestDecisionsLeaveTheDeviationForItsConsumer(t *testing.T) {
+	for name, decide := range map[string]func(context.Context, string) error{
+		"Approve": func(ctx context.Context, stateDir string) error {
+			return Approve(ctx, stateDir, Plan, "ok")
+		},
+		"Reject": func(ctx context.Context, stateDir string) error {
+			return Reject(ctx, stateDir, Plan, "直して")
+		},
+		"Halt": func(ctx context.Context, stateDir string) error {
+			return Halt(ctx, stateDir, Triage, "深刻な懸念のため停止")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			stateDir := newTestDaemon(t)
+			put(t, stateDir, deviationKey, "既存の逸脱理由")
 
-	if err := Halt(context.Background(), stateDir, Triage, "深刻な懸念のため停止"); err != nil {
-		t.Fatalf("Halt() error = %v, want nil", err)
-	}
+			if err := decide(context.Background(), stateDir); err != nil {
+				t.Fatalf("%s() error = %v, want nil", name, err)
+			}
 
-	if _, found := get(t, stateDir, deviationKey); !found {
-		t.Fatal("deviationKey must survive Halt() (halt leaves all other state untouched)")
+			if _, found := get(t, stateDir, deviationKey); !found {
+				t.Errorf("%s() removed the deviation; whoever consumes the decision takes it, together with the marker", name)
+			}
+		})
 	}
 }
 

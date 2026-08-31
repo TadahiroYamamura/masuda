@@ -96,13 +96,16 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   `_resolve_tdd_process_reopen`、`_resolve_tdd_finalization_reopen`
   （TDDステップ固有の2箇所）、`_resolve_interim_unresolved_reopen`（次節）。
 - `_resolve_gate_reopen`は3状態を扱う: (1) `DEVIATION_KEY`未設定＝初回検知——
-  古い`PLAN_GATE_KEY`が残っていれば削除してから`plan_reopened`フェーズへ、(2) pending
-  中——同じ理由を出し続けて待機、(3) 解決済み——承認なら`on_approved()`、却下なら
+  `plan_reopened`フェーズへ（`write_task_md`が`DEVIATION_KEY`を書いてゲートを開く）、
+  (2) マーカー未着——同じ理由を出し続けて待機、(3) 解決済み——承認なら`on_approved()`、却下なら
   `on_rejected(feedback)`を呼ぶ。この2つのコールバックは呼び出し元ごとに「何をもって
   approved/rejectedとするか」が異なる（例: 機械的逸脱の承認は「そのまま次のフェーズへ
   進む」、TDDステップ最終化の却下は「`_reset_tdd_step`で巻き戻してRedから再開」）。
-  ゲートマーカー（`DEVIATION_KEY`・`PLAN_GATE_KEY`）の消費はこの解決タイミングでのみ
-  行う。
+  `DEVIATION_KEY`と`PLAN_GATE_KEY`の消費はこの解決タイミングでのみ、1回の
+  `state_apply`で同時に行う。逆に言えば、決定を書く側（`masuda plan approve`等）は
+  `DEVIATION_KEY`に触ってはならない——触ると(3)ではなく(1)と判定され、ゲートが
+  開き直される（ADR-0055、`internal/gate`の
+  `TestDecisionsLeaveTheDeviationForItsConsumer`が固定している）。
 - 承認された機械的逸脱は`APPROVED_DEVIATIONS_KEY`に積まれ、以後の同じファイルへの
   逸脱を再検知しない。
 
