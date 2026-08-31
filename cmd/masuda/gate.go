@@ -33,20 +33,15 @@ func newGateCommand(n gate.Name) *cobra.Command {
 
 // gateStateDir resolves a workspace ID to its state directory (where gate
 // markers and the artifacts they judge live, per roadmap step 7 — never the
-// worktree itself).
-func gateStateDir(id string) (root, stateDir string, err error) {
-	root, err = repoRoot()
-	if err != nil {
-		return "", "", err
-	}
+// worktree itself). The workspace ID is the only input: state directories are
+// global (see internal/workspace), so this deliberately never consults the
+// cwd, and gate commands work from anywhere — including outside a git
+// repository (Issue #25).
+func gateStateDir(id string) (string, error) {
 	if !workspace.Exists(id) {
-		return "", "", fmt.Errorf("no workspace %q", id)
+		return "", fmt.Errorf("no workspace %q", id)
 	}
-	stateDir, err = workspace.StateDir(id)
-	if err != nil {
-		return "", "", err
-	}
-	return root, stateDir, nil
+	return workspace.StateDir(id)
 }
 
 func newGateShowCommand(n gate.Name) *cobra.Command {
@@ -56,7 +51,7 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, stateDir, err := gateStateDir(args[0])
+			stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
@@ -77,7 +72,7 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			root, stateDir, err := gateStateDir(args[0])
+			stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
@@ -89,7 +84,7 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 				return err
 			}
 			if n == gate.Review {
-				return finalizeReviewApproval(root, args[0])
+				return finalizeReviewApproval(args[0])
 			}
 			return nil
 		},
@@ -103,7 +98,7 @@ func newGateRejectCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			_, stateDir, err := gateStateDir(args[0])
+			stateDir, err := gateStateDir(args[0])
 			if err != nil {
 				return err
 			}
@@ -116,10 +111,23 @@ func newGateRejectCommand(n gate.Name) *cobra.Command {
 // pulls the workspace's branch back into repoRoot (fast-forward only — see
 // worktree.Pull) and tears down its worktree/sandbox/state directory, all
 // without ever pushing or merging into a separate integration branch.
-func finalizeReviewApproval(root, id string) error {
+//
+// The repository it acts on is the one `create` recorded for this workspace,
+// never the one the CLI happens to be invoked from: everything below commits,
+// fast-forwards or deletes, and running that against whichever repository the
+// cwd points at is exactly the failure Issue #25 hit in practice.
+func finalizeReviewApproval(id string) error {
 	info, err := workspace.Load(id)
 	if err != nil {
 		return err
+	}
+	root := info.RepoRoot
+	// A recorded root that no longer exists (the repository was moved or
+	// deleted after the workspace was created) would otherwise surface as a
+	// bare `git` failure from deep inside worktree.Commit, which reads as a
+	// masuda bug rather than as stale metadata the user has to fix.
+	if _, err := os.Stat(root); err != nil {
+		return fmt.Errorf("workspace %s records repository %s, which is no longer readable: %w", id, root, err)
 	}
 	if sandboxBackend.IsRunning(id) {
 		if err := sandboxBackend.Stop(id); err != nil {

@@ -11,6 +11,7 @@
 - **`resolveImage`/`resolveBase`**（`cmd/masuda/main.go:92,142`）: `--image`/`--base`（または`--into`）系フラグの解決。フラグが明示的に渡されていれば（`cmd.Flags().Changed`）その値を最優先で返し、渡されていなければ`.masuda/settings.json`の値、それも空なら呼び出し側が渡した組み込みデフォルトを返す。優先順位はCLIフラグ＞`settings.json`＞デフォルトの一本の連鎖。スキーマ・`settings.json`側の詳細は`docs/design/config.md`を参照
 - **`completeWorkspaceIDs`**（`cmd/masuda/main.go:115`）: 先頭引数が`<workspace-id>`であるほぼ全サブコマンド（chat、plan/review/triage show|approve|reject等、sandbox start|stop、workspace merge|remove等）が共有するシェル補完関数。`internal/workspace.List`が返す現在のリポジトリのワークスペース一覧からprefix一致するIDを返すだけで、リポジトリ外や一覧取得失敗時は補完候補なしにフォールバックする（エラーを表面化しない）
 - **`repoRoot`**（`cmd/masuda/main.go:68`）: `git rev-parse --show-toplevel`でカレントの masuda チェックアウトのルートを引く。worktree自体ではなく、worktreeの作成元になる「メインチェックアウト」を指す
+- **`gateStateDir`**（`cmd/masuda/gate.go:40`）: ワークスペースIDから状態ディレクトリを引く、plan/review/triageのゲート操作コマンド共通の入口。解決に使うのはIDだけで`repoRoot`を経由しない（状態ディレクトリはリポジトリ外のグローバルな場所にあるため）——したがってゲート操作はgitリポジトリの外からでも動く。`review approve`が反映先とするリポジトリも同様に`workspace.json`の`repo_root`から引く（`finalizeReviewApproval`）
 
 ## `masuda chat`: セッションアタッチ
 
