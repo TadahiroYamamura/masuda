@@ -4,6 +4,8 @@
 
 Accepted (2026-08-10)
 
+- 一部改訂: [[0055-gate-marker-is-an-unconsumed-decision-waited-on-by-presence]] — plan_redoにおけるゲートマーカーの消費と`PLAN_REDO_PENDING`の書き込みは、`state_apply`により1つの原子的操作になった。pendingマーカー自体は成果物書き換えとの橋渡しとして引き続き必要
+
 ## Context
 
 GitHub Issue #21は、`investigate_plan_graph.py`の`detect_phase`で発生した実際のバグを報告している。G1で人間がプランをreject（フィードバック付き）すると、`detect_phase`は`GATE_MARKER`をunlinkし、`plan_redo`フェーズへ遷移してplannerサブエージェントに再プランを指示する。ところがplannerが`plan/summary.md`・`plan/steps.json`を上書きする前に、[[0029-immediate-stop-escalation-dedicated-gate]]のtriageゲートによる中断（プロンプトインジェクション疑いの自己申告）が起きることがある。

@@ -6,6 +6,7 @@ Accepted (2026-08-17)
 
 - 一部改訂: [[0041-mcp-protocol-with-trusted-and-curated-surfaces]] — デーモンの通信プロトコルはMCP（JSON-RPC 2.0）に統一され、trusted用フルセットとClaude向けcurated setの2つのUDSソケットで公開される
 - 一部改訂: [[0042-mcp-tool-call-replaces-inotifywait-gate-wait]] — `WaitForChange`はゲート待機の実体として`wait_for_gate_change` toolから呼ばれる
+- 一部改訂: [[0055-gate-marker-is-an-unconsumed-decision-waited-on-by-presence]] — Decisionが挙げる5操作のうち`WaitForChange`は`WaitForPresence`（キーの存在を条件とするレベルトリガ）に置き換えられ、check/put/deleteを原子的に適用する`Apply`が加わった
 
 ## Context
 

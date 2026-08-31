@@ -38,8 +38,8 @@
 - **[0010](0010-plan-deviation-reopens-plan-gate.md)** プラン逸脱は自己申告+機械的バックストップの二段構えで検知しplan gateを再オープンする — *一部改訂: 0027, 0028, 0037*
 - **[0013](0013-review-rejection-reopens-implementation.md)** review gate却下はBuild段階を再オープンする — *一部改訂: 0027*
 - **[0029](0029-immediate-stop-escalation-dedicated-gate.md)** 最優先即時停止エスカレーションは専用ゲート（`masuda triage`）で解決する
-- **[0039](0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite.md)** redoの遷移は専用pendingマーカーでゲートマーカー消費と成果物書き換えを橋渡しする
-- **[0042](0042-mcp-tool-call-replaces-inotifywait-gate-wait.md)** GATE待機はinotifywaitではなくMCP tool呼び出しで行う — *一部改訂: 0050*
+- **[0039](0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite.md)** redoの遷移は専用pendingマーカーでゲートマーカー消費と成果物書き換えを橋渡しする — *一部改訂: 0055*
+- **[0042](0042-mcp-tool-call-replaces-inotifywait-gate-wait.md)** GATE待機はinotifywaitではなくMCP tool呼び出しで行う — *一部改訂: 0050, 0055*
 
 ### Discovery / Blueprint（調査・プラン）
 
@@ -98,9 +98,10 @@
 
 ### 状態デーモン・MCP
 
-- **[0040](0040-per-workspace-state-daemon-for-masuda-owned-state.md)** masuda自身が読み書きする状態はワークスペース単位の常駐デーモンで管理する — *一部改訂: 0041, 0042*
+- **[0040](0040-per-workspace-state-daemon-for-masuda-owned-state.md)** masuda自身が読み書きする状態はワークスペース単位の常駐デーモンで管理する — *一部改訂: 0041, 0042, 0055*
 - **[0041](0041-mcp-protocol-with-trusted-and-curated-surfaces.md)** デーモンの通信はMCPに統一し、trusted用フルセットとcurated setの2面をUDSで公開する — *一部改訂: 0043*
 - **[0043](0043-child-mcp-server-aggregator-with-project-user-config-split.md)** 子MCPサーバーのアグリゲータ化は宣言と承認を分離し、宣言のハッシュ値で承認を紐付ける
+- **[0055](0055-gate-marker-is-an-unconsumed-decision-waited-on-by-presence.md)** ゲートマーカーは「未消費の決定」だけを意味し、待機はその存在を条件とし、消費は原子的に行う
 
 ## 新しいADRを書くとき
 

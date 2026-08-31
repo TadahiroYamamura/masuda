@@ -5,6 +5,7 @@
 Accepted (2026-08-17)
 
 - 一部改訂: [[0050-design-docs-hold-current-state-adrs-hold-rationale]] — Consequencesが「CLAUDE.mdの『ADRは番号順に読むと議論の経緯が追える』という既存の案内が[[0017-inotifywait-for-gate-wait-polling]]と本ADRを繋ぐ」としている点。その案内はCLAUDE.mdから削除され、現在は`docs/adr/README.md`の索引が入口になっている。0017は索引から削除済み（Supersededのため）で、到達経路は本ADRのContextからの`[[...]]`リンクのみ
+- 一部改訂: [[0055-gate-marker-is-an-unconsumed-decision-waited-on-by-presence]] — 本ADRが導入した`wait_for_gate_change`は`wait_for_gate_resolution`へ改名され、意味論も「次の変化まで待つ」から「ゲートマーカーが存在するまで待ち、既に存在すれば即座に返す」へ変わった。trusted setの`state_wait_for_change`は削除された
 
 ## Context
 
