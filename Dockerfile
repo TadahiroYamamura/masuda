@@ -143,12 +143,18 @@ RUN claude install
 # marketplace repo and a copy out of its cache, so this is safe to bake in
 # at build time despite ADR-0001's no-API-billing constraint (nothing here
 # talks to the Anthropic API). Plugin/marketplace state lands in
-# ~/.claude/settings.json and ~/.claude/plugins/ -- neither is one of the
-# two files `sandbox.Start` bind-mounts from the host (~/.claude.json,
-# ~/.claude/.credentials.json), confirmed by inspecting ~/.claude.json's
-# contents after a real install: it holds only generic client metadata
-# (installMethod, machineID, ...), nothing plugin-related. So the bind
-# mount at container start can't shadow what's baked in here.
+# ~/.claude/settings.json and ~/.claude/plugins/, both of which stay exactly
+# as baked: nothing from the host reaches the guest's Claude configuration.
+# The only thing that crosses the boundary is the `claude setup-token` OAuth
+# token, handed over as CLAUDE_CODE_OAUTH_TOKEN via a separate read-only
+# share (internal/sandbox/claudetoken.go, runtime/entrypoint.sh).
+#
+# This used to read "neither is one of the two files sandbox.Start
+# bind-mounts from the host (~/.claude.json, ~/.claude/.credentials.json)",
+# which stopped being true when ADR-0044 removed the Docker execution
+# runtime -- a VM guest is a different kernel and shares no such files. It
+# is called out rather than quietly deleted because that stale sentence was
+# read as current at least once and produced a wrong analysis (Issue #45).
 RUN claude plugin marketplace add anthropics/claude-plugins-official
 
 # ttyd web terminal port (mapped to a per-container host port by masuda sandbox start,
