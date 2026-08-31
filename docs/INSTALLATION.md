@@ -66,6 +66,15 @@ docker build -t masuda-loop .
 bash scripts/setup-vm-host.sh
 ```
 
+**この実行は一度で済む。** ネットワーク設定（ブリッジ・NAT・iptables）はカーネルのランタイム状態で再起動のたびに消えるが、スクリプトが設置する`masuda-vm-host.service`がboot時に自動で復元する（ADR-0056）。WSL2ではアイドル停止でも消えるため、これが無いと起動のたびに再実行が必要になる。
+
+```bash
+systemctl status masuda-vm-host          # active (exited) なら適用済み
+sudo systemctl restart masuda-vm-host    # 手動で再適用したいとき
+```
+
+スクリプト自体の再実行が要るのは、スクリプトを変更したとき、リポジトリを移動したとき（unitが絶対パスを持つ）、`masuda-net-helper`を再ビルドしたとき（capabilityが失われる）の3つ。
+
 行っている内容（詳細・理由は各手順に対応するコミット・スクリプト自身のコメントを参照）:
 
 - `fakeroot`・`e2fsprogs`のインストール（`internal/rootfs.Build`がDockerイメージの所有権を保ったままext4イメージへ変換するために使用）

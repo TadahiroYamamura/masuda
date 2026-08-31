@@ -88,6 +88,7 @@
 - **[0051](0051-resolv-conf-fixed-at-vm-boot-in-sysinit-layer.md)** `/etc/resolv.conf`の差し替えはVM起動時のoneshot unitで行い、systemd-resolvedと同じsysinit層に置く
 - **[0053](0053-privileged-commands-declared-and-run-in-disposable-vm.md)** target repoが要求する特権操作は、宣言＋承認された使い捨てVMで実行し、メインサンドボックスVMには一切root/Docker権限を与えない
 - **[0054](0054-vm-images-declared-as-directories-under-masuda-images.md)** VMイメージは`.masuda/images/<name>/`のディレクトリ単位で宣言し、`settings.json`の`image`はそのエントリ名を指す
+- **[0056](0056-vm-host-network-persisted-by-oneshot-unit-rerunning-the-setup-script.md)** VMホストのネットワーク設定は、セットアップスクリプト自身を`--runtime-only`で再実行するsystemd oneshot unitで永続化する
 
 ### 設定・配布・自己更新
 

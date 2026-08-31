@@ -68,7 +68,22 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 
 ## VMホスト一次セットアップ
 
-`scripts/setup-vm-host.sh`は再実行しても安全な冪等スクリプト。**masuda自身のコードはこのスクリプトを呼ばない**——sudoを要する手順は人間が明示的に一度（またはmasuda-net-helperを再ビルドしてcapabilityが失われた時に再度）実行するものとして切り離されている。実行コマンド自体は`docs/INSTALLATION.md`「3.5. VM実行基盤のセットアップ」節を参照。ここでは各ステップが何をするかだけを示す（`setup-vm-host.sh:278-284`の実行順、7ステップ）。
+`scripts/setup-vm-host.sh`は再実行しても安全な冪等スクリプト。**masuda自身のコードはこのスクリプトを直接は呼ばない**——sudoを要する手順は人間が明示的に実行するものとして切り離されている。実行コマンド自体は`docs/INSTALLATION.md`「3.5. VM実行基盤のセットアップ」節を参照。
+
+2つのモードがある（ADR-0056）。
+
+| | 実行するステップ | いつ |
+|---|---|---|
+| フル（引数なし） | 全ステップ＋`step_boot_unit` | 初回、スクリプト変更後、`masuda-net-helper`再ビルド後（capabilityが失われるため） |
+| `--runtime-only` | `step_network`・`step_egress_filtering`・`step_dnsmasq` | boot時にunitが自動実行。`sudo systemctl restart masuda-vm-host`で手動再適用 |
+
+この分割は、下の各ステップのうち**bridge・iptables・sysctlがカーネルのランタイム状態で再起動のたびに消える**のに対し、apt導入・vmlinuz複製・`go build`は消えないことに対応する。WSL2ではアイドル停止でも消えるため頻度が高い。
+
+`systemctl status masuda-vm-host`が「ホストはセットアップ済みか」に答える（`active (exited)`＝適用済み、`inactive`＝未適用）。適用済みの状態では`start`がno-opになるため、再適用の動詞は`restart`。
+
+masuda側は`internal/sandbox.EnsureTap`の入口（`requireBridge`）でbridgeの存在を確認し、無ければ`systemctl restart masuda-vm-host`を名指しで案内して落ちる。
+
+以下は各ステップが何をするか。
 
 - **`step_rootfs_build_deps`**（`:56-67`）: `fakeroot`・`mkfs.ext4`（`e2fsprogs`）が無ければaptでインストールする。`internal/rootfs.Build`が使う。
 - **`step_kernel`**（`:72-90`）: `/boot/vmlinuz-*-generic`の最新版を探し（無ければ`linux-image-generic`をaptでインストールしてから再取得）、`$XDG_DATA_HOME/masuda/vmlinuz-<version>`へmode 0644・実行ユーザー所有でコピーする。
@@ -76,9 +91,12 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 - **`step_egress_filtering`**（`:156-212`）: ブリッジ発のTCP 443を`masuda-egress-proxy`へREDIRECTするiptablesルール、およびDNS（UDP/TCP 53）以外のブリッジegressを制限するFORWARDルールを設定する。仕組みの詳細・関連ADRは`docs/design/egress-filter.md`を参照
 - **`step_net_helper`**（`:219-225`）: `cmd/masuda-net-helper`を`~/.local/bin/masuda-net-helper`へ`go build`し、`sudo setcap cap_net_admin+ep`を無条件に毎回適用する。
 - **`step_egress_proxy`**（`:231-237`）: `cmd/masuda-egress-proxy`を`~/.local/bin/masuda-egress-proxy`へ`go build`する（setcap不要、詳細は`docs/design/egress-filter.md`）。
-- **`step_dnsmasq`**（`:242-276`）: `dnsmasq`が無ければaptでインストールする。`/etc/dnsmasq.d/masuda-vm.conf`を次の内容で書く（既存内容と一致していれば書き換えない）: `interface=br-masuda0`・`bind-interfaces`・`except-interface=lo`・`dhcp-range=192.168.200.10,192.168.200.200,12h`・`dhcp-leasefile=/var/lib/misc/masuda-dnsmasq.leases`。書いた後`systemctl enable --now dnsmasq`・`systemctl restart dnsmasq`を実行する。
+- **`step_dnsmasq_install`**: `dnsmasq`が無ければaptでインストールする。`--runtime-only`から切り離してあるのは、boot経路がaptに触れないようにするため（パッケージ導入にはネットワークが要るが、それはこのスクリプトがこれから用意するもの）。
+- **`step_dnsmasq`**: `/etc/dnsmasq.d/masuda-vm.conf`を次の内容で書く（既存内容と一致していれば書き換えない）: `interface=br-masuda0`・`bind-interfaces`・`except-interface=lo`・`dhcp-range=192.168.200.10,192.168.200.200,12h`・`dhcp-leasefile=/var/lib/misc/masuda-dnsmasq.leases`。書いた後`systemctl enable --now dnsmasq`・`systemctl restart dnsmasq`を実行する。
 
-スクリプト冒頭の`require_cmd`（`:46-51`）は`sudo`・`ip`・`iptables`・`go`・`cloud-hypervisor`・`virtiofsd`の存在を確認するのみで、後二者（標準aptパッケージが無い）は自動インストールしない。
+- **`step_boot_unit`**（フル実行のみ）: `/etc/systemd/system/masuda-vm-host.service`を書いて`systemctl enable --now`する。`ExecStart`は実行時に解決したこのスクリプトの絶対パス＋`--runtime-only`で、unitはステップを複製せずスクリプト自身を呼ぶ。`Type=oneshot`・`RemainAfterExit=yes`・`After=`/`Wants=network-online.target`。
+
+スクリプト冒頭の`require_cmd`は両モードが使う`sudo`・`ip`・`iptables`のみを確認する。`go`・`cloud-hypervisor`・`virtiofsd`と`$HOME`を要する変数はフル実行だけが要求する——unitはrootかつsystemdの最小環境（`$HOME`なし、既定PATHのみ）で走るため、トップレベルでこれらを要求するとboot経路が落ちる。
 
 ## 既知の問題
 

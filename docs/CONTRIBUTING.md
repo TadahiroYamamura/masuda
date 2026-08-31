@@ -14,6 +14,6 @@
 
 VM実行基盤そのもののセットアップ手順（Cloud Hypervisor・virtiofsd配置、`scripts/setup-vm-host.sh`、VMゲストSSH鍵、VMゲストのClaude認証）は利用者向け手順として`docs/INSTALLATION.md`「VM実行基盤のセットアップ」節に統合済み——masudaを使うだけなら、このリポジトリの開発に参加していなくても必要になるため。以下は`internal/sandbox`・`internal/rootfs`・`cmd/masuda-net-helper`等、masuda自身のGoコードを変更する開発者だけが意識すればよい注意点。
 
-- `masuda-net-helper`は`CAP_NET_ADMIN`をsetcapで単体付与している（masuda本体には付与しない）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（`bash scripts/setup-vm-host.sh`を再実行すればよい、冪等）
+- `masuda-net-helper`は`CAP_NET_ADMIN`をsetcapで単体付与している（masuda本体には付与しない）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（`bash scripts/setup-vm-host.sh`を再実行すればよい、冪等）。このときは`--runtime-only`ではなくフル実行が要る（ADR-0056）
 - `internal/rootfs.Build`を変更した場合、`internal/rootfs/build_test.go`（実docker daemonが必要、無ければ自動skip）で確認すること
 - `internal/sandbox/vmbackend.go`を変更した場合の実機検証は、`masuda-loop:latest`イメージの再ビルド（`docker build -t masuda-loop:latest .`）を忘れないこと——Dockerfile自体は変更していなくても、`runtime/`配下のファイル（`entrypoint.sh`等）はCOPYで焼き込まれているため
