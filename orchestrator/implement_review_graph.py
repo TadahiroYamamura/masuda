@@ -321,11 +321,12 @@ def _read_plan_steps() -> list[dict]:
 
 def _read_expected_byproducts() -> list[str]:
     """Glob patterns the planner predicted the build/test toolchain may
-    generate as a side effect (ADR-0028) -- e.g. "**/__pycache__/**". Unlike
-    the implementation subagent's own changed_files self-report, this is
-    fixed at G1 approval time, before any implementation happens, so the
-    mechanical backstop can safely exempt matches from deviation detection
-    without weakening ADR-0010's "don't trust self-report" guarantee.
+    generate as a side effect (ADR-0028) -- e.g. "**/__pycache__/**". Fixed
+    at G1 approval time, before any implementation happens, so both the
+    mechanical backstop and _committable_files can exempt matches without
+    weakening ADR-0010's "don't trust self-report" guarantee -- a human
+    approved these patterns in advance, rather than an agent naming files
+    after the fact.
     Returns [] if there's no plan at all (standalone review, roadmap step 6)
     rather than raising, since callers reach this from contexts that already
     tolerate a planless workspace."""
@@ -585,6 +586,29 @@ def _mechanical_deviation(planned: set[str], since_ref: str | None = None) -> st
     )
 
 
+def _committable_files(planned: set[str]) -> list[str]:
+    """What a commit should actually contain: everything currently changed in
+    the working tree that falls inside the scope G1 approved.
+
+    Measured from git, not from the implementation subagent's self-report.
+    The self-report was the original mechanism (ADR-0027) for keeping
+    build/test byproducts out of a step's commit, but it is a snapshot taken
+    the moment implementation finished -- anything changed after that point
+    (an interim review's fixer, most of all) is invisible to it and silently
+    never lands, staying dirty in the working tree forever. See ADR-0058.
+
+    Intersecting with `planned | approved` is what still keeps byproducts
+    out: a predicted one (ADR-0028's expected_byproducts) is in neither set,
+    and an unpredicted one would have reopened G1 at the mechanical backstop
+    before ever reaching a commit. Once that backstop has passed, this is
+    exactly "everything that changed, minus the predicted byproducts".
+
+    Working tree only -- no since_ref. A commit is always about what is
+    currently uncommitted; a TDD step's already-landed phases are not it.
+    """
+    return sorted((_actual_changed_files() & (planned | _read_approved_deviations())))
+
+
 def _compute_diff() -> str:
     """Stages everything (including new/deleted files) so the diff covers the
     full implementation, not just already-tracked modifications, then reports
@@ -631,23 +655,54 @@ def _compute_step_diff(since_ref: str | None = None) -> str:
     ).stdout
 
 
-def _commit_scoped(changed_files: list[str], message_file: Path) -> None:
-    """Commits only `changed_files` (ADR-0027) -- never `git add -A` -- so
-    build/test/codegen byproducts left in the working tree by the
-    implementation subagent's self-verification loop (ADR-0009) don't ride
-    along in the commit. `git reset` first because a prior _compute_step_diff()
-    call in this same round may have already staged everything via `git add
-    -A`; without unstaging, `git add -- <changed_files>` would be a no-op on
-    top of an index that already holds every modified path.
+def _commit_scoped(files: list[str], message_file: Path) -> None:
+    """Commits exactly `files` -- never `git add -A` -- so build/test/codegen
+    byproducts left in the working tree by the implementation subagent's
+    self-verification loop (ADR-0009) don't ride along in the commit. Callers
+    derive `files` from _committable_files (ADR-0058). `git reset` first
+    because a prior _compute_step_diff() call in this same round may have
+    already staged everything via `git add -A`; without unstaging,
+    `git add -- <path>` would be a no-op on top of an index that already
+    holds every modified path.
 
     This never substitutes for the mechanical backstop (ADR-0010): that check
     already ran against `git status --porcelain` ground truth before this is
-    called, independent of what the subagent declares here."""
+    called, independent of what `files` holds.
+
+    An empty `files` means the turn changed nothing inside the approved
+    scope -- an honest outcome for a Refactor phase that found nothing to
+    improve, or for an implementation whose only output was a predicted
+    byproduct. What happens then depends on whether a message was written:
+
+    - no message file: nothing to record, so nothing is committed. This is
+      the no-op Refactor turn, which by design leaves no commit at all.
+    - a message file: an *empty* commit. The message is the subagent's
+      account of a turn that really happened, and a step's boundary tag has
+      to sit on a commit inside base_ref..HEAD to be counted at all
+      (_completed_step_count) -- without a commit here, a step that changed
+      nothing would never be counted as completed and the loop would reissue
+      it forever.
+    """
+    if not files and not message_file.exists():
+        return
     subprocess.run(["git", "reset"], check=True)
-    for f in changed_files:
+    for f in files:
         subprocess.run(["git", "add", "--", f], check=True)
-    subprocess.run(["git", "commit", "-F", str(message_file)], check=True)
+    subprocess.run(["git", "commit", "--allow-empty", "-F", str(message_file)], check=True)
     message_file.unlink()
+
+
+def _write_interim_fix_commit_message(step_index: int) -> None:
+    """Writes the commit message for a TDD step's leftover interim-review
+    fixes (ADR-0058). A TDD step's own commits each carry a message the
+    implementation subagent wrote for that Red/Green/Refactor phase; this
+    commit has no such author -- it exists because a reviewer's fixer changed
+    something after the last phase already landed. Fixed text rather than
+    another subagent round trip: the orchestrator calls no LLM (ADR-0002),
+    and what happened here is fully known without asking anyone."""
+    STEP_COMMIT_MESSAGE_FILE.write_text(
+        f"fix: 途中レビューの指摘を反映する（ステップ{step_index + 1}）\n", encoding="utf-8"
+    )
 
 
 def _read_iteration_count() -> int:
@@ -886,7 +941,7 @@ def _advance_tdd_cycle(cs: dict, result: dict) -> tuple[str, int, bool]:
     legal choice after red (law 1 -- no production code without a failing
     test), and forcing green->refactor is this project's own addition on top
     of that, since an agent free to choose is prone to skipping the Refactor
-    phase entirely (docs/adr/00xx) -- the `claudecode-tdd` Claude Code
+    phase entirely (ADR-0037) -- the `claudecode-tdd` Claude Code
     plugin's own red/green/refactor slash commands were checked as a
     reference point and confirmed to have exactly this gap: phase transitions
     there are advisory prose ("proceed to /tdd:refactor") with nothing
@@ -930,8 +985,11 @@ def _land_or_finalize_tdd_phase(step_index: int, step: dict, cs: dict, result: d
     next_phase, next_cycle, complete = _advance_tdd_cycle(cs, result)
     if complete:
         return _detect_tdd_step_completion(step_index, step, cs, result)
-    if result.get("changed_files"):
-        _commit_scoped(result["changed_files"], TDD_CYCLE_COMMIT_MESSAGE_FILE)
+    # Out-of-plan changes are deliberately left out of this commit rather
+    # than blocked here: no backstop runs mid-cycle, and leaving them dirty
+    # keeps them visible to the step-completion backstop, which unions the
+    # working tree with every landed phase.
+    _commit_scoped(_committable_files(_step_planned_files(step)), TDD_CYCLE_COMMIT_MESSAGE_FILE)
     if IMPLEMENTATION_RESULT_JSON.exists():
         IMPLEMENTATION_RESULT_JSON.unlink()
     _write_tdd_cycle_state(step_index, {"cycle": next_cycle, "phase": next_phase, "attempt": 1, "redo_feedback": ""})
@@ -999,10 +1057,11 @@ def _detect_tdd_phase(step_index: int, step: dict) -> State:
     if status != "done":
         raise ValueError(f"unknown implementation_result.json status: {status!r}")
 
-    # 改善点なしの申告（Refactorフェーズのみ）: checkerを経由せず直接判定へ。
-    # Refactorへの移行そのものは強制するが、無意味なcommitまでは強制しない
-    # （ユーザー指摘、docs/adr/00xx）。
-    if cs["phase"] == "refactor" and not result.get("changed_files"):
+    # 改善点なし（Refactorフェーズのみ）: checkerを経由せず直接判定へ。Refactorへの
+    # 移行そのものは強制するが、無意味なcommitまでは強制しない（ADR-0037）。
+    # 「改善点が無かった」は申告ではなく実測で判定する（ADR-0058）——申告だけで
+    # process checkerを飛ばせると、実際には変更しているのに素通りできてしまう。
+    if cs["phase"] == "refactor" and not _committable_files(_step_planned_files(step)):
         return _land_or_finalize_tdd_phase(step_index, step, cs, result)
 
     check_path = _tdd_check_path(step_index, cs["cycle"], cs["phase"], cs["attempt"])
@@ -1034,7 +1093,17 @@ def _reset_tdd_step(step_index: int) -> None:
     still-uncommitted working-tree diff (the cycle's completing phase,
     deliberately left uncommitted until the backstop clears --
     _land_or_finalize_tdd_phase), so this cleanly undoes the whole attempt
-    regardless of where in the cycle it was rejected. This is local-only
+    regardless of where in the cycle it was rejected.
+
+    Untracked files survive, by design: `git reset --hard` discards commits
+    and tracked changes, and this function's job is to undo the attempt's
+    *history*, not to sweep the working tree. Since ADR-0058, an out-of-plan
+    file never made it into a phase commit in the first place, so it is
+    exactly the kind of thing left standing here -- the rejection feedback is
+    what tells the agent to remove it, and the backstop fires again if it
+    doesn't. Deleting it here would also take any build byproduct with it.
+
+    This is local-only
     history inside the sandboxed clone, never pushed (ADR-0005), so it does
     not carry the "irreversible, affects a shared system" weight it would on
     a real shared branch -- the one destructive git operation in this
@@ -1050,12 +1119,13 @@ def _resolve_tdd_finalization_reopen(
         approved = _read_approved_deviations()
         approved |= _extra_changed_files(planned, since_ref)
         _write_approved_deviations(approved)
-        if result.get("changed_files"):
-            _commit_scoped(result["changed_files"], TDD_CYCLE_COMMIT_MESSAGE_FILE)
+        # _committable_files re-reads the approved set, so the deviations the
+        # human just accepted are in scope for this commit.
+        _commit_scoped(_committable_files(planned), TDD_CYCLE_COMMIT_MESSAGE_FILE)
         if IMPLEMENTATION_RESULT_JSON.exists():
             IMPLEMENTATION_RESULT_JSON.unlink()
         _clear_tdd_step(step_index)
-        return _detect_interim_review_phase(step_index, step, {"changed_files": []})
+        return _detect_interim_review_phase(step_index, step)
 
     def on_rejected(feedback):
         if IMPLEMENTATION_RESULT_JSON.exists():
@@ -1083,11 +1153,10 @@ def _detect_tdd_step_completion(step_index: int, step: dict, cs: dict, result: d
     deviation = _mechanical_deviation(planned, since_ref)
     if deviation:
         return _resolve_tdd_finalization_reopen(step_index, step, deviation, planned, since_ref, result)
-    if result.get("changed_files"):
-        _commit_scoped(result["changed_files"], TDD_CYCLE_COMMIT_MESSAGE_FILE)
+    _commit_scoped(_committable_files(planned), TDD_CYCLE_COMMIT_MESSAGE_FILE)
     if IMPLEMENTATION_RESULT_JSON.exists():
         IMPLEMENTATION_RESULT_JSON.unlink()
-    return _detect_interim_review_phase(step_index, step, {"changed_files": []})
+    return _detect_interim_review_phase(step_index, step)
 
 
 def _detect_review_phase() -> State:
@@ -1343,7 +1412,7 @@ def _resolve_mechanical_reopen(reason: str, planned: set[str], on_approved_conti
     return _resolve_gate_reopen(reason, on_approved, on_rejected)
 
 
-def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict, result: dict) -> State:
+def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict) -> State:
     """ADR-0027's stopgap escalation for interim-review findings the
     auto-fix loop couldn't resolve: reuses the same G1 gate ADR-0010
     established rather than inventing a new gate type, pending a dedicated
@@ -1365,7 +1434,7 @@ def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict, re
 
     def on_approved():
         _append_interim_carried_finding(step_index, rs)
-        return _finalize_step(step_index, step, result)
+        return _finalize_step(step_index, step)
 
     def on_rejected(feedback):
         _clear_interim_step(step_index)
@@ -1380,7 +1449,7 @@ def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict, re
     return _resolve_gate_reopen(reason, on_approved, on_rejected)
 
 
-def _detect_interim_review_phase(step_index: int, current_step: dict, result: dict) -> State:
+def _detect_interim_review_phase(step_index: int, current_step: dict) -> State:
     """ADR-0027: the lightweight, trigger-matched counterpart to
     _detect_review_phase, scoped to one step's diff and only the
     perspectives its trigger_match round selected. Reached both by a normal
@@ -1391,7 +1460,7 @@ def _detect_interim_review_phase(step_index: int, current_step: dict, result: di
     if not TRIGGERED_PERSPECTIVE_IDS:
         # No perspective declares a `trigger` -- nothing can ever match, so
         # there's no interim review to run for any step.
-        return _finalize_step(step_index, current_step, result)
+        return _finalize_step(step_index, current_step)
 
     trigger_path = _trigger_match_path(step_index)
     if not trigger_path.exists():
@@ -1399,7 +1468,7 @@ def _detect_interim_review_phase(step_index: int, current_step: dict, result: di
 
     matched = json.loads(trigger_path.read_text(encoding="utf-8"))
     if not matched:
-        return _finalize_step(step_index, current_step, result)
+        return _finalize_step(step_index, current_step)
 
     results_dir = _interim_step_dir(step_index)
     rs = _read_interim_state(step_index)
@@ -1417,37 +1486,45 @@ def _detect_interim_review_phase(step_index: int, current_step: dict, result: di
         return {"phase": "interim_review_batch", "reason": json.dumps({"step": step_index, "tasks": batch})}
 
     if rs["unresolved"]:
-        return _resolve_interim_unresolved_reopen(step_index, current_step, rs, result)
+        return _resolve_interim_unresolved_reopen(step_index, current_step, rs)
 
-    return _finalize_step(step_index, current_step, result)
+    return _finalize_step(step_index, current_step)
 
 
-def _finalize_step(step_index: int, step: dict, result: dict) -> State:
+def _finalize_step(step_index: int, step: dict) -> State:
     """Lands the current step and tags its boundary (masuda-step-<workspace-
-    id>-<N>, so _completed_step_count() can see it) -- a non-TDD step commits
-    its self-reported changed_files here as one commit (ADR-0027, unchanged);
-    a TDD-mode step (Issue #3) already landed each Red/Green/Refactor phase
-    as its own commit via _detect_tdd_phase, so there is nothing left to
-    commit, only the cycle-state cleanup and the tag. Re-derives the next
-    phase from scratch either way -- the commit/tag is real git state, so the
-    next detect_phase call naturally sees one more completed step (or, if
-    this was the last one, falls through to phase 5) without this function
-    needing to duplicate that logic."""
+    id>-<N>, so _completed_step_count() can see it). Re-derives the next
+    phase from scratch -- the commit/tag is real git state, so the next
+    detect_phase call naturally sees one more completed step (or, if this was
+    the last one, falls through to phase 5) without this function needing to
+    duplicate that logic.
+
+    A non-TDD step lands its whole implementation here as one commit, under
+    the message the implementation subagent wrote. A TDD-mode step (Issue #3)
+    already landed each Red/Green/Refactor phase as its own commit, so what
+    is left in the working tree is only what the interim review's fixer
+    changed after those commits -- which still has to land, and has no
+    message of its own, so one is generated (ADR-0058). Usually there is
+    nothing and _commit_scoped does nothing."""
+    leftover = _committable_files(_step_planned_files(step))
     if step.get("mode") == "tdd":
         _clear_tdd_step(step_index)
-    else:
-        _commit_scoped(result.get("changed_files", []), STEP_COMMIT_MESSAGE_FILE)
+        if leftover:
+            _write_interim_fix_commit_message(step_index)
+    _commit_scoped(leftover, STEP_COMMIT_MESSAGE_FILE)
     _tag_step(step_index)
     if IMPLEMENTATION_RESULT_JSON.exists():
         IMPLEMENTATION_RESULT_JSON.unlink()
     return detect_phase({"phase": "", "reason": ""})
 
 
-def _finalize_g2_redo(result: dict) -> State:
+def _finalize_g2_redo() -> State:
     """Same as _finalize_step, but also clears REVIEW_FEEDBACK_KEY -- the
     marker that both rendered implement_g2_redo's reason and signaled "we're
-    mid G2-redo" is no longer needed once this lands."""
-    _commit_scoped(result.get("changed_files", []), STEP_COMMIT_MESSAGE_FILE)
+    mid G2-redo" is no longer needed once this lands. Scoped to the whole
+    plan's file union, since a G2-rejection redo isn't decomposed into a
+    single step (ADR-0027)."""
+    _commit_scoped(_committable_files(_all_planned_files(_read_plan_steps())), STEP_COMMIT_MESSAGE_FILE)
     IMPLEMENTATION_RESULT_JSON.unlink()
     state_client.delete(REVIEW_FEEDBACK_KEY)
     return detect_phase({"phase": "", "reason": ""})
@@ -1498,9 +1575,9 @@ def detect_phase(state: State) -> State:
                 deviation = _mechanical_deviation(planned)
                 if deviation:
                     return _resolve_mechanical_reopen(
-                        deviation, planned, lambda: _finalize_g2_redo(result), redo_phase="implement_g2_redo",
+                        deviation, planned, lambda: _finalize_g2_redo(), redo_phase="implement_g2_redo",
                     )
-                return _finalize_g2_redo(result)
+                return _finalize_g2_redo()
             completed = _completed_step_count()
             if completed >= len(steps):
                 # All plan steps already landed and this "done" result is
@@ -1513,10 +1590,10 @@ def detect_phase(state: State) -> State:
             if deviation:
                 return _resolve_mechanical_reopen(
                     deviation, planned,
-                    lambda: _detect_interim_review_phase(completed, current, result),
+                    lambda: _detect_interim_review_phase(completed, current),
                     redo_phase="implement_step",
                 )
-            return _detect_interim_review_phase(completed, current, result)
+            return _detect_interim_review_phase(completed, current)
         raise ValueError(f"unknown implementation_result.json status: {status!r}")
 
     if in_g2_redo:
@@ -1568,20 +1645,21 @@ _COMMENT_STYLE_SECTION = """## コメントの書き方
 
 
 def _implementation_completion_section() -> str:
-    """ADR-0027: the implementation subagent now self-reports which files it
-    intentionally changed, alongside a commit message -- the orchestrator
-    commits only those (git add -- <path>, never -A), so build/test/codegen
-    byproducts left in the working tree (ADR-0009's self-verification loop
-    can produce these) don't ride along in the commit."""
-    return f"""## 完了条件（ADR-0027: 意図的に変更したファイルを申告する）
+    """What the implementation subagent has to leave behind for the
+    orchestrator to land its work. No file list: the orchestrator measures
+    what actually changed and commits whatever falls inside the plan's
+    approved scope (ADR-0058), so a self-report would only be a second,
+    less accurate copy of something git already knows."""
+    return f"""## 完了条件
 ビルド・テストがグリーンになったら、以下の2つを行うこと。
 1. `{_agent_path(STEP_COMMIT_MESSAGE_FILE)}`に、この変更内容を要約したgit commitメッセージを
    プレーンテキストで書き出す（このリポジトリ独自のコミット規約があれば従うこと）
 2. `{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す:
-{{"status": "done", "changed_files": ["実際に変更したファイルパス", ...]}}
+{{"status": "done"}}
 
-`changed_files`には、ビルド・テストの副作用で生成された意図しないファイル（コード生成の
-中間出力等）を含めないこと。オーケストレーターはこのリストに基づいてのみcommitする。"""
+commitの対象はオーケストレーターが実際の変更から判定する。上のプランで宣言された
+ファイルの外を変更した場合は、申告の有無にかかわらず検知され、人間の判断を仰ぐことになる
+（ADR-0010）。"""
 
 
 def _implement_step_task(step_index: int, redo_feedback: str | None = None) -> str:
@@ -1721,10 +1799,9 @@ def _tdd_completion_section(phase: str) -> str:
 1. `{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`に、この変更内容を要約したgit commitメッセージを
    プレーンテキストで書き出す
 2. `{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す:
-{{"status": "done", "changed_files": ["実際に変更したファイルパス", ...]}}
+{{"status": "done"}}
 
-`changed_files`には、ビルド・テストの副作用で生成された意図しないファイルを
-含めないこと。"""
+commitの対象はオーケストレーターが実際の変更から判定する（ADR-0058）。"""
     return f"""## 完了条件（TDDモード、Issue #3）
 リファクタリングを検討し終えたら、以下を行うこと。
 
@@ -1732,15 +1809,15 @@ def _tdd_completion_section(phase: str) -> str:
 1. `{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`に、この変更内容を要約したgit commitメッセージを
    プレーンテキストで書き出す
 2. `{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す:
-{{"status": "done", "changed_files": ["実際に変更したファイルパス", ...], "tdd_next_phase": "..."}}
+{{"status": "done", "tdd_next_phase": "..."}}
    `tdd_next_phase`は、さらにもう一段階リファクタリングするなら`"refactor"`、次のサイクル
    （次の小さいRed）に進むなら`"red"`、このステップに必要な振る舞いを実装し終えたなら
    `"complete"`のいずれかを選ぶこと
 
 **改善の余地が無かった場合**（無理に変更を作らないこと）:
-`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す（`changed_files`は空配列、
-`{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`は書かなくてよい。commitは行われない）:
-{{"status": "done", "changed_files": [], "tdd_next_phase": "red か complete のいずれか"}}"""
+何も変更せず、`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す
+（`{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`は書かなくてよい。commitは行われない）:
+{{"status": "done", "tdd_next_phase": "red か complete のいずれか"}}"""
 
 
 def _tdd_phase_task(step_index: int, step: dict, cs: dict) -> str:

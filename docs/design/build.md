@@ -44,13 +44,14 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 - 1ステップの処理順序: 実装への委譲（`_implement_step_task`、`:1502`）→
   `implementation_result.json`の自己申告状態で分岐（`done`/`needs_plan_review`/
   `build_test_failed`）→ `done`なら機械的バックストップ（次節）→ 逸脱なしなら
-  trigger式途中レビュー（後述の節）→ `_finalize_step`でそのステップの申告ファイルのみを
-  commit（`_commit_scoped`、`git add -A`は使わない）してtagを打つ。
+  trigger式途中レビュー（後述の節）→ `_finalize_step`がcommitしてtagを打つ。commit対象は
+  `_committable_files`が決める——**実測（`git status`）∩（このステップの計画ファイル ∪
+  承認済み逸脱）**であって、エージェントの申告ではない（ADR-0058）。`git add -A`は使わない。
 - `_implement_step_task`が生成するプロンプトは、このステップの`files`一覧・
   `_render_plan_text()`によるプラン全体の参考情報・逸脱時の自己申告手順（ADR-0010）・
   ビルド/テスト自己修正ループの手順（ADR-0009、最大3回）・完了条件
-  （`_implementation_completion_section`: `changed_files`を含む`{"status":"done",...}`を
-  `implementation_result.json`へ）を含む。
+  （`_implementation_completion_section`: commitメッセージファイルと`{"status":"done"}`を
+  書き出す。変更ファイルの申告は求めない——commit対象は実測から決まるため）を含む。
 - ビルド/テスト自己修正ループの節には`_PRIVILEGED_COMMAND_SECTION`が続く。root権限や
   Dockerデーモンを要するテストはこのVMでは動かないため、宣言・承認済みの特権コマンドを
   `run_privileged_command`で実行するか、それが無ければ自己修正ループを空回りさせずに
@@ -82,8 +83,13 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   再オープンへ合流する。
 - 1フェーズ＝1commit（`_land_or_finalize_tdd_phase`）。ただしサイクルを完了させる最後の
   フェーズだけは、機械的バックストップの通過（`_detect_tdd_step_completion`）まで
-  commitを意図的に遅延させる。Refactorフェーズで「改善の余地なし」と自己申告された
-  場合（`changed_files`が空）はcheckerを経由せず直接次の分岐に進み、commitも行わない。
+  commitを意図的に遅延させる。Refactorフェーズで改善の余地が無かった場合
+  （`_committable_files`が空＝スコープ内が実際に無変更）はcheckerを経由せず直接次の分岐に
+  進み、commitも行わない。無変更かどうかは申告ではなく実測で判定する（ADR-0058）——
+  申告だけでcheckerを飛ばせると、実際には変更しているのに素通りできてしまう。
+
+  各フェーズのcommitも`_committable_files`で絞るため、計画外のファイルはフェーズcommitに
+  載らず作業ツリーに残る。ステップ完了時のバックストップがそれを見て逸脱として扱う。
 - ステップ完了時（`tdd_next_phase: "complete"`）は`_detect_tdd_step_completion`
   （`:1042`）が、前ステップのtagを基準にした機械的バックストップ
   （`since_ref=_step_diff_base(step_index)`、`_actual_changed_files`が作業ツリーと
@@ -92,16 +98,18 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 - 却下されたTDDステップは`_reset_tdd_step`（`:998`）が
   `git reset --hard <前ステップのtag>`で中間commit群と未commit差分をまとめて巻き戻し、
   `tdd_red`・cycle 1・attempt 1から再開する。ローカルクローン内に閉じた未push commitのみ
-  対象で、このコードベース唯一の破壊的git操作（ADR-0037）。
+  対象で、このコードベース唯一の破壊的git操作（ADR-0037）。**未追跡ファイルは残る**
+  ——巻き戻すのはこの試行の履歴であって作業ツリーの掃除ではないため。計画外ファイルは
+  そもそもcommitされていないので、ここに残る側になる。
 
 ## 機械的バックストップ・plan gate再オープン
 
 - `_mechanical_deviation`（`:532`）がADR-0010のバックストップ本体。
   `git status --porcelain --untracked-files=all`（TDDステップは`since_ref`指定で
   commit済み差分も追加でunion）を計画済み`files`集合と突き合わせ、計画外ファイルが
-  あれば逸脱理由の文字列を返す。実装エージェントの自己申告（`changed_files`）とは
-  独立したground truthベースの検知で、自己申告のcommit範囲絞り込みとは役割が異なる
-  （ADR-0027）。
+  あれば逸脱理由の文字列を返す。commit範囲を決める`_committable_files`とは同じ実測を
+  見ているが役割が違う——こちらは「承認された範囲の外に出たか」を人間に上げるための判定、
+  向こうは「承認された範囲のうち何をcommitするか」の決定（ADR-0058）。
 - 逸脱判定から除外されるのは2種類: (a) 過去にこのgate再オープンで承認済みの逸脱
   （`APPROVED_DEVIATIONS_KEY`、`_read_approved_deviations`/`_write_approved_deviations`）、
   (b) `plan/steps.json`の`expected_byproducts`にマッチするファイル
@@ -169,12 +177,12 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   どちらの文脈で扱うか分岐する。TDDモードのステップ判定（`steps[completed].get("mode")
   == "tdd"`）は`in_g2_redo`のときは行われない——G2却下時の再実装は常に非TDD経路として
   扱う。
-- クリーンな完了は`_finalize_g2_redo`（`:1377`）が担う。`_finalize_step`と同様に
-  `changed_files`だけをcommitするが、加えて`REVIEW_FEEDBACK_KEY`を削除し、Review段階を
-  最初の観点からやり直す状態に戻す。
+- クリーンな完了は`_finalize_g2_redo`が担う。`_finalize_step`と同様に`_committable_files`で
+  commitするが、スコープはプラン全体の`files`のunionで、加えて`REVIEW_FEEDBACK_KEY`を削除し、
+  Review段階を最初の観点からやり直す状態に戻す。
 
 ## 既知の問題
 
 未調査。修正時はここから消す。
 
-- **未確定のADR番号プレースホルダーが残っている**: `orchestrator/implement_review_graph.py:862,977` のコメントに `docs/adr/00xx` という書きかけの参照がある。TDDサブループ関連なので ADR-0037 を指すと思われる
+（現在なし）

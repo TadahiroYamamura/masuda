@@ -6,6 +6,7 @@ Accepted (2026-08-04)
 
 - 一部改訂: [[0029-immediate-stop-escalation-dedicated-gate]] — 本ADRが暫定的にplan gate再オープンへ流用したエスカレーションのうち、セキュリティ由来の懸念は専用の`triage`ゲートに移った。それ以外（観点レビューが自動修正ループで収束しない場合）はplan gate再オープンのまま
 - 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — ステップ位置の追跡は`git rev-list --count`ではなく`masuda-step-<workspace-id>-<N>`というgit tagの数。TDDステップは1ステップで複数commitを積むため、commit数＝ステップ数という前提が成立しなくなった
+- 一部改訂: [[0058-commit-scope-measured-from-git-not-self-reported]] — commit対象は実装サブエージェントの自己申告（`changed_files`）ではなく、gitの実測とプランの承認済みスコープの交差で決まる。`changed_files`自体がスキーマから消えた
 
 ## Context
 

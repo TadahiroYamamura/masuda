@@ -52,9 +52,10 @@
 ### Build（実装）
 
 - **[0009](0009-implementation-self-verification-loop.md)** 実装はビルド/テストを自己修正ループで検証し、上限到達で停止する — *一部改訂: 0027, 0037*
-- **[0027](0027-phase4-step-based-implement-review-commit-loop.md)** Build段階をステップ単位のimplement→バックストップ→トリガー式軽量レビュー→commitのループにする — *一部改訂: 0029, 0037*
+- **[0027](0027-phase4-step-based-implement-review-commit-loop.md)** Build段階をステップ単位のimplement→バックストップ→トリガー式軽量レビュー→commitのループにする — *一部改訂: 0029, 0037, 0058*
 - **[0035](0035-four-task-categories-scope-tdd-to-new-features.md)** タスクを3軸で4カテゴリに分類し、TDDモードの対象を「新機能追加」に限定する
 - **[0037](0037-tdd-mode-red-green-refactor-subloop-in-phase4.md)** TDDモード（Red/Green/Refactorサブループ）をBuild段階に追加する
+- **[0058](0058-commit-scope-measured-from-git-not-self-reported.md)** commitに含めるファイルは実装エージェントの自己申告ではなくgitの実測から決める
 
 ### Review（レビュー）
 
