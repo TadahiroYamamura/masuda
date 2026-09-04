@@ -1894,6 +1894,39 @@ def test_step_commit_lands_a_planned_file_the_agent_never_declared():
     assert irg._actual_changed_files() == set(), "何も置き去りにしない"
 
 
+def test_interim_review_fix_outside_the_plan_reopens_the_gate():
+    """途中レビューのfixerが計画外のファイルを触った場合は、commitに載せるのでは
+    なく人間の判断を仰ぐ（Issue #30へのユーザー指摘: 事前承認された変更ファイル以上は
+    自動的な編集対象外）。
+
+    バックストップは実装直後の1回だけでなく、detect_phaseの往復ごとに走る——
+    途中レビューのバッチを1回挟んだ次の呼び出しでも同じ検知が働くことを固定する。"""
+    worktree_dir = pathlib.Path.cwd()
+    _write_test_perspectives(worktree_dir / ".masuda" / "reviews", triggered_ids={"p00"})
+    importlib.reload(irg)
+    init_git_repo(steps=TWO_FILE_STEP_PLAN)
+    pathlib.Path("README.md").write_text("実装", encoding="utf-8")
+    mark_step_done()
+    irg._interim_step_dir(0).mkdir(parents=True)
+    irg._trigger_match_path(0).write_text(json.dumps(["p00"]), encoding="utf-8")
+    write_result("p00", 1, has_issues=True, results_dir=irg._interim_step_dir(0))
+    write_check("p00", 1, ok=True, results_dir=irg._interim_step_dir(0))
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+    assert state["phase"] == "interim_review_batch"
+
+    # fixerが計画外のファイルを直してしまった
+    pathlib.Path("outside.txt").write_text("計画外の修正", encoding="utf-8")
+    write_fix("p00", 1, results_dir=irg._interim_step_dir(0))
+    write_recheck("p00", 1, resolved=True, results_dir=irg._interim_step_dir(0))
+
+    state = irg.detect_phase({"phase": "", "reason": ""})
+
+    assert state["phase"] == "plan_reopened", "commitせず人間の判断を仰ぐ"
+    assert "outside.txt" in state["reason"]
+    assert irg._completed_step_count() == 0, "ステップは完了扱いにならない"
+
+
 def test_interim_review_fix_lands_in_the_step_commit():
     """途中レビューのfixerが計画内のファイルを直した分も、ステップcommitに入る。
     実装完了直後のスナップショットではなく、commit直前の実測を使うため。"""
