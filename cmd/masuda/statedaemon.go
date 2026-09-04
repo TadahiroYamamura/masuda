@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -11,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -294,7 +297,56 @@ func startDaemon(id string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644)
+	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
+		return err
+	}
+	return waitForDaemon(stateDir)
+}
+
+// daemonStartupTimeout bounds how long startDaemon waits for the daemon it
+// just spawned to start listening. A var, not a const, so the failure path's
+// test doesn't have to sit through the whole timeout to reach the assertion
+// it cares about (the same reason internal/sandbox keeps resolveMasudaExe a
+// var).
+var daemonStartupTimeout = 10 * time.Second
+
+// waitForDaemon blocks until the daemon spawned for stateDir accepts on its
+// trusted socket.
+//
+// Without this, startDaemon returns as soon as the process is forked, and
+// the very next thing every caller does -- WriteTaskBrief, WriteInstructions'
+// neighbours, a gate read -- dials that socket. Losing that race is not
+// theoretical: `masuda plan start <branch> --file ...` failed with
+// "connect: no such file or directory" against a daemon that was up
+// milliseconds later.
+//
+// A plain dial is enough of a readiness signal: net.Listen on a Unix socket
+// binds and listens in one step, so once a connection is accepted by the
+// kernel it is queued for the server whether or not Accept has been reached
+// yet.
+//
+// A daemon that died instead of listening would otherwise surface only as a
+// timeout, so its log is read back into the error -- that is where the real
+// reason lands (a state directory whose path exceeds AF_UNIX's ~108 byte
+// sun_path limit, say, which fails at bind with a bare "invalid argument").
+func waitForDaemon(stateDir string) error {
+	path := statedaemon.SocketPath(stateDir)
+	deadline := time.Now().Add(daemonStartupTimeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		conn, err := net.Dial("unix", path)
+		if err == nil {
+			conn.Close()
+			return nil
+		}
+		lastErr = err
+		time.Sleep(20 * time.Millisecond)
+	}
+	msg := fmt.Sprintf("state daemon did not start listening on %s within %s: %v", path, daemonStartupTimeout, lastErr)
+	if log, err := os.ReadFile(filepath.Join(stateDir, daemonLogName)); err == nil && len(bytes.TrimSpace(log)) > 0 {
+		msg += "\n" + strings.TrimSpace(string(log))
+	}
+	return errors.New(msg)
 }
 
 // daemonAlive reports whether the PID recorded in stateDir/daemon.pid
