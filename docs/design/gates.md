@@ -30,17 +30,30 @@ plan gate・review gate・triage gateの3つについて、承認マーカーの
 **review gate**
 
 - 開く: Review段階が`final_report.md`を書き終えた時点で`orchestrator/implement_review_graph.py`が`await_g2`状態に遷移する
-- 閉じる: `masuda review approve|reject <workspace-id> [feedback]`、または`resolve_gate_from_chat`（`name: "review"`）
+- 閉じる: `masuda review approve|reject <workspace-id> [feedback]`のみ。**`resolve_gate_from_chat`は`name: "review"`をサーバー側で拒否する**（ADR-0060）。承認は`finalizeReviewApproval`（後述）まで含み、作業ブランチを人間の実リポジトリへ反映してワークスペースを削除するため、ホスト側でしか行えず、人間が自分の手で起動すべき操作でもある
 - 閉じた後: `rejected`ならBuild段階へ差し戻し、全観点のレビューをやり直す（ADR-0013）。`approved`なら`cmd/masuda/gate.go`の`finalizeReviewApproval`が走る——サンドボックス停止（起動中なら）→`worktree.Commit`（Review段階のfixerが加えた分だけ、Build段階の各ステップは既に個別commit済み）→`worktree.Pull`（fast-forwardのみ、ADR-0023）→`worktree.Remove`（ブランチは残す、`deleteBranch=false`——ADR-0023でブランチ自体がユーザーに渡す成果物になったため）→`workspace.Remove`。いずれかのステップが失敗すると後続は実行されない
 
 **triage gate**
 
 - 開く: どちらのオーケストレーターも`detect_phase`の先頭で`triage_concern.json`の存在を最優先チェックする（他の進行中フェーズより先に評価される）。サブエージェントが懸念を検知してこのファイルを書いた時点で、次の`detect_phase`呼び出しで`await_triage`状態に強制遷移する
-- 閉じる: `masuda triage dismiss|redo|halt <workspace-id> [feedback/reason]`のみ。**`resolve_gate_from_chat`は`name: "triage"`をサーバー側で拒否する**（`internal/statedaemon/mcpserver/curated.go`の`chatResolvableGateNames = {"plan", "review"}`が`"triage"`を含まない）。懸念の対象になっているエージェント自身が、chatでの会話を理由に自分でこのゲートを閉じることを技術的に禁止している（ADR-0029）
+- 閉じる: `masuda triage dismiss|redo|halt <workspace-id> [feedback/reason]`のみ。**`resolve_gate_from_chat`は`name: "triage"`をサーバー側で拒否する**（`internal/statedaemon/mcpserver/curated.go`の`chatResolvableGateNames`は`"plan"`のみ）。懸念の対象になっているエージェント自身が、chatでの会話を理由に自分でこのゲートを閉じることを技術的に禁止している（ADR-0029）
 - 閉じた後:
   - `dismiss`（`gate.Approve`のエイリアス、`cmd/masuda/triage.go`の`newTriageDismissCommand`）: 誤検知として続行。`triage_concern.json`を削除し`gate:triage`キーも消費したうえで、中断していたフェーズを`resume_phase_fn`で再導出する（何も状態を進めず、割り込み前の状態をゼロから再計算するだけ）
   - `redo`（`gate.Reject`のエイリアス）: 同様に消費・再導出するが、feedbackを`internal:triage-redo-feedback`キーに書くのと同時に消費する。次の`write_task_md`がこのキーを一度だけ読み、TASK.mdの先頭に「triage対応後の申し送り」として差し込む（一発読み切りのマーカー）
   - `halt`（`gate.Halt`）: 自動再開経路なし。マーカーは`internal:triage-halted`キーへ移して消費するが、`triage_concern.json`は削除しない（`masuda triage show`が事後もそのまま見られる）。ループ側は`DONE (triage halted)`としてセッションを終了する
+
+
+### chat内で解決できるゲートの規則
+
+`resolve_gate_from_chat`が受け付けるのは`plan`だけである（`chatResolvableGateNames`）。基準は「**そのゲートの承認がワークスペースの外に影響しないか**」の一点で、3つとも同じ規則で説明できる（ADR-0060）。
+
+| ゲート | chat自己解決 | 承認が引き起こすこと |
+|---|---|---|
+| `plan` | 可 | ループが次の段階へ進むだけ |
+| `review` | 不可 | ブランチを実リポジトリへfast-forward反映し、clone・状態ディレクトリを削除する |
+| `triage` | 不可 | 懸念の対象が自分で閉じることになる（ADR-0029） |
+
+ADR-0057以降、ゲストがゲートマーカーを書く経路はこのツールしか無いため、この表は規約ではなく技術的な境界になっている。
 
 ## ゲートマーカーの消費タイミング
 
@@ -79,7 +92,7 @@ plan gateの再オープン（`orchestrator/implement_review_graph.py`の`_resol
 2. `TASK.md`を読み、指示に従って作業する
 3. 作業完了後、**終了条件**（`TASK.md`本文に`DONE`という文字列を含む）と**ゲート条件**（`GATE:<name>`という文字列を含む、`<name>`は`plan`/`review`/`triage`のいずれか）を確認する。両者は排他——`DONE`ならtmuxセッションをkillしてセッション終了（コミット・質問・確認は不要）。`GATE:<name>`なら4へ。どちらもなければオーケストレーターを起動してTASK.mdを上書きさせ2へ戻る
 4. `mcp__masuda-gate__wait_for_gate_resolution`ツールを`name`にゲート名を渡して呼び、人間がゲートを解決するまでブロッキング待機する（ADR-0042。ゲートマーカーが存在するまで待つ1回のブロッキング呼び出しで、既に存在すれば即座に返る（ADR-0055）。ポーリングもwhileループも不要）
-   - 待機中に`masuda chat`で接続した人間が「進めていい」と伝えた場合、Claude自身が`mcp__masuda-gate__resolve_gate_from_chat`を呼んでよい（`name`・`status`（`"approved"`/`"rejected"`）・`feedback`）。ただし`triage`はこの経路を使えない（前述、サーバー側で拒否）
+   - 待機中に`masuda chat`で接続した人間が「進めていい」と伝えた場合、Claude自身が`mcp__masuda-gate__resolve_gate_from_chat`を呼んでよい（`name`・`status`（`"approved"`/`"rejected"`）・`feedback`）。ただしこの経路を使えるのは`plan`だけで、`review`・`triage`はサーバー側で拒否される（前述、ADR-0060・ADR-0029）
    - `wait_for_gate_resolution`が返ったら（`resolve_gate_from_chat`経由・別ターミナルの`masuda plan/review/triage approve|reject|dismiss|redo|halt`経由のどちらでも）2へ戻る
 
 Discovery/Blueprint段階（ホスト側で動く、サンドボックスなし）は`internal/hostloop/system_prompt.md.tmpl`が同じ仕組みを別テンプレートとして持つ。差分は次の2点のみ。

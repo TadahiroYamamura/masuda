@@ -126,7 +126,7 @@ func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
 	}
 	done := make(chan waitResult, 1)
 	go func() {
-		value, err := store.WaitForPresence(context.Background(), "gate:review")
+		value, err := store.WaitForPresence(context.Background(), "gate:plan")
 		if err != nil {
 			t.Errorf("WaitForPresence error = %v, want nil", err)
 			done <- waitResult{}
@@ -140,7 +140,7 @@ func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
 
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "resolve_gate_from_chat",
-		Arguments: map[string]any{"name": "review", "status": "approved", "feedback": "対話で承認"},
+		Arguments: map[string]any{"name": "plan", "status": "approved", "feedback": "対話で承認"},
 	})
 	if err != nil || res.IsError {
 		t.Fatalf("CallTool(resolve_gate_from_chat) = (%+v, %v), want success", res, err)
@@ -170,6 +170,30 @@ func TestResolveGateFromChatRejectsTriage(t *testing.T) {
 	}
 	if _, found := store.Get("gate:triage"); found {
 		t.Fatal("resolve_gate_from_chat must not have written gate:triage despite the error")
+	}
+}
+
+// Approving the review gate lands the branch in the user's real repository
+// and tears the workspace down (finalizeReviewApproval), which is a human's
+// call to make from the host -- not something a session inside the sandbox
+// can trigger by relaying what someone said in chat (ADR-0060, Issue #24).
+func TestResolveGateFromChatRejectsReview(t *testing.T) {
+	store, session := connectCurated(t)
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "resolve_gate_from_chat",
+		Arguments: map[string]any{"name": "review", "status": "approved", "feedback": "対話で承認"},
+	})
+	if err != nil {
+		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
+	}
+	if !res.IsError {
+		t.Fatal("resolve_gate_from_chat on the review gate: IsError = false, want true")
+	}
+	if !strings.Contains(toolErrorText(t, res), "masuda review approve") {
+		t.Fatalf("the error must name the command a human runs instead: %+v", res.Content)
+	}
+	if _, found := store.Get("gate:review"); found {
+		t.Fatal("resolve_gate_from_chat must not have written gate:review despite the error")
 	}
 }
 

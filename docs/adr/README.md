@@ -35,12 +35,13 @@
 
 ### ゲート・エスカレーション
 
-- **[0006](0006-interactive-chat-plus-fast-path-gates.md)** ゲート承認は対話（chat）と即決（approve/reject）の2パスを用意する — *一部改訂: 0042, 0044*
+- **[0006](0006-interactive-chat-plus-fast-path-gates.md)** ゲート承認は対話（chat）と即決（approve/reject）の2パスを用意する — *一部改訂: 0042, 0044, 0060*
 - **[0010](0010-plan-deviation-reopens-plan-gate.md)** プラン逸脱は自己申告+機械的バックストップの二段構えで検知しplan gateを再オープンする — *一部改訂: 0027, 0028, 0037, 0059*
 - **[0013](0013-review-rejection-reopens-implementation.md)** review gate却下はBuild段階を再オープンする — *一部改訂: 0027*
 - **[0029](0029-immediate-stop-escalation-dedicated-gate.md)** 最優先即時停止エスカレーションは専用ゲート（`masuda triage`）で解決する
 - **[0039](0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite.md)** redoの遷移は専用pendingマーカーでゲートマーカー消費と成果物書き換えを橋渡しする — *一部改訂: 0055*
 - **[0042](0042-mcp-tool-call-replaces-inotifywait-gate-wait.md)** GATE待機はinotifywaitではなくMCP tool呼び出しで行う — *一部改訂: 0050, 0055*
+- **[0060](0060-chat-approval-only-for-gates-with-no-effect-outside-the-workspace.md)** chat内で自己解決してよいゲートを「承認がワークスペースの外に影響しないもの」に限る
 
 ### Discovery / Blueprint（調査・プラン）
 

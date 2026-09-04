@@ -18,14 +18,23 @@ import (
 // (Claude) tool set this belongs to.
 var gateNames = map[string]bool{"plan": true, "review": true, "triage": true}
 
-// chatResolvableGateNames is gateNames minus "triage" -- resolve_gate_from_chat
-// (runtime/CLAUDE.md's documented "a human told me to proceed mid-chat"
-// escape hatch) must never be usable on the triage gate (ADR-0029: the agent
-// under suspicion must never be the one that closes that gate). Before this
-// tool existed, that rule was enforced only by instructing Claude not to
-// self-write the marker file -- a convention, not a technical boundary
-// (Issue #13). Splitting the allowed name set here makes it one.
-var chatResolvableGateNames = map[string]bool{"plan": true, "review": true}
+// chatResolvableGateNames is the gates resolve_gate_from_chat may close --
+// runtime/CLAUDE.md's documented "a human told me to proceed mid-chat"
+// escape hatch. The rule is that approving a gate this way must have no
+// effect outside the workspace (ADR-0060):
+//
+//   - plan: approval only unblocks the loop. Allowed.
+//   - review: approval fast-forwards the workspace's branch into the user's
+//     real repository and tears the workspace down (finalizeReviewApproval).
+//     A human has to run `masuda review approve` from the host for that.
+//   - triage: the agent under suspicion must never close its own concern
+//     (ADR-0029).
+//
+// Before this tool existed, all of that was enforced only by instructing
+// Claude not to self-write the marker file -- a convention, not a technical
+// boundary (Issue #13). Since ADR-0057 left the guest no other way to write
+// a gate at all, this map is the boundary.
+var chatResolvableGateNames = map[string]bool{"plan": true}
 
 // NewCurated returns an MCP server exposing the narrow, human-approval-flow
 // tool set meant for Claude itself (the main session inside a sandbox,
@@ -103,10 +112,12 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner, runOrc
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "resolve_gate_from_chat",
-		Description: "Resolve the \"plan\" or \"review\" gate yourself, only when a human told you to during a " +
-			"live `masuda chat` conversation. Never valid for \"triage\" -- the agent under a triage concern must " +
-			"never be the one that closes that gate (ADR-0029); a human must use `masuda triage dismiss/redo/halt` " +
-			"instead, independently, from the host.",
+		Description: "Resolve the \"plan\" gate yourself, only when a human told you to during a live " +
+			"`masuda chat` conversation. Only \"plan\": approving it just unblocks the loop, while the other two " +
+			"gates do something a human has to trigger from the host. \"review\" also lands the branch in the " +
+			"real repository and removes the workspace, so approving it needs `masuda review approve " +
+			"<workspace-id>`; \"triage\" must never be closed by the agent under the concern (ADR-0029). " +
+			"If a human approves either of those in chat, tell them which command to run and keep waiting.",
 	}, resolveGateFromChat(store))
 
 	if runPrivileged != nil {
@@ -244,8 +255,11 @@ func resolveGateFromChat(store *statedaemon.Store) mcp.ToolHandlerFor[resolveGat
 	return func(_ context.Context, _ *mcp.CallToolRequest, in resolveGateFromChatInput) (*mcp.CallToolResult, resolveGateFromChatOutput, error) {
 		if !chatResolvableGateNames[in.Name] {
 			return nil, resolveGateFromChatOutput{}, fmt.Errorf(
-				"resolve_gate_from_chat: gate %q cannot be resolved this way (only \"plan\" and \"review\" -- "+
-					"never \"triage\", ADR-0029)", in.Name)
+				"resolve_gate_from_chat: gate %q cannot be resolved this way -- only %q can. "+
+					"For \"review\", approval also lands the branch in the real repository and removes the "+
+					"workspace, so a human must run `masuda review approve <workspace-id>` from the host "+
+					"(ADR-0060). For \"triage\", the agent under a concern must never close it (ADR-0029). "+
+					"Report what the human said and wait; do not try to work around this.", in.Name, "plan")
 		}
 		if in.Status != "approved" && in.Status != "rejected" {
 			return nil, resolveGateFromChatOutput{}, fmt.Errorf(

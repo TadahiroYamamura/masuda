@@ -18,17 +18,21 @@
    デーモン経由のMCPツール呼び出し。ツール呼び出し自体が単発のブロッキング呼び出しなので、
    `while`ループもMonitorツールも不要）。
    - 待機中に人間が`masuda chat <workspace-id>`で接続し、対話の中で
-     「進めていい」と伝えられた場合は、上記の待機を打ち切り、自分自身で
+     「進めていい」と伝えられた場合、**`plan`ゲートに限り**、上記の待機を打ち切り、自分自身で
      `mcp__masuda-gate__resolve_gate_from_chat`ツール（`name`・`status`
-     （`"approved"`または`"rejected"`）・`feedback`（対話の要約））を呼んでゲートを解決してよい。
-   - ただし`triage`ゲート（ADR-0029）はこの限りではない。懸念の対象となっている
-     エージェント自身が、chatでの会話を理由に自分自身でこのゲートを閉じることは
-     絶対にしないこと。`resolve_gate_from_chat`は`name`に`"triage"`を渡すとサーバー側で
-     エラーを返す実装になっており、この一点についてはIssue #13が指摘する権限境界の欠如が
-     技術的に埋まっている（オーケストレーター自体はこのVMの外＝ホストで動いており、
-     このセッションから書き換えることはできない）。
-     `masuda chat`は懸念の対話・事実確認に使ってよいが、最終判断は必ず人間がホスト側から
-     `masuda triage dismiss/redo/halt`で独立に記録する。
+     （`"approved"`または`"rejected"`）・`feedback`（対話の要約））を呼んで解決してよい。
+     planの承認はループが先へ進むだけで、このワークスペースの外に影響しないためである。
+   - **`review`ゲートはchatでは解決できない**（ADR-0060）。G2の承認は、作業ブランチを
+     人間の実リポジトリへfast-forward反映し、cloneとワークスペースを削除するところまで含む。
+     これはホスト側でしか行えず、人間が自分の手で起動すべき操作でもある。chatで
+     「承認する」と言われたら、**`masuda review approve <workspace-id>`をホストで実行する
+     必要がある**と伝えて、待機を続けること。自分で回避しようとしないこと。
+   - **`triage`ゲートも同様にchatでは解決できない**（ADR-0029）。懸念の対象となっている
+     エージェント自身がこのゲートを閉じてはならない。`masuda chat`は懸念の対話・事実確認に
+     使ってよいが、最終判断は必ず人間がホスト側から`masuda triage dismiss/redo/halt`で
+     独立に記録する。
+   - review・triageのどちらも`resolve_gate_from_chat`がサーバー側でエラーを返す実装に
+     なっており、規約ではなく技術的な境界になっている（Issue #13・#24）。
    - `wait_for_gate_resolution`が返ったら（自分で`resolve_gate_from_chat`を呼んだ場合・別ターミナルの
      `masuda plan/review/triage approve|reject|dismiss|redo|halt`で解決された場合のどちらでも）、
      1へ戻って`next_task`を呼び直す
