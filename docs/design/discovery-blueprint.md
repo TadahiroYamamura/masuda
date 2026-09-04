@@ -6,7 +6,7 @@ Discovery（調査）・Blueprint（プラン作成）はサンドボックス�
 
 `cmd/masuda/plan.go`の`newPlanStartCommand`。第1引数が既存ワークスペースID（`workspace.Exists`で判定）かどうかで新規/再開の2経路に分岐する。
 
-- **新規**（`masuda plan start <branch> "<task>"`）: `resolveBase`でbaseブランチを解決し`newWorkspace`でワークスペースID発行＋worktree作成。`--file`が指定されていれば`hostloop.WriteInstructions`で内容をstateDirへコピーする。`hostloop.Start(id, worktreeDir, stateDir, task)`より前に完了させる
+- **新規**（`masuda plan start <branch> "<task>"` または `masuda plan start <branch> --file <path>`）: `resolveBase`でbaseブランチを解決し`newWorkspace`でワークスペースID発行＋worktree作成。`--file`が指定されていれば`hostloop.WriteInstructions`で内容をstateDirへコピーする。`task`と`--file`は少なくとも一方が必要で、`--file`だけの場合`taskBriefFor`（`cmd/masuda/plan.go`）が指示書を指す既定文をbriefに入れる。両方ある場合、taskは文書全体ではなく「文書のうちどこをやるか」の絞り込みとして読まれる。`hostloop.Start(id, worktreeDir, stateDir, task)`より前に完了させる
 - **再開**（`masuda plan start <workspace-id>`）: taskを省略しなければならない。`--file`・`--name`のいずれかが指定されていればエラー（新規作成時にしか意味を持たないため）。`workspace.Load`でbranch名等を引き、`startDaemon(info.ID)`で状態デーモンが落ちていれば再起動してから`hostloop.Start`を呼ぶ
 
 新規・再開どちらも最終的に`hostloop.Start`を呼ぶ点は共通で、`task`引数が空文字列かどうかだけがStart側の分岐材料になる（後述）。

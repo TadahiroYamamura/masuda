@@ -37,11 +37,18 @@ recognized by <workspace-id> already existing on disk (masuda workspace
 list); task must be omitted there since the loop resumes from whatever
 on-disk state it left off at.
 
---file lets you attach a pre-written instructions/investigation document
-(only valid alongside the first form). The investigator fact-checks it
-against the actual codebase before producing INVESTIGATION.md, instead of
-following it blindly (ADR-0016) — useful when you've already done some
-investigation yourself and want it verified before a plan is drafted from it.`,
+--file passes a pre-written instructions/investigation document (only valid
+alongside the first form), and is a complete input on its own — the <task>
+argument can be omitted when it is given:
+
+  masuda plan start <branch> --file notes.md
+  masuda plan start <branch> --file notes.md "<narrow it down>"
+
+The investigator fact-checks the document against the actual codebase before
+producing INVESTIGATION.md, instead of following it blindly (ADR-0016) —
+which matters most when the document is the whole assignment: a past
+investigation report or a saved GitHub issue is exactly the kind of input
+that can have gone stale.`,
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -88,8 +95,9 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 			if len(args) > 1 {
 				task = args[1]
 			}
-			if task == "" {
-				return fmt.Errorf("no task description given — required when starting a new workspace: masuda plan start %s \"<task>\"", branch)
+			task, err = taskBriefFor(task, instructionsFile, branch)
+			if err != nil {
+				return err
 			}
 			resolvedBase, err := resolveBase(cmd, root, "base", base, defaultBase)
 			if err != nil {
@@ -123,4 +131,37 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 	cmd.Flags().StringVar(&instructionsFile, "file", "", "path to a pre-written instructions/investigation document; the investigator will fact-check it against the codebase before producing INVESTIGATION.md (only valid when starting a new workspace)")
 	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only; only valid when starting a new workspace)")
 	return cmd
+}
+
+// taskBriefFor decides what to record as the workspace's task brief
+// (internal:task-brief, read back by investigate_plan_graph.py's
+// _investigate_task).
+//
+// A document is a complete input on its own: what gets worked on is often
+// something that already exists -- a past investigation report, a GitHub
+// issue saved to a file -- and restating it as a one-line task adds nothing.
+// The investigate prompt already carries a section telling the investigator
+// to read INSTRUCTIONS.md and fact-check it against the codebase (ADR-0016),
+// so all the brief has to do in that case is point at it; the section that
+// follows carries the real content. Defaulting here rather than reshaping
+// that prompt keeps the "task brief is always present" invariant
+// _read_task_brief() relies on.
+//
+// A task given alongside --file is kept as-is: it then reads as a narrowing
+// of the document ("just the X part of this"), not as the whole assignment.
+func taskBriefFor(task, instructionsFile, branch string) (string, error) {
+	if task != "" {
+		return task, nil
+	}
+	if instructionsFile != "" {
+		// No CLI vocabulary here: the reader is a subagent that never sees
+		// the command line, so a flag name is a string it cannot resolve.
+		// What it can act on is the next section, which names the file by
+		// absolute path.
+		return "このワークスペースには事前に用意された指示書がある。次節「事前に用意された指示書の検証」が" +
+			"示すファイルを読み、そこに書かれている作業を今回のタスクとせよ。", nil
+	}
+	return "", fmt.Errorf(
+		"no task description given — required when starting a new workspace: masuda plan start %s \"<task>\" "+
+			"(or pass a document with --file instead)", branch)
 }
