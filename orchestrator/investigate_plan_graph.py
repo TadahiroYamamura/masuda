@@ -515,9 +515,17 @@ G1ゲート（`masuda plan show`）のstatusがpendingでなくなるまで待�
 `masuda chat <workspace-id>` で対話するか、
 `masuda plan approve <workspace-id>` / `masuda plan reject <workspace-id> "<feedback>"` で応答してください。
 """,
-    "g1_approved": """# DONE (G1 approved)
+    "g1_approved": f"""# DONE (G1 approved)
 
-G1が承認されました。フェーズ3（プロジェクト初期化）以降はまだ実装されていません。
+G1が承認されました。このホスト側ループ（Discovery/Blueprint）はここで終わりです。
+セッションを終了してください。
+
+続きのBuild/ReviewはサンドボックスVMの中で動きます。人間が次のコマンドで起動します:
+
+    masuda sandbox start {STATE_DIR.name}
+
+（Scaffold（フェーズ3）は未実装の予約名で、依存解決は各サブエージェントが自分の
+タスク内で行います。飛ばして構いません。）
 """,
     "retries_exhausted": f"""# DONE (blocked)
 

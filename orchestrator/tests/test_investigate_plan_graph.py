@@ -353,6 +353,21 @@ def test_plan_redo_includes_rejection_feedback():
     assert "設計が複雑すぎる" in content
 
 
+def test_g1_approved_tells_the_human_how_to_reach_build():
+    """G1承認はホスト側ループの終わりであってパイプラインの終わりではない。
+    Build/ReviewはサンドボックスVMで動き、その起動は人間の操作なので、
+    次に打つコマンドをワークスペースID込みで示す。
+
+    以前の文面は「フェーズ3（プロジェクト初期化）以降はまだ実装されていません」
+    で止まっており、事実として古い（未実装なのはScaffoldという予約名だけ）うえ、
+    人間に次の一手を示していなかった。"""
+    ipg.write_task_md({"phase": "g1_approved", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+
+    assert f"masuda sandbox start {ipg.STATE_DIR.name}" in content
+    assert "まだ実装されていません" not in content
+
+
 @pytest.mark.parametrize("phase", ["g1_approved", "retries_exhausted", "iteration_budget_exceeded"])
 def test_terminal_phases_contain_done(phase):
     ipg.write_task_md({"phase": phase, "retries": 0, "questions": []})
