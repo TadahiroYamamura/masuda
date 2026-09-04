@@ -427,22 +427,50 @@ func writeDirManifest(path string, dirs []ExtraDir) error {
 // doesn't require the rest of a real /lib/modules/<version> install to
 // resolve dependencies for modules that aren't present at all.
 //
-// The chown pass is not optional polish: confirmed live that `cp -a`'s own
-// ownership-preservation can't be trusted here. A staged extra file's real
-// on-disk owner (masuda's own host uid, set before fakeroot ever starts) is
-// exactly what `cp -a` should propagate, but fakeroot's fake-ownership
-// tracking treats a freshly created destination file as owned by whatever
-// uid it *thinks* is doing the copying (root, since fakeroot fakes that
-// too) rather than what `cp` actually asked it to chown to -- observed
-// directly by comparing `ls -la` run inside vs. outside the same fakeroot
-// session on the same copy. Fixed by chowning explicitly afterward, the
-// same way ownership already has to be set explicitly for anything else
-// this session didn't inherit correctly on its own.
+// Ownership is set explicitly, never copied. `cp -a`'s own
+// ownership-preservation can't be trusted here: fakeroot's fake-ownership
+// tracking treats a freshly created destination as owned by whatever uid it
+// *thinks* is doing the copying (root, since fakeroot fakes that too) rather
+// than what the source actually is -- observed directly by comparing
+// `ls -la` run inside vs. outside the same fakeroot session on the same
+// copy. So the copy uses --preserve=mode,timestamps and the manifest's chown
+// pass is the only thing that decides owners.
+//
+// Dropping ownership from the copy also stops it from clobbering the
+// *directories* an extra file lands in. `cp -a` applied the staging tree's
+// directory ownership (root, per the above) onto the image's existing ones,
+// which is how /home/ubuntu and /home/ubuntu/.claude ended up root-owned in
+// a built image even though the Dockerfile had chowned them to ubuntu --
+// leaving the guest's own user unable to create anything under its home,
+// which is where Claude Code keeps its session state. The chown pass never
+// caught it because the manifest lists files, not the directories holding
+// them.
+//
+// A directory the image doesn't already have still has to be created by
+// something, and under fakeroot that something owns it as root. ensure_dir
+// walks each staged file's parents shallowest-first and creates only what is
+// missing, chowned to that file's owner. Directories the image already
+// carries are left exactly as it has them -- /home stays root-owned even
+// when a file below it is not.
 func extractAndFormat(extractDir, tarPath, stagingDir, ownerManifestPath, dirManifestPath, linkManifestPath, imagePath string, sizeMiB int) error {
 	const script = `set -e
+ensure_dir() {
+  if [ "$2" = "." ] || [ "$2" = "/" ]; then
+    return 0
+  fi
+  ensure_dir "$1" "$(dirname "$2")" "$3" "$4"
+  if [ ! -d "$1/$2" ]; then
+    mkdir "$1/$2"
+    chown "$3:$4" "$1/$2"
+  fi
+}
 tar -C "$1" -xpf "$2"
 if [ -n "$(ls -A "$3" 2>/dev/null)" ]; then
-  cp -a "$3"/. "$1"/
+  while IFS="$(printf '\t')" read -r owner_uid owner_gid rel; do
+    [ -z "$rel" ] && continue
+    ensure_dir "$1" "$(dirname "$rel")" "$owner_uid" "$owner_gid"
+  done < "$7"
+  cp -RP --preserve=mode,timestamps "$3"/. "$1"/
   while IFS="$(printf '\t')" read -r owner_uid owner_gid rel; do
     [ -z "$rel" ] && continue
     chown "$owner_uid:$owner_gid" "$1/$rel"

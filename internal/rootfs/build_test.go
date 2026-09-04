@@ -119,6 +119,25 @@ func TestBuildWritesExtraFiles(t *testing.T) {
 		t.Errorf("authorized_keys not owned 1000:1000 in built image:\n%s", stat)
 	}
 
+	// The directories an extra file lands in matter as much as the file: a
+	// root-owned ~/.claude left the guest's own user unable to create
+	// anything under its home, and Claude Code exited on startup because it
+	// keeps session state there. alpine has no /home/ubuntu at all, so both
+	// levels are created by the build and must land on the file's owner.
+	for _, dir := range []string{"/home/ubuntu", "/home/ubuntu/.ssh"} {
+		stat := debugfsStat(t, outputPath, dir)
+		if !bytes.Contains([]byte(stat), []byte("User:  1000   Group:  1000")) {
+			t.Errorf("%s not owned 1000:1000 in built image:\n%s", dir, stat)
+		}
+	}
+
+	// ...but a directory the image already carries keeps the ownership the
+	// image gave it. /home is root-owned in alpine and must stay that way,
+	// even though the file below it is not.
+	if stat := debugfsStat(t, outputPath, "/home"); !bytes.Contains([]byte(stat), []byte("User:     0   Group:     0")) {
+		t.Errorf("/home must keep the image's own root ownership:\n%s", stat)
+	}
+
 	out, err := exec.Command("debugfs", "-R", "cat /home/ubuntu/.ssh/authorized_keys", outputPath).CombinedOutput()
 	if err != nil {
 		t.Fatalf("debugfs cat authorized_keys: %v\n%s", err, out)
