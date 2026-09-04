@@ -1,10 +1,27 @@
 # Build（実装）
 
-Build段階は`orchestrator/implement_review_graph.py`（Dockerサンドボックス内で動くPure state
-machine、LLM呼び出しは一切行わない）が、`plan/steps.json`（ADR-0026）のステップを1つずつ
+Build段階は`orchestrator/implement_review_graph.py`（**ホスト上で動く**Pure state machine、
+LLM呼び出しは一切行わない）が、`plan/steps.json`（ADR-0026）のステップを1つずつ
 処理する。`detect_phase`がファイルシステム/状態デーモンの状態からフェーズを判定し、
 `write_task_md`がそのフェーズ向けのTASK.mdを書き出してサブエージェントへの委譲内容を
 決める、という2ノードのLangGraphを1回のオーケストレーター起動ごとに1往復させる構成。
+
+実装するセッションはサンドボックスVMの中にいて、curated MCPの`next_task`ツールで
+このオーケストレーターを1回進め、タスク本文を戻り値で受け取る（ADR-0057）。ホスト側の
+実体は`cmd/masuda/statedaemon.go`の`orchestratorRunner`——worktreeをcwd、ワークスペースの
+状態ディレクトリを`MASUDA_STATE_DIR`として`implement_review_graph.py`を1回実行し、
+書かれた`TASK.md`を読んで返す。gitコマンド（ステップcommit・タグ・diff・`git status`に
+よる機械的バックストップ）はすべてこのホスト側プロセスが、VMと共有している同じworktreeに
+対して実行する。
+
+**プロンプトに埋め込むパスだけはゲスト視点に読み替える。** `MASUDA_STATE_DIR`はホストの
+パスだが、指示を受け取るセッションが開けるのはVM内の`/masuda-state`である。
+`GUEST_STATE_DIR`（`MASUDA_GUEST_STATE_DIR`環境変数、`internal/sandbox.GuestStateDir`が
+渡す）と`_agent_path()`が先頭のプレフィックスだけを差し替える。読み替えるのは
+プロンプトへ描画するパスだけで、このスクリプト自身が開くパスは常にホスト側のままである。
+シェル変数の形（`$MASUDA_STATE_DIR/...`）でプロンプトに書かない理由は、受け手がLLMであり、
+Write/Editツールがリテラルのパスしか取らないうえ、レビュー観点のサブエージェントのように
+Bashを持たない相手が展開できないため。
 
 全ステップがcommit済みになると自動的にReview段階（G2）へ合流する
 （`_detect_post_implementation_phase`）。review/check/fix/recheckのエンジン自体・観点

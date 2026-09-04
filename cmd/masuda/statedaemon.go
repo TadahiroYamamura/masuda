@@ -14,6 +14,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
@@ -33,6 +34,10 @@ const (
 	daemonLogName      = "daemon.log"
 	daemonStoreDirName = "store"
 )
+
+// orchestratorTaskFileName is the file implement_review_graph.py writes its
+// rendered task into, relative to the state directory (TASK_MD there).
+const orchestratorTaskFileName = "TASK.md"
 
 // runStatedaemon opens the store under stateDir and serves both its trusted
 // (full) and curated (Claude-facing) tool sets, each over its own UDS
@@ -66,7 +71,17 @@ func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string)
 	if repoRoot != "" && worktreeDir != "" {
 		runPrivileged = privilegedRunner(repoRoot, worktreeDir, stateDir)
 	}
-	curated := mcpserver.NewCurated(store, runPrivileged)
+	// The Build/Review orchestrator runs here, on the host, not in the
+	// guest: it is masuda's own control code (the state machine, the
+	// budget, the step commits), and the only reason it ever lived inside
+	// the sandbox was that the phase 4-5 session invoked it directly.
+	// Needs the worktree to run git against; the state directory it reads
+	// and writes through is this daemon's own.
+	var runOrchestrator mcpserver.OrchestratorRunner
+	if worktreeDir != "" {
+		runOrchestrator = orchestratorRunner(worktreeDir, stateDir)
+	}
+	curated := mcpserver.NewCurated(store, runPrivileged, runOrchestrator)
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
@@ -183,6 +198,56 @@ func privilegedRunner(repoRoot, worktreeDir, stateDir string) mcpserver.Privileg
 			TimedOut:     result.TimedOut,
 		}, nil
 	}
+}
+
+// orchestratorRunner builds the OrchestratorRunner the curated next_task
+// tool calls: one turn of implement_review_graph.py against worktreeDir,
+// then the TASK.md it wrote.
+func orchestratorRunner(worktreeDir, stateDir string) mcpserver.OrchestratorRunner {
+	return func(ctx context.Context) (string, error) {
+		python, script, err := hostloop.EnsureImplementReviewOrchestrator()
+		if err != nil {
+			return "", fmt.Errorf("preparing masuda's own host-side python runtime: %w", err)
+		}
+		return runOrchestratorTurn(ctx, python, script, worktreeDir, stateDir)
+	}
+}
+
+// runOrchestratorTurn runs one detect_phase -> write_task_md turn and
+// returns the task text it produced.
+//
+// cwd is worktreeDir because every git command in implement_review_graph.py
+// is relative to it, and MASUDA_STATE_DIR is where that script resolves all
+// of masuda's own control files from -- the same two inputs it got inside
+// the sandbox, just pointing at the host's side of the same virtiofs share.
+//
+// Split out from orchestratorRunner so it can be tested against a stub
+// interpreter, without a venv.
+func runOrchestratorTurn(ctx context.Context, python, script, worktreeDir, stateDir string) (string, error) {
+	cmd := exec.CommandContext(ctx, python, script)
+	cmd.Dir = worktreeDir
+	cmd.Env = append(os.Environ(),
+		"MASUDA_STATE_DIR="+stateDir,
+		// The orchestrator opens files at the host path above, but the
+		// paths it writes into prompts have to be the ones the guest
+		// session it instructs can open -- the same directory, reached
+		// through that VM's virtiofs mount.
+		"MASUDA_GUEST_STATE_DIR="+sandbox.GuestStateDir,
+	)
+	// Combined, and only used to explain a failure: the orchestrator's own
+	// chatter is not something the calling session needs on success.
+	var output strings.Builder
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("running %s: %w\n%s", script, err, output.String())
+	}
+
+	task, err := os.ReadFile(filepath.Join(stateDir, orchestratorTaskFileName))
+	if err != nil {
+		return "", fmt.Errorf("reading the %s the orchestrator should have written: %w", orchestratorTaskFileName, err)
+	}
+	return string(task), nil
 }
 
 // startDaemon spawns workspace id's state daemon as a detached background

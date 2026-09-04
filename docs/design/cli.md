@@ -87,7 +87,9 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 ## 内部コマンド（`masuda internal ...`）
 
-masuda自身のコード（Go CLI・サンドボックスのentrypoint・`orchestrator/*.py`）だけが呼ぶ配管用コマンド群。`newInternalCommand`（`cmd/masuda/statedaemon.go:90`）に`Hidden: true`でぶら下がり、`--help`には出ない。**通常は直接叩かない。**
+ほとんどがmasuda自身のコード（Go CLI・ホスト上で動く`orchestrator/*.py`）から呼ばれる配管用コマンド群。サンドボックスVMの中からは呼ばれない——rootfsに`masuda`バイナリ自体が入っていない（ADR-0057）。`newInternalCommand`（`cmd/masuda/statedaemon.go:90`）に`Hidden: true`でぶら下がり、`--help`には出ない。**通常は直接叩かない。**
+
+例外は`claude-token set`と`vm-ssh-key rotate`で、こちらは人間が叩く。前者は`docs/INSTALLATION.md`のセットアップ手順そのもの——`--help`に出ないのは「日常的に使うものではない」という意味であって、使ってはいけないという意味ではない。
 
 - **`statedaemon`**: ワークスペースの状態デーモンをフォアグラウンドで起動する。通常は`workspace create`が`startDaemon`（`cmd/masuda/statedaemon.go:153`）でこのコマンド自身をデタッチしたサブプロセスとして起動する形でのみ動き、人間が直接打つことは想定していない。状態デーモン自体の中身は`docs/design/state-daemon-mcp.md`を参照
 - **`state get|put|delete|list|apply`**: 状態デーモンのtrusted MCPツールをワンショットで叩く薄いCLIラッパー（`get/delete <key>`・`put <key> <value>`・`list <prefix>`・`apply`はopのJSON配列をstdinから読む）。`orchestrator/*.py`（Python）が自前のMCPクライアントを持たずに済むよう、1操作につき1回このサブコマンドをsubprocess起動する形で使う

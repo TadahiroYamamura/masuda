@@ -26,11 +26,12 @@
 ### 全体アーキテクチャ・実行方式
 
 - **[0001](0001-self-loop-over-direct-api.md)** レビュー実行方式を直接API呼び出しから自己ループ方式に変更する
-- **[0002](0002-workflow-orchestrator-with-subagent-delegation.md)** メインエージェントはワークフロー管理に専念し、実作業はサブエージェントに委譲する
+- **[0002](0002-workflow-orchestrator-with-subagent-delegation.md)** メインエージェントはワークフロー管理に専念し、実作業はサブエージェントに委譲する — *一部改訂: 0057*
 - **[0007](0007-loop-protocol-claude-md-in-user-scope.md)** ループ仕様CLAUDE.mdは対象リポジトリではなく`~/.claude/CLAUDE.md`に置く — *一部改訂: 0044*
 - **[0012](0012-worktree-created-before-investigation.md)** worktree作成は調査より前に行う — *一部改訂: 0044*
 - **[0047](0047-file-placement-decided-by-consumer.md)** ファイルの配置は「誰が消費するか」で決め、「masudaの動作に必要かどうか」では決めない
 - **[0050](0050-design-docs-hold-current-state-adrs-hold-rationale.md)** 現在の設計は`docs/design/`が、判断の経緯は`docs/adr/`が持ち、CLAUDE.mdはどちらも持たない
+- **[0057](0057-build-review-orchestrator-runs-on-the-host-guest-pulls-next-task.md)** Build/Reviewのオーケストレーターをホストで動かし、ゲストはcurated MCPの`next_task`で次のタスクを受け取る
 
 ### ゲート・エスカレーション
 

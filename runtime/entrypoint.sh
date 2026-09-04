@@ -4,28 +4,21 @@ set -euo pipefail
 SESSION="claude-work"
 PROMPT="CLAUDE.mdのルールに従い作業を開始せよ"
 
-# VM boot path (Issue #31 M5-6): VMBackend.Start already runs mcp-relay on
-# the *host*, bound to the bridge gateway IP, and passes its address via the
-# masuda.mcp_relay= kernel command line parameter (--cmdline). The guest
-# can't run its own relay bridging /masuda-state/daemon-curated.sock the way
-# the Docker path does -- virtiofs can't share a Unix domain socket special
-# file across host/guest kernels (confirmed live in M3), so there's no local
-# socket for a guest-side relay to bridge from in the first place. When this
-# parameter is present, skip starting a relay entirely and just point
-# Claude Code straight at the host's.
+# VMBackend.Start runs mcp-relay on the *host*, bound to the bridge gateway
+# IP, and passes its address via the masuda.mcp_relay= kernel command line
+# parameter (--cmdline). The guest cannot run its own relay: virtiofs can't
+# share a Unix domain socket special file across host/guest kernels
+# (confirmed live in M3), so there is no local socket to bridge from.
+#
+# Missing is fatal rather than falling back. The fallback used to be the
+# Docker path's own guest-side relay, which went away with ADR-0044 -- and
+# without a relay this session has no gate tools and no next_task, so it
+# could not run the loop at all. Failing here says why; starting Claude
+# without its tools would not.
 MCP_RELAY_ADDR=$(sed -n 's/.*masuda\.mcp_relay=\([^ ]*\).*/\1/p' /proc/cmdline)
 if [ -z "$MCP_RELAY_ADDR" ]; then
-    # Docker path: bridges the curated MCP tool set's Unix domain socket
-    # (/masuda-state/daemon-curated.sock, Issue #35) to a local TCP port --
-    # Claude Code's --mcp-config only understands http://host:port URLs. A
-    # fixed port is fine here (unlike the phase 1-2 host loop's dynamically
-    # chosen one, internal/hostloop.startMCPRelay) since this container has
-    # its own network namespace; started once for the container's whole
-    # lifetime, start_claude.sh's later `claude` invocations reuse the same
-    # port without starting a second relay.
-    MCP_RELAY_PORT=39217
-    masuda internal mcp-relay --socket /masuda-state/daemon-curated.sock --port "$MCP_RELAY_PORT" &
-    MCP_RELAY_ADDR="127.0.0.1:$MCP_RELAY_PORT"
+    echo "[entrypoint] masuda.mcp_relay= missing from /proc/cmdline -- no MCP relay to reach the host's state daemon" >&2
+    exit 1
 fi
 # timeout (ms, 7 days): confirmed live that without a generous per-server
 # override, Claude Code aborts a wait_for_gate_resolution call on its own hard

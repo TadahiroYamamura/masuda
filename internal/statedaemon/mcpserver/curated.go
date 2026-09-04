@@ -69,7 +69,26 @@ type PrivilegedRunner func(ctx context.Context, name string) (PrivilegedRunResul
 // (ADR-0053).
 const maxToolLogBytes = 200 << 10
 
-func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.Server {
+// OrchestratorRunner advances the Build/Review orchestrator by one turn
+// (detect_phase -> write_task_md) and returns the task text it produced.
+// Injected for the same reason PrivilegedRunner is: running it means
+// spawning a Python process against a worktree, which is cmd/masuda's
+// business, not this package's.
+//
+// The task text is returned rather than left for the caller to read off
+// TASK.md. The guest reaches this tool across a virtiofs share whose
+// host->guest attribute cache lags by up to a second (measured ~0.5s), so
+// a session told to "read TASK.md now" can legitimately read the previous
+// turn's file. Handing back the body sidesteps that entirely -- and the
+// orchestrator still writes TASK.md, which stays the durable record a
+// human (or a resumed session) can read.
+//
+// Nil leaves next_task unregistered, the same way a nil PrivilegedRunner
+// leaves run_privileged_command unregistered: a daemon with no worktree to
+// run an orchestrator against has nothing to offer here.
+type OrchestratorRunner func(ctx context.Context) (task string, err error)
+
+func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner, runOrchestrator OrchestratorRunner) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "masuda-statedaemon-curated",
 		Version: "0.1.0",
@@ -101,7 +120,34 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.S
 		}, runPrivilegedCommand(runPrivileged))
 	}
 
+	if runOrchestrator != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name: "next_task",
+			Description: "Ask masuda what to work on next, and get the task text back. Call it when you have no " +
+				"current task, and again each time you finish one and neither the DONE nor the GATE condition holds. " +
+				"Takes no arguments: what the next task is follows from the workspace's own state, never from " +
+				"anything you pass. The same text is also written to TASK.md, but use what this returns -- the file " +
+				"you can see may still be the previous turn's.",
+		}, nextTask(runOrchestrator))
+	}
+
 	return server
+}
+
+type nextTaskInput struct{}
+
+type nextTaskOutput struct {
+	Task string `json:"task" jsonschema:"the task to work on next, in the same form TASK.md holds"`
+}
+
+func nextTask(run OrchestratorRunner) mcp.ToolHandlerFor[nextTaskInput, nextTaskOutput] {
+	return func(ctx context.Context, _ *mcp.CallToolRequest, _ nextTaskInput) (*mcp.CallToolResult, nextTaskOutput, error) {
+		task, err := run(ctx)
+		if err != nil {
+			return nil, nextTaskOutput{}, fmt.Errorf("next_task: %w", err)
+		}
+		return nil, nextTaskOutput{Task: task}, nil
+	}
 }
 
 type runPrivilegedCommandInput struct {

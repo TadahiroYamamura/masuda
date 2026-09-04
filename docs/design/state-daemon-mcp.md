@@ -8,8 +8,10 @@
 
 | ソケット | ファイル名 | 公開するツール | 誰が繋ぐか |
 |---|---|---|---|
-| trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_apply`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く） |
-| curated | `daemon-curated.sock` | `wait_for_gate_resolution`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
+| trusted | `daemon.sock` | `state_get`/`state_put`/`state_delete`/`state_list`/`state_apply`（5tool、`internal/statedaemon/mcpserver.New`） | ホストCLI（`cmd/masuda`、in-process import）、`orchestrator/*.py`（`masuda internal state`をsubprocessで叩く）。**いずれもホスト上のプロセスで、VMからこのソケットへ到達する経路は無い** |
+| curated | `daemon-curated.sock` | `wait_for_gate_resolution`/`resolve_gate_from_chat`、および対象リポジトリとworktreeが分かっている場合のみ`run_privileged_command`・`next_task`（`internal/statedaemon/mcpserver.NewCurated`） | Claude自身（Discovery/Blueprint段階のホストループ、Build/Review段階はVM内の`claude`プロセス） |
+
+両ソケットともUDSであり、ホストのファイルシステム上にしか存在しない。VM内から届くのはcuratedだけで、それも`masuda internal mcp-relay`がホスト側でTCPへ中継しているからである（後述）。trustedソケットにはこの中継が無い——これは実装漏れではなく、**VMがtrusted setに触れないこと自体が設計**である（ADR-0057）。
 
 両ソケットとも`internal/statedaemon/mcpserver/uds.go`の`serveUDS`が待ち受ける。バインド前に同名の残存ソケットファイルを削除してから`net.Listen("unix", ...)`し、`os.Chmod(socketPath, 0o600)`で他ユーザーからのアクセスを塞ぐ。`mcp.NewStreamableHTTPHandler`でMCPサーバーをHTTP over UDSとして配線しており、tool定義の中身には関知しない——`ServeCuratedServerUDS`はどんな`*mcp.Server`でも受け取れる形になっている。
 
@@ -17,7 +19,7 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 `daemon.sock`へ承認済みの子MCPサーバーのtoolがプロキシ登録される仕組み（`internal/statedaemon/mcpaggregator`）は`docs/design/mcp-child-servers.md`を参照。
 
-`run_privileged_command`は`NewCurated`の第2引数（`PrivilegedRunner`）がnilでない場合にのみ登録される。`runStatedaemon`が`--repo-root`と`--worktree-dir`の両方を受け取ったときだけ実体を渡すため、対象リポジトリを持たない単独起動（pytestフィクスチャ等）ではツール自体が現れない。実体は`cmd/masuda/statedaemon.go`の`privilegedRunner`が組み立てる——`internal/statedaemon/mcpserver`から`internal/sandbox`をimportすると、後者のテストが前者をimportしているためテストで循環参照になる。ツールの中身は`docs/design/privileged-commands.md`を参照。
+`run_privileged_command`と`next_task`は、`NewCurated`が受け取るランナー（`PrivilegedRunner`・`OrchestratorRunner`）がnilでない場合にのみ登録される。`runStatedaemon`が`--repo-root`と`--worktree-dir`の両方を受け取ったときだけ実体を渡すため、対象リポジトリを持たない単独起動（pytestフィクスチャ等）ではツール自体が現れない。実体は`cmd/masuda/statedaemon.go`の`privilegedRunner`が組み立てる——`internal/statedaemon/mcpserver`から`internal/sandbox`をimportすると、後者のテストが前者をimportしているためテストで循環参照になる。ツールの中身は`docs/design/privileged-commands.md`を参照。
 
 ## 汎用KVストア
 
@@ -68,16 +70,18 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 - **Go側**: `cmd/masuda`・`internal/gate`が`mcpclient.Dial(ctx, statedaemon.SocketPath(stateDir))`をin-processでimportして直接呼ぶ
 - **Python側**: `orchestrator/state_client.py`はMCPクライアントを自前実装せず、`masuda internal state get/put/delete/list/apply`（`cmd/masuda/internalstate.go`の`newInternalStateCommand`、hidden subcommand）を`subprocess.run`で1操作1回呼び出す。`apply`だけはopのJSON配列を引数ではなくstdinから受け取る（任意のJSON値がシェルのクォートを通らずに済む）。この上に`state_client.consume(key, follow_up)`があり、ゲートマーカーの消費はすべてこれを経由する（`docs/design/gates.md`）。ソケットパスは`--socket`省略時`$MASUDA_STATE_DIR`から`statedaemon.SocketPath`で解決される
 
-この非対称の帰結として、`orchestrator/*.py`を実行するVMのrootfsに`masuda`バイナリ自体が同梱されている必要がある（イメージビルド時にマルチステージビルドで焼き込み、ADR-0041）。MCPワイヤプロトコルの実装はGo側の`mcpclient`一箇所に集約されており、Pythonは`_run()`のJSONパース以上のことをしない。
+両オーケストレーターはホスト上で動くため、この解決はホスト内のUDSに閉じている。VMのrootfsには`masuda`バイナリも`orchestrator/`もPython venvも同梱されていない（ADR-0057）——ゲストがtrusted setへ到達できないことを、規約ではなくイメージの性質として持たせるためである。MCPワイヤプロトコルの実装はGo側の`mcpclient`一箇所に集約されており、Pythonは`_run()`のJSONパース以上のことをしない。
 
 ## キュレートMCPツールセット
 
-`internal/statedaemon/mcpserver/curated.go`の`NewCurated(store)`が返す2toolのみ。Claudeのメインセッション（サブエージェントには渡らない）が使う。
+`internal/statedaemon/mcpserver/curated.go`の`NewCurated`が返すツールセット。Claudeのメインセッション（サブエージェントには渡らない）が使う。常設は以下の2tool。
 
 - **`wait_for_gate_resolution`**（`waitForGateResolution`）: `name`は`gateNames = {"plan", "review", "triage"}`のいずれかのみ許可。`store.WaitForPresence(ctx, "gate:"+name)`をブロッキング呼び出しし、マーカーJSON（`status`/`feedback`）をパースして返す。マーカーの不在が未解決を意味するため、待つ条件は「キーが存在すること」そのものになる——既に解決済みのゲートに対しては即座に返り、接続断後の呼び直しも安全（ADR-0055）
 - **`resolve_gate_from_chat`**（`resolveGateFromChat`）: `masuda chat`での対話中に人間が「進めていい」と言った場合の自己承認用。`name`は`chatResolvableGateNames = {"plan", "review"}`のみ許可——**`"triage"`はサーバー側で拒否される**（ADR-0029: triage対象のエージェント自身がtriageゲートを閉じてはならないという規約を、この1点だけ技術的に強制する）。`status`は`"approved"`/`"rejected"`のみ許容し、`gate:`+nameへ`{status, feedback, decided_at}`をPutする
 
-`cmd/masuda/statedaemon.go`の`runStatedaemon`は`curated := mcpserver.NewCurated(store)`を1個だけ構築し、`ServeCuratedServerUDS`とマウント後の`mcpaggregator.Start`（子MCPサーバーのプロキシtool登録）の両方がこの同一インスタンスへツールを追加登録していく。子MCPサーバーの承認・集約の詳細は`docs/design/mcp-child-servers.md`を参照。
+- **`next_task`**（`nextTask`、`OrchestratorRunner`がある場合のみ）: Build/Review段階のループを1回分進め、次のタスク本文を返す。実体はホスト上で`implement_review_graph.py`を1回走らせる`cmd/masuda/statedaemon.go`の`orchestratorRunner`（`docs/design/build.md`）。**タスク本文をファイルではなく戻り値で返す**のは、ホストが書いた`TASK.md`がゲストから見えるまでvirtiofsの属性キャッシュ分（実測0.5〜0.6秒）遅れるためで、直前のターンの内容を読んでしまう窓を無くしている
+
+`cmd/masuda/statedaemon.go`の`runStatedaemon`は`curated`を1個だけ構築し、`ServeCuratedServerUDS`とマウント後の`mcpaggregator.Start`（子MCPサーバーのプロキシtool登録）の両方がこの同一インスタンスへツールを追加登録していく。子MCPサーバーの承認・集約の詳細は`docs/design/mcp-child-servers.md`を参照。
 
 ## MCPツール呼び出しのタイムアウト対策
 

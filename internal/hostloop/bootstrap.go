@@ -14,6 +14,14 @@ import (
 
 const requirementsMarkerName = ".masuda-requirements-sha256"
 
+// The orchestrator scripts extracted into runtimeDir, one per phase pair,
+// plus the state-daemon client both import as a sibling module.
+const (
+	investigatePlanScriptName = "investigate_plan_graph.py"
+	implementReviewScriptName = "implement_review_graph.py"
+	stateClientScriptName     = "state_client.py"
+)
+
 // runtimeDir returns the stable directory masuda extracts its own
 // orchestrator script into and builds its own venv under -- a sibling of
 // workspace.StateDir's workspaces/ directory, under the same DataHome, so it
@@ -67,29 +75,39 @@ func requirementsHash() string {
 	return hex.EncodeToString(sum[:])
 }
 
-// ensureRuntime extracts masuda's embedded orchestrator script (always, to
+// ensureRuntime extracts masuda's embedded orchestrator scripts (always, to
 // stay in sync with whichever masuda binary is running) and, if the venv is
 // missing or was built against a different requirements.txt, (re)builds it --
 // all under runtimeDir(). Returns the venv's python interpreter path and the
-// extracted script's path for the system prompt template to invoke.
-func ensureRuntime() (pythonPath, scriptPath string, err error) {
-	dir, err := runtimeDir()
+// directory the scripts were extracted into.
+//
+// Both phase pairs' scripts are extracted by the same call rather than one
+// each on demand: they share the venv and the state_client.py sibling, so
+// splitting them would mean two callers racing to build the same venv for
+// no gain.
+func ensureRuntime() (pythonPath, dir string, err error) {
+	dir, err = runtimeDir()
 	if err != nil {
 		return "", "", fmt.Errorf("resolving masuda's own runtime directory: %w", err)
 	}
 
-	scriptPath = filepath.Join(dir, "investigate_plan_graph.py")
-	if err := atomicWrite(dir, "investigate_plan_graph.py", masuda.OrchestratorScript, 0o644); err != nil {
-		return "", "", fmt.Errorf("extracting orchestrator script: %w", err)
+	scripts := []struct {
+		name    string
+		content []byte
+	}{
+		{investigatePlanScriptName, masuda.InvestigatePlanScript},
+		{implementReviewScriptName, masuda.ImplementReviewScript},
+		// Both orchestrators import state_client as a sibling module
+		// (orchestrator/state_client.py, ADR-0040's state-daemon client) --
+		// extracted alongside them into the same runtime dir for that import
+		// to resolve. The sandbox image never needed this: it COPYs the whole
+		// orchestrator/ directory rather than embedding individual scripts.
+		{stateClientScriptName, masuda.StateClientScript},
 	}
-	// investigate_plan_graph.py imports state_client as a sibling module
-	// (orchestrator/state_client.py, ADR-0040's state-daemon client) --
-	// extracted alongside it into the same runtime dir for that import to
-	// resolve. The Docker sandbox (phase 3-5) never needed this: its image
-	// COPYs the whole orchestrator/ directory rather than embedding a
-	// single script.
-	if err := atomicWrite(dir, "state_client.py", masuda.StateClientScript, 0o644); err != nil {
-		return "", "", fmt.Errorf("extracting state_client.py: %w", err)
+	for _, s := range scripts {
+		if err := atomicWrite(dir, s.name, s.content, 0o644); err != nil {
+			return "", "", fmt.Errorf("extracting %s: %w", s.name, err)
+		}
 	}
 
 	venvDir := filepath.Join(dir, "venv")
@@ -104,13 +122,31 @@ func ensureRuntime() (pythonPath, scriptPath string, err error) {
 		}
 	}
 	if upToDate {
-		return pythonPath, scriptPath, nil
+		return pythonPath, dir, nil
 	}
 
 	if err := buildVenv(dir, venvDir, wantHash, markerPath); err != nil {
 		return "", "", err
 	}
-	return pythonPath, scriptPath, nil
+	return pythonPath, dir, nil
+}
+
+// EnsureImplementReviewOrchestrator prepares the host-side runtime and
+// returns what it takes to run one Build/Review orchestrator turn:
+// the venv's python and implement_review_graph.py's path.
+//
+// Exported from this package, whose own subject is the phase 1-2 loop,
+// because the runtime it bootstraps (the venv, the extracted scripts) is
+// the same one either phase pair needs -- the Build/Review orchestrator
+// runs on the host as well, invoked through the state daemon rather than
+// by the guest. If a third caller appears, this bootstrap deserves its own
+// package instead.
+func EnsureImplementReviewOrchestrator() (pythonPath, scriptPath string, err error) {
+	pythonPath, dir, err := ensureRuntime()
+	if err != nil {
+		return "", "", err
+	}
+	return pythonPath, filepath.Join(dir, implementReviewScriptName), nil
 }
 
 // buildVenv (re)creates the venv at venvDir from masuda's embedded

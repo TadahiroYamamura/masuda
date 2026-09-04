@@ -535,7 +535,7 @@ func readRunResult(runDir, runID string, req PrivilegedRunRequest) PrivilegedRun
 	result := PrivilegedRunResult{
 		RunID:    runID,
 		Dir:      runDir,
-		GuestDir: filepath.Join("/masuda-state", PrivilegedRunsDirName, req.Name, runID),
+		GuestDir: filepath.Join(GuestStateDir, PrivilegedRunsDirName, req.Name, runID),
 		ExitCode: -1,
 	}
 	if raw, err := os.ReadFile(filepath.Join(runDir, "exit-code")); err == nil {

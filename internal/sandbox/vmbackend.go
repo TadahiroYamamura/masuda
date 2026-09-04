@@ -30,6 +30,16 @@ const (
 	vmDHCPLeaseFile   = "/var/lib/misc/masuda-dnsmasq.leases"
 )
 
+// GuestStateDir and GuestWorktreeDir are where the guest mounts the two
+// virtiofs shares (runtime/fstab.vm's tags). Exported because host-side code
+// that writes instructions *for* the guest has to name paths the guest can
+// actually open -- the host's own path for the same directory is meaningless
+// in there.
+const (
+	GuestStateDir    = "/masuda-state"
+	GuestWorktreeDir = "/workspace"
+)
+
 const (
 	cloudHypervisorBinary = "cloud-hypervisor"
 	vmMemorySize          = "2048M"

@@ -4,6 +4,8 @@
 
 Accepted (2026-07-25)
 
+- 一部改訂: [[0057-build-review-orchestrator-runs-on-the-host-guest-pulls-next-task]] — Build/Review段階では、メインエージェントはオーケストレーターの起動タイミングを判断せず、`TASK.md`も読まない。curated MCPの`next_task`を呼んで次のタスク本文を受け取る形になった（Discovery/Blueprint段階は従来どおり）
+
 ## Context
 
 `feat/github-actions-langgraph-nodes`ブランチのCLAUDE.mdには「サブエージェントへの委譲方式を廃止し、LangGraphの直接API呼び出し方式に移行した」という記述がある。撤退理由は「サブエージェントへの委譲ではトークンのコストが管理しきれなかった」ため。

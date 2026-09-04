@@ -8,8 +8,17 @@ package masuda
 
 import _ "embed"
 
+// InvestigatePlanScript and ImplementReviewScript are the two orchestrator
+// scripts, one per phase pair (Discovery/Blueprint and Build/Review). Both
+// are embedded, not just the phase 1-2 one: the Build/Review orchestrator
+// runs on the host too now, reached through the state daemon's next_task
+// tool rather than by the guest invoking it directly.
+//
 //go:embed orchestrator/investigate_plan_graph.py
-var OrchestratorScript []byte
+var InvestigatePlanScript []byte
+
+//go:embed orchestrator/implement_review_graph.py
+var ImplementReviewScript []byte
 
 //go:embed orchestrator/state_client.py
 var StateClientScript []byte

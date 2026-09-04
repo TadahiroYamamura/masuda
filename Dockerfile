@@ -1,15 +1,3 @@
-# Builder stage: masuda's own CLI binary, so orchestrator/*.py (Issue #35's
-# phase A) can shell out to `masuda internal state ...` inside the container
-# instead of embedding its own MCP client. The rest of this image has no Go
-# toolchain at all -- this stage exists purely to produce the one binary the
-# final stage copies out, and is discarded after.
-FROM golang:1.26 AS masuda-builder
-WORKDIR /src
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /out/masuda ./cmd/masuda
-
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -61,7 +49,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update \
  && apt-get install -y ca-certificates curl gnupg build-essential \
  && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
- && apt-get install -y nodejs python3 python3-venv tmux ttyd git systemd systemd-sysv kmod openssh-server sudo \
+ && apt-get install -y nodejs python3 tmux ttyd git systemd systemd-sysv kmod openssh-server sudo \
  && rm -f /etc/ssh/ssh_host_* \
  && echo 'ubuntu ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff' > /etc/sudoers.d/masuda-vm-poweroff \
  && chmod 0440 /etc/sudoers.d/masuda-vm-poweroff \
@@ -73,7 +61,7 @@ RUN npm install -g @anthropic-ai/claude-code
 # ubuntu user (uid=1000) already exists in ubuntu:24.04.
 # Using it avoids root restriction and matches host file ownership on mounted ~/.claude/.credentials.json (mode 600)
 #
-# masuda's own control files (venv/orchestrator/runtime) live under /opt/masuda, not
+# masuda's own control files (runtime/) live under /opt/masuda, not
 # /workspace: /workspace is reserved as the bind-mount point for the target repository's
 # worktree (masuda sandbox start mounts a different worktree there per run), and a bind
 # mount replaces the mount point's entire contents — anything baked in at /workspace would
@@ -86,17 +74,16 @@ RUN mkdir -p /workspace /masuda-state /opt/masuda /home/ubuntu/.claude \
 
 WORKDIR /opt/masuda
 
-# Python venv + LangGraph (baked into image)
-COPY --chown=ubuntu:ubuntu requirements.txt ./
-RUN python3 -m venv venv \
- && venv/bin/pip install --no-cache-dir -r requirements.txt
-
 # Project files
+# No orchestrator/ and no Python venv: the phase 4-5 orchestrator runs on the
+# host now, reached from here through the state daemon's next_task tool, so
+# neither LangGraph nor the orchestrator sources belong in the guest. The
+# system python3 stays -- merge_claude_settings.py below needs it.
+#
 # runtime/CLAUDE.md (loop protocol) is intentionally not baked in here — it belongs at
 # ~/.claude/CLAUDE.md, placed at container startup by masuda sandbox start (masuda CLI's
 # job, not the image build), so it can be iterated on without rebuilding the image.
 # See docs/adr/0007-loop-protocol-claude-md-in-user-scope.md
-COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/
 COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/
 RUN chmod +x runtime/start_claude.sh runtime/entrypoint.sh runtime/merge_claude_settings.py
 
@@ -123,10 +110,11 @@ RUN cat /tmp/fstab.vm >> /etc/fstab \
  && systemctl enable resolv-conf.service \
  && systemctl disable ttyd.service
 
-# masuda CLI binary (see the masuda-builder stage above) -- orchestrator/*.py
-# shells out to `masuda internal state ...` to reach this workspace's state
-# daemon over its UDS socket at /masuda-state/daemon.sock.
-COPY --from=masuda-builder /out/masuda /usr/local/bin/masuda
+# No masuda binary either. Its only guest-side callers were the orchestrator's
+# `masuda internal state` (now host-side) and entrypoint.sh's Docker-path
+# relay (removed with ADR-0044's execution runtime). Leaving it out is what
+# makes "the guest cannot reach the trusted state surface" a property of the
+# image rather than a convention.
 
 USER ubuntu
 

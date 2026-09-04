@@ -6,15 +6,12 @@
 
 リポジトリルート直下の`Dockerfile`がベースイメージ`masuda-loop:latest`を定義する。
 
-マルチステージビルド（`Dockerfile:6-11`）:
+単一ステージ（`FROM ubuntu:24.04`）。**`masuda`バイナリ・`orchestrator/`・Python venvはいずれも含まれない**（ADR-0057）。以前はGoツールチェーンのbuilderステージでバイナリを焼き込み、venvにLangGraphを入れてゲスト内でオーケストレーターを走らせていたが、フェーズ4-5のオーケストレーターはホスト側へ移り、ゲストはcurated MCPの`next_task`ツールで次のタスクを受け取るだけになった。ゲストがtrusted状態面へ到達できないことを、規約ではなくイメージの中身として持たせている。
 
-1. `masuda-builder`ステージ（`FROM golang:1.26`）: `CGO_ENABLED=0 go build -o /out/masuda ./cmd/masuda`でmasuda CLIバイナリをビルドする。このステージだけがGoツールチェーンを持ち、最終イメージには残らない
-2. 最終ステージ（`FROM ubuntu:24.04`）: builderステージから`/out/masuda`だけを`COPY --from=masuda-builder`で取り込む（`/usr/local/bin/masuda`）
-
-最終ステージが`apt-get install`する主なパッケージ（`Dockerfile:61-68`）:
+`apt-get install`する主なパッケージ:
 
 - `build-essential`: C toolchain。全言語バリアント共通の基盤としてbaseに1回だけ入れる（ADR-0022）
-- Node.js 22（`@anthropic-ai/claude-code`を`npm install -g`するため）、Python3 + venv
+- Node.js 22（`@anthropic-ai/claude-code`を`npm install -g`するため）、Python3（`runtime/merge_claude_settings.py`用。venvは作らない）
 - `tmux`・`ttyd`（自己ループセッションのアタッチ・Web端末）
 - `systemd`・`systemd-sysv`・`kmod`・`openssh-server`・`sudo`: いずれもVM起動後（ゲストとしてブートした時）にのみ意味を持つ。イメージ自体はコンテナとして起動されないため、`docker build`時点でこれらのサービスが動作することはない
   - `systemd`はVMゲストのPID1として動く
@@ -22,19 +19,19 @@
   - `sudo`は`/etc/sudoers.d/masuda-vm-poweroff`で`systemctl poweroff`のみに絞って許可している（VM停止時の正常シャットダウン用）
   - `openssh-server`は`masuda chat`のVM向けSSHアタッチ用。ビルド時に生成されるホスト鍵（`ssh-keygen -A`のapt postinst）は削除しており（`rm -f /etc/ssh/ssh_host_*`）、各VMが初回起動時に`runtime/ssh-host-keys.service`で自分の鍵を生成する
 
-ユーザー`ubuntu`（uid=1000、`ubuntu:24.04`に既存）を使う。`/workspace`（対象リポジトリのworktree用）・`/masuda-state`（状態ディレクトリ用）はvirtiofs共有のマウントポイントとして空けてあり、masuda自身の制御ファイル（venv・`orchestrator/`・`runtime/`）は`/opt/masuda`に置く。
+ユーザー`ubuntu`（uid=1000、`ubuntu:24.04`に既存）を使う。`/workspace`（対象リポジトリのworktree用）・`/masuda-state`（状態ディレクトリ用）はvirtiofs共有のマウントポイントとして空けてあり、masuda自身の制御ファイル（`runtime/`）は`/opt/masuda`に置く。
 
-### orchestrator/・runtime/の焼き込み（`Dockerfile:99-124`）
+### runtime/の焼き込み
 
-`COPY --chown=ubuntu:ubuntu orchestrator/ orchestrator/`と`COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/`で、`/opt/masuda`以下にビルド時焼き込みする。
+`COPY --chown=ubuntu:ubuntu runtime/entrypoint.sh runtime/start_claude.sh runtime/merge_claude_settings.py runtime/`で、`/opt/masuda`以下にビルド時焼き込みする。
 
 VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`・`runtime/vm-dhcp.network`・`runtime/ssh-host-keys.service`・`runtime/resolv-conf.service`）は`/etc/systemd/system/`・`/etc/fstab`・`/etc/systemd/network/`へ配置し、`systemctl enable`でunit有効化する。`systemctl enable`はディスク上のシンボリックリンク操作のみで実際にsystemdが動いている必要はないため、`docker build`内で完結する。
 
 `runtime/CLAUDE.md`（ループプロトコル本体）はこのCOPY対象に**含まれない**。`~/.claude/CLAUDE.md`として`masuda sandbox start`実行時にmasuda CLI側から配置される（VM起動の詳細は`docs/design/sandbox-vm.md`）。
 
-**制約: `orchestrator/`と`runtime/`はイメージビルド時に`COPY`で焼き込まれるため、これらを変更した後はbaseイメージと、それを`FROM`する対象リポジトリのイメージエントリの両方を再ビルドしないと反映されない。** 再ビルドを忘れると、古いコードのままVMが起動し、新しい段階が実行されずに次の段階へ直行するなど原因が分かりにくい形で不具合が出る。
+**制約: `runtime/`はイメージビルド時に`COPY`で焼き込まれるため、変更した後はbaseイメージと、それを`FROM`する対象リポジトリのイメージエントリの両方を再ビルドしないと反映されない。** 再ビルドを忘れると、古いスクリプトのままVMが起動し、原因が分かりにくい形で不具合が出る。`orchestrator/`はもう焼き込まれないため、この制約の対象外になった（ホスト側の`ensureRuntime`が実行中のmasudaバイナリから毎回展開する——`docs/design/discovery-blueprint.md`）。
 
-また、`orchestrator/`・`runtime/`はリポジトリルート直下に置く必要がある。ルート直下の`assets.go`が`go:embed`で`orchestrator/investigate_plan_graph.py`・`orchestrator/state_client.py`・`requirements.txt`・`runtime/CLAUDE.md`をmasuda CLIバイナリ自体に埋め込んでおり（Discovery/Blueprint段階のホスト側自己ループ用）、`go:embed`は宣言ファイル自身のディレクトリ以下（`..`不可）しか参照できないため、`assets.go`はリポジトリルートに置かれ、結果として埋め込み対象の`orchestrator/`・`runtime/`もルート直下という位置が固定されている。これはDockerfileの`COPY`が読む場所（ビルドコンテキストのルート）とも一致している。
+また、`orchestrator/`・`runtime/`はリポジトリルート直下に置く必要がある。ルート直下の`assets.go`が`go:embed`で`orchestrator/investigate_plan_graph.py`・`orchestrator/implement_review_graph.py`・`orchestrator/state_client.py`・`requirements.txt`・`runtime/CLAUDE.md`をmasuda CLIバイナリ自体に埋め込んでおり（ホスト側で動く両オーケストレーターとゲストへ渡すループプロトコル用）、`go:embed`は宣言ファイル自身のディレクトリ以下（`..`不可）しか参照できないため、`assets.go`はリポジトリルートに置かれ、結果として埋め込み対象の`orchestrator/`・`runtime/`もルート直下という位置が固定されている。これはDockerfileの`COPY`が読む場所（ビルドコンテキストのルート）とも一致している。
 
 ### Claudeプラグイン・マーケットプレイス登録（`Dockerfile:152`）
 

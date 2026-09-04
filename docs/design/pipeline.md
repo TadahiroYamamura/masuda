@@ -21,23 +21,25 @@ Discovery↔Blueprintの往復、Build内のステップループ、Reviewのche
 
 ## 役割分担: メインエージェント / サブエージェント
 
-各段階でホスト側またはサンドボックス内で自己ループするメインのClaude Codeセッションは、ワークフロー管理に徹する。`TASK.md`の読み書き、LangGraphオーケストレーターの起動タイミングの判断、サブエージェントへの作業委譲と結果の検証のみを行い、実際の調査・プラン作成・実装・レビューはすべて都度起動するサブエージェントに委譲する（ADR-0002）。
+各段階でホスト側またはサンドボックス内で自己ループするメインのClaude Codeセッションは、ワークフロー管理に徹する。次のタスクの取得、サブエージェントへの作業委譲と結果の検証のみを行い、実際の調査・プラン作成・実装・レビューはすべて都度起動するサブエージェントに委譲する（ADR-0002）。
+
+**オーケストレーター自体は2段階対ともホスト側で動く。** Discovery/Blueprintはメインセッションもホストなので同一マシン内だが、Build/Reviewのメインセッションはサンドボックス内にいるため、curated MCPの`next_task`ツールでホストのオーケストレーターを1回進めてタスク本文を受け取る形になる（ADR-0057）。ループの状態機械・予算・ステップcommitはサンドボックスの外にあり、中のセッションから書き換えられない。
 
 サブエージェントは成果物をJSONファイル（`plan_result.json`・`implementation_result.json`等）として書き出す。メインエージェント・オーケストレーターはファイルの存在とスキーマを機械的に確認し、不正または未達なら再試行させてから次の`TASK.md`を生成する。サブエージェントに渡すツール権限は用途ごとに絞る（例: Discovery/Blueprintはread-only、Buildはwrite/Edit/Bash可）。
 
 ## TASK.md書き出しとLangGraph配線
 
-Discovery/Blueprint段階は`orchestrator/investigate_plan_graph.py`、Build/Review段階は`orchestrator/implement_review_graph.py`が担当する。両ファイルは互いにimportし合わない独立したモジュールで、それぞれが同じ配線パターンを別々に持つ。
+Discovery/Blueprint段階は`orchestrator/investigate_plan_graph.py`、Build/Review段階は`orchestrator/implement_review_graph.py`が担当する。どちらもホスト上のPython venv（`internal/hostloop`の`ensureRuntime`が埋め込みから展開して用意する）で実行される。両ファイルは互いにimportし合わない独立したモジュールで、それぞれが同じ配線パターンを別々に持つ。
 
 - `detect_phase`ノード: 状態ディレクトリ・状態デーモンの中身から現在の`phase`（文字列）を判定する
 - `write_task_md`ノード: `phase`を見て対応するレンダラー関数（`_investigate_task`・`_plan_task`・`_implement_step_task`等）を呼び分ける単純なif/elif dispatchで`TASK.md`の内容を組み立て、書き出す（`investigate_plan_graph.py:516`、`implement_review_graph.py:2352`）。ゲート待機・`DONE`系の終端状態は`_TERMINAL`という`phase → 固定文面`の辞書で表現し、同じdispatchの中で分岐する
 - グラフ自体は`detect_phase → write_task_md → END`の2ノードのみ（`investigate_plan_graph.py:553`の`build_graph`、`implement_review_graph.py:2418`の`build_graph`）
 
-メインエージェントは`TASK.md`を読んで指示に従うだけで、どちらの段階でもこの1往復（detect→render）がオーケストレーターの実行単位になる。
+メインエージェントは受け取ったタスクに従うだけで、どちらの段階でもこの1往復（detect→render）がオーケストレーターの実行単位になる。Discovery/Blueprintのメインセッションは`TASK.md`をファイルとして読む（同一マシン）。Build/Reviewのメインセッションは`next_task`の戻り値を読む——`TASK.md`も従来どおり書かれるが、ホストの書き込みがゲストから見えるまでvirtiofsの属性キャッシュ分（実測0.5〜0.6秒）遅れるため、ファイルではなく戻り値が正となる。
 
 ## 予算管理
 
-予算は「サブエージェント起動1回」を1単位として数える（ADR-0011）。Discovery/Blueprint（`investigate_plan_graph.py`）とBuild/Review（`implement_review_graph.py`）は別プロセス・別環境（ホスト側/サンドボックス側）で動くため、予算を共有しない。
+予算は「サブエージェント起動1回」を1単位として数える（ADR-0011）。Discovery/Blueprint（`investigate_plan_graph.py`）とBuild/Review（`implement_review_graph.py`）は同じホスト上とはいえ別プロセス・別の状態キーで動くため、予算を共有しない。
 
 - Discovery/Blueprint: 固定値`ITERATION_BUDGET = 20`（調査/プランの往復`MAX_RETRIES = 3`に加え、plan gate再オープンの余裕を見込んだ値）
 - Build/Review: `_iteration_budget() = BASE_BUDGET(200) + PER_STEP_BUDGET(5 + 14観点 × 12) × plan/steps.jsonのステップ数`（ADR-0027）

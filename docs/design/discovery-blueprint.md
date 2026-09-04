@@ -13,11 +13,12 @@ Discovery（調査）・Blueprint（プラン作成）はサンドボックス�
 
 ## ホストランタイム構築（`internal/hostloop/bootstrap.go`）
 
-`ensureRuntime()`が`renderSystemPrompt`（後述）から呼ばれ、オーケストレーター実行に必要なファイル一式を揃えて`(pythonPath, scriptPath)`を返す。展開先は`runtimeDir()` = `workspace.DataHome()/runtime`（対象リポジトリの種類に依存しない、masuda自身の固定ディレクトリ）。
+`ensureRuntime()`が`renderSystemPrompt`（後述）から呼ばれ、オーケストレーター実行に必要なファイル一式を揃えて`(pythonPath, runtimeDir)`を返す。展開先は`runtimeDir()` = `workspace.DataHome()/runtime`（対象リポジトリの種類に依存しない、masuda自身の固定ディレクトリ）。
 
-1. `masuda.OrchestratorScript`（`orchestrator/investigate_plan_graph.py`の`go:embed`）を`investigate_plan_graph.py`として**毎回**上書き展開する（実行中のmasudaバイナリと常に同期させるため、venvの再構築要否とは無関係に無条件で行う）
-2. `masuda.StateClientScript`（`orchestrator/state_client.py`）も同様に`state_client.py`として展開する。`investigate_plan_graph.py`がsiblingモジュールとしてimportするため、同じディレクトリに置く必要がある
-3. venv: `<runtimeDir>/venv`の`bin/python`が既に存在し、かつ`.masuda-requirements-sha256`マーカー（このファイルだけは`atomicWrite`ではなく素の`os.WriteFile`、`bootstrap.go:158`）が`masuda.Requirements`のSHA-256と一致していれば再利用する。一致しなければ`buildVenv`が`<runtimeDir>/venv.tmp-*`という一時ディレクトリに`python3 -m venv`＋`pip install -r requirements.txt`でフルビルドし、成功時にのみ`os.Rename`で`venv`へ差し替える（失敗や中断で壊れたvenvが「有効なvenv」と誤認されることはない）
+1. `masuda.InvestigatePlanScript`（`orchestrator/investigate_plan_graph.py`の`go:embed`）を`investigate_plan_graph.py`として**毎回**上書き展開する（実行中のmasudaバイナリと常に同期させるため、venvの再構築要否とは無関係に無条件で行う）
+2. `masuda.ImplementReviewScript`（`orchestrator/implement_review_graph.py`）も同じディレクトリへ展開する。Build/Reviewのオーケストレーターもホストで動くようになり（ADR-0057）、venvとstate_client.pyをこのDiscovery/Blueprint用ランタイムと共有するため——展開はまとめて1回で行い、`hostloop.EnsureImplementReviewOrchestrator()`がそのパスを返す
+3. `masuda.StateClientScript`（`orchestrator/state_client.py`）も同様に`state_client.py`として展開する。両オーケストレーターがsiblingモジュールとしてimportするため、同じディレクトリに置く必要がある
+4. venv: `<runtimeDir>/venv`の`bin/python`が既に存在し、かつ`.masuda-requirements-sha256`マーカー（このファイルだけは`atomicWrite`ではなく素の`os.WriteFile`、`bootstrap.go:158`）が`masuda.Requirements`のSHA-256と一致していれば再利用する。一致しなければ`buildVenv`が`<runtimeDir>/venv.tmp-*`という一時ディレクトリに`python3 -m venv`＋`pip install -r requirements.txt`でフルビルドし、成功時にのみ`os.Rename`で`venv`へ差し替える（失敗や中断で壊れたvenvが「有効なvenv」と誤認されることはない）
 
 `atomicWrite`（同ディレクトリの一時ファイル＋rename）をスクリプト展開と`requirements.txt`書き出しに使っており（`bootstrap.go:82,91,142`）、書き込み中に他プロセスが不完全なファイルを読むことはない。
 

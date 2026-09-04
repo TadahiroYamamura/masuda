@@ -5,6 +5,7 @@
 Accepted (2026-08-17)
 
 - 一部改訂: [[0043-child-mcp-server-aggregator-with-project-user-config-split]] — curated setには、承認済み子MCPサーバーのtoolが`<serverName>__<toolName>`という名前でプロキシ登録される
+- 一部改訂: [[0057-build-review-orchestrator-runs-on-the-host-guest-pulls-next-task]] — trusted側の呼び手はすべてホスト上のプロセスになった。`orchestrator/*.py`をサンドボックス内で動かす前提と、そのためにrootfsへ`masuda`バイナリを焼き込む必要があるという帰結は無くなっている
 
 ## Context
 

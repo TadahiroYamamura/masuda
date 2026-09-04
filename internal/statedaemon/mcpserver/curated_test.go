@@ -21,7 +21,7 @@ func connectCurated(t *testing.T) (*statedaemon.Store, *mcp.ClientSession) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewCurated(store, nil)
+	server := NewCurated(store, nil, nil)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
@@ -196,7 +196,7 @@ func connectCuratedWithRunner(t *testing.T, run PrivilegedRunner) *mcp.ClientSes
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewCurated(store, run)
+	server := NewCurated(store, run, nil)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
@@ -311,4 +311,122 @@ func TestTruncateLogKeepsTheEnd(t *testing.T) {
 	if short, truncated := truncateLog("fits", 11); truncated || short != "fits" {
 		t.Fatalf("truncateLog(short) = (%q, %v), want it untouched", short, truncated)
 	}
+}
+
+// connectCuratedWithOrchestrator is connectCurated with next_task registered
+// against a stub runner, so the tool surface can be exercised without a venv
+// or a worktree.
+func connectCuratedWithOrchestrator(t *testing.T, run OrchestratorRunner) *mcp.ClientSession {
+	t.Helper()
+	store, err := statedaemon.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := NewCurated(store, nil, run)
+
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	ctx := context.Background()
+	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
+		t.Fatal(err)
+	}
+	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
+	session, err := client.Connect(ctx, clientTransport, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { session.Close() })
+	return session
+}
+
+// Same rule run_privileged_command follows: a daemon with no worktree to run
+// an orchestrator against must not advertise the tool at all.
+func TestCuratedOffersNextTaskOnlyWithARunner(t *testing.T) {
+	_, withoutRunner := connectCurated(t)
+	if toolNamed(t, withoutRunner, "next_task") {
+		t.Fatal("next_task offered even though no orchestrator runner was supplied")
+	}
+
+	withRunner := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
+		return "", nil
+	})
+	if !toolNamed(t, withRunner, "next_task") {
+		t.Fatal("next_task not offered even though a runner was supplied")
+	}
+}
+
+func toolNamed(t *testing.T, session *mcp.ClientSession, name string) bool {
+	t.Helper()
+	res, err := session.ListTools(context.Background(), &mcp.ListToolsParams{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tool := range res.Tools {
+		if tool.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// The task text comes back in the tool result, not just via TASK.md: the
+// guest's view of that file lags the host's write by up to a second across
+// virtiofs (see OrchestratorRunner's doc comment).
+func TestNextTaskReturnsTheOrchestratorsTaskText(t *testing.T) {
+	var calls int
+	session := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
+		calls++
+		return "GATE:review\n\n手順...", nil
+	})
+
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "next_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("next_task returned an error result: %+v", res.Content)
+	}
+	var out struct {
+		Task string `json:"task"`
+	}
+	data, err := json.Marshal(res.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Task != "GATE:review\n\n手順..." {
+		t.Fatalf("task = %q, want the runner's text", out.Task)
+	}
+	if calls != 1 {
+		t.Fatalf("runner called %d times, want 1", calls)
+	}
+}
+
+// A failing orchestrator has to reach the session as a tool error: silently
+// handing back an empty task would look like "nothing to do".
+func TestNextTaskSurfacesOrchestratorFailure(t *testing.T) {
+	session := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
+		return "", errors.New("iteration budget exceeded")
+	})
+	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "next_task"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatal("next_task reported success even though the orchestrator failed")
+	}
+	if !strings.Contains(toolErrorText(t, res), "iteration budget exceeded") {
+		t.Fatalf("tool error did not carry the orchestrator's reason: %+v", res.Content)
+	}
+}
+
+func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {
+	t.Helper()
+	for _, c := range res.Content {
+		if tc, ok := c.(*mcp.TextContent); ok {
+			return tc.Text
+		}
+	}
+	return ""
 }

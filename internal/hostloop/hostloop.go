@@ -305,7 +305,7 @@ func WriteTDDIntent(stateDir string) error {
 }
 
 func renderSystemPrompt(stateDir string) (string, error) {
-	pythonPath, scriptPath, err := ensureRuntime()
+	pythonPath, runtimeDir, err := ensureRuntime()
 	if err != nil {
 		return "", fmt.Errorf("preparing masuda's own host-side python runtime: %w", err)
 	}
@@ -313,7 +313,7 @@ func renderSystemPrompt(stateDir string) (string, error) {
 	w := &sliceWriter{buf: &buf}
 	err = systemPromptTemplate.Execute(w, struct{ Python, Orchestrator, StateDir string }{
 		Python:       pythonPath,
-		Orchestrator: scriptPath,
+		Orchestrator: filepath.Join(runtimeDir, investigatePlanScriptName),
 		StateDir:     stateDir,
 	})
 	if err != nil {

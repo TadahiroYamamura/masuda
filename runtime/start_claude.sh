@@ -10,16 +10,18 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
     exit 0
 fi
 
-# Same relay entrypoint.sh already started (or, on the VM boot path, the
-# host-side one VMBackend.Start runs -- see that script's own comment), for
-# this container/VM's whole lifetime -- just resolve the same address again
-# rather than starting a second one. timeout (ms, 7 days): see
-# runtime/entrypoint.sh -- confirmed live that without this, Claude Code
-# aborts a wait_for_gate_resolution call on its own hard wall-clock MCP tool
-# timeout well under a minute.
+# The host-side relay VMBackend.Start runs, for this VM's whole lifetime --
+# resolve the same address entrypoint.sh already did rather than starting
+# anything of our own. Missing is fatal for the same reason it is there (see
+# runtime/entrypoint.sh): without the relay this session has no gate tools
+# and no next_task. timeout (ms, 7 days): also see entrypoint.sh --
+# confirmed live that without this, Claude Code aborts a
+# wait_for_gate_resolution call on its own hard wall-clock MCP tool timeout
+# well under a minute.
 MCP_RELAY_ADDR=$(sed -n 's/.*masuda\.mcp_relay=\([^ ]*\).*/\1/p' /proc/cmdline)
 if [ -z "$MCP_RELAY_ADDR" ]; then
-    MCP_RELAY_ADDR="127.0.0.1:39217"
+    echo "[start_claude] masuda.mcp_relay= missing from /proc/cmdline -- no MCP relay to reach the host's state daemon" >&2
+    exit 1
 fi
 MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http://$MCP_RELAY_ADDR/\",\"timeout\":604800000}}}"
 

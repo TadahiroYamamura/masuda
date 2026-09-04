@@ -2127,3 +2127,42 @@ def test_tdd_finalization_backstop_rejection_resets_intermediate_commits():
     assert not pathlib.Path("unplanned.go").exists()
     assert irg._read_tdd_cycle_state(0) == {"cycle": 1, "phase": "red", "attempt": 1, "redo_feedback": ""}
     assert not irg.IMPLEMENTATION_RESULT_JSON.exists()
+
+
+# --- ホスト実行時のパス表示 (GUEST_STATE_DIR) --------------------------------
+
+def test_prompt_paths_are_the_state_dir_itself_by_default():
+    """MASUDA_GUEST_STATE_DIR無しなら、書き手と読み手が同じマシンにいる
+    （テスト・フェーズ1-2）ときと同じく、STATE_DIRがそのまま出る。"""
+    init_git_repo()
+    irg.write_task_md({"phase": "implement_step", "reason": ""})
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+    assert str(irg.IMPLEMENTATION_RESULT_JSON) in content
+
+
+def test_prompt_paths_are_rendered_as_the_agent_sees_them(monkeypatch):
+    """オーケストレーターがホストで動く場合、プロンプトに出るパスは
+    ゲストから開けるものでなければならない。ホスト側のSTATE_DIRが漏れると、
+    エージェントは存在しないパスに書こうとする。"""
+    monkeypatch.setenv("MASUDA_GUEST_STATE_DIR", "/masuda-state")
+    importlib.reload(irg)
+    init_git_repo()
+
+    irg.write_task_md({"phase": "implement_step", "reason": ""})
+    content = irg.TASK_MD.read_text(encoding="utf-8")
+
+    assert "/masuda-state/implementation_result.json" in content
+    assert str(irg.STATE_DIR) not in content
+    # TASK.md自体は今もホスト側のSTATE_DIRに書かれる（読み替えるのは
+    # プロンプトの中身だけで、このスクリプト自身の入出力ではない）。
+    assert irg.TASK_MD.is_relative_to(irg.STATE_DIR)
+
+
+def test_agent_path_replaces_only_the_state_dir_prefix(monkeypatch):
+    """入れ子のパスでも、差し替わるのは先頭のSTATE_DIRだけ。"""
+    monkeypatch.setenv("MASUDA_GUEST_STATE_DIR", "/masuda-state")
+    importlib.reload(irg)
+
+    assert irg._agent_path(irg.REVIEW_RESULTS_DIR / "final_report.md") == (
+        "/masuda-state/review_results/final_report.md"
+    )
