@@ -85,15 +85,22 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 `list|approve|reject <hostname>`。`mcp`と同じdeclare/approve構造（`.masuda/settings.json`の`egressAllowlist`が宣言、`.masuda/settings.local.json`の`egressAllowlist`がこのユーザーの承認）で、`mcp`同様ワークスペース単位ではなくリポジトリ直下のファイルを直接読み書きする。`mcp approve`の`--env`に相当するフラグは無い——ホスト名エントリには埋めるべき可変値が無いため。`approve`は`.masuda/settings.json`側に未宣言のホスト名を渡すとエラーになる。承認は稼働中のVMへ即座には伝わらず、対象ワークスペースのVMを再起動して初めて反映される（`approve`自身がその旨を出力する）。宣言・承認がサンドボックスVMのegressフィルタへどう反映されるかは`docs/design/egress-filter.md`を参照。
 
+### `masuda claude`
+
+`set-token`のみ。標準入力から`claude setup-token`のOAuthトークンを読み、`internal/sandbox.SetClaudeOAuthToken`でホスト全体に1つ保存する（VMゲストへの渡し方は`docs/design/sandbox-vm.md`）。標準入力から読むのは、トークンがシェル履歴や`ps`の出力に残らないようにするため。
+
+未登録のままVMを起動すると、ゲストの`claude`が認証できずに即終了し、`masuda-loop.service`が「loop complete」を報告する——実際にループが1周した場合と区別が付かない。このため`sandbox start`・`review start`は起動前に`warnIfNoClaudeToken`（`cmd/masuda/claude.go`）で警告を出す。**エラーにはしない**: トークンが無くてもVM自体は起動し、SSHでの調査や特権コマンドの実行には使えるため。
+
+### `masuda vm-ssh-key`
+
+`rotate`のみ。masudaインストール単位（ホスト全体で1組）で持つVMゲスト接続用SSH鍵ペアを再生成する。ローテーションは既にビルド済みのrootfsイメージ・起動中のVMには遡って反映されない。
+
 ## 内部コマンド（`masuda internal ...`）
 
-ほとんどがmasuda自身のコード（Go CLI・ホスト上で動く`orchestrator/*.py`）から呼ばれる配管用コマンド群。サンドボックスVMの中からは呼ばれない——rootfsに`masuda`バイナリ自体が入っていない（ADR-0057）。`newInternalCommand`（`cmd/masuda/statedaemon.go:90`）に`Hidden: true`でぶら下がり、`--help`には出ない。**通常は直接叩かない。**
-
-例外は`claude-token set`と`vm-ssh-key rotate`で、こちらは人間が叩く。前者は`docs/INSTALLATION.md`のセットアップ手順そのもの——`--help`に出ないのは「日常的に使うものではない」という意味であって、使ってはいけないという意味ではない。
+masuda自身のコード（Go CLI・ホスト上で動く`orchestrator/*.py`）だけが呼ぶ配管用コマンド群。サンドボックスVMの中からは呼ばれない——rootfsに`masuda`バイナリ自体が入っていない（ADR-0057）。`newInternalCommand`（`cmd/masuda/statedaemon.go`）に`Hidden: true`でぶら下がり、`--help`には出ない。**人間が直接叩くものはこの下に置かない**——`claude set-token`・`vm-ssh-key rotate`は`docs/INSTALLATION.md`の手順として人間が叩くため、ここではなくトップレベルに置いてある。
 
 - **`statedaemon`**: ワークスペースの状態デーモンをフォアグラウンドで起動する。通常は`workspace create`が`startDaemon`（`cmd/masuda/statedaemon.go:153`）でこのコマンド自身をデタッチしたサブプロセスとして起動する形でのみ動き、人間が直接打つことは想定していない。状態デーモン自体の中身は`docs/design/state-daemon-mcp.md`を参照
 - **`state get|put|delete|list|apply`**: 状態デーモンのtrusted MCPツールをワンショットで叩く薄いCLIラッパー（`get/delete <key>`・`put <key> <value>`・`list <prefix>`・`apply`はopのJSON配列をstdinから読む）。`orchestrator/*.py`（Python）が自前のMCPクライアントを持たずに済むよう、1操作につき1回このサブコマンドをsubprocess起動する形で使う
 - **`mcp-relay`**: `<bind>:<port>`のTCP接続をUnix domain socketへバイト単位で中継するだけのプロキシ。Claude Codeの`--mcp-config`がUDSを直接指せない制約を回避するために存在する。ネットワーク経路の詳細は`docs/design/networking.md`を参照
 - **`rootfs build`**: Dockerイメージのファイルシステムをbootableなext4ディスクイメージへ変換する。VMのrootfsを作る手順の一部。詳細は`docs/design/images-and-rootfs.md`を参照
-- **`vm-ssh-key rotate`**: masudaインストール単位（ホスト全体で1組）で持つVMゲスト接続用SSH鍵ペアを再生成する。ローテーションは既にビルド済みのrootfsイメージ・起動中のVMには遡って反映されない
-- **`claude-token set`**: 標準入力から`claude setup-token`のOAuthトークンを読み、VMゲストへ渡すために保存する。ホストの`~/.claude/.credentials.json`をそのまま渡す代わりの経路（Docker実行基盤時代のbind mount方式は廃止済み）
+

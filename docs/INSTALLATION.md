@@ -13,7 +13,7 @@ masudaはホスト側CLI（Go製）とサンドボックスVM（Cloud Hypervisor
 - **tmux**（フェーズ1-2のホスト側自己ループ用セッション。`masuda chat`でのアタッチにも使用）
 - **inotify-tools**（`inotifywait`コマンド。Debian/Ubuntu系は`apt install inotify-tools`）。フェーズ1-2のホストループがG1ゲート待機で使用する。`while`ループやMonitorツールでのポーリングはClaude Code自身の許可リスク評価に引っかかり無人ループが確認プロンプトで詰まることが実機で確認されているため、単発のブロッキング`inotifywait`呼び出しに置き換えている
 - **Python 3**（`python3`コマンドと`venv`モジュールが使えること。Debian/Ubuntu系では`python3-venv`パッケージが別途必要な場合がある）。フェーズ1-2のオーケストレーターはホスト上で直接Pythonスクリプトとして動くため必要。オーケストレータースクリプトと依存関係定義は`masuda`バイナリ自体に埋め込まれており、初回の`masuda plan start`実行時に`~/.local/share/masuda/runtime/`配下へ自動でvenvを構築する（手動セットアップ不要。以後のPythonバージョンアップ時などrequirements変更時のみ自動で再構築される）
-- **Claude Code CLI**がホスト上にインストール済み、かつ`claude`でログイン済みであること（`masuda internal claude-token set`用に`claude setup-token`が使えることの確認も兼ねる。詳細は下記「VM実行基盤のセットアップ」参照）
+- **Claude Code CLI**がホスト上にインストール済み、かつ`claude`でログイン済みであること（`masuda claude set-token`用に`claude setup-token`が使えることの確認も兼ねる。詳細は下記「VM実行基盤のセットアップ」参照）
 - **VM実行基盤のセットアップ**（Cloud Hypervisor・virtiofsd・ネットワーク等）: 下記「VM実行基盤のセットアップ」節を先に済ませておくこと。`masuda sandbox start`はこれが無いと動かない
 
 ## 1. リポジトリの取得
@@ -88,7 +88,7 @@ sudo systemctl restart masuda-vm-host    # 手動で再適用したいとき
 `masuda chat`はSSHでVMゲストへ接続する。鍵は`masuda`のインストール単位で1組（ワークスペースごとではない）。初回は自動生成される（`EnsureSSHKeypair`）ので、通常は何もしなくてよい。明示的に再生成したい場合（鍵の流出が疑われる場合等）:
 
 ```bash
-masuda internal vm-ssh-key rotate
+masuda vm-ssh-key rotate
 ```
 
 秘密鍵はホスト側にしか存在せず、ゲストのrootfsには公開鍵だけが`internal/rootfs.Build`のExtraFile機構でビルド時に注入される。**既知の制限**: 再生成しても、既にビルド済みのrootfsイメージ・起動中のVMは古い公開鍵を信頼し続ける（rebuild/restartまで遡及しない）。masudaのワークスペースは使い捨てなので許容している。
@@ -99,7 +99,7 @@ VMゲストは別カーネルのため、ホストの`~/.claude/.credentials.jso
 
 ```bash
 claude setup-token   # 出力されたトークン文字列をコピー
-echo "<コピーしたトークン>" | masuda internal claude-token set
+echo "<コピーしたトークン>" | masuda claude set-token
 ```
 
 保存先は`~/.local/share/masuda/claude-oauth-token`（mode 0600）。`VMBackend.Start`はこのファイルが存在する場合のみ、専用のvirtiofs共有でゲストへ渡す。

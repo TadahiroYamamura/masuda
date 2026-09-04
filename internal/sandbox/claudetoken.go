@@ -40,6 +40,20 @@ func ClaudeOAuthTokenPath() (string, error) {
 	return filepath.Join(dir, claudeOAuthTokenFileName), nil
 }
 
+// HasClaudeOAuthToken reports whether a token has been registered on this
+// host. Callers use it to warn before starting a VM that would otherwise
+// boot into a guest whose `claude` exits immediately for lack of
+// credentials -- a failure that surfaces only as the loop service
+// reporting a completed loop it never ran.
+func HasClaudeOAuthToken() bool {
+	path, err := ClaudeOAuthTokenPath()
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(path)
+	return err == nil && info.Size() > 0
+}
+
 // SetClaudeOAuthToken saves token (the output of `claude setup-token`,
 // trimmed of surrounding whitespace) to ClaudeOAuthTokenPath, mode 0600 --
 // this is a bearer credential for the user's Claude subscription, same

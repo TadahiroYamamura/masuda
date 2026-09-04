@@ -57,6 +57,7 @@ func newSandboxStartCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			warnIfNoClaudeToken(cmd)
 			h, err := sandboxBackend.Start(info.ID, worktreeDir, stateDir, root, resolvedImage)
 			if err != nil {
 				return err

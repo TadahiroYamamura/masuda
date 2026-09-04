@@ -124,8 +124,6 @@ func newInternalCommand() *cobra.Command {
 	cmd.AddCommand(newInternalStateCommand())
 	cmd.AddCommand(newInternalMCPRelayCommand())
 	cmd.AddCommand(newInternalRootfsCommand())
-	cmd.AddCommand(newInternalVMSSHKeyCommand())
-	cmd.AddCommand(newInternalClaudeTokenCommand())
 	return cmd
 }
 

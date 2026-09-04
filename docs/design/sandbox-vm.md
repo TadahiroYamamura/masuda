@@ -80,7 +80,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 `internal/sandbox/sshkey.go`はワークスペース単位ではなくmasudaインストール単位（ホスト全体で1組）のed25519鍵ペアを`workspace.DataHome()/vm-ssh-key`・`vm-ssh-key.pub`に持つ。
 
 - `EnsureSSHKeypair()`は`vmStart`から呼ばれ、鍵が無ければ`GenerateSSHKeypair()`で生成し、あれば既存のものをそのまま返す
-- `GenerateSSHKeypair()`は`masuda internal vm-ssh-key rotate`（`cmd/masuda/internalvmsshkey.go`、hiddenサブコマンド）から無条件に呼ばれ、既存鍵を問答無用で上書きする。公開鍵だけがrootfsビルド時に`home/ubuntu/.ssh/authorized_keys`へExtraFileとして注入され、秘密鍵はホストの外に一切出ない
+- `GenerateSSHKeypair()`は`masuda vm-ssh-key rotate`（`cmd/masuda/vmsshkey.go`）から無条件に呼ばれ、既存鍵を問答無用で上書きする。公開鍵だけがrootfsビルド時に`home/ubuntu/.ssh/authorized_keys`へExtraFileとして注入され、秘密鍵はホストの外に一切出ない
 - ローテーションは既にビルド済みのrootfsイメージ・起動中のVMには遡って反映されない。それらは再ビルド・再起動されるまで旧公開鍵を信頼し続ける
 - `SSHAttachArgs`/`sshBaseArgs`（`internal/sandbox/sshattach.go`）はホスト鍵検証を`StrictHostKeyChecking=no`＋`UserKnownHostsFile=/dev/null`で意図的に無効化している。ゲストIPはDHCP払い出しでVMのライフサイクルをまたいで使い回されるため、known_hostsベースの検証はスプリアスな警告を生むだけで、この接続の安全性は秘密鍵の保持だけに依っている
 
@@ -89,7 +89,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 git identityとClaude OAuthトークンの2種類を、rootfsへの焼き込みではなくvirtiofs共有経由でゲストへ渡す（rootfsが`vmStart`のたびに毎回作り直されるため、焼き込みだと登録・更新のたびに再ビルドが要る）。
 
 - **git identity**（`internal/sandbox/gitidentity.go`）: `WriteGitIdentity(stateDir, repoRoot)`が`git -C <repoRoot> config --local --get user.name/user.email`を試し、値が無ければ`git config --global --get`にフォールバックして`stateDir/.masuda-git-identity`へ「1行目name・2行目email」の2行プレーンテキストとして書く。シェルソース可能な形式にしていないのは、値に空白・引用符が含まれてもエスケープ処理なしで安全に読めるようにするため（ゲスト側は`sed -n '1p'/'2p'`で読む）。この共有は新規のvirtiofsタグを増やさず、既存の`/masuda-state`共有に相乗りする
-- **Claude OAuthトークン**（`internal/sandbox/claudetoken.go`）: `masuda internal claude-token set`（`cmd/masuda/internalclaudetoken.go`、hiddenサブコマンド、標準入力から読む）が`SetClaudeOAuthToken`で`workspace.DataHome()/claude-oauth-token`（mode 0600）へホスト全体で1つ保存する。`claude setup-token`が発行する長期（1年）OAuthトークンで、ホストの`~/.claude/.credentials.json`のようなファイルをそのまま渡すのではなく、`CLAUDE_CODE_OAUTH_TOKEN`環境変数としてゲストへ渡す前提の値。`vmStart`は登録済みならこの値を`vmClaudeSecretsDir(workDir)/token`へコピーし、専用のvirtiofs共有（`/masuda-secrets`）で渡す。未登録でもエラーにはせず、その場合ゲストは単に未ログイン状態で起動する
+- **Claude OAuthトークン**（`internal/sandbox/claudetoken.go`）: `masuda claude set-token`（`cmd/masuda/claude.go`、標準入力から読む）が`SetClaudeOAuthToken`で`workspace.DataHome()/claude-oauth-token`（mode 0600）へホスト全体で1つ保存する。`claude setup-token`が発行する長期（1年）OAuthトークンで、ホストの`~/.claude/.credentials.json`のようなファイルをそのまま渡すのではなく、`CLAUDE_CODE_OAUTH_TOKEN`環境変数としてゲストへ渡す前提の値。`vmStart`は登録済みならこの値を`vmClaudeSecretsDir(workDir)/token`へコピーし、専用のvirtiofs共有（`/masuda-secrets`）で渡す。未登録でもエラーにはせず、その場合ゲストは単に未ログイン状態で起動する（`sandbox start`・`review start`は起動前に警告を出す——`docs/design/cli.md`）
 
 ## バックグラウンドプロセス管理基盤
 

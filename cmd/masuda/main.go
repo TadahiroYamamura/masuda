@@ -47,6 +47,8 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newWorkspaceCommand())
 	root.AddCommand(newSandboxCommand())
 	root.AddCommand(newChatCommand())
+	root.AddCommand(newClaudeCommand())
+	root.AddCommand(newVMSSHKeyCommand())
 	root.AddCommand(newUpdateCommand())
 
 	planCmd := newGateCommand(gate.Plan)
