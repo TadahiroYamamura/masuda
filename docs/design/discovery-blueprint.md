@@ -6,8 +6,8 @@ Discovery（調査）・Blueprint（プラン作成）はサンドボックス�
 
 `cmd/masuda/plan.go`の`newPlanStartCommand`。第1引数が既存ワークスペースID（`workspace.Exists`で判定）かどうかで新規/再開の2経路に分岐する。
 
-- **新規**（`masuda plan start <branch> "<task>"`）: `resolveBase`でbaseブランチを解決し`newWorkspace`でワークスペースID発行＋worktree作成。`--file`が指定されていれば`hostloop.WriteInstructions`で内容をstateDirへコピーし、`--tdd`が指定されていれば`hostloop.WriteTDDIntent`を呼ぶ。どちらも`hostloop.Start(id, worktreeDir, stateDir, task)`より前に完了させる
-- **再開**（`masuda plan start <workspace-id>`）: taskを省略しなければならない。`--file`・`--name`・`--tdd`のいずれかが指定されていればエラー（新規作成時にしか意味を持たないため）。`workspace.Load`でbranch名等を引き、`startDaemon(info.ID)`で状態デーモンが落ちていれば再起動してから`hostloop.Start`を呼ぶ
+- **新規**（`masuda plan start <branch> "<task>"`）: `resolveBase`でbaseブランチを解決し`newWorkspace`でワークスペースID発行＋worktree作成。`--file`が指定されていれば`hostloop.WriteInstructions`で内容をstateDirへコピーする。`hostloop.Start(id, worktreeDir, stateDir, task)`より前に完了させる
+- **再開**（`masuda plan start <workspace-id>`）: taskを省略しなければならない。`--file`・`--name`のいずれかが指定されていればエラー（新規作成時にしか意味を持たないため）。`workspace.Load`でbranch名等を引き、`startDaemon(info.ID)`で状態デーモンが落ちていれば再起動してから`hostloop.Start`を呼ぶ
 
 新規・再開どちらも最終的に`hostloop.Start`を呼ぶ点は共通で、`task`引数が空文字列かどうかだけがStart側の分岐材料になる（後述）。
 
@@ -55,7 +55,6 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
 
 - `WriteTaskBrief(stateDir, task)`: `masuda plan start`に渡されたタスク文を状態デーモンへ`internal:task-brief`キーとして書く。読み手は`orchestrator/investigate_plan_graph.py`の`_read_task_brief()`
 - `WriteInstructions(stateDir, content)`: `masuda plan start --file`で渡された事前指示書を`<stateDir>/INSTRUCTIONS.md`へそのままコピーする（プレーンファイル、daemonキーではない）。この時点でスナップショットするため、元ファイルの後編集・移動・削除は起動済みワークスペースに影響しない。**内容はTASK.mdへ展開されず、パスだけが調査サブエージェントへの指示文に埋め込まれる**——investigator自身がReadツールで`INSTRUCTIONS.md`を開く（ADR-0016）。サブエージェントは状態デーモンに到達する手段を持たないため、この経路はプレーンファイルのままである必要がある
-- `WriteTDDIntent(stateDir)`: `--tdd`が指定されたことを`internal:tdd-requested`キーへ`"1"`として一度だけ記録する。以後`masuda plan start <workspace-id>`で再開しても`--tdd`の再指定は不要
 - `renderSystemPrompt(stateDir)`: `ensureRuntime()`の結果と`stateDir`を`system_prompt.md.tmpl`（`text/template`）へ描画し、`<stateDir>/.masuda-plan-system-prompt.md`に書き出す。このパスが`claude --append-system-prompt-file`に渡る
 
 ## ループ仕様（`system_prompt.md.tmpl`）
@@ -82,7 +81,7 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
 
 **`_investigate_task`**: Task toolで`subagent_type: investigator`を指定して委譲する指示文を組み立てる。`questions`が非空（investigate_redoの場合）なら「追加調査事項」節を追加し、完了条件に`INVESTIGATE_REDO_PENDING_JSON`（`.masuda-investigate-redo-pending.json`）の削除を明示的な最終ステップとして含める。`INSTRUCTIONS_MD`（`masuda plan start --file`）が存在すれば「事前に用意された指示書の検証」節を追加し、内容を鵜呑みにせず矛盾・実現困難な点をINVESTIGATION.mdに書かせる。`INVESTIGATION.md`に要求する構成（タスク要約・関連ファイル一覧・既存パターン・制約・未解決の疑問点、指示書検証時はその結果も）と、ADR-0029のプロンプトインジェクション自己申告節（`_TRIAGE_SELF_REPORT_SECTION`、investigate/plan両方の生成関数で共通）を含む。
 
-**`_plan_task`**: `PLAN_DIR`（`<stateDir>/plan`）をこの関数自身が`mkdir(parents=True, exist_ok=True)`で先に作る（オーケストレーターはホスト上で無サンドボックス実行のため、planner subagentのEditツールの親ディレクトリ自動作成に賭ける理由がない）。`feedback`が非Noneなら「差し戻し理由（G1で却下）」節を追加。`TDD_REQUESTED_KEY`が立っていればTDD節を追加し、ステップJSONのサンプルに`"mode": "tdd",`を混ぜて提示する（新機能追加ステップにのみ付与するかはplanner自身の判断、人間がplan gateで確認）。
+**`_plan_task`**: `PLAN_DIR`（`<stateDir>/plan`）をこの関数自身が`mkdir(parents=True, exist_ok=True)`で先に作る（オーケストレーターはホスト上で無サンドボックス実行のため、planner subagentのEditツールの親ディレクトリ自動作成に賭ける理由がない）。`feedback`が非Noneなら「差し戻し理由（G1で却下）」節を追加。
 
 生成する指示は`plan/summary.md`（自由記述prose: アプローチ要約・テスト方針・不採用の代替案・リスク）と`plan/steps.json`（機械的パース対象のJSON1個）を分けて要求する。`plan/steps.json`のトップレベルスキーマ:
 
@@ -91,7 +90,6 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
   "steps": [
     {
       "description": "...",
-      "mode": "tdd",
       "files": [{"path": "...", "description": "..."}]
     }
   ],
@@ -99,7 +97,7 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
 }
 ```
 
-`mode`はTDD対象ステップにのみ任意で付く。各ステップの`files`はそのステップで実際に変更するファイルに限定し他ステップの分を含めないよう指示する（Build段階の機械的バックストップがステップ単位で突き合わせるため）。`expected_byproducts`はビルド/テストツールチェーンが副作用生成しうるファイルパターンで、`*`は`/`をまたがず1階層のみ、`**`は0階層以上をまたぐという一般的なglob規約に従うよう明記している。
+各ステップの`files`はそのステップで実際に変更するファイルに限定し他ステップの分を含めないよう指示する（Build段階の機械的バックストップがステップ単位で突き合わせるため）。`expected_byproducts`はビルド/テストツールチェーンが副作用生成しうるファイルパターンで、`*`は`/`をまたがず1階層のみ、`**`は0階層以上をまたぐという一般的なglob規約に従うよう明記している。
 
 追加調査で解決できない大きなギャップがある場合は、`plan/summary.md`・`plan/steps.json`の代わりに`{"status": "needs_more_investigation", "questions": [...]}`を`plan_result.json`へ書かせる。完了条件は「（`plan/summary.md`と`plan/steps.json`の両方）または`plan_result.json`」。
 

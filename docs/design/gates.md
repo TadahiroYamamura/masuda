@@ -101,4 +101,3 @@ Discovery/Blueprint段階（ホスト側で動く、サンドボックスなし�
 
   あわせて `orchestrator/tests/test_investigate_plan_graph.py:322` と `test_implement_review_graph.py:1588` が旧コマンド名をアサートしているため、修正時はテストも直す必要がある
 
-- **`renderPlan`（Go）と`_render_plan_text()`（Python）が食い違っている**: `internal/gate/gate.go:155` はステップの`mode`が`"tdd"`のときラベルへ`（TDDモード）`を付けるが、`orchestrator/implement_review_graph.py:343-370` の`_render_plan_text()`は`mode`を一切参照しない。同じプランを人間（`masuda plan show`）とサブエージェント（実装時のコンテキスト）へ見せる2実装なのに、後者ではTDDステップかどうかが区別できない

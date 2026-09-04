@@ -46,15 +46,15 @@ curatedソケットはUDSのため`--mcp-config`（`http://host:port`形式のUR
 
 - ゲートマーカー: `gate:plan`・`gate:review`・`gate:triage`（`internal/gate/gate.go`が読み書き。承認/却下/halt状態と人間のフィードバックを持つ）
 - `artifact:DEVIATION.md`（`internal/gate/gate.go`。plan gate再オープン時の逸脱理由。従来ファイルだった`DEVIATION.md`をこの1件だけ移した）
-- `internal:task-brief`・`internal:tdd-requested`・`internal:plan-retries`・`internal:iteration-count`・`internal:triage-redo-feedback`・`internal:plan-redo-pending`（`orchestrator/investigate_plan_graph.py`のカウンタ・フラグ類）
-- `internal:approved-deviations`・`internal:review-state`・`internal:review-feedback`・`internal:interim-carried-findings`・`internal:interim-review-state-step{N}`・`internal:tdd-cycle-step{N}`（`orchestrator/implement_review_graph.py`のカウンタ・状態類。`iteration-count`は投稿段階間で共有せず独立）
+- `internal:task-brief`・`internal:plan-retries`・`internal:iteration-count`・`internal:triage-redo-feedback`・`internal:plan-redo-pending`（`orchestrator/investigate_plan_graph.py`のカウンタ・フラグ類）
+- `internal:approved-deviations`・`internal:review-state`・`internal:review-feedback`・`internal:interim-carried-findings`・`internal:interim-review-state-step{N}`（`orchestrator/implement_review_graph.py`のカウンタ・状態類。`iteration-count`は投稿段階間で共有せず独立）
 
-同じディレクトリ内でも書き手が違えば分かれる例がある。`interim_review/step{N}/`ディレクトリは`trigger_match.json`・`result`/`check`/`fix`/`recheck`系のJSONをサブエージェントが直接書くのでファイルのまま、一方オーケストレーター自身だけが読み書きする進行状態（`redo_counts`等）は`internal:interim-review-state-step{N}`としてデーモン側に置かれる。`tdd_cycle/step{N}/`の`check_cycle*.json`（サブエージェント書き込み）と`internal:tdd-cycle-step{N}`（オーケストレーター専用）も同じ分かれ方をする。
+同じディレクトリ内でも書き手が違えば分かれる例がある。`interim_review/step{N}/`ディレクトリは`trigger_match.json`・`result`/`check`/`fix`/`recheck`系のJSONをサブエージェントが直接書くのでファイルのまま、一方オーケストレーター自身だけが読み書きする進行状態（`redo_counts`等）は`internal:interim-review-state-step{N}`としてデーモン側に置かれる。
 
 **ファイルのまま残る状態**（サブエージェントがRead/Edit/Bashで直接触る成果物、または主セッション自身がReadする成果物）
 
 - Discovery/Blueprint段階: `INVESTIGATION.md`・`plan/summary.md`・`plan/steps.json`・`plan_result.json`・`triage_concern.json`・`.masuda-investigate-redo-pending.json`・`INSTRUCTIONS.md`
-- Build/Review段階: `implementation_result.json`・`triage_concern.json`・`review_results/*`（`final_report.md`含む）・`interim_review/step{N}/*`（進行状態を除く）・`tdd_cycle/step{N}/check_cycle*.json`・`.masuda-commit-message`・`.masuda-step-commit-message`・`.masuda-tdd-cycle-commit-message`
+- Build/Review段階: `implementation_result.json`・`triage_concern.json`・`review_results/*`（`final_report.md`含む）・`interim_review/step{N}/*`（進行状態を除く）・`.masuda-commit-message`・`.masuda-step-commit-message`
 - 両段階共通: `TASK.md`（メインのClaude Codeセッションが自身のReadツールで読むループ制御チャネル。ADR-0006）
 
 `internal/gate/gate.go`はこの境界の上で動く代表例で、`review_results/final_report.md`（`artifactPaths[Review]`）と`plan/summary.md`＋`plan/steps.json`（`renderPlan`が組み立てる）はサブエージェントのEdit書き込みを前提にファイルのまま読み、ゲートマーカーだけをデーモンから読む。

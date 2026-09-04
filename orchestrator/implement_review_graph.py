@@ -49,9 +49,8 @@ state daemon (state_client.py) -- but, same boundary as
 investigate_plan_graph.py, only where every reader and writer is trusted,
 non-subagent code (this script itself, or the Go CLI). Anything a Claude
 subagent writes directly (implementation_result.json, triage_concern.json,
-review_results/*, interim_review/step*/*, tdd_cycle/step*/check_cycle*.json,
-.masuda-commit-message, .masuda-step-commit-message,
-.masuda-tdd-cycle-commit-message, ...) or that the main Claude Code session
+review_results/*, interim_review/step*/*, .masuda-commit-message,
+.masuda-step-commit-message, ...) or that the main Claude Code session
 reads itself (TASK.md) deliberately stays a plain file -- it has no way to
 reach the daemon. See internal/gate's package doc on the Go side for the
 same rule and the bug it prevents repeating.
@@ -282,7 +281,6 @@ INTERIM_CARRIED_FINDINGS_KEY = "internal:interim-carried-findings"
 # so isn't counted against the iteration budget.
 _SUBAGENT_PHASES = {
     "implement_step", "implement_g2_redo",
-    "tdd_red", "tdd_green", "tdd_refactor", "tdd_process_check",
     "trigger_match",
     "interim_review_batch",
     "review_batch",
@@ -444,12 +442,11 @@ def _tag_step(step_index: int) -> None:
 def _completed_step_count() -> int:
     """How many plan steps are already landed on this branch, derived from
     git tags (masuda-step-<workspace-id>-<N>) rather than raw commit count.
-    ADR-0027's original "commit count == step count" invariant assumed one
-    commit per step; TDD mode (Issue #3) breaks that assumption by design --
-    a single step can land many commits (one per Red/Green/Refactor phase,
-    repeated over any number of cycles) before it's actually done, so a tag
-    placed exactly once per completed step (_tag_step, called from
-    _finalize_step) is the only reliable boundary marker.
+ADR-0027's original invariant was "commit count == step count", which a
+    step producing no in-scope change breaks (_commit_scoped lands an empty
+    commit there, but nothing guarantees one commit per step in general). A
+    tag placed exactly once per completed step (_tag_step, called from
+    _finalize_step) is the reliable boundary marker.
 
     Still self-healing in the spirit _actual_changed_files() below follows
     for `git status --porcelain`: no separate counter file, just a query
@@ -489,7 +486,7 @@ def _read_implementation_result() -> dict | None:
     return json.loads(IMPLEMENTATION_RESULT_JSON.read_text(encoding="utf-8"))
 
 
-def _actual_changed_files(since_ref: str | None = None) -> set[str]:
+def _actual_changed_files() -> set[str]:
     # --untracked-files=all: without it, git collapses a brand new directory
     # into a single "?? cmd/" entry instead of listing the files inside it,
     # which would never match any individual path in a plan's declared file
@@ -507,19 +504,7 @@ def _actual_changed_files(since_ref: str | None = None) -> set[str]:
         if " -> " in path:  # rename: "old -> new"
             path = path.split(" -> ", 1)[1]
         files.add(path.strip().strip('"'))
-    if since_ref is None:
-        return files
-    # TDD mode (Issue #3): a step's changes land as several real commits (one
-    # per Red/Green/Refactor phase) instead of staying uncommitted until
-    # finalization, so by the time this step's backstop runs, the working
-    # tree above is already clean and has nothing left to report. since_ref
-    # (the previous step's tag, or base_ref for the first step -- see
-    # _step_diff_base) recovers the committed portion of this step's diff so
-    # the backstop still sees the whole picture.
-    committed = set(subprocess.run(
-        ["git", "diff", "--name-only", since_ref, "HEAD"], capture_output=True, text=True, check=True,
-    ).stdout.split())
-    return files | committed
+    return files
 
 
 def _read_approved_deviations() -> set[str]:
@@ -533,15 +518,7 @@ def _write_approved_deviations(paths: set[str]) -> None:
     state_client.put(APPROVED_DEVIATIONS_KEY, json.dumps(sorted(paths), ensure_ascii=False))
 
 
-def _step_diff_base(step_index: int) -> str:
-    """TDD mode (Issue #3): the ref a step's cumulative diff/backstop should
-    be computed since -- the previous step's boundary tag, or base_ref for
-    the very first step (mirroring _read_base_ref()'s role as the whole
-    plan's own starting point)."""
-    return _step_tag_name(step_index - 1) if step_index > 0 else _read_base_ref()
-
-
-def _extra_changed_files(planned: set[str], since_ref: str | None = None) -> set[str]:
+def _extra_changed_files(planned: set[str]) -> set[str]:
     """Files touched outside `planned`, minus any deviation a human has
     already approved through a prior G1 reopen, minus anything matching a
     G1-approved expected_byproducts pattern (ADR-0028) -- without the first
@@ -553,18 +530,16 @@ def _extra_changed_files(planned: set[str], since_ref: str | None = None) -> set
     `planned` is the file set to check against -- the current step's own
     declared files during normal phase 4 progress, or the whole plan's union
     during implement_g2_redo (ADR-0027, see _step_planned_files /
-    _all_planned_files). `since_ref` is TDD mode's diff basis (see
-    _step_diff_base) -- None (the default) preserves today's exact
-    uncommitted-working-tree-only behavior."""
+    _all_planned_files)."""
     approved = _read_approved_deviations()
     byproducts = _read_expected_byproducts()
     return {
-        f for f in _actual_changed_files(since_ref) - planned - approved
+        f for f in _actual_changed_files() - planned - approved
         if not _is_expected_byproduct(f, byproducts)
     }
 
 
-def _mechanical_deviation(planned: set[str], since_ref: str | None = None) -> str | None:
+def _mechanical_deviation(planned: set[str]) -> str | None:
     """Returns a human-readable reason if files were touched outside
     `planned` (and not already an approved deviation), or None otherwise.
     LLM-free by design (ADR-0010) -- this must not depend on the
@@ -575,7 +550,7 @@ def _mechanical_deviation(planned: set[str], since_ref: str | None = None) -> st
     went through G1, so there's no plan to have deviated from; nothing to
     back-stop.
     """
-    extra = _extra_changed_files(planned, since_ref)
+    extra = _extra_changed_files(planned)
     if not extra:
         return None
     return (
@@ -603,8 +578,6 @@ def _committable_files(planned: set[str]) -> list[str]:
     before ever reaching a commit. Once that backstop has passed, this is
     exactly "everything that changed, minus the predicted byproducts".
 
-    Working tree only -- no since_ref. A commit is always about what is
-    currently uncommitted; a TDD step's already-landed phases are not it.
     """
     return sorted((_actual_changed_files() & (planned | _read_approved_deviations())))
 
@@ -634,24 +607,16 @@ def _compute_diff() -> str:
     ).stdout
 
 
-def _compute_step_diff(since_ref: str | None = None) -> str:
+def _compute_step_diff() -> str:
     """Same staging approach as _compute_diff(), but diffed against HEAD (or
-    `since_ref`) instead of the branch's base ref -- since ADR-0027 has every
-    prior step already committed by the time this runs, `git diff --cached
-    HEAD` shows exactly the current step's not-yet-committed changes, not the
-    whole plan's cumulative diff. Used for phase 4's trigger matching and
-    interim review only; phase 5's full G2 review keeps using
-    _compute_diff().
-
-    TDD mode (Issue #3) passes `since_ref` (the previous step's tag --
-    _step_diff_base) at step-finalization time, once the step's own diff is
-    no longer "uncommitted" but several already-landed commits; every
-    individual Red/Green/Refactor phase's own diff still just wants the
-    default (whatever landed since the *previous phase's* commit is exactly
-    "currently uncommitted", i.e. since_ref=None -> HEAD)."""
+    HEAD instead of the branch's base ref -- since ADR-0027 has every prior
+    step already committed by the time this runs, `git diff --cached HEAD`
+    shows exactly the current step's not-yet-committed changes, not the whole
+    plan's cumulative diff. Used for phase 4's trigger matching and interim
+    review only; phase 5's full G2 review keeps using _compute_diff()."""
     subprocess.run(["git", "add", "-A"], check=True)
     return subprocess.run(
-        ["git", "diff", "--cached", since_ref or "HEAD"], capture_output=True, text=True, check=True
+        ["git", "diff", "--cached", "HEAD"], capture_output=True, text=True, check=True
     ).stdout
 
 
@@ -690,19 +655,6 @@ def _commit_scoped(files: list[str], message_file: Path) -> None:
         subprocess.run(["git", "add", "--", f], check=True)
     subprocess.run(["git", "commit", "--allow-empty", "-F", str(message_file)], check=True)
     message_file.unlink()
-
-
-def _write_interim_fix_commit_message(step_index: int) -> None:
-    """Writes the commit message for a TDD step's leftover interim-review
-    fixes (ADR-0058). A TDD step's own commits each carry a message the
-    implementation subagent wrote for that Red/Green/Refactor phase; this
-    commit has no such author -- it exists because a reviewer's fixer changed
-    something after the last phase already landed. Fixed text rather than
-    another subagent round trip: the orchestrator calls no LLM (ADR-0002),
-    and what happened here is fully known without asking anyone."""
-    STEP_COMMIT_MESSAGE_FILE.write_text(
-        f"fix: 途中レビューの指摘を反映する（ステップ{step_index + 1}）\n", encoding="utf-8"
-    )
 
 
 def _read_iteration_count() -> int:
@@ -884,279 +836,6 @@ def _append_interim_carried_finding(step_index: int, rs: dict) -> None:
         carried.append({"step": step_index, "id": u["id"], "reason": u["reason"]})
     state_client.put(INTERIM_CARRIED_FINDINGS_KEY, json.dumps(carried, ensure_ascii=False))
 
-
-# --- TDD mode (Issue #3): per-step Red/Green/Refactor cycle state ----------
-
-TDD_DIR = STATE_DIR / "tdd_cycle"
-TDD_CYCLE_COMMIT_MESSAGE_FILE = STATE_DIR / ".masuda-tdd-cycle-commit-message"
-
-
-def _tdd_step_dir(step_index: int) -> Path:
-    return TDD_DIR / f"step{step_index}"
-
-
-def _tdd_cycle_state_key(step_index: int) -> str:
-    # Orchestrator-only (unlike check_cycle*.json in the same _tdd_step_dir,
-    # which the TDD process-checker subagent writes directly by path), so
-    # this one piece of that directory's state lives in the daemon instead.
-    return f"internal:tdd-cycle-step{step_index}"
-
-
-def _tdd_check_path(step_index: int, cycle: int, phase: str, attempt: int) -> Path:
-    return _tdd_step_dir(step_index) / f"check_cycle{cycle}_{phase}_attempt{attempt}.json"
-
-
-def _read_tdd_cycle_state(step_index: int) -> dict:
-    value = state_client.get(_tdd_cycle_state_key(step_index))
-    if value is None:
-        return {"cycle": 1, "phase": "red", "attempt": 1, "redo_feedback": ""}
-    return json.loads(value)
-
-
-def _write_tdd_cycle_state(step_index: int, cs: dict) -> None:
-    state_client.put(_tdd_cycle_state_key(step_index), json.dumps(cs, ensure_ascii=False))
-
-
-def _clear_tdd_step(step_index: int) -> None:
-    """Wipes this step's TDD cycle state (cycle.json + every phase-check
-    result) -- used both when the step completes normally (nothing left to
-    resume) and when a G1 reopen rejects the step's committed work and it
-    restarts from tdd_red/cycle 1 (_reset_tdd_step), mirroring
-    _clear_interim_step's "don't reuse stale state after a redo" rule."""
-    state_client.delete(_tdd_cycle_state_key(step_index))
-    step_dir = _tdd_step_dir(step_index)
-    if not step_dir.exists():
-        return
-    for f in step_dir.iterdir():
-        f.unlink()
-    step_dir.rmdir()
-
-
-def _advance_tdd_cycle(cs: dict, result: dict) -> tuple[str, int, bool]:
-    """Where the Red/Green/Refactor cycle goes next, returning (next_phase,
-    next_cycle, step_complete).
-
-    red->green and green->refactor are both forced by the orchestrator, never
-    left to the implementation agent's self-report: Kent Beck's TDD leaves no
-    legal choice after red (law 1 -- no production code without a failing
-    test), and forcing green->refactor is this project's own addition on top
-    of that, since an agent free to choose is prone to skipping the Refactor
-    phase entirely (ADR-0037) -- the `claudecode-tdd` Claude Code
-    plugin's own red/green/refactor slash commands were checked as a
-    reference point and confirmed to have exactly this gap: phase transitions
-    there are advisory prose ("proceed to /tdd:refactor") with nothing
-    enforcing that the agent actually does. Only once an actual Refactor turn
-    has happened (a real change, or an honestly-reported no-op -- see
-    _detect_tdd_phase) does the implementation agent's own tdd_next_phase
-    choice apply."""
-    if cs["phase"] == "red":
-        return "green", cs["cycle"], False
-    if cs["phase"] == "green":
-        return "refactor", cs["cycle"], False
-    choice = result.get("tdd_next_phase", "red")
-    if choice == "complete":
-        return "", cs["cycle"], True
-    if choice == "refactor":
-        return "refactor", cs["cycle"], False
-    return "red", cs["cycle"] + 1, False
-
-
-def _land_or_finalize_tdd_phase(step_index: int, step: dict, cs: dict, result: dict) -> State:
-    """Common landing point once a Red/Green/Refactor phase's diff is
-    approved -- by the process checker, or by a human overriding an
-    exhausted checker rejection (_resolve_tdd_process_reopen).
-
-    If this phase doesn't complete the cycle, it commits immediately and
-    advances to the next phase (the established "1 phase = 1 commit" model).
-    If it does complete the cycle, the commit is deliberately deferred to
-    _detect_tdd_step_completion instead of happening here: that function's
-    mechanical backstop needs to see this phase's diff too, and
-    _actual_changed_files(since_ref) already unions the working tree with
-    every prior phase's committed diff, so leaving this last phase uncommitted
-    until the backstop clears costs nothing -- while committing it eagerly
-    would mean a failed backstop leaves a real commit behind that a redo then
-    has to explicitly discard (_reset_tdd_step) rather than never having
-    existed, and would make _resolve_tdd_finalization_reopen's pending-gate
-    state (IMPLEMENTATION_RESULT_JSON left on disk, unconsumed until a human
-    actually decides -- same pattern _resolve_mechanical_reopen already
-    relies on for non-TDD steps) impossible to re-derive without either
-    re-committing (fails: the phase's own commit message file is already
-    consumed) or silently dropping the pending reopen."""
-    next_phase, next_cycle, complete = _advance_tdd_cycle(cs, result)
-    if complete:
-        return _detect_tdd_step_completion(step_index, step, cs, result)
-    # Out-of-plan changes are deliberately left out of this commit rather
-    # than blocked here: no backstop runs mid-cycle, and leaving them dirty
-    # keeps them visible to the step-completion backstop, which unions the
-    # working tree with every landed phase.
-    _commit_scoped(_committable_files(_step_planned_files(step)), TDD_CYCLE_COMMIT_MESSAGE_FILE)
-    if IMPLEMENTATION_RESULT_JSON.exists():
-        IMPLEMENTATION_RESULT_JSON.unlink()
-    _write_tdd_cycle_state(step_index, {"cycle": next_cycle, "phase": next_phase, "attempt": 1, "redo_feedback": ""})
-    return {"phase": f"tdd_{next_phase}", "reason": ""}
-
-
-def _resolve_tdd_process_reopen(step_index: int, step: dict, cs: dict, check: dict, result: dict) -> State:
-    """A TDD phase's process checker rejected MAX_REVIEW_RETRIES times in a
-    row -- escalate through the same G1 reopen every other unresolved-after-
-    retries case in this file uses (ADR-0010/0027's stopgap pattern), rather
-    than inventing a new gate.
-
-    Approval means the phase lands despite the checker's standing objection
-    (a human judgment call, not recorded in APPROVED_DEVIATIONS_KEY since
-    this is a process judgment, not a file-scope one -- that key is
-    specifically the mechanical backstop's memory), via the same landing
-    path a clean checker approval takes; rejection redoes the same phase with
-    the checker's last feedback in view, at a fresh attempt number (never
-    attempt 1 again -- reusing an attempt number whose check file already
-    exists would make _detect_tdd_phase see a stale verdict instead of
-    waiting for a new subagent turn)."""
-    names = {"red": "Red", "green": "Green", "refactor": "Refactor"}
-    reason = (
-        f"TDDプロセス遵守チェック（フェーズ4、ステップ{step_index + 1}、"
-        f"{names.get(cs['phase'], cs['phase'])}）が{MAX_REVIEW_RETRIES}回試行しても"
-        f"承認されませんでした:\n{check.get('feedback', '')}"
-    )
-
-    def on_approved():
-        return _land_or_finalize_tdd_phase(step_index, step, cs, result)
-
-    def on_rejected(feedback):
-        IMPLEMENTATION_RESULT_JSON.unlink()
-        cs["attempt"] += 1
-        cs["redo_feedback"] = feedback
-        _write_tdd_cycle_state(step_index, cs)
-        return {"phase": f"tdd_{cs['phase']}", "reason": feedback}
-
-    return _resolve_gate_reopen(reason, on_approved, on_rejected)
-
-
-def _detect_tdd_phase(step_index: int, step: dict) -> State:
-    """TDD mode's Red/Green/Refactor sub-loop for one plan step (Issue #3).
-    Dispatches purely from on-disk state -- IMPLEMENTATION_RESULT_JSON (the
-    implementation subagent's self-report, reused unchanged from the normal
-    per-step flow, including its needs_plan_review/build_test_failed escape
-    hatches) and this step's own cycle state (_read_tdd_cycle_state) -- so it
-    re-derives cleanly on every detect_phase call, same as the rest of this
-    file. IMPLEMENTATION_RESULT_JSON is deliberately left on disk through
-    every branch below except an actual phase advance/redo -- see
-    _land_or_finalize_tdd_phase's docstring for why the cycle-complete path
-    can't consume it early."""
-    cs = _read_tdd_cycle_state(step_index)
-    result = _read_implementation_result()
-    if result is None:
-        return {"phase": f"tdd_{cs['phase']}", "reason": cs.get("redo_feedback", "")}
-
-    status = result.get("status")
-    if status == "needs_plan_review":
-        reason = "実装エージェントの自己申告（一次防御）:\n" + result.get("reason", "")
-        return _resolve_self_report_reopen(reason, f"tdd_{cs['phase']}")
-    if status == "build_test_failed":
-        reason = "ビルド/テストの自己修正が上限に達しました（ADR-0009）:\n" + result.get("details", "")
-        return _resolve_self_report_reopen(reason, f"tdd_{cs['phase']}")
-    if status != "done":
-        raise ValueError(f"unknown implementation_result.json status: {status!r}")
-
-    # 改善点なし（Refactorフェーズのみ）: checkerを経由せず直接判定へ。Refactorへの
-    # 移行そのものは強制するが、無意味なcommitまでは強制しない（ADR-0037）。
-    # 「改善点が無かった」は申告ではなく実測で判定する（ADR-0058）——申告だけで
-    # process checkerを飛ばせると、実際には変更しているのに素通りできてしまう。
-    if cs["phase"] == "refactor" and not _committable_files(_step_planned_files(step)):
-        return _land_or_finalize_tdd_phase(step_index, step, cs, result)
-
-    check_path = _tdd_check_path(step_index, cs["cycle"], cs["phase"], cs["attempt"])
-    if not check_path.exists():
-        return {"phase": "tdd_process_check", "reason": ""}
-
-    check = json.loads(check_path.read_text(encoding="utf-8"))
-    if not check.get("ok"):
-        if cs["attempt"] < MAX_REVIEW_RETRIES:
-            cs["attempt"] += 1
-            cs["redo_feedback"] = check.get("feedback", "")
-            _write_tdd_cycle_state(step_index, cs)
-            IMPLEMENTATION_RESULT_JSON.unlink()
-            return {"phase": f"tdd_{cs['phase']}", "reason": cs["redo_feedback"]}
-        return _resolve_tdd_process_reopen(step_index, step, cs, check, result)
-
-    return _land_or_finalize_tdd_phase(step_index, step, cs, result)
-
-
-def _reset_tdd_step(step_index: int) -> None:
-    """On a rejected G1 reopen for a TDD step's work (the finalization-time
-    mechanical backstop, or an unresolved interim-review finding), the step's
-    landed Red/Green/Refactor commits are discarded back to the previous
-    step's boundary and the sub-loop restarts clean from tdd_red/cycle 1 --
-    unlike a non-TDD step's redo (nothing was ever committed, so "redo"
-    already means "start over"), a TDD step has real intra-step commits by
-    this point, so leaving them in place would let a rejected change's
-    footprint silently ride along. `git reset --hard` also discards any
-    still-uncommitted working-tree diff (the cycle's completing phase,
-    deliberately left uncommitted until the backstop clears --
-    _land_or_finalize_tdd_phase), so this cleanly undoes the whole attempt
-    regardless of where in the cycle it was rejected.
-
-    Untracked files survive, by design: `git reset --hard` discards commits
-    and tracked changes, and this function's job is to undo the attempt's
-    *history*, not to sweep the working tree. Since ADR-0058, an out-of-plan
-    file never made it into a phase commit in the first place, so it is
-    exactly the kind of thing left standing here -- the rejection feedback is
-    what tells the agent to remove it, and the backstop fires again if it
-    doesn't. Deleting it here would also take any build byproduct with it.
-
-    This is local-only
-    history inside the sandboxed clone, never pushed (ADR-0005), so it does
-    not carry the "irreversible, affects a shared system" weight it would on
-    a real shared branch -- the one destructive git operation in this
-    codebase, deliberately scoped to that guarantee."""
-    subprocess.run(["git", "reset", "--hard", _step_diff_base(step_index)], check=True)
-    _clear_tdd_step(step_index)
-
-
-def _resolve_tdd_finalization_reopen(
-    step_index: int, step: dict, reason: str, planned: set[str], since_ref: str, result: dict,
-) -> State:
-    def on_approved():
-        approved = _read_approved_deviations()
-        approved |= _extra_changed_files(planned, since_ref)
-        _write_approved_deviations(approved)
-        # _committable_files re-reads the approved set, so the deviations the
-        # human just accepted are in scope for this commit.
-        _commit_scoped(_committable_files(planned), TDD_CYCLE_COMMIT_MESSAGE_FILE)
-        if IMPLEMENTATION_RESULT_JSON.exists():
-            IMPLEMENTATION_RESULT_JSON.unlink()
-        _clear_tdd_step(step_index)
-        return _detect_interim_review_phase(step_index, step)
-
-    def on_rejected(feedback):
-        if IMPLEMENTATION_RESULT_JSON.exists():
-            IMPLEMENTATION_RESULT_JSON.unlink()
-        _reset_tdd_step(step_index)
-        return {"phase": "tdd_red", "reason": feedback}
-
-    return _resolve_gate_reopen(reason, on_approved, on_rejected)
-
-
-def _detect_tdd_step_completion(step_index: int, step: dict, cs: dict, result: dict) -> State:
-    """A TDD step's Red/Green/Refactor cycling is done (the implementation
-    agent reported tdd_next_phase: "complete") -- run the same mechanical
-    backstop (ADR-0010/0027) a normal step gets, diffed since the previous
-    step's tag (_step_diff_base) instead of the working tree alone, since
-    most of this step's changes already landed as real commits; the very
-    last phase's diff (this call's `result`) is still sitting uncommitted in
-    the working tree by design (_land_or_finalize_tdd_phase), and
-    _actual_changed_files(since_ref) already unions both, so the backstop
-    sees the complete picture either way. Only once it clears does this
-    actually commit that last phase and place the step's boundary tag
-    (inside _detect_interim_review_phase's eventual _finalize_step call)."""
-    planned = _step_planned_files(step)
-    since_ref = _step_diff_base(step_index)
-    deviation = _mechanical_deviation(planned, since_ref)
-    if deviation:
-        return _resolve_tdd_finalization_reopen(step_index, step, deviation, planned, since_ref, result)
-    _commit_scoped(_committable_files(planned), TDD_CYCLE_COMMIT_MESSAGE_FILE)
-    if IMPLEMENTATION_RESULT_JSON.exists():
-        IMPLEMENTATION_RESULT_JSON.unlink()
-    return _detect_interim_review_phase(step_index, step)
 
 
 def _detect_review_phase() -> State:
@@ -1420,10 +1099,8 @@ def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict) ->
     report and lets the step land as-is; rejection redoes the step (its
     interim review state is wiped so the redo starts trigger-matching fresh,
     same as _clear_review_state() does for phase 5 after a G2 rejection). A
-    TDD-mode step (Issue #3) additionally discards its already-landed
-    Red/Green/Refactor commits on rejection (_reset_tdd_step) -- unlike a
-    non-TDD step, whose implementation was never committed at all until this
-    point, a rejected TDD step's redo needs to actually undo real history,
+    A rejected step's implementation was never committed at all up to this
+    point, so nothing has to be undone in git,
     not just retry."""
     unresolved_ids = [u["id"] for u in rs["unresolved"]]
     names = "、".join(PERSPECTIVES[pid]["name"] for pid in unresolved_ids)
@@ -1441,9 +1118,6 @@ def _resolve_interim_unresolved_reopen(step_index: int, step: dict, rs: dict) ->
         if IMPLEMENTATION_RESULT_JSON.exists():
             IMPLEMENTATION_RESULT_JSON.unlink()
         reason = f"途中レビューの指摘がG1再オープンで却下されました:\n{feedback}"
-        if step.get("mode") == "tdd":
-            _reset_tdd_step(step_index)
-            return {"phase": "tdd_red", "reason": reason}
         return {"phase": "implement_step", "reason": reason}
 
     return _resolve_gate_reopen(reason, on_approved, on_rejected)
@@ -1453,10 +1127,7 @@ def _detect_interim_review_phase(step_index: int, current_step: dict) -> State:
     """ADR-0027: the lightweight, trigger-matched counterpart to
     _detect_review_phase, scoped to one step's diff and only the
     perspectives its trigger_match round selected. Reached both by a normal
-    step's single-shot implementation and by a TDD-mode step's Red/Green/
-    Refactor sub-loop once it self-reports complete (_detect_tdd_step_
-    completion) -- current_step's mode decides how _finalize_step below lands
-    it, not anything here."""
+    step's implementation once it self-reports complete."""
     if not TRIGGERED_PERSPECTIVE_IDS:
         # No perspective declares a `trigger` -- nothing can ever match, so
         # there's no interim review to run for any step.
@@ -1499,19 +1170,11 @@ def _finalize_step(step_index: int, step: dict) -> State:
     the last one, falls through to phase 5) without this function needing to
     duplicate that logic.
 
-    A non-TDD step lands its whole implementation here as one commit, under
-    the message the implementation subagent wrote. A TDD-mode step (Issue #3)
-    already landed each Red/Green/Refactor phase as its own commit, so what
-    is left in the working tree is only what the interim review's fixer
-    changed after those commits -- which still has to land, and has no
-    message of its own, so one is generated (ADR-0058). Usually there is
-    nothing and _commit_scoped does nothing."""
-    leftover = _committable_files(_step_planned_files(step))
-    if step.get("mode") == "tdd":
-        _clear_tdd_step(step_index)
-        if leftover:
-            _write_interim_fix_commit_message(step_index)
-    _commit_scoped(leftover, STEP_COMMIT_MESSAGE_FILE)
+    The step lands here as one commit, under the message the implementation
+    subagent wrote, covering everything that changed inside the plan's
+    approved scope -- the implementation itself plus whatever the interim
+    review's fixer changed afterward (ADR-0058)."""
+    _commit_scoped(_committable_files(_step_planned_files(step)), STEP_COMMIT_MESSAGE_FILE)
     _tag_step(step_index)
     if IMPLEMENTATION_RESULT_JSON.exists():
         IMPLEMENTATION_RESULT_JSON.unlink()
@@ -1541,20 +1204,6 @@ def detect_phase(state: State) -> State:
     in_g2_redo = state_client.exists(REVIEW_FEEDBACK_KEY)
 
     if result is not None:
-        # TDD mode (Issue #3): a step marked mode: "tdd" in plan/steps.json
-        # never goes through the normal single-shot implement_step path
-        # below -- everything about it (self-report handling included) is
-        # delegated to _detect_tdd_phase's own Red/Green/Refactor dispatch.
-        # This must run before any status-based branching, since a TDD
-        # phase's own needs_plan_review/build_test_failed self-report needs
-        # a TDD-aware redo_phase (tdd_red/tdd_green/tdd_refactor), not
-        # "implement_step".
-        if not in_g2_redo and PLAN_STEPS_JSON.exists():
-            steps = _read_plan_steps()
-            completed = _completed_step_count()
-            if completed < len(steps) and steps[completed].get("mode") == "tdd":
-                return _detect_tdd_phase(completed, steps[completed])
-
         status = result.get("status")
         redo_phase = "implement_g2_redo" if in_g2_redo else "implement_step"
         if status == "needs_plan_review":
@@ -1603,9 +1252,6 @@ def detect_phase(state: State) -> State:
     completed = _completed_step_count()
     if completed >= len(steps):
         return _detect_post_implementation_phase()
-    current = steps[completed]
-    if current.get("mode") == "tdd":
-        return _detect_tdd_phase(completed, current)
     return {"phase": "implement_step", "reason": ""}
 
 
@@ -1716,199 +1362,6 @@ VM内で完結するため、フェーズ1-2のようなBash制限は不要。wr
 {_TRIAGE_SELF_REPORT_SECTION}
 
 {_implementation_completion_section()}
-"""
-
-
-# --- TDD mode (Issue #3): Red/Green/Refactor phase prompts ------------------
-# Not `.masuda/reviews/`-driven like the 14-perspective system (ADR-0024) --
-# masuda writes its own self-contained prompts here rather than depending on
-# the external `claudecode-tdd` Claude Code plugin, since phase 4 subagents
-# run in fresh contexts inside the sandbox VM and don't inherit the main
-# session's installed skills unless baked into the rootfs image, a target-repo-
-# dependent condition this project doesn't want to rely on.
-
-_TDD_PHASE_LABELS = {"red": "Red", "green": "Green", "refactor": "Refactor"}
-
-_TDD_RED_CRITERION = """- 新しく追加された失敗テストは1つの振る舞いだけを検証しているか（複数の振る舞いを
-  一度にテストしていないか）
-- そのテストは、対応する実装がまだ存在しない（または対応していない）ために実際に
-  失敗する状態か（構文エラー等、意図と無関係な理由での失敗ではないか）
-- テストを通すためのプロダクションコードが、このdiffに含まれていないか（TDDの法則1:
-  失敗するテストを書くまでプロダクションコードを書いてはいけない）"""
-
-_TDD_GREEN_CRITERION = """- 追加・変更されたプロダクションコードは、今失敗しているテストを通すために必要な
-  範囲に収まっているか（まだ書かれていない将来のテストを見越した実装を含んでいないか。
-  TDDの法則3: 今失敗しているテストを通す以上にプロダクションコードを書いてはいけない）
-- 既存のテストを、通すために変更・弱体化していないか"""
-
-_TDD_REFACTOR_CRITERION = """- 変更は構造的なもの（Structural-only）に留まっているか。新しい振る舞いやテストを
-  追加していないか（挙動を変えるのは次のRedの仕事であり、Refactorの仕事ではない）
-- 既存のテストの意味を変えていないか（テスト自体を書き換えて通すのはRefactorの範囲外）
-- 重複除去・命名改善・抽出等、構造の整理として妥当な変更か（Tidy First）"""
-
-_TDD_CRITERIA = {"red": _TDD_RED_CRITERION, "green": _TDD_GREEN_CRITERION, "refactor": _TDD_REFACTOR_CRITERION}
-
-_TDD_PHASE_INSTRUCTIONS = {
-    "red": """次に対応すべき最小の振る舞いについて、1つの失敗するテストを書け。
-- テストは1つの振る舞いだけを検証すること（複数の振る舞いを一度にテストしない）
-- テストを書いたら実際に実行し、意図した理由で失敗することを確認すること（構文エラー等、
-  意図と無関係な理由で失敗していないか確認する）
-- このテストに対応するプロダクションコードは、このフェーズでは書かないこと（TDDの法則1）""",
-    "green": """直前のRedフェーズで追加された、今失敗しているテストを通すための最小限の
-プロダクションコードを書け。
-- 今失敗しているテストを通すために必要な範囲を超えて実装しないこと（まだ書かれていない
-  将来のテストを見越した実装をしない、TDDの法則3）
-- 既存のテストを、通すために変更・弱体化させないこと
-- 実装後、テストを実行してgreen（成功）になることを確認すること""",
-    "refactor": """コードの構造を改善できないか検討せよ（重複除去・命名改善・抽出等）。
-挙動は一切変えないこと（Structural-only、Tidy First）。
-- 新しい振る舞いやテストを追加しないこと（それは次のRedの仕事）
-- 既存のテストの意味を変えないこと（テストを書き換えて通すのは対象外）
-- 改善すべき点が見当たらなければ、無理に変更を作らず「改善の余地なし」として報告してよい
-  （下記完了条件を参照）。Refactorフェーズを経ること自体は必須だが、意味のある改善が
-  無ければ何もしないのが正しい判断である
-- 変更した場合は、テストを実行して引き続きgreenであることを確認すること""",
-}
-
-
-def _tdd_self_verify_section(phase: str) -> str:
-    if phase == "red":
-        return f"""## テスト実行結果の確認
-テストを実行し、意図した理由（対応する実装が無い/対応していない）で失敗することを
-確認せよ。構文エラー等、意図と無関係な理由でテストが実行できない場合は自己修正して
-再実行せよ。最大3回まで試し、それでも意図した形で失敗させられない場合は
-`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出して終了せよ:
-{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
-
-{_PRIVILEGED_COMMAND_SECTION}"""
-    verb = "実装後" if phase == "green" else "変更した場合"
-    return f"""## ビルド/テストの自己修正ループ（ADR-0009）
-{verb}、自分でビルド・テストを実行し、失敗したら自己修正して再実行せよ（テストは
-引き続きgreenのままである必要がある）。最大3回まで試し、それでもグリーンにならない
-場合は`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出して終了せよ:
-{{"status": "build_test_failed", "details": "<何を試し、なぜ失敗したか>"}}
-
-{_PRIVILEGED_COMMAND_SECTION}"""
-
-
-def _tdd_completion_section(phase: str) -> str:
-    if phase != "refactor":
-        label = _TDD_PHASE_LABELS[phase]
-        return f"""## 完了条件（TDDモード、Issue #3）
-{label}フェーズの作業が終わったら、以下を行うこと。
-1. `{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`に、この変更内容を要約したgit commitメッセージを
-   プレーンテキストで書き出す
-2. `{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す:
-{{"status": "done"}}
-
-commitの対象はオーケストレーターが実際の変更から判定する（ADR-0058）。"""
-    return f"""## 完了条件（TDDモード、Issue #3）
-リファクタリングを検討し終えたら、以下を行うこと。
-
-**改善の余地があった場合**:
-1. `{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`に、この変更内容を要約したgit commitメッセージを
-   プレーンテキストで書き出す
-2. `{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す:
-{{"status": "done", "tdd_next_phase": "..."}}
-   `tdd_next_phase`は、さらにもう一段階リファクタリングするなら`"refactor"`、次のサイクル
-   （次の小さいRed）に進むなら`"red"`、このステップに必要な振る舞いを実装し終えたなら
-   `"complete"`のいずれかを選ぶこと
-
-**改善の余地が無かった場合**（無理に変更を作らないこと）:
-何も変更せず、`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出す
-（`{_agent_path(TDD_CYCLE_COMMIT_MESSAGE_FILE)}`は書かなくてよい。commitは行われない）:
-{{"status": "done", "tdd_next_phase": "red か complete のいずれか"}}"""
-
-
-def _tdd_phase_task(step_index: int, step: dict, cs: dict) -> str:
-    phase = cs["phase"]
-    label = _TDD_PHASE_LABELS[phase]
-    steps = _read_plan_steps()
-    redo_section = ""
-    if cs.get("redo_feedback"):
-        redo_section = f"""
-
-## 差し戻し・追加対応の指示
-{cs["redo_feedback"]}
-
-上記を踏まえて対応すること。
-"""
-    files_list = "\n".join(
-        f"- `{f['path']}`: {f.get('description', '')}" for f in step.get("files", [])
-    ) or "(なし)"
-    return f"""# TASK: 実装（フェーズ4、ステップ {step_index + 1}/{len(steps)}、TDD {label}フェーズ、サイクル{cs["cycle"]}、Issue #3）
-
-新規コンテキストのサブエージェントに、TDD（Red→Green→Refactor）の{label}フェーズ
-**だけ**の作業を委譲せよ（サンドボックスVM内で完結するため、フェーズ1-2のような
-Bash制限は不要。write/Edit/Bash権限を持つ通常のサブエージェントでよい。実装対象の
-コードはカレントディレクトリ＝`/workspace`に対して行うこと）。
-
-## 実装前の準備
-環境が未セットアップの場合、CLAUDE.md・README等を参照して依存解決
-（`go mod download`・`npm install`等）を行ってから作業に入ること。
-
-## このステップの内容（参考。対象はこのステップに必要な振る舞いのうち今回のサイクル分）
-{step.get("description", "")}
-
-このステップで変更してよいファイル（他のステップ向けのファイルは変更しないこと）:
-{files_list}
-
-## このフェーズでやること（{label}）
-{_TDD_PHASE_INSTRUCTIONS[phase]}
-{redo_section}
-## プラン全体（参考）
-{_render_plan_text()}
-
-{_COMMENT_STYLE_SECTION}
-
-## 逸脱時の対応（一次防御、ADR-0010）
-作業中に計画から外れる必要があると気づいた場合、勝手に進めず作業を止め、
-`{_agent_path(IMPLEMENTATION_RESULT_JSON)}`に以下を書き出して終了せよ:
-{{"status": "needs_plan_review", "reason": "<なぜ計画から外れる必要があるか>"}}
-
-{_tdd_self_verify_section(phase)}
-
-{_TRIAGE_SELF_REPORT_SECTION}
-
-{_tdd_completion_section(phase)}
-"""
-
-
-def _tdd_process_check_task(step_index: int, step: dict, cs: dict) -> str:
-    """Hardcoded, not `.masuda/reviews/`-driven like the 14-perspective
-    system -- this checks TDD *process* adherence only (Robert C. Martin's
-    three laws + one-behavior-at-a-time granularity), never implementation
-    quality or sufficiency, which stays the implementation agent's own
-    judgment call, unchecked here."""
-    phase = cs["phase"]
-    label = _TDD_PHASE_LABELS[phase]
-    path = _tdd_check_path(step_index, cs["cycle"], phase, cs["attempt"])
-    diff = _compute_step_diff()
-    return f"""# TASK: TDDプロセス遵守チェック（フェーズ4、ステップ{step_index + 1}、{label}、Issue #3）
-
-新規コンテキストのサブエージェント（Bash/Read/Grep等は不要、diffのみで判断する
-機械的チェック — 探索させないこと）に以下を委譲し、判定結果を`{path}`に書き出させよ。
-
-## チェック観点（TDDの手順に従っているかのみを見る。実装の質・十分性は対象外）
-{_TDD_CRITERIA[phase]}
-
-上記のようなTDDの手順からの逸脱が無いかだけを判定すること。「このテストの筋が良いか」
-「この実装は綺麗か」「リファクタリングとして十分か」といった質の判断は対象外であり、
-そうした観点を理由にok=falseにしないこと。
-
-## このフェーズのdiff
-```diff
-{diff}
-```
-
-## 出力するJSONのスキーマ
-{{"ok": <bool、手順から逸脱していなければtrue>, "feedback": "<ok=falseの場合、具体的に
-どの手順からどう逸脱しているか。trueなら空文字>"}}
-
-{_TRIAGE_SELF_REPORT_SECTION}
-
-## 完了条件
-`{path}` が存在すること
 """
 
 
@@ -2205,14 +1658,8 @@ def _review_batch_task(tasks: list[dict]) -> str:
 def _interim_review_batch_task(step_index: int, tasks: list[dict]) -> str:
     """ADR-0027's lightweight counterpart to _review_batch_task: same
     review/check/fix/recheck renderers, scoped to this step's diff and
-    results directory instead of the whole plan's. This always runs at
-    step-finalization time (ADR-0027, unchanged by TDD mode), after every
-    Red/Green/Refactor phase already committed for a TDD step -- so its diff
-    basis is since the previous step's tag, same as the mechanical backstop
-    (_step_diff_base), not the default "currently uncommitted" HEAD."""
-    step = _read_plan_steps()[step_index]
-    since_ref = _step_diff_base(step_index) if step.get("mode") == "tdd" else None
-    diff = _compute_step_diff(since_ref)
+    results directory instead of the whole plan's."""
+    diff = _compute_step_diff()
     header = f"""# TASK: 途中レビュー（フェーズ4、ステップ{step_index + 1}、{len(tasks)}件を並列委譲、ADR-0021・ADR-0027）
 
 以下の{len(tasks)}件は互いに独立した観点/ステップです。それぞれ新規コンテキストの
@@ -2233,15 +1680,13 @@ def _trigger_match_task(step_index: int) -> str:
     perspective) over every perspective that declares a `trigger` -- keeps
     the cost/latency the Issue #2 discussion flagged bounded to one call
     regardless of how many perspectives exist."""
-    steps = _read_plan_steps()
-    step = steps[step_index]
-    since_ref = _step_diff_base(step_index) if step.get("mode") == "tdd" else None
-    diff = _compute_step_diff(since_ref)
+    diff = _compute_step_diff()
     path = _trigger_match_path(step_index)
     triggers = "\n".join(
         f'- id: "{pid}" / trigger: {PERSPECTIVES[pid]["trigger"]}' for pid in TRIGGERED_PERSPECTIVE_IDS
     )
-    return f"""# TASK: 途中レビューのトリガー判定（フェーズ4、ステップ {step_index + 1}/{len(steps)}、ADR-0027）
+    total = len(_read_plan_steps())
+    return f"""# TASK: 途中レビューのトリガー判定（フェーズ4、ステップ {step_index + 1}/{total}、ADR-0027）
 
 新規コンテキストのサブエージェントに以下を委譲し、判定結果を`{path}`に書き出させよ。
 
@@ -2531,16 +1976,6 @@ def write_task_md(state: State) -> State:
         content = _implement_step_task(_completed_step_count(), redo_feedback=state["reason"] or None)
     elif phase == "implement_g2_redo":
         content = _implement_g2_redo_task(state["reason"])
-    elif phase in ("tdd_red", "tdd_green", "tdd_refactor"):
-        step_index = _completed_step_count()
-        step = _read_plan_steps()[step_index]
-        cs = _read_tdd_cycle_state(step_index)
-        content = _tdd_phase_task(step_index, step, cs)
-    elif phase == "tdd_process_check":
-        step_index = _completed_step_count()
-        step = _read_plan_steps()[step_index]
-        cs = _read_tdd_cycle_state(step_index)
-        content = _tdd_process_check_task(step_index, step, cs)
     elif phase == "trigger_match":
         content = _trigger_match_task(json.loads(state["reason"])["step"])
     elif phase == "interim_review_batch":

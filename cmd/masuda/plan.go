@@ -19,7 +19,6 @@ func newPlanStartCommand() *cobra.Command {
 	var base string
 	var instructionsFile string
 	var name string
-	var tdd bool
 	cmd := &cobra.Command{
 		Use:   "start <branch-or-workspace-id> [task]",
 		Short: "Start a new workspace, or resume an existing one's phase 1-2 (investigate -> plan -> G1) host loop",
@@ -60,9 +59,6 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 				}
 				if name != "" {
 					return fmt.Errorf("workspace %q already exists — --name is only accepted when starting a new workspace from a branch name (use `masuda workspace rename` to relabel it)", args[0])
-				}
-				if tdd {
-					return fmt.Errorf("workspace %q already exists — --tdd is only accepted when starting a new workspace from a branch name", args[0])
 				}
 				info, err := workspace.Load(args[0])
 				if err != nil {
@@ -116,11 +112,6 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 					return fmt.Errorf("writing instructions into workspace: %w", err)
 				}
 			}
-			if tdd {
-				if err := hostloop.WriteTDDIntent(stateDir); err != nil {
-					return fmt.Errorf("recording --tdd intent: %w", err)
-				}
-			}
 			if err := hostloop.Start(info.ID, worktreeDir, stateDir, task); err != nil {
 				return err
 			}
@@ -131,6 +122,5 @@ investigation yourself and want it verified before a plan is drafted from it.`,
 	cmd.Flags().StringVar(&base, "base", defaultBase, "branch to create the worktree's branch from, if it doesn't exist yet")
 	cmd.Flags().StringVar(&instructionsFile, "file", "", "path to a pre-written instructions/investigation document; the investigator will fact-check it against the codebase before producing INVESTIGATION.md (only valid when starting a new workspace)")
 	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for this workspace (display only; only valid when starting a new workspace)")
-	cmd.Flags().BoolVar(&tdd, "tdd", false, "signal that TDD (Red-Green-Refactor) should be used where the planner judges appropriate (new-feature-addition steps only, ADR-0035) -- the planner decides per step, a human reviews the choice at G1 (only valid when starting a new workspace)")
 	return cmd
 }

@@ -36,7 +36,7 @@
 ### ゲート・エスカレーション
 
 - **[0006](0006-interactive-chat-plus-fast-path-gates.md)** ゲート承認は対話（chat）と即決（approve/reject）の2パスを用意する — *一部改訂: 0042, 0044*
-- **[0010](0010-plan-deviation-reopens-plan-gate.md)** プラン逸脱は自己申告+機械的バックストップの二段構えで検知しplan gateを再オープンする — *一部改訂: 0027, 0028, 0037*
+- **[0010](0010-plan-deviation-reopens-plan-gate.md)** プラン逸脱は自己申告+機械的バックストップの二段構えで検知しplan gateを再オープンする — *一部改訂: 0027, 0028, 0037, 0059*
 - **[0013](0013-review-rejection-reopens-implementation.md)** review gate却下はBuild段階を再オープンする — *一部改訂: 0027*
 - **[0029](0029-immediate-stop-escalation-dedicated-gate.md)** 最優先即時停止エスカレーションは専用ゲート（`masuda triage`）で解決する
 - **[0039](0039-redo-pending-marker-bridges-gate-consume-and-subagent-rewrite.md)** redoの遷移は専用pendingマーカーでゲートマーカー消費と成果物書き換えを橋渡しする — *一部改訂: 0055*
@@ -46,16 +46,16 @@
 
 - **[0008](0008-investigate-plan-agent-separation-with-redo.md)** 調査・プラン作成は別エージェントとし、大きな調査不足はredoで差し戻す — *一部改訂: 0026, 0039*
 - **[0016](0016-pre-written-instructions-file-for-investigate.md)** `plan start --file`で事前準備済みの指示書を渡しファクトチェックさせる
-- **[0026](0026-plan-md-as-prose-plus-per-step-json.md)** PLAN.mdを`plan/summary.md`と`plan/steps.json`に分離する — *一部改訂: 0028, 0037*
+- **[0026](0026-plan-md-as-prose-plus-per-step-json.md)** PLAN.mdを`plan/summary.md`と`plan/steps.json`に分離する — *一部改訂: 0028, 0037, 0059*
 - **[0028](0028-plan-predicted-byproducts-exempt-from-backstop.md)** プラン段階で予想する副産物パターンを機械的バックストップの除外対象にする
 
 ### Build（実装）
 
-- **[0009](0009-implementation-self-verification-loop.md)** 実装はビルド/テストを自己修正ループで検証し、上限到達で停止する — *一部改訂: 0027, 0037*
-- **[0027](0027-phase4-step-based-implement-review-commit-loop.md)** Build段階をステップ単位のimplement→バックストップ→トリガー式軽量レビュー→commitのループにする — *一部改訂: 0029, 0037, 0058*
-- **[0035](0035-four-task-categories-scope-tdd-to-new-features.md)** タスクを3軸で4カテゴリに分類し、TDDモードの対象を「新機能追加」に限定する
-- **[0037](0037-tdd-mode-red-green-refactor-subloop-in-phase4.md)** TDDモード（Red/Green/Refactorサブループ）をBuild段階に追加する
+- **[0009](0009-implementation-self-verification-loop.md)** 実装はビルド/テストを自己修正ループで検証し、上限到達で停止する — *一部改訂: 0027, 0037, 0059*
+- **[0027](0027-phase4-step-based-implement-review-commit-loop.md)** Build段階をステップ単位のimplement→バックストップ→トリガー式軽量レビュー→commitのループにする — *一部改訂: 0029, 0037, 0058, 0059*
+- **[0035](0035-four-task-categories-scope-tdd-to-new-features.md)** タスクを3軸で4カテゴリに分類し、TDDモードの対象を「新機能追加」に限定する — *一部改訂: 0059*
 - **[0058](0058-commit-scope-measured-from-git-not-self-reported.md)** commitに含めるファイルは実装エージェントの自己申告ではなくgitの実測から決める
+- **[0059](0059-remove-tdd-mode.md)** TDDモード（Red/Green/Refactorサブループ）をBuild段階から削除する
 
 ### Review（レビュー）
 

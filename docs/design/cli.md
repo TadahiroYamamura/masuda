@@ -62,7 +62,7 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 `start <branch-or-workspace-id> [task]`は第一引数が既存ワークスペースID（`workspace.Exists`）かどうかで新規/再開を判別する——ブランチ名では判別しない。同じブランチに対して複数のワークスペースが並行して存在できる設計（ADR-0014・ADR-0030）のため、再開はワークスペースIDを名指しする必要があり、ブランチ名だけでは一意に定まらない。
 
-- 新規（第一引数が未知のID＝ブランチ名として扱う）: `task`必須。`newWorkspace`でワークスペースを起こし、`--file`があれば投入する調査済み文書を`hostloop.WriteInstructions`で書き込む（調査サブエージェントはこれを鵜呑みにせず実コードと突き合わせてから`INVESTIGATION.md`を作る、ADR-0016）。`--tdd`があれば`hostloop.WriteTDDIntent`でその意図を記録し、プランナーがステップごとにTDD採用を判断する材料にする（ADR-0035）。`--base`/`--name`/`--file`/`--tdd`はいずれもこの新規経路でのみ有効で、再開経路に渡すとエラーになる
+- 新規（第一引数が未知のID＝ブランチ名として扱う）: `task`必須。`newWorkspace`でワークスペースを起こし、`--file`があれば投入する調査済み文書を`hostloop.WriteInstructions`で書き込む（調査サブエージェントはこれを鵜呑みにせず実コードと突き合わせてから`INVESTIGATION.md`を作る、ADR-0016）。`--base`/`--name`/`--file`はいずれもこの新規経路でのみ有効で、再開経路に渡すとエラーになる
 - 再開（第一引数が既存ID）: 上記フラグはすべて拒否。`startDaemon`（既に生きていれば無視される冪等呼び出し）のあと`hostloop.Start`をtaskなしで呼び、オンディスクの状態から続きを進める
 
 ホストループの内部（Discovery/Blueprint段階の自己ループ）は`docs/design/discovery-blueprint.md`を参照。

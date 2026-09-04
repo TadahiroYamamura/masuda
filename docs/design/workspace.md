@@ -2,7 +2,7 @@
 
 ワークスペースID・状態ディレクトリの管理（`internal/workspace`）、そのライフサイクルを操作する`masuda workspace`サブコマンド群（`cmd/masuda/workspace.go`）、そしてワークスペース専用のgitクローン作成・`.masuda`設定同期・ブランチ統合・commit/削除（`internal/worktree`）を扱う。
 
-`.masuda/settings.json`自体のスキーマは`docs/design/config.md`、状態デーモンの起動・ソケット・KVストアは`docs/design/state-daemon-mcp.md`、ゲート承認時に`worktree.Commit`/`Pull`/`Remove`が呼ばれる一連の流れ（`finalizeReviewApproval`）は`docs/design/gates.md`、TDDモードのステップtag自体の書き込みは`docs/design/build.md`を参照。本書はそれらから呼ばれる`internal/worktree`側の実装のみを扱う。
+`.masuda/settings.json`自体のスキーマは`docs/design/config.md`、状態デーモンの起動・ソケット・KVストアは`docs/design/state-daemon-mcp.md`、ゲート承認時に`worktree.Commit`/`Pull`/`Remove`が呼ばれる一連の流れ（`finalizeReviewApproval`）は`docs/design/gates.md`、ステップtag自体の書き込みは`docs/design/build.md`を参照。本書はそれらから呼ばれる`internal/worktree`側の実装のみを扱う。
 
 ## ワークスペースID・状態ディレクトリ
 
@@ -98,7 +98,7 @@ worktreeのライフサイクル操作（作成・ローカル統合・削除）
 - **`Commit(repoRoot, id, message)`**（`:253`）: クローン内で`git add -A`してから、`hasStagedChanges`（`git diff --cached --quiet`の終了コード判定、`:232`）が真の場合のみcommitする。Build段階の各ステップは既に個別commit済み（ADR-0027、限定的な`git add -- <files>`）なので、ここでの`add -A`が拾うのはReview段階のfixerがcommitせずに残した差分だけになる。呼び出し元は`review approve`の`finalizeReviewApproval`（`docs/design/gates.md`）で、`Pull`の直前に呼ばれる——先にcommitしておかないと、fixerの変更がクローンの未commitワーキングツリーだけに残った状態のまま次の`Remove`で消えてしまう。
   - **`identityOverride(repoRoot)`**（`:277`）: repoRootの*local*（globalではない）`user.name`/`user.email`設定がある場合、そのcommitにだけ`-c user.name=... -c user.email=...`として渡す。`git clone`はソース側のlocal設定を複製しないため、これが無いとクローン内のcommitはgitのglobal設定へ暗黙にフォールバックしてしまう。
 - **`Remove(repoRoot, id, branch, deleteBranch)`**（`:330`）:
-  1. `removeLeakedStepTags(repoRoot, id)`（`:353`）: `masuda-step-<id>-*`タグ（TDDモードのステップ境界マーカー、書き込み側は`docs/design/build.md`）がrepoRootへ漏れ込んでいれば削除する。これらのタグは本来クローン自身の`.git`内にしか存在しないはずだが（次のステップでどのみち`RemoveAll`される）、`Merge`/`Pull`の`git fetch`はどちらも`--no-tags`を渡していないため、新規fetchしたcommitから到達可能なタグを自動的に追従してrepoRootへ持ち込んでしまう。タグはワークスペースIDでscopeされているためベストエフォートな後始末で、1件も無くてもエラーにしない。
+  1. `removeLeakedStepTags(repoRoot, id)`（`:353`）: `masuda-step-<id>-*`タグ（ステップ境界マーカー、書き込み側は`docs/design/build.md`）がrepoRootへ漏れ込んでいれば削除する。これらのタグは本来クローン自身の`.git`内にしか存在しないはずだが（次のステップでどのみち`RemoveAll`される）、`Merge`/`Pull`の`git fetch`はどちらも`--no-tags`を渡していないため、新規fetchしたcommitから到達可能なタグを自動的に追従してrepoRootへ持ち込んでしまう。タグはワークスペースIDでscopeされているためベストエフォートな後始末で、1件も無くてもエラーにしない。
   2. クローンディレクトリ（`Dir(repoRoot, id)`）を`os.RemoveAll`。
   3. `deleteBranch`が真なら`git branch -D branch`をrepoRootで実行（ベストエフォート、エラー無視——`Merge`/`Pull`が一度もbranchをrepoRootへ持ち込んでいない、マージされないまま放棄されたタスクではno-op）。
 

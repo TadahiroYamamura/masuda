@@ -163,9 +163,9 @@ func SessionName(id string) string {
 	return tmuxSessionPrefix + sessionNameSanitizer.ReplaceAllString(id, "-")
 }
 
-// taskBriefKey/tddRequestedKey are the state daemon keys this package
-// writes and orchestrator/*.py's state_client reads (Issue #35 phase A).
-// Safe to move off plain files because both are read only by the
+// taskBriefKey is the state daemon key this package writes and
+// orchestrator/*.py's state_client reads (Issue #35 phase A).
+// Safe to move off a plain file because it is read only by the
 // orchestrator itself, which folds their content/presence into the TASK.md
 // text it writes -- never referenced by path in a prompt a subagent's own
 // Read tool would open (see internal/gate's package doc for the fuller
@@ -173,10 +173,7 @@ func SessionName(id string) string {
 // one exception in this same neighborhood: the investigate prompt tells the
 // investigator subagent to open that file itself by path (ADR-0016), so it
 // must stay a real file WriteInstructions writes below, not a daemon key.
-const (
-	taskBriefKey    = "internal:task-brief"
-	tddRequestedKey = "internal:tdd-requested"
-)
+const taskBriefKey = "internal:task-brief"
 
 func dial(ctx context.Context, stateDir string) (*mcpclient.Client, error) {
 	return mcpclient.Dial(ctx, statedaemon.SocketPath(stateDir))
@@ -280,28 +277,12 @@ func WriteTaskBrief(stateDir, task string) error {
 // WriteTaskBrief conceptually follows for the task description -- so a
 // later edit, move, or deletion of the original file can't affect an
 // already-running workspace. This deliberately stays a plain file (not a
-// daemon key like WriteTaskBrief/WriteTDDIntent): investigate_plan_graph.py's
+// daemon key like WriteTaskBrief): investigate_plan_graph.py's
 // investigate prompt tells the investigator subagent to open this exact
 // path itself with its own Read tool (ADR-0016) rather than folding the
 // content into TASK.md, and that subagent has no way to read daemon state.
 func WriteInstructions(stateDir string, content []byte) error {
 	return os.WriteFile(filepath.Join(stateDir, "INSTRUCTIONS.md"), content, 0o644)
-}
-
-// WriteTDDIntent records that `masuda plan start --tdd` was passed at
-// workspace-creation time -- a daemon key investigate_plan_graph.py's plan
-// prompt checks for the same way it already checks instructionsKey
-// (ADR-0016 precedent), so the planner sees the human's TDD intent on every
-// loop iteration/resume. Written once at creation, same as WriteInstructions
-// and WriteTaskBrief, so --tdd never needs to be resupplied on `masuda plan
-// start <workspace-id>`.
-func WriteTDDIntent(stateDir string) error {
-	c, err := dial(context.Background(), stateDir)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-	return c.Put(context.Background(), tddRequestedKey, "1")
 }
 
 func renderSystemPrompt(stateDir string) (string, error) {

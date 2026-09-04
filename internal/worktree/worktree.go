@@ -341,7 +341,7 @@ func Remove(repoRoot, id, branch string, deleteBranch bool) error {
 	return nil
 }
 
-// removeLeakedStepTags deletes any masuda-step-<id>-* tags (TDD mode's
+// removeLeakedStepTags deletes any masuda-step-<id>-* tags (the
 // per-step boundary markers, orchestrator/implement_review_graph.py) that
 // ended up in repoRoot. These normally only ever exist inside the clone's
 // own .git (wiped by the os.RemoveAll above), but Merge/Pull's `git fetch`

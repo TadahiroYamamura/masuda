@@ -6,6 +6,7 @@ Accepted (2026-08-04)
 
 - 一部改訂: [[0028-plan-predicted-byproducts-exempt-from-backstop]] — `plan/steps.json`のトップレベルはステップの配列ではなく`{"steps": [...], "expected_byproducts": [...]}`というオブジェクト
 - 一部改訂: [[0037-tdd-mode-red-green-refactor-subloop-in-phase4]] — 各ステップに`"mode": "tdd"`が付きうる
+- 一部改訂: [[0059-remove-tdd-mode]] — 上の0037による改訂は失効した。`mode`フィールドはTDDモードとともに削除された
 
 ## Context
 

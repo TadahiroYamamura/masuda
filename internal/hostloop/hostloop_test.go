@@ -88,26 +88,6 @@ func TestWriteInstructionsWritesAPlainFile(t *testing.T) {
 	}
 }
 
-func TestWriteTDDIntentRoundTrips(t *testing.T) {
-	stateDir := newTestDaemon(t)
-	if err := WriteTDDIntent(stateDir); err != nil {
-		t.Fatalf("WriteTDDIntent() error = %v, want nil", err)
-	}
-
-	c, err := dial(context.Background(), stateDir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer c.Close()
-	_, found, err := c.Get(context.Background(), tddRequestedKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !found {
-		t.Fatal("Get(tddRequestedKey) found = false, want true")
-	}
-}
-
 func TestMCPConfigJSONIsValidAndPointsAtTheGivenPort(t *testing.T) {
 	raw := mcpConfigJSON(54321)
 	var parsed struct {
