@@ -145,6 +145,36 @@ RUN claude install
 # read as current at least once and produced a wrong analysis (Issue #45).
 RUN claude plugin marketplace add anthropics/claude-plugins-official
 
+# Get Claude Code past its first-run prompts. Both live in ~/.claude.json,
+# not in --settings, so neither can be handled the way ADR-0034 handled the
+# bypass-permissions disclaimer.
+#
+# hasCompletedOnboarding: without it the session opens on the theme-selection
+# wizard and waits for Enter. Setting `theme` (which .masuda/settings.json's
+# claudeSettings does) only pre-selects the entry -- it does not answer the
+# question. Confirmed live: the wizard rendered with the configured theme
+# already ticked, and the loop sat there.
+#
+# hasTrustDialogAccepted for /workspace: pre-accept the folder-trust prompt.
+#
+# Without this the guest's session draws "Is this a project you created or one
+# you trust?", nobody is there to answer, and claude exits about 20 seconds
+# later having done nothing -- the loop never runs at all. Confirmed live that
+# --dangerously-skip-permissions does NOT suppress this prompt; Issue #45 had
+# that recorded as an open question, and had the VM path recorded as
+# unaffected. Both were wrong, and went unnoticed because the Build stage had
+# not actually run since ADR-0044.
+#
+# Merged into the ~/.claude.json `claude install` just wrote rather than
+# replacing it: that file also carries installMethod/machineID/migration
+# state, and dropping those would make every VM look like a first run.
+#
+# Baking it in works here precisely because the guest's cwd is the fixed path
+# /workspace. The phase 1-2 host loop cannot do the same -- its cwd is
+# <repoRoot>/.masuda/worktrees/<workspace-id>, new for every workspace -- so
+# Issue #45 stays open for that side.
+RUN python3 -c "import json,pathlib; p=pathlib.Path.home()/'.claude.json'; d=json.loads(p.read_text()) if p.exists() else {}; d['hasCompletedOnboarding']=True; d.setdefault('projects',{}).setdefault('/workspace',{})['hasTrustDialogAccepted']=True; p.write_text(json.dumps(d,indent=2))"
+
 # ttyd web terminal port (mapped to a per-container host port by masuda sandbox start,
 # since multiple sandboxes run in parallel)
 EXPOSE 7682
