@@ -353,6 +353,31 @@ def test_plan_redo_includes_rejection_feedback():
     assert "設計が複雑すぎる" in content
 
 
+def test_investigate_task_omits_lsp():
+    """investigator（フェーズ1）はADR-0012によりホストOS上で実行され、以下の
+    3点からLSPに触れない: (1) ホスト実行のため対象リポジトリの
+    `.masuda/images/<entry>/Dockerfile`が入れるLSPプラグインがそもそも存在
+    しない、(2) `internal/hostloop/hostloop.go`がエージェント定義で
+    `Tools: []string{"Read","Grep","Glob","Edit"}`という明示allowlistを持ち、
+    ここに無いツールは呼べない（セッションレベルの`--allowedTools`にも無い
+    ツールを勧めると無人ループが停止する危険がある）、(3) Bashが無いため
+    依存解決（`go mod download`等）自体も実行できない。フェーズ4-5（サンドボックス
+    内、implement_review_graph.py）とは対照的な、意図的な非対称。
+    """
+    write_task_brief()
+    ipg.write_task_md({"phase": "investigate", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "LSP" not in content
+
+
+def test_plan_task_omits_lsp():
+    """plannerもinvestigatorと同じ理由（ADR-0012、上記
+    test_investigate_task_omits_lspのdocstring参照）でLSPに触れない。"""
+    ipg.write_task_md({"phase": "plan", "retries": 0, "questions": []})
+    content = ipg.TASK_MD.read_text(encoding="utf-8")
+    assert "LSP" not in content
+
+
 @pytest.mark.parametrize("phase", ["g1_approved", "retries_exhausted", "iteration_budget_exceeded"])
 def test_terminal_phases_contain_done(phase):
     ipg.write_task_md({"phase": phase, "retries": 0, "questions": []})

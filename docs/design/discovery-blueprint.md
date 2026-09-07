@@ -51,6 +51,8 @@ Bash,Task,Read,Grep,Glob,Edit(//<stateDir>/INVESTIGATION.md),Edit(//<stateDir>/p
 
 `customAgentsJSON()`は`investigatorAgentName`(`"investigator"`)・`plannerAgentName`(`"planner"`)の2エージェントを定義する。両方とも`Tools: []string{"Read", "Grep", "Glob", "Edit"}`のみでBashを持たない。プロンプト文字列には固定の日本語指示（読み取り専用調査/プラン作成であること、指定ファイルをEditで書き出すこと、ADR-0029のプロンプトインジェクション自己申告義務）を埋め込んでいる。エージェント名（Task toolの`subagent_type`に渡す文字列）は`investigatorAgentName = "investigator"`・`plannerAgentName = "planner"`で、`orchestrator/investigate_plan_graph.py`が生成するTASK.md本文もこの名前を指定する。
 
+investigator・plannerはいずれもLSPツールを持たない（上記allowlist・セッションレベルの`--allowedTools`のいずれにもLSPツールは含まれない）。LSPを使う探索はサンドボックス内で動くフェーズ4-5（Build/Review、`orchestrator/implement_review_graph.py`）が担う。
+
 ## タスクブリーフ・指示書き込み
 
 - `WriteTaskBrief(stateDir, task)`: `masuda plan start`に渡されたタスク文を状態デーモンへ`internal:task-brief`キーとして書く。読み手は`orchestrator/investigate_plan_graph.py`の`_read_task_brief()`
