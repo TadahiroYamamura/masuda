@@ -187,6 +187,7 @@ func vmWorkspaceSocketPath(workDir string) string {
 }
 func vmStateSocketPath(workDir string) string { return filepath.Join(workDir, "virtiofs-state.sock") }
 func vmRelayPortFile(workDir string) string   { return filepath.Join(workDir, "mcp-relay.port") }
+func vmRelayPIDFile(workDir string) string    { return filepath.Join(workDir, "mcp-relay.pid") }
 
 // resolveEgressAllowlist returns the hostnames workspace repoRoot's VM is
 // allowed to reach over TLS (Issue #11 M4): the intersection of
@@ -386,7 +387,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	relay, err := StartMCPRelay(
 		statedaemon.CuratedSocketPath(stateDir),
 		vmBridgeGatewayIP, relayPort,
-		filepath.Join(workDir, "mcp-relay.log"))
+		filepath.Join(workDir, "mcp-relay.log"), vmRelayPIDFile(workDir))
 	if err != nil {
 		if secretsVF != nil {
 			_ = secretsVF.Stop()
@@ -510,10 +511,11 @@ func vmStop(id string) error {
 	stopKnownProcess(vmStateSocketPath(workDir))
 	stopKnownProcess(vmClaudeSecretsSocketPath(workDir)) // no-op if claude-secrets was never started (no token registered)
 
-	if port, err := os.ReadFile(vmRelayPortFile(workDir)); err == nil {
-		addr := vmBridgeGatewayIP + ":" + strings.TrimSpace(string(port))
-		stopKnownProcess(addr)
-	}
+	// The relay's pid file lives in workDir like everything else here, so
+	// stopping it needs no port lookup at all -- vmRelayPortFile stays only
+	// because a VM started before this change recorded its address there.
+	killStalePID(vmRelayPIDFile(workDir))
+	_ = os.Remove(vmRelayPIDFile(workDir))
 	// egress-proxy is deliberately NOT stopped here -- see
 	// EnsureEgressProxy's doc comment: it's a shared, host-wide process,
 	// not scoped to this workspace.

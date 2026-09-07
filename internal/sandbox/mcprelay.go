@@ -34,8 +34,9 @@ var resolveMasudaExe = os.Executable
 // (there, the UDS socket really is reachable, via the bind mount, so the
 // relay only needs to bridge it to a local TCP port for --mcp-config).
 type MCPRelayProcess struct {
-	cmd  *exec.Cmd
-	Addr string // bind:port, for callers to hand to Claude Code's --mcp-config
+	cmd     *exec.Cmd
+	pidFile string
+	Addr    string // bind:port, for callers to hand to Claude Code's --mcp-config
 }
 
 // StartMCPRelay launches `masuda internal mcp-relay --socket socketPath
@@ -44,7 +45,13 @@ type MCPRelayProcess struct {
 // logging its stdout/stderr to logPath. Safe to call again for the same
 // bind:port a crashed previous run left behind -- see
 // startBackgroundProcess.
-func StartMCPRelay(socketPath, bind string, port int, logPath string) (*MCPRelayProcess, error) {
+//
+// pidFile is passed in rather than derived from the listen address the way
+// virtiofsd's is derived from its socket path. A socket path is absolute, so
+// pidPath lands the file next to it; a bind:port is not, so the same
+// derivation dropped "192.168.200.1:44907.pid" into whatever directory the
+// CLI happened to run from -- the target repository's root, in practice.
+func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (*MCPRelayProcess, error) {
 	exe, err := resolveMasudaExe()
 	if err != nil {
 		return nil, fmt.Errorf("locating masuda binary: %w", err)
@@ -65,22 +72,22 @@ func StartMCPRelay(socketPath, bind string, port int, logPath string) (*MCPRelay
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidPath(addr)); err != nil {
+	if err := startBackgroundProcess(cmd, pidFile); err != nil {
 		return nil, fmt.Errorf("starting mcp-relay on %s: %w", addr, err)
 	}
 
 	if err := waitForTCP(addr, mcpRelayStartupTimeout); err != nil {
-		_ = stopBackgroundProcess(cmd.Process, pidPath(addr))
+		_ = stopBackgroundProcess(cmd.Process, pidFile)
 		return nil, fmt.Errorf("mcp-relay on %s did not start listening in time: %w", addr, err)
 	}
 
-	return &MCPRelayProcess{cmd: cmd, Addr: addr}, nil
+	return &MCPRelayProcess{cmd: cmd, pidFile: pidFile, Addr: addr}, nil
 }
 
 // Stop terminates the mcp-relay process and removes its pid file. Not an
 // error if it's already exited on its own.
 func (m *MCPRelayProcess) Stop() error {
-	return stopBackgroundProcess(m.cmd.Process, pidPath(m.Addr))
+	return stopBackgroundProcess(m.cmd.Process, m.pidFile)
 }
 
 func waitForTCP(addr string, timeout time.Duration) error {

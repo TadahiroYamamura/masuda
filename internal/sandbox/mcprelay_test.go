@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -56,9 +57,11 @@ func TestStartMCPRelayAndStop(t *testing.T) {
 	}
 	port := l.Addr().(*net.TCPAddr).Port
 	l.Close()
-	logPath := filepath.Join(t.TempDir(), "relay.log")
+	workDir := t.TempDir()
+	logPath := filepath.Join(workDir, "relay.log")
+	pidFile := filepath.Join(workDir, "mcp-relay.pid")
 
-	relay, err := StartMCPRelay(socketPath, bind, port, logPath)
+	relay, err := StartMCPRelay(socketPath, bind, port, logPath, pidFile)
 	if err != nil {
 		t.Fatalf("StartMCPRelay() error = %v", err)
 	}
@@ -66,6 +69,12 @@ func TestStartMCPRelayAndStop(t *testing.T) {
 
 	if want := net.JoinHostPort(bind, strconv.Itoa(port)); relay.Addr != want {
 		t.Errorf("relay.Addr = %q, want %q", relay.Addr, want)
+	}
+	// The pid file has to land where the caller said. Deriving it from the
+	// bind:port instead dropped it into the process's cwd -- the target
+	// repository's root, in practice, where it got committed twice.
+	if _, err := os.Stat(pidFile); err != nil {
+		t.Errorf("pid file not at the requested path %s: %v", pidFile, err)
 	}
 	conn, err := net.Dial("tcp", relay.Addr)
 	if err != nil {

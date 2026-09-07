@@ -23,3 +23,11 @@ test_fizzbuzz.py
 # is run, including here when dogfooding masuda against its own repo
 .masuda/
 .masuda-gate/
+
+# Background-process pid files. internal/sandbox.pidPath derives these from a
+# process's identity, which for virtiofsd is an absolute socket path but for
+# mcp-relay used to be a bare bind:port -- landing "192.168.200.1:44907.pid"
+# in whatever directory the CLI ran from. That is fixed (the relay's pid file
+# now lives in the VM's own work directory), and this stays as the backstop
+# for any future process whose identity isn't an absolute path.
+*.pid
