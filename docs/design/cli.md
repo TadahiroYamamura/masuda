@@ -83,7 +83,11 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 ### `masuda egress`
 
-`list|approve|reject <hostname>`。`mcp`と同じdeclare/approve構造（`.masuda/settings.json`の`egressAllowlist`が宣言、`.masuda/settings.local.json`の`egressAllowlist`がこのユーザーの承認）で、`mcp`同様ワークスペース単位ではなくリポジトリ直下のファイルを直接読み書きする。`mcp approve`の`--env`に相当するフラグは無い——ホスト名エントリには埋めるべき可変値が無いため。`approve`は`.masuda/settings.json`側に未宣言のホスト名を渡すとエラーになる。承認は稼働中のVMへ即座には伝わらず、対象ワークスペースのVMを再起動して初めて反映される（`approve`自身がその旨を出力する）。宣言・承認がサンドボックスVMのegressフィルタへどう反映されるかは`docs/design/egress-filter.md`を参照。
+`list`・`approve <hostname>|--all`・`reject <hostname>`。`mcp`と同じdeclare/approve構造（`.masuda/settings.json`の`egressAllowlist`が宣言、`.masuda/settings.local.json`の`egressAllowlist`がこのユーザーの承認）で、`mcp`同様ワークスペース単位ではなくリポジトリ直下のファイルを直接読み書きする。`mcp approve`の`--env`に相当するフラグは無い——ホスト名エントリには埋めるべき可変値が無いため。`approve`は`.masuda/settings.json`側に未宣言のホスト名を渡すとエラーになる。承認は稼働中のVMへ即座には伝わらず、対象ワークスペースのVMを再起動して初めて反映される（`approve`自身がその旨を出力する）。宣言・承認がサンドボックスVMのegressフィルタへどう反映されるかは`docs/design/egress-filter.md`を参照。
+
+`masuda init`が生成する`settings.json`は、**サンドボックス内のClaude Code自身が到達できないと起動しないホスト**（`api.anthropic.com`・`platform.claude.com`、`cmd/masuda/init.go`の`requiredEgressHosts`）を`egressAllowlist`に宣言する。egressプロキシは既定拒否でホスト全体のフォールバックを持たないため（`internal/sandbox.NewEgressAllowlistFunc`）、これが無いとゲストの`claude`が証明書検証エラーで20秒ほどで終了し、理由もどこにも出ない。プロキシ側の常時許可にせず宣言として置くのは、サンドボックスが何に到達してよいかを対象リポジトリ自身が明示する形を保つため（ADR-0031）。
+
+宣言は承認ではないので、initの直後に`masuda egress approve --all`が要る。`--all`はプロジェクトが宣言した全ホストを承認するショートカットで、宣言内容を読まずに済ませるためのものではない（`masuda egress list`で確認してから使う）。
 
 ### `masuda claude`
 

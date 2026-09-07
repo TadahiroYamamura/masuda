@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -38,6 +39,24 @@ import (
 // `--dangerously-skip-permissions` would otherwise show on first run
 // (ADR-0034).
 const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServers": false, "enabledMcpjsonServers": [], "disabledMcpjsonServers": [], "skipDangerousModePermissionPrompt": true}`
+
+// requiredEgressHosts are the hostnames the sandbox's own Claude Code session
+// cannot start without. The egress proxy is default-deny with no host-wide
+// fallback (internal/sandbox.NewEgressAllowlistFunc), so without these
+// declared the guest's claude fails with
+// "UNKNOWN_CERTIFICATE_VERIFICATION_ERROR ... api.anthropic.com" and exits
+// about 20 seconds later -- the loop never runs, and nothing says why.
+// Confirmed live; it is what kept the pipeline from completing a single pass.
+//
+// Seeded here rather than built into the proxy as an always-allow: what a
+// sandbox may reach stays something the project states outright in its own
+// settings.json (ADR-0031's no-implicit-defaults principle, the same reason
+// Image is written explicitly above), and stays reviewable and removable.
+//
+// Declaring is not approving -- .masuda/settings.local.json still has to
+// agree (ADR-0041's split). init prints the command for that; it does not
+// approve on the user's behalf.
+var requiredEgressHosts = []string{"api.anthropic.com", "platform.claude.com"}
 
 // dockerfileTemplate is a materialized image entry's Dockerfile content
 // (ADR-0032 for the pinning, ADR-0054 for the location):
@@ -154,7 +173,12 @@ func newInitCommand() *cobra.Command {
 			// what init just wrote -- the same edit the user can make
 			// afterwards. (`sandbox start --image` still selects among
 			// entries that already exist, which is a different question.)
-			cfg := config.Config{Image: config.DefaultImageEntry, Base: base, ClaudeSettings: json.RawMessage(defaultClaudeSettings)}
+			cfg := config.Config{
+				Image:           config.DefaultImageEntry,
+				Base:            base,
+				ClaudeSettings:  json.RawMessage(defaultClaudeSettings),
+				EgressAllowlist: requiredEgressHosts,
+			}
 			data, err := json.MarshalIndent(cfg, "", "  ")
 			if err != nil {
 				return err
@@ -189,6 +213,10 @@ func newInitCommand() *cobra.Command {
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, images/%s/) from release %s\n", dir, config.DefaultImageEntry, release.TagName)
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"\nsettings.json declares the egress hostnames the sandbox's Claude Code needs (%s).\n"+
+					"Declaring is not approving -- run this before starting a workspace:\n\n    masuda egress approve --all\n",
+				strings.Join(requiredEgressHosts, ", "))
 			return nil
 		},
 	}

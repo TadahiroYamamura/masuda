@@ -66,12 +66,30 @@ func newEgressListCommand() *cobra.Command {
 }
 
 func newEgressApproveCommand() *cobra.Command {
-	return &cobra.Command{
-		Use:   "approve <hostname>",
+	var all bool
+	cmd := &cobra.Command{
+		Use:   "approve [hostname]",
 		Short: "Approve a declared egress hostname so the sandbox VM may reach it",
-		Args:  cobra.ExactArgs(1),
+		Long: `Approve a declared egress hostname so the sandbox VM may reach it.
+
+Approval is separate from declaration on purpose: .masuda/settings.json says
+what the project wants to reach, .masuda/settings.local.json says what this
+user agreed to (ADR-0041's split, GitHub Issue #19). A hostname has to appear
+in both before the egress proxy lets it through.
+
+--all approves every hostname the project declares. masuda init seeds that
+list with the hosts Claude Code itself needs, so a fresh checkout's first
+step is normally:
+
+    masuda egress approve --all
+
+Read what is declared first (masuda egress list) -- --all is a shortcut for
+agreeing to the project's list, not a way to skip looking at it.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			host := args[0]
+			if all == (len(args) == 1) {
+				return fmt.Errorf("give exactly one of <hostname> or --all")
+			}
 			root, err := repoRoot()
 			if err != nil {
 				return err
@@ -80,26 +98,45 @@ func newEgressApproveCommand() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("reading %s: %w", config.SettingsPath(root), err)
 			}
-			if !slices.Contains(cfg.EgressAllowlist, host) {
-				return fmt.Errorf("hostname %q is not declared in %s", host, config.SettingsPath(root))
+			hosts := args
+			if all {
+				if len(cfg.EgressAllowlist) == 0 {
+					return fmt.Errorf("no egress hostnames declared in %s", config.SettingsPath(root))
+				}
+				hosts = cfg.EgressAllowlist
 			}
 			local, err := config.LoadLocal(root)
 			if err != nil {
 				return fmt.Errorf("reading %s: %w", config.SettingsLocalPath(root), err)
 			}
-			if slices.Contains(local.EgressAllowlist, host) {
-				fmt.Fprintf(cmd.OutOrStdout(), "%q is already approved\n", host)
+
+			var approved []string
+			for _, host := range hosts {
+				if !slices.Contains(cfg.EgressAllowlist, host) {
+					return fmt.Errorf("hostname %q is not declared in %s", host, config.SettingsPath(root))
+				}
+				if slices.Contains(local.EgressAllowlist, host) {
+					fmt.Fprintf(cmd.OutOrStdout(), "%q is already approved\n", host)
+					continue
+				}
+				local.EgressAllowlist = append(local.EgressAllowlist, host)
+				approved = append(approved, host)
+			}
+			if len(approved) == 0 {
 				return nil
 			}
-			local.EgressAllowlist = append(local.EgressAllowlist, host)
 			if err := config.SaveLocal(root, local); err != nil {
 				return err
 			}
 			warnIfNotGitignored(cmd, root, config.SettingsLocalPath(root))
-			fmt.Fprintf(cmd.OutOrStdout(), "approved %q -- takes effect on the VM's next connection attempt, no restart needed\n", host)
+			for _, host := range approved {
+				fmt.Fprintf(cmd.OutOrStdout(), "approved %q -- takes effect on the VM's next connection attempt, no restart needed\n", host)
+			}
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&all, "all", false, "approve every hostname declared in .masuda/settings.json")
+	return cmd
 }
 
 func newEgressRejectCommand() *cobra.Command {
