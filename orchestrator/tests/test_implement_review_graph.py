@@ -1255,12 +1255,26 @@ def test_implement_g2_redo_task_includes_feedback_and_plan():
 
 
 def test_implement_step_missing_plan_raises():
+    """Builds the repo by hand rather than via init_git_repo(), which writes
+    a plan -- the point here is that there isn't one.
+
+    BASE_REF_FILE still has to be pinned to the commit, for the same reason
+    init_git_repo pins it: `_read_base_ref()` otherwise falls back to the
+    string "develop", and whether that resolves depends on the machine's
+    `git init.defaultBranch`. This test used to pass only where that default
+    happens to be "develop" and failed everywhere else, including inside
+    masuda's own sandbox VM."""
     subprocess.run(["git", "init", "-q"], check=True)
     subprocess.run(["git", "config", "user.email", "test@example.com"], check=True)
     subprocess.run(["git", "config", "user.name", "test"], check=True)
     pathlib.Path("README.md").write_text("baseline", encoding="utf-8")
     subprocess.run(["git", "add", "-A"], check=True)
     subprocess.run(["git", "commit", "-q", "-m", "init"], check=True)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    irg.BASE_REF_FILE.write_text(base_sha, encoding="utf-8")
+
     with pytest.raises(FileNotFoundError):
         irg.write_task_md({"phase": "implement_step", "reason": ""})
 
