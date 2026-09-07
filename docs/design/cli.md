@@ -85,9 +85,11 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 `list`・`approve <hostname>|--all`・`reject <hostname>`。`mcp`と同じdeclare/approve構造（`.masuda/settings.json`の`egressAllowlist`が宣言、`.masuda/settings.local.json`の`egressAllowlist`がこのユーザーの承認）で、`mcp`同様ワークスペース単位ではなくリポジトリ直下のファイルを直接読み書きする。`mcp approve`の`--env`に相当するフラグは無い——ホスト名エントリには埋めるべき可変値が無いため。`approve`は`.masuda/settings.json`側に未宣言のホスト名を渡すとエラーになる。承認は稼働中のVMへ即座には伝わらず、対象ワークスペースのVMを再起動して初めて反映される（`approve`自身がその旨を出力する）。宣言・承認がサンドボックスVMのegressフィルタへどう反映されるかは`docs/design/egress-filter.md`を参照。
 
+`masuda init`は`.masuda/.gitignore`も生成する（`gitignoreTemplate`）。`.masuda/`はプロジェクトの宣言（`settings.json`・`images/`・`reviews/`＝コミットする）とこのマシン固有のもの（`settings.local.json`＝秘密値を含みうる、`worktrees/`＝作業中のclone）が混在するため。これが無いと承認コマンドのたびに「`settings.local.json`がgitignoreされていない」という警告が出続ける。`.masuda/`をまるごとgit管理外にしたいリポジトリは`*`に置き換えればよい（ADR-0036）。
+
 `masuda init`が生成する`settings.json`は、**サンドボックス内のClaude Code自身が到達できないと起動しないホスト**（`api.anthropic.com`・`platform.claude.com`、`cmd/masuda/init.go`の`requiredEgressHosts`）を`egressAllowlist`に宣言する。egressプロキシは既定拒否でホスト全体のフォールバックを持たないため（`internal/sandbox.NewEgressAllowlistFunc`）、これが無いとゲストの`claude`が証明書検証エラーで20秒ほどで終了し、理由もどこにも出ない。プロキシ側の常時許可にせず宣言として置くのは、サンドボックスが何に到達してよいかを対象リポジトリ自身が明示する形を保つため（ADR-0031）。
 
-宣言は承認ではないので、initの直後に`masuda egress approve --all`が要る。`--all`はプロジェクトが宣言した全ホストを承認するショートカットで、宣言内容を読まずに済ませるためのものではない（`masuda egress list`で確認してから使う）。
+宣言は承認ではないので、initの直後に`masuda egress approve --all`が要る。`--all`は**承認しようとしているホストを一覧表示して確認を求める**（`confirmEgressApproval`）——フラグのヘルプは制御ではなく、`--all`が便利にしているのは「サンドボックス内のAIエージェントが自分で判断して送信先にできるホストを増やす」ことなので、対象を見せて意思を訊く。標準入力が無ければEOFを「no」として扱い、黙って承認することはない。既に承認済みのホストは`--all`では1件ずつ報告しない（ホスト単体を指定したときだけ報告する——そのホストについて訊かれているため）。
 
 ### `masuda claude`
 

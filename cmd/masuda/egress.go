@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -83,8 +87,10 @@ step is normally:
 
     masuda egress approve --all
 
-Read what is declared first (masuda egress list) -- --all is a shortcut for
-agreeing to the project's list, not a way to skip looking at it.`,
+--all prints what it is about to approve and asks before doing it. It is a
+shortcut for agreeing to the project's list, not for skipping the decision:
+what is being agreed to is that an AI agent inside the sandbox may reach
+those hosts and choose what to send them.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if all == (len(args) == 1) {
@@ -110,26 +116,46 @@ agreeing to the project's list, not a way to skip looking at it.`,
 				return fmt.Errorf("reading %s: %w", config.SettingsLocalPath(root), err)
 			}
 
-			var approved []string
+			// Already-approved hosts are worth saying out loud when the user
+			// named one -- they asked about that host specifically. Under
+			// --all they are just noise: the user asked to agree to the
+			// project's list, not for a report on the parts already settled.
+			var pending []string
 			for _, host := range hosts {
 				if !slices.Contains(cfg.EgressAllowlist, host) {
 					return fmt.Errorf("hostname %q is not declared in %s", host, config.SettingsPath(root))
 				}
 				if slices.Contains(local.EgressAllowlist, host) {
-					fmt.Fprintf(cmd.OutOrStdout(), "%q is already approved\n", host)
+					if !all {
+						fmt.Fprintf(cmd.OutOrStdout(), "%q is already approved\n", host)
+					}
 					continue
 				}
-				local.EgressAllowlist = append(local.EgressAllowlist, host)
-				approved = append(approved, host)
+				pending = append(pending, host)
 			}
-			if len(approved) == 0 {
+			if len(pending) == 0 {
+				if all {
+					fmt.Fprintf(cmd.OutOrStdout(), "all %d declared hostnames are already approved\n", len(hosts))
+				}
 				return nil
 			}
+			if all {
+				ok, err := confirmEgressApproval(cmd, pending)
+				if err != nil {
+					return err
+				}
+				if !ok {
+					fmt.Fprintln(cmd.OutOrStdout(), "nothing approved")
+					return nil
+				}
+			}
+
+			local.EgressAllowlist = append(local.EgressAllowlist, pending...)
 			if err := config.SaveLocal(root, local); err != nil {
 				return err
 			}
 			warnIfNotGitignored(cmd, root, config.SettingsLocalPath(root))
-			for _, host := range approved {
+			for _, host := range pending {
 				fmt.Fprintf(cmd.OutOrStdout(), "approved %q -- takes effect on the VM's next connection attempt, no restart needed\n", host)
 			}
 			return nil
@@ -137,6 +163,34 @@ agreeing to the project's list, not a way to skip looking at it.`,
 	}
 	cmd.Flags().BoolVar(&all, "all", false, "approve every hostname declared in .masuda/settings.json")
 	return cmd
+}
+
+// confirmEgressApproval asks before approving a whole list at once.
+//
+// A flag's help text is not a control: --all is a convenience, and the thing
+// it makes convenient is granting network reach to a sandbox whose occupant
+// is an AI agent that decides for itself what to send. So the list is shown
+// and the decision is asked for, rather than assumed from the flag.
+//
+// Reads from the command's own input, so anything non-interactive (a script,
+// a pipe, a closed stdin) reaches EOF and is treated as "no" -- the answer
+// that changes nothing. Approving individually still works there.
+func confirmEgressApproval(cmd *cobra.Command, hosts []string) (bool, error) {
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "These hostnames will become reachable from the sandbox, where an AI agent")
+	fmt.Fprintln(out, "decides for itself what to send them:")
+	fmt.Fprintln(out)
+	for _, host := range hosts {
+		fmt.Fprintf(out, "  %s\n", host)
+	}
+	fmt.Fprintf(out, "\nApprove all %d? [y/N]: ", len(hosts))
+
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	answer := strings.ToLower(strings.TrimSpace(line))
+	return answer == "y" || answer == "yes", nil
 }
 
 func newEgressRejectCommand() *cobra.Command {

@@ -10,10 +10,19 @@ import (
 
 func runEgressCommand(t *testing.T, args ...string) (string, error) {
 	t.Helper()
+	return runEgressCommandWithInput(t, "", args...)
+}
+
+// runEgressCommandWithInput is runEgressCommand with something on stdin, for
+// the confirmation --all asks for. An empty string reaches EOF immediately,
+// which is the "no" every non-interactive caller gets.
+func runEgressCommandWithInput(t *testing.T, stdin string, args ...string) (string, error) {
+	t.Helper()
 	cmd := newEgressCommand()
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(stdin))
 	cmd.SetArgs(args)
 	err := cmd.Execute()
 	return out.String(), err
@@ -117,7 +126,7 @@ func TestEgressApproveAllApprovesEveryDeclaredHostname(t *testing.T) {
 		EgressAllowlist: []string{"api.anthropic.com", "platform.claude.com"},
 	})
 
-	out, err := runEgressCommand(t, "approve", "--all")
+	out, err := runEgressCommandWithInput(t, "y\n", "approve", "--all")
 	if err != nil {
 		t.Fatalf("approve --all error = %v, out = %s", err, out)
 	}
@@ -133,6 +142,52 @@ func TestEgressApproveAllApprovesEveryDeclaredHostname(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not name %q: %s", want, out)
 		}
+	}
+}
+
+// A flag's help text is not a control: --all has to show what it is about to
+// grant and ask, because what it grants is network reach for an AI agent.
+func TestEgressApproveAllAsksBeforeApproving(t *testing.T) {
+	root := newTestRepo(t)
+	writeConfigJSON(t, config.SettingsPath(root), config.Config{
+		EgressAllowlist: []string{"api.anthropic.com", "platform.claude.com"},
+	})
+
+	out, err := runEgressCommandWithInput(t, "n\n", "approve", "--all")
+	if err != nil {
+		t.Fatalf("approve --all error = %v, out = %s", err, out)
+	}
+
+	if !strings.Contains(out, "api.anthropic.com") || !strings.Contains(out, "platform.claude.com") {
+		t.Errorf("the prompt must list what it would approve: %s", out)
+	}
+	local, err := config.LoadLocal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local.EgressAllowlist) != 0 {
+		t.Fatalf("answering no approved %v anyway", local.EgressAllowlist)
+	}
+}
+
+// Nothing on stdin (a script, a pipe, a closed stdin) is the answer that
+// changes nothing -- never a silent yes.
+func TestEgressApproveAllTreatsNoInputAsNo(t *testing.T) {
+	root := newTestRepo(t)
+	writeConfigJSON(t, config.SettingsPath(root), config.Config{
+		EgressAllowlist: []string{"api.anthropic.com"},
+	})
+
+	if out, err := runEgressCommand(t, "approve", "--all"); err != nil {
+		t.Fatalf("approve --all error = %v, out = %s", err, out)
+	}
+
+	local, err := config.LoadLocal(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local.EgressAllowlist) != 0 {
+		t.Fatalf("EOF on stdin approved %v", local.EgressAllowlist)
 	}
 }
 
@@ -170,7 +225,8 @@ func TestEgressApproveAllAddsOnlyTheMissingOnes(t *testing.T) {
 		t.Fatalf("approve error = %v, out = %s", err, out)
 	}
 
-	if out, err := runEgressCommand(t, "approve", "--all"); err != nil {
+	out, err := runEgressCommandWithInput(t, "y\n", "approve", "--all")
+	if err != nil {
 		t.Fatalf("approve --all error = %v, out = %s", err, out)
 	}
 
@@ -180,5 +236,33 @@ func TestEgressApproveAllAddsOnlyTheMissingOnes(t *testing.T) {
 	}
 	if len(local.EgressAllowlist) != 2 {
 		t.Fatalf("EgressAllowlist = %v, want both hosts exactly once", local.EgressAllowlist)
+	}
+	// The already-approved host is not what the user asked about under
+	// --all; reporting it once per host is noise that grows with the list.
+	if strings.Contains(out, "already approved") {
+		t.Errorf("--all must not report already-approved hosts: %s", out)
+	}
+	if strings.Contains(out, "approved \"api.anthropic.com\"") {
+		t.Errorf("--all must not re-announce a host it did not change: %s", out)
+	}
+}
+
+func TestEgressApproveAllWithNothingLeftSaysSoOnce(t *testing.T) {
+	root := newTestRepo(t)
+	writeConfigJSON(t, config.SettingsPath(root), config.Config{
+		EgressAllowlist: []string{"a.example", "b.example"},
+	})
+	for _, h := range []string{"a.example", "b.example"} {
+		if out, err := runEgressCommand(t, "approve", h); err != nil {
+			t.Fatalf("approve %s error = %v, out = %s", h, err, out)
+		}
+	}
+
+	out, err := runEgressCommand(t, "approve", "--all")
+	if err != nil {
+		t.Fatalf("approve --all error = %v, out = %s", err, out)
+	}
+	if !strings.Contains(out, "already approved") || strings.Count(out, "already approved") != 1 {
+		t.Errorf("want exactly one summary line, got: %s", out)
 	}
 }

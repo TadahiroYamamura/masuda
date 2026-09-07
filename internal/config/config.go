@@ -33,9 +33,10 @@ func SettingsPath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, SettingsFileName)
 }
 
-// GitignoreFileName is the optional, user-authored .gitignore's name within
-// DirName -- not written by masuda init, but some repos add one (typically
-// `*`) to keep DirName's own contents out of git entirely (ADR-0036).
+// GitignoreFileName is the .gitignore's name within DirName. masuda init
+// writes one covering the machine-local parts of DirName (settings.local.json,
+// worktrees/); a repo is free to replace it, e.g. with `*` to keep DirName's
+// own contents out of git entirely (ADR-0036).
 const GitignoreFileName = ".gitignore"
 
 // GitignorePath returns the absolute path to repoRoot's .masuda/.gitignore.

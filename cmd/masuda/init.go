@@ -58,6 +58,29 @@ const defaultClaudeSettings = `{"theme": "dark-ansi", "enableAllProjectMcpServer
 // approve on the user's behalf.
 var requiredEgressHosts = []string{"api.anthropic.com", "platform.claude.com"}
 
+// gitignoreTemplate is what init writes to .masuda/.gitignore.
+//
+// .masuda/ mixes two kinds of file: what the project declares (settings.json,
+// images/, reviews/ -- committed, shared with the team) and what belongs to
+// this machine alone. Without this, the second kind is committable by
+// accident, and every `masuda mcp/egress/privileged-command approve` warns
+// that settings.local.json -- which routinely holds real secret values -- is
+// not covered by any .gitignore. Writing the file is the answer to that
+// warning; leaving each user to write it themselves was not.
+//
+// A repo that wants .masuda/ out of git entirely still just puts `*` here
+// (ADR-0036); this is a starting point, not a constraint.
+const gitignoreTemplate = `# Written by masuda init. Edit freely.
+#
+# This user's own approvals, which routinely carry secret values
+# (masuda mcp approve --env, and friends). Never commit.
+settings.local.json
+
+# Per-workspace clones masuda creates while a task is in flight
+# (internal/worktree). Never commit.
+worktrees/
+`
+
 // dockerfileTemplate is a materialized image entry's Dockerfile content
 // (ADR-0032 for the pinning, ADR-0054 for the location):
 // FROM the publicly published masuda base image, pinned to tag. Pinned (not
@@ -212,7 +235,11 @@ func newInitCommand() *cobra.Command {
 				return err
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, reviews/, images/%s/) from release %s\n", dir, config.DefaultImageEntry, release.TagName)
+			if err := os.WriteFile(config.GitignorePath(root), []byte(gitignoreTemplate), 0o644); err != nil {
+				return err
+			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "initialized %s (settings.json, .gitignore, reviews/, images/%s/) from release %s\n", dir, config.DefaultImageEntry, release.TagName)
 			fmt.Fprintf(cmd.OutOrStdout(),
 				"\nsettings.json declares the egress hostnames the sandbox's Claude Code needs (%s).\n"+
 					"Declaring is not approving -- run this before starting a workspace:\n\n    masuda egress approve --all\n",
