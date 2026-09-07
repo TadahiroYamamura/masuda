@@ -41,17 +41,22 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   でスコープしても別タスクのtagが範囲的に混入しうる余地への保険。tagは`_finalize_step`
   からのみ`_tag_step`が打つ——スコープ内が無変更のステップは空commitになるなど、
   commit数とステップ数は一般には一致しないため。
-- 1ステップの処理順序: 実装への委譲（`_implement_step_task`、`:1502`）→
+- 1ステップの処理順序: 実装への委譲（`_implement_step_task`、`:1320`）→
   `implementation_result.json`の自己申告状態で分岐（`done`/`needs_plan_review`/
   `build_test_failed`）→ `done`なら機械的バックストップ（次節）→ 逸脱なしなら
   trigger式途中レビュー（後述の節）→ `_finalize_step`がcommitしてtagを打つ。commit対象は
   `_committable_files`が決める——**実測（`git status`）∩（このステップの計画ファイル ∪
   承認済み逸脱）**であって、エージェントの申告ではない（ADR-0058）。`git add -A`は使わない。
-- `_implement_step_task`が生成するプロンプトは、このステップの`files`一覧・
-  `_render_plan_text()`によるプラン全体の参考情報・逸脱時の自己申告手順（ADR-0010）・
-  ビルド/テスト自己修正ループの手順（ADR-0009、最大3回）・完了条件
-  （`_implementation_completion_section`: commitメッセージファイルと`{"status":"done"}`を
-  書き出す。変更ファイルの申告は求めない——commit対象は実測から決まるため）を含む。
+- `_implement_step_task`が生成するプロンプトは、依存解決とLSPの利用方法を指示する
+  共有節`_LSP_AND_DEPENDENCY_SECTION`（利用可能ならClaude Code純正のLSPツールを使う、
+  LSPが正しく機能するには依存解決が必要な場合があり未セットアップならCLAUDE.md・
+  README等を参照して行う、外部ネットワークに阻まれた場合は再試行せずLSP無しで
+  進める、という3点）に加えて、このステップの`files`一覧・`_render_plan_text()`による
+  プラン全体の参考情報・逸脱時の自己申告手順（ADR-0010）・ビルド/テスト自己修正
+  ループの手順（ADR-0009、最大3回）・完了条件（`_implementation_completion_section`:
+  commitメッセージファイルと`{"status":"done"}`を書き出す。変更ファイルの申告は
+  求めない——commit対象は実測から決まるため）を含む。同じ共有節は、G2却下時のredo
+  （後述、`_implement_g2_redo_task`）が生成するプロンプトにも含まれる。
 - ビルド/テスト自己修正ループの節には`_PRIVILEGED_COMMAND_SECTION`が続く。root権限や
   Dockerデーモンを要するテストはこのVMでは動かないため、宣言・承認済みの特権コマンドを
   `run_privileged_command`で実行するか、それが無ければ自己修正ループを空回りさせずに

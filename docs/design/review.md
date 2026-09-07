@@ -51,13 +51,13 @@ Build段階の途中レビュー（ADR-0027）は`_detect_interim_review_phase`�
 
 `_detect_review_phase`は全観点収束後、`CROSS_CUTTING_FINDINGS_JSON`（`review_results/cross_cutting_findings.json`）が無ければ`phase: "cross_cutting_explore"`を返す。explorer→verifierの1パス構成で、redoループを持たない（ADR-0003・ADR-0011。複雑な指摘は常に人間判断に委ねる方針のため、「意見が収束するまで往復する」という発想自体が適用されない）。
 
-- `_cross_cutting_explore_task`（`:2101`）: 14観点の機械的チェックと異なり、Bash・Read・Grep・Glob、および利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を持つサブエージェントに委譲する。探索の起点は対象diffで、「diffで変更されたファイルが依拠する既存コードとの不整合」を探すのが目的——リポジトリ全体を無制限に彷徨うことは避けるようプロンプトで指示する。探索の観点として性質の異なる2種類を例示している: (1) 実装パターンの一貫性（同役割のファイル間でエラーハンドリング等の流儀が食い違う）、(2) ビルドでは検知されない変更の伝播漏れ（ただしGo等の静的型付け言語の単純な引数過不足はビルドエラーとしてBuild段階の自己検証で既に弾かれるため、この観点が意味を持つのは主に動的型付け言語や文字列ベースディスパッチ等に限られる、と明記）。結果は`[{"description", "file", "startLine", "endLine", "severity"}]`（空配列可）として`CROSS_CUTTING_FINDINGS_JSON`に書かせる
+横断的チェック（explorer・verifier）と14観点の機械的チェック（前節）は手段が異なる2区分になっている。機械的チェックはdiffのみを見せる単発判定でBash/Read等のツールを持たず、LSPも使わない。横断的チェックのexplorer・verifierはBash・Read・Grep・Globに加え、依存解決とLSPの利用方法を指示する共有節`_LSP_AND_DEPENDENCY_SECTION`を持つ——利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を使い、LSPが正しく機能するには依存解決が必要な場合があるため、環境が未セットアップならCLAUDE.md・README等を参照して依存解決（`go mod download`等）を行う。依存解決が外部ネットワーク（このVMのegress既定拒否）に阻まれた場合は再試行せず、LSP無しでRead/Grep/Globのみで進める（縮退）。依存解決を担うはずのScaffold段階は未実装の予約名のため、現状はexplorer・verifier自身が必要に応じて自分のタスク内で依存解決を行う（ADR-0003）。
+
+- `_cross_cutting_explore_task`（`:1725`）: 探索の起点は対象diffで、「diffで変更されたファイルが依拠する既存コードとの不整合」を探すのが目的——リポジトリ全体を無制限に彷徨うことは避けるようプロンプトで指示する。探索の観点として性質の異なる2種類を例示している: (1) 実装パターンの一貫性（同役割のファイル間でエラーハンドリング等の流儀が食い違う）、(2) ビルドでは検知されない変更の伝播漏れ（ただしGo等の静的型付け言語の単純な引数過不足はビルドエラーとしてBuild段階の自己検証で既に弾かれるため、この観点が意味を持つのは主に動的型付け言語や文字列ベースディスパッチ等に限られる、と明記）。結果は`[{"description", "file", "startLine", "endLine", "severity"}]`（空配列可）として`CROSS_CUTTING_FINDINGS_JSON`に書かせる
 - findingsが空配列なら、verifierを起動せずそのままsynthesizeへ直行する（`_detect_review_phase`の`if findings and not CROSS_CUTTING_VERIFIED_JSON.exists()`）
-- findingsが1件以上あれば`phase: "cross_cutting_verify"`。`_cross_cutting_verify_task`（`:2152`）はexplorerとは別コンテキストの独立したサブエージェントに、LSPや実コードを確認させて各指摘が誤検知でないか判定させる。redoはせず、確信が持てない指摘は破棄する（人間に無駄な確認をさせないため）。確認できたものだけを`CROSS_CUTTING_VERIFIED_JSON`に書かせる（空配列可）
+- findingsが1件以上あれば`phase: "cross_cutting_verify"`。`_cross_cutting_verify_task`（`:1774`）はexplorerとは別コンテキストの独立したサブエージェントに、LSPや実コードを確認させて各指摘が誤検知でないか判定させる。redoはせず、確信が持てない指摘は破棄する（人間に無駄な確認をさせないため）。確認できたものだけを`CROSS_CUTTING_VERIFIED_JSON`に書かせる（空配列可）
 
 横断的チェックの指摘は確認できたものであっても**自動修正しない**。常に最終レポートに上がり、review gateで人間が判断する（ADR-0011）。
-
-explorerのLSPツールが正しく機能するには、対象リポジトリが依存解決済みの状態（`go mod download`済み等）である必要がある。これを担うはずのScaffold段階は未実装の予約名のため、現状はexplorerサブエージェント自身が必要に応じて自分のタスク内で依存解決を行う（ADR-0003）。
 
 なお、explorerには1起動内の探索ターン数の上限が機構として存在せず、探索範囲を絞る指示による自主規制だけが効いている（`docs/design/pipeline.md`の予算管理を参照）。
 
