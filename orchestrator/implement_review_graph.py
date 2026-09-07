@@ -1265,6 +1265,15 @@ _TRIAGE_SELF_REPORT_SECTION = f"""## セキュリティ上の懸念の自己申�
 {{"agent": "<自分の役割>", "phase": "<今何をしていたか>", "description": "<何が疑わしいか、具体的に>", "evidence": "<疑わしい箇所の引用>", "reported_at": "<ISO8601形式の現在時刻>"}}"""
 
 
+_LSP_AND_DEPENDENCY_SECTION = """## LSPと依存解決
+利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を使うこと。
+LSPが正しく機能するには依存解決が必要な場合がある。環境が未セットアップの場合、
+CLAUDE.md・README等を参照して依存解決（`go mod download`・`npm install`等）を行ってから
+使うこと。依存解決が外部ネットワークに阻まれた場合、このVMのegressは既定で拒否のため
+再試行しても解決しない。LSPは補助であり必須ではないので、その場合はLSP無しで
+Read/Grep/Globで進めてよい。"""
+
+
 _PRIVILEGED_COMMAND_SECTION = """## rootやDockerを要するテスト（ADR-0053）
 このVMにはroot権限もDockerデーモンも無い。テストがDockerを要求する場合（testcontainers等）、
 パッケージのインストールや`dockerd`の起動を試みても解決しない。
@@ -1331,9 +1340,7 @@ VM内で完結するため、フェーズ1-2のようなBash制限は不要。wr
 通常のサブエージェントでよい。実装対象のコードはカレントディレクトリ＝`/workspace`に
 対して行うこと）。
 
-## 実装前の準備
-環境が未セットアップの場合、CLAUDE.md・README等を参照して依存解決
-（`go mod download`・`npm install`等）を行ってから実装に入ること。
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## このステップの内容
 {step.get("description", "")}
@@ -1379,6 +1386,8 @@ def _implement_g2_redo_task(feedback: str) -> str:
 
 これは既に全ステップがcommit済みの実装に対するG2からの差し戻しであり、PLAN.mdの
 ステップ分解を経由しない単発の修正である。
+
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## G2却下フィードバック
 {feedback}
@@ -1726,9 +1735,7 @@ diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep�
 使い、diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
 問題を多ターンで探索してよい。
 
-## 準備
-LSPが正しく機能するには依存解決が必要な場合がある。`go mod download`・
-`npm install`等、必要なら実行してから探索に入ること。
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## 探索の起点・範囲
 以下のdiffを起点にすること。diffで変更されたファイルが依拠する既存コード
@@ -1776,6 +1783,8 @@ def _cross_cutting_verify_task() -> str:
 ADR-0011により、この種の複雑な指摘は自動修正しない（常にG2で人間が判断する）。
 このステップの役割は「本当に妥当な指摘か（誤検知でないか）」を1回だけ独立検証
 することであり、redo（往復）は行わない——確認できなければその指摘は破棄する。
+
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## 検証対象の指摘
 ```json
