@@ -1730,9 +1730,8 @@ def _cross_cutting_explore_task() -> str:
 問題を探索させ、結果を`{_agent_path(CROSS_CUTTING_FINDINGS_JSON)}`に書き出させよ。
 
 これは14観点の機械的チェックとは異なる種類のチェックである。機械的チェックは
-diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Glob、および
-利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を
-使い、diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
+diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Globを使い、
+diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
 問題を多ターンで探索してよい。
 
 {_LSP_AND_DEPENDENCY_SECTION}

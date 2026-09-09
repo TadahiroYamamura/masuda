@@ -126,7 +126,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   `_clear_review_state()`で消去し、`REVIEW_FEEDBACK_KEY`に却下理由を書いて
   `implement_g2_redo`フェーズへ遷移する（ADR-0013）。
 - `implement_g2_redo`はステップ機構を経由しない単発の再実装パス
-  （`_implement_g2_redo_task`、`:1747`）。全ステップが既にcommit済みで「次のステップ」が
+  （`_implement_g2_redo_task`、`:1375`）。全ステップが既にcommit済みで「次のステップ」が
   存在しないため、プラン全体スコープで却下フィードバックへの対応を1回のサブエージェント
   呼び出しに委譲する（ADR-0027）。
 - `implement_g2_redo`中の機械的バックストップは、単一ステップの`files`ではなく全ステップ
