@@ -55,7 +55,7 @@ Build段階の途中レビュー（ADR-0027）は`_detect_interim_review_phase`�
 
 - `_cross_cutting_explore_task`（`:1725`）: 探索の起点は対象diffで、「diffで変更されたファイルが依拠する既存コードとの不整合」を探すのが目的——リポジトリ全体を無制限に彷徨うことは避けるようプロンプトで指示する。探索の観点として性質の異なる2種類を例示している: (1) 実装パターンの一貫性（同役割のファイル間でエラーハンドリング等の流儀が食い違う）、(2) ビルドでは検知されない変更の伝播漏れ（ただしGo等の静的型付け言語の単純な引数過不足はビルドエラーとしてBuild段階の自己検証で既に弾かれるため、この観点が意味を持つのは主に動的型付け言語や文字列ベースディスパッチ等に限られる、と明記）。結果は`[{"description", "file", "startLine", "endLine", "severity"}]`（空配列可）として`CROSS_CUTTING_FINDINGS_JSON`に書かせる
 - findingsが空配列なら、verifierを起動せずそのままsynthesizeへ直行する（`_detect_review_phase`の`if findings and not CROSS_CUTTING_VERIFIED_JSON.exists()`）
-- findingsが1件以上あれば`phase: "cross_cutting_verify"`。`_cross_cutting_verify_task`（`:1774`）はexplorerとは別コンテキストの独立したサブエージェントに、LSPや実コードを確認させて各指摘が誤検知でないか判定させる。redoはせず、確信が持てない指摘は破棄する（人間に無駄な確認をさせないため）。確認できたものだけを`CROSS_CUTTING_VERIFIED_JSON`に書かせる（空配列可）
+- findingsが1件以上あれば`phase: "cross_cutting_verify"`。`_cross_cutting_verify_task`（`:1773`）はexplorerとは別コンテキストの独立したサブエージェントに、LSPや実コードを確認させて各指摘が誤検知でないか判定させる。redoはせず、確信が持てない指摘は破棄する（人間に無駄な確認をさせないため）。確認できたものだけを`CROSS_CUTTING_VERIFIED_JSON`に書かせる（空配列可）
 
 横断的チェックの指摘は確認できたものであっても**自動修正しない**。常に最終レポートに上がり、review gateで人間が判断する（ADR-0011）。
 
