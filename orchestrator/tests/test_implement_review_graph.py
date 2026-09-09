@@ -1854,8 +1854,7 @@ def test_implement_g2_redo_task_includes_lsp_and_dependency_guidance():
 def test_cross_cutting_explore_task_includes_lsp_and_dependency_guidance():
     init_git_repo()
     content = irg._cross_cutting_explore_task()
-    assert "LSP" in content
-    assert "依存解決" in content
+    assert irg._LSP_AND_DEPENDENCY_SECTION in content
 
 
 def test_cross_cutting_verify_task_includes_lsp_and_dependency_guidance():
