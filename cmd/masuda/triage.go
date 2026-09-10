@@ -33,7 +33,7 @@ func newTriageShowCommand() *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -54,7 +54,7 @@ func newTriageDismissCommand() *cobra.Command {
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -74,7 +74,7 @@ func newTriageRedoCommand() *cobra.Command {
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -94,7 +94,7 @@ func newTriageHaltCommand() *cobra.Command {
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}

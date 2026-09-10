@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
@@ -346,6 +347,23 @@ func writeConfigJSON(t *testing.T, path string, v any) {
 	}
 }
 
+// stubEnsureDaemon makes ensureDaemon a no-op for one test and records the
+// workspace IDs it was asked to start. Tests that drive a command which now
+// ensures the daemon (ensureGateWorkspace, `sandbox start`) need this: the
+// real startDaemon re-execs os.Executable(), which under `go test` is the
+// test binary itself.
+func stubEnsureDaemon(t *testing.T) *[]string {
+	t.Helper()
+	var called []string
+	orig := ensureDaemon
+	ensureDaemon = func(id string) error {
+		called = append(called, id)
+		return nil
+	}
+	t.Cleanup(func() { ensureDaemon = orig })
+	return &called
+}
+
 func TestStopDaemonWithoutPIDFileIsNoOp(t *testing.T) {
 	id := newTestWorkspace(t)
 	// No daemon.pid was ever written -- must succeed anyway (a workspace
@@ -355,39 +373,171 @@ func TestStopDaemonWithoutPIDFileIsNoOp(t *testing.T) {
 	}
 }
 
-func TestDaemonAliveMissingPIDFile(t *testing.T) {
-	stateDir := t.TempDir()
-	if daemonAlive(stateDir) {
-		t.Fatal("daemonAlive() = true with no daemon.pid, want false")
+// newShortStateDir is a state directory under /tmp rather than t.TempDir(),
+// whose longer paths risk exceeding AF_UNIX's ~108 byte sun_path limit once
+// daemon.sock's own name is appended -- the same constraint newTestWorkspace
+// works around.
+func newShortStateDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "sd")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	return dir
+}
+
+// writePID records pid as stateDir's daemon, the way startDaemon does.
+func writePID(t *testing.T, stateDir string, pid int) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(pid)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 
-func TestDaemonAliveLiveProcess(t *testing.T) {
-	stateDir := t.TempDir()
-	// The test binary itself is definitely alive.
-	pid := strconv.Itoa(os.Getpid())
-	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(pid), 0o644); err != nil {
+// fakeDaemonProcess starts a long-running process whose argv carries the two
+// markers isDaemonProcess looks for, so a test can exercise the "this really
+// is our daemon" path without running a real one. `sh -c <script> <args...>`
+// puts the trailing arguments in $0/$1/... -- they never reach the script,
+// but they do land in /proc/<pid>/cmdline, which is what matters here.
+func fakeDaemonProcess(t *testing.T, stateDir string) *exec.Cmd {
+	t.Helper()
+	c := exec.Command("sh", "-c", "sleep 30", "internal", "statedaemon", "--state-dir", stateDir)
+	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if !daemonAlive(stateDir) {
-		t.Fatal("daemonAlive() = false for this test process's own PID, want true")
+	t.Cleanup(func() {
+		_ = c.Process.Kill()
+		_ = c.Wait()
+	})
+	return c
+}
+
+func TestDaemonServingWithoutSocket(t *testing.T) {
+	if daemonServing(t.TempDir()) {
+		t.Fatal("daemonServing() = true with no socket, want false")
 	}
 }
 
-func TestDaemonAliveDeadProcess(t *testing.T) {
-	stateDir := t.TempDir()
-	// Spawn and immediately wait out a short-lived process to get a PID
-	// that's guaranteed to be free again (no PID reuse race within a single
-	// test process's lifetime on Linux).
-	c := exec.Command("true")
-	if err := c.Run(); err != nil {
+func TestDaemonServingWhenSocketAccepts(t *testing.T) {
+	stateDir := newShortStateDir(t)
+	l, err := net.Listen("unix", statedaemon.SocketPath(stateDir))
+	if err != nil {
 		t.Fatal(err)
 	}
-	deadPID := strconv.Itoa(c.Process.Pid)
-	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(deadPID), 0o644); err != nil {
+	defer l.Close()
+	if !daemonServing(stateDir) {
+		t.Fatal("daemonServing() = false against a listening socket, want true")
+	}
+}
+
+// TestDaemonServingIgnoresLivePIDWithoutSocket is Issue #52's reboot case in
+// miniature: daemon.pid names a live process (here the test binary, standing
+// in for a PID the kernel handed to something else after a reboot) but
+// nothing answers on the socket. The old PID-based check called that alive,
+// so startDaemon skipped and every gate command then failed with "connect:
+// connection refused".
+func TestDaemonServingIgnoresLivePIDWithoutSocket(t *testing.T) {
+	stateDir := newShortStateDir(t)
+	writePID(t, stateDir, os.Getpid())
+	if daemonServing(stateDir) {
+		t.Fatal("daemonServing() = true for a live PID with no listener, want false")
+	}
+}
+
+// TestIsDaemonProcessRejectsUnrelatedProcess covers the other half: this
+// test binary is alive and its PID is recorded, but it is not a state
+// daemon, so nothing may signal it.
+func TestIsDaemonProcessRejectsUnrelatedProcess(t *testing.T) {
+	stateDir := newShortStateDir(t)
+	if isDaemonProcess(os.Getpid(), stateDir) {
+		t.Fatal("isDaemonProcess() = true for the test binary, want false")
+	}
+}
+
+func TestIsDaemonProcessRejectsDaemonForAnotherWorkspace(t *testing.T) {
+	mine, theirs := newShortStateDir(t), newShortStateDir(t)
+	c := fakeDaemonProcess(t, theirs)
+	if isDaemonProcess(c.Process.Pid, mine) {
+		t.Fatal("isDaemonProcess() = true for another workspace's daemon, want false")
+	}
+}
+
+func TestReclaimStaleDaemonStopsOurOwnDaemon(t *testing.T) {
+	stateDir := newShortStateDir(t)
+	c := fakeDaemonProcess(t, stateDir)
+	writePID(t, stateDir, c.Process.Pid)
+
+	if err := reclaimStaleDaemon(stateDir); err != nil {
+		t.Fatalf("reclaimStaleDaemon() error = %v", err)
+	}
+	if isDaemonProcess(c.Process.Pid, stateDir) {
+		t.Error("the recorded daemon is still running after reclaimStaleDaemon()")
+	}
+}
+
+// TestReclaimStaleDaemonLeavesARecycledPIDAlone is the reason isDaemonProcess
+// exists at all: after a host reboot the recorded PID may belong to something
+// else entirely, and starting a replacement daemon must not cost that process
+// a SIGTERM.
+func TestReclaimStaleDaemonLeavesARecycledPIDAlone(t *testing.T) {
+	stateDir := newShortStateDir(t)
+	c := exec.Command("sleep", "30")
+	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
-	if daemonAlive(stateDir) {
-		t.Fatal("daemonAlive() = true for an already-exited process's PID, want false")
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	writePID(t, stateDir, c.Process.Pid)
+
+	if err := reclaimStaleDaemon(stateDir); err != nil {
+		t.Fatalf("reclaimStaleDaemon() error = %v", err)
+	}
+	if err := c.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("the unrelated process was signalled: %v", err)
+	}
+}
+
+// TestStopDaemonLeavesARecycledPIDAlone pins the same guard on the teardown
+// path, which now runs on every `review approve` (ADR-0005) as well as
+// `workspace remove`.
+func TestStopDaemonLeavesARecycledPIDAlone(t *testing.T) {
+	id := newTestWorkspace(t)
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command("sleep", "30")
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Process.Kill(); _ = c.Wait() })
+	writePID(t, stateDir, c.Process.Pid)
+
+	if err := stopDaemon(id); err != nil {
+		t.Fatalf("stopDaemon() error = %v", err)
+	}
+	if err := c.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("the unrelated process was signalled: %v", err)
+	}
+}
+
+func TestStopDaemonStopsOurOwnDaemon(t *testing.T) {
+	id := newTestWorkspace(t)
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := fakeDaemonProcess(t, stateDir)
+	writePID(t, stateDir, c.Process.Pid)
+
+	if err := stopDaemon(id); err != nil {
+		t.Fatalf("stopDaemon() error = %v", err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && isDaemonProcess(c.Process.Pid, stateDir) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if isDaemonProcess(c.Process.Pid, stateDir) {
+		t.Error("the recorded daemon is still running after stopDaemon()")
 	}
 }

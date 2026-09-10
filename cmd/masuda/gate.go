@@ -31,15 +31,29 @@ func newGateCommand(n gate.Name) *cobra.Command {
 	return cmd
 }
 
-// gateStateDir resolves a workspace ID to its state directory (where gate
-// markers and the artifacts they judge live, per roadmap step 7 — never the
-// worktree itself). The workspace ID is the only input: state directories are
-// global (see internal/workspace), so this deliberately never consults the
-// cwd, and gate commands work from anywhere — including outside a git
-// repository (Issue #25).
-func gateStateDir(id string) (string, error) {
+// ensureGateWorkspace resolves a workspace ID to its state directory (where
+// gate markers and the artifacts they judge live, per roadmap step 7 — never
+// the worktree itself) and makes sure its state daemon is running. The
+// workspace ID is the only input: state directories are global (see
+// internal/workspace), so this deliberately never consults the cwd, and gate
+// commands work from anywhere — including outside a git repository (Issue
+// #25).
+//
+// Every gate command reaches its marker through the daemon
+// (internal/gate.Approve/Reject/Halt, and Show for the plan gate's reopen
+// reason), so a workspace whose daemon has died since creation could not be
+// answered at all: `masuda review approve` failed with "connect: connection
+// refused" against a workspace left waiting at G2 across a host reboot
+// (Issue #52). startDaemon is idempotent, so this is the same "make sure the
+// thing exists" shape `plan start`'s resume path already used — it just had
+// no counterpart on the gate side, which is where a long-lived workspace
+// actually spends its time.
+func ensureGateWorkspace(id string) (string, error) {
 	if !workspace.Exists(id) {
 		return "", fmt.Errorf("no workspace %q", id)
+	}
+	if err := ensureDaemon(id); err != nil {
+		return "", err
 	}
 	return workspace.StateDir(id)
 }
@@ -51,7 +65,7 @@ func newGateShowCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.ExactArgs(1),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -72,7 +86,7 @@ func newGateApproveCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.RangeArgs(1, 2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -98,7 +112,7 @@ func newGateRejectCommand(n gate.Name) *cobra.Command {
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			stateDir, err := gateStateDir(args[0])
+			stateDir, err := ensureGateWorkspace(args[0])
 			if err != nil {
 				return err
 			}
@@ -145,6 +159,15 @@ func finalizeReviewApproval(id string) error {
 	// needs it to push and open a PR, so only the clone/state directory
 	// are torn down here.
 	if err := worktree.Remove(root, id, info.Branch, false); err != nil {
+		return err
+	}
+	// Before the state directory goes away: the daemon serves that directory
+	// and holds its store open, and nothing else stops it here. Approval is
+	// the other way a workspace ends (`workspace remove` already does this,
+	// cmd/masuda/workspace.go), so without it every approved workspace left
+	// a daemon running forever against a path that no longer exists, its
+	// sockets deleted along with the directory (Issue #52).
+	if err := stopDaemon(id); err != nil {
 		return err
 	}
 	return workspace.Remove(id)

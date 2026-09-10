@@ -53,6 +53,16 @@ func newSandboxStartCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The guest reaches masuda's state through the curated socket
+			// this daemon serves (its mcp-relay dials
+			// statedaemon.CuratedSocketPath), so starting the VM without it
+			// produces a booted sandbox whose loop cannot advance a single
+			// turn. Idempotent, and the daemon may well be gone -- a host
+			// reboot kills it while the workspace itself survives (Issue
+			// #52).
+			if err := ensureDaemon(info.ID); err != nil {
+				return err
+			}
 			resolvedImage, err := resolveImage(cmd, root, image, config.DefaultImageEntry)
 			if err != nil {
 				return err

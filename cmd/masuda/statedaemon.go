@@ -264,13 +264,24 @@ func runOrchestratorTurn(ctx context.Context, python, script, worktreeDir, state
 // but also a `masuda plan start <workspace-id>` resume where the daemon may
 // have died since -- host reboot, manual kill, a crash) can call this
 // unconditionally instead of tracking "did I already start this" itself.
+// ensureDaemon is startDaemon behind a variable so tests that exercise a
+// command's own behaviour don't have to spawn a real daemon subprocess:
+// under `go test`, os.Executable() is the test binary, so startDaemon would
+// re-exec the test suite with flags it can't parse and only fail once
+// daemonStartupTimeout elapsed. Same reason that timeout is a var rather
+// than a const.
+var ensureDaemon = startDaemon
+
 func startDaemon(id string) error {
 	stateDir, err := workspace.StateDir(id)
 	if err != nil {
 		return err
 	}
-	if daemonAlive(stateDir) {
+	if daemonServing(stateDir) {
 		return nil
+	}
+	if err := reclaimStaleDaemon(stateDir); err != nil {
+		return err
 	}
 	info, err := workspace.Load(id)
 	if err != nil {
@@ -349,26 +360,123 @@ func waitForDaemon(stateDir string) error {
 	return errors.New(msg)
 }
 
-// daemonAlive reports whether the PID recorded in stateDir/daemon.pid
-// belongs to a live process, using signal 0 (POSIX's standard existence
-// probe: no signal is actually delivered, the call just fails with ESRCH if
-// the process is gone). A missing or unparsable PID file counts as not
-// alive rather than an error, since both are exactly the "nothing to
-// recover" case startDaemon's caller wants to treat the same way.
-func daemonAlive(stateDir string) bool {
-	data, err := os.ReadFile(filepath.Join(stateDir, daemonPIDName))
+// daemonDialTimeout bounds the readiness probe below. A var so tests can
+// shorten it, the same reason daemonStartupTimeout is one.
+var daemonDialTimeout = time.Second
+
+// daemonServing reports whether a daemon is actually accepting connections
+// on stateDir's trusted socket.
+//
+// This deliberately does not ask "is the recorded PID alive". A PID is the
+// wrong question in both directions after a host reboot (Issue #52): the
+// socket file survives in the state directory while nothing listens on it,
+// and the PID recorded next to it may since have been handed to an unrelated
+// process, which a bare signal-0 probe reports as a healthy daemon. The
+// caller then skips starting one and the command fails with "connect:
+// connection refused" -- exactly the failure this was supposed to prevent.
+// What every caller actually needs to know is whether the socket answers,
+// so that is what gets asked. internal/sandbox.EnsureEgressProxy settled on
+// the same shape for the same reason.
+func daemonServing(stateDir string) bool {
+	conn, err := net.DialTimeout("unix", statedaemon.SocketPath(stateDir), daemonDialTimeout)
 	if err != nil {
 		return false
 	}
+	conn.Close()
+	return true
+}
+
+// daemonPID reads the PID recorded in stateDir/daemon.pid. A missing or
+// unparsable file counts as "no PID" rather than an error: both are the
+// "nothing to recover" case every caller here treats the same way.
+func daemonPID(stateDir string) (int, bool) {
+	data, err := os.ReadFile(filepath.Join(stateDir, daemonPIDName))
+	if err != nil {
+		return 0, false
+	}
 	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil || pid <= 0 {
+		return 0, false
+	}
+	return pid, true
+}
+
+// isDaemonProcess reports whether pid is a live process that is identifiably
+// *this* state directory's daemon, by reading its argv out of /proc.
+//
+// Without this check both of the places that act on daemon.pid are unsafe
+// once a PID has been recycled -- and a host reboot recycles every PID at
+// once. reclaimStaleDaemon would SIGTERM a stranger's process; stopDaemon
+// would do the same on every `review approve` and `workspace remove`. Signal
+// 0 cannot tell the difference, since it only answers "does some process
+// hold this number".
+//
+// Linux-only, like the rest of masuda's process handling (the sandbox is a
+// Cloud Hypervisor microVM). A /proc that cannot be read is treated as "not
+// ours", the conservative direction: the cost is an orphaned daemon, where
+// guessing the other way costs an unrelated process a SIGTERM.
+func isDaemonProcess(pid int, stateDir string) bool {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "cmdline"))
 	if err != nil {
 		return false
+	}
+	// /proc/<pid>/cmdline is NUL-separated argv, so both markers are matched
+	// as whole arguments -- `--state-dir <dir>` passes the directory as its
+	// own argument, and a substring match would also accept a different
+	// workspace whose path merely starts with this one.
+	var sawSubcommand, sawStateDir bool
+	for _, arg := range strings.Split(string(data), "\x00") {
+		switch arg {
+		case "statedaemon":
+			sawSubcommand = true
+		case stateDir:
+			sawStateDir = true
+		}
+	}
+	return sawSubcommand && sawStateDir
+}
+
+// daemonStopTimeout bounds how long reclaimStaleDaemon waits for a daemon it
+// signalled to actually exit before giving up and starting a replacement.
+var daemonStopTimeout = 5 * time.Second
+
+// reclaimStaleDaemon deals with the PID recorded for a state directory whose
+// socket is not answering, so that startDaemon can spawn a replacement
+// without ending up with two daemons on one store.
+//
+// That matters because the store has no write arbitration -- "one writer per
+// key" is an assumption nothing enforces (Issue #44) -- so a second daemon
+// against the same directory is worse than the dead one it was meant to
+// replace. Three cases, all ending in "safe to start a new one":
+//
+//   - no PID recorded, or the process is gone: nothing to do (the reboot case)
+//   - the process is alive and is this directory's daemon, but its socket
+//     stopped answering: SIGTERM it and wait for it to go
+//   - the process is alive but is something else entirely (a recycled PID):
+//     leave it alone; the PID file is about to be overwritten anyway
+func reclaimStaleDaemon(stateDir string) error {
+	pid, ok := daemonPID(stateDir)
+	if !ok || !isDaemonProcess(pid, stateDir) {
+		return nil
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
-		return false
+		return nil
 	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	if err := proc.Signal(syscall.SIGTERM); err != nil {
+		if errors.Is(err, syscall.ESRCH) || errors.Is(err, os.ErrProcessDone) {
+			return nil
+		}
+		return err
+	}
+	deadline := time.Now().Add(daemonStopTimeout)
+	for time.Now().Before(deadline) {
+		if !isDaemonProcess(pid, stateDir) {
+			return nil
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	return fmt.Errorf("state daemon %d for %s did not exit within %s after SIGTERM", pid, stateDir, daemonStopTimeout)
 }
 
 // stopDaemon signals workspace id's state daemon (if one is running) to shut
@@ -381,16 +489,17 @@ func stopDaemon(id string) error {
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(filepath.Join(stateDir, daemonPIDName))
-	if os.IsNotExist(err) {
+	pid, ok := daemonPID(stateDir)
+	if !ok {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
-	if err != nil {
-		return err
+	// Same PID-reuse hazard reclaimStaleDaemon guards against, and now on a
+	// path that runs every time a workspace ends: `review approve` tears the
+	// workspace down (ADR-0005) and stops its daemon on the way, so a
+	// recorded PID that has been recycled would take an unrelated process
+	// with it.
+	if !isDaemonProcess(pid, stateDir) {
+		return nil
 	}
 	proc, err := os.FindProcess(pid)
 	if err != nil {
