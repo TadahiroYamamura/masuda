@@ -456,7 +456,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		"--serial", "file="+filepath.Join(workDir, "console.log"),
 	)
 	cmd := exec.Command(cloudHypervisorBinary, cmdArgs...)
-	if err := startBackgroundProcess(cmd, chPIDPath(workDir)); err != nil {
+	if err := startBackgroundProcess(cmd, chPIDPath(workDir), rootfsPath); err != nil {
 		// egress-proxy is deliberately not stopped here -- it's shared
 		// host-wide (EnsureEgressProxy's own doc comment), other
 		// workspaces' VMs may depend on it staying up.
@@ -504,7 +504,7 @@ func vmStop(id string) error {
 	// got to run at all, e.g. no DHCP lease found): killStalePID is a
 	// no-op against an already-exited process, so this is safe to always
 	// call.
-	killStalePID(chPIDPath(workDir))
+	killStalePID(chPIDPath(workDir), filepath.Join(workDir, "rootfs.img"))
 	_ = os.Remove(chPIDPath(workDir))
 
 	stopKnownProcess(vmWorkspaceSocketPath(workDir))
@@ -514,7 +514,15 @@ func vmStop(id string) error {
 	// The relay's pid file lives in workDir like everything else here, so
 	// stopping it needs no port lookup at all -- vmRelayPortFile stays only
 	// because a VM started before this change recorded its address there.
-	killStalePID(vmRelayPIDFile(workDir))
+	// Its identity is the curated socket it was pointed at, the same value
+	// vmStart passed to StartMCPRelay; an unresolvable state directory
+	// leaves the marker empty, which makes killStalePID do nothing rather
+	// than signal an unidentified PID.
+	relayMarker := ""
+	if stateDir, err := workspace.StateDir(id); err == nil {
+		relayMarker = statedaemon.CuratedSocketPath(stateDir)
+	}
+	killStalePID(vmRelayPIDFile(workDir), relayMarker)
 	_ = os.Remove(vmRelayPIDFile(workDir))
 	// egress-proxy is deliberately NOT stopped here -- see
 	// EnsureEgressProxy's doc comment: it's a shared, host-wide process,
@@ -536,7 +544,7 @@ func vmStop(id string) error {
 // nothing a caller can usefully do about a leftover orphan process beyond
 // what this already tries.
 func stopKnownProcess(identity string) {
-	killStalePID(pidPath(identity))
+	killStalePID(pidPath(identity), identity)
 	_ = os.Remove(pidPath(identity))
 }
 
@@ -583,6 +591,19 @@ func waitForProcessExit(pidFilePath string, timeout time.Duration) {
 }
 
 // vmIsRunning reports whether cloud-hypervisor is alive for workspace id.
+// vmIsRunning reports whether workspace id's VM is running, by checking that
+// the PID recorded in cloud-hypervisor.pid still belongs to a cloud-hypervisor
+// started for *this* workspace -- its argv carries this workspace's rootfs
+// image (`--disk path=<workDir>/rootfs.img,...`), which no other workspace's
+// VM can claim.
+//
+// The identity check is the whole point (ADR-0061). A bare signal-0 probe
+// says only that some process holds that number, and a host reboot both
+// kills the VM and resets the PID space, so a recycled PID reads as a
+// running VM. vmStart returns early when this says yes, which turned that
+// into `masuda sandbox start` reporting success while starting nothing --
+// the same shape as Issue #52, minus the error message that would have
+// pointed at it.
 func vmIsRunning(id string) bool {
 	workDir, err := vmWorkDir(id)
 	if err != nil {
@@ -596,11 +617,7 @@ func vmIsRunning(id string) bool {
 	if err != nil {
 		return false
 	}
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return false
-	}
-	return proc.Signal(syscall.Signal(0)) == nil
+	return processCmdlineContains(pid, filepath.Join(workDir, "rootfs.img"))
 }
 
 // vmAttachArgs looks up workspace id's guest IP (from the DHCP lease its

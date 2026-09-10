@@ -93,7 +93,7 @@ func TestEnsureEgressProxyIsIdempotent(t *testing.T) {
 	t.Cleanup(func() {
 		pidPathVal, err := egressProxyPIDPath()
 		if err == nil {
-			killStalePID(pidPathVal)
+			killStalePID(pidPathVal, egressProxyBinary)
 			_ = os.Remove(pidPathVal)
 		}
 	})

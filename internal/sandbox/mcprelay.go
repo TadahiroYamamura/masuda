@@ -72,7 +72,7 @@ func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidFile); err != nil {
+	if err := startBackgroundProcess(cmd, pidFile, socketPath); err != nil {
 		return nil, fmt.Errorf("starting mcp-relay on %s: %w", addr, err)
 	}
 

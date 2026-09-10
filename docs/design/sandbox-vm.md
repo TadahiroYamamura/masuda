@@ -44,7 +44,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 
 グレースフルシャットダウンの手順（1・2）を省いてSIGTERM直行にすると、ゲストがアンマウント・syncする前にプロセスが落ちディスクイメージが壊れる。そのため`vmStop`は必ず先にSSH経由の`systemctl poweroff`を試み、それでプロセスが終了しなかった場合にのみ手順3のkillへフォールバックする。
 
-`vmIsRunning(id)`は`chPIDPath(workDir)`のpidfileを読み、そのPIDにシグナル0を送って生存確認するだけ。`vmAttachArgs(id)`は`LookupGuestIP`（タイムアウト20秒）でゲストIPを引き、`SSHAttachArgs(guestIP, privKeyPath)`が組み立てたargvを返す（SSH接続オプション自体は`networking.md`参照）。
+`vmIsRunning(id)`は`chPIDPath(workDir)`のpidfileを読み、そのPIDが**このワークスペースの**cloud-hypervisorかを`/proc/<pid>/cmdline`で同定する（argvに載る`<workDir>/rootfs.img`を目印にする。ADR-0061——シグナル0では再起動後に再利用されたPIDを見分けられず、`vmStart`が冒頭でこれを見て早期returnするため`sandbox start`が無言で何もしなくなる）。`vmAttachArgs(id)`は`LookupGuestIP`（タイムアウト20秒）でゲストIPを引き、`SSHAttachArgs(guestIP, privKeyPath)`が組み立てたargvを返す（SSH接続オプション自体は`networking.md`参照）。
 
 ## VMゲスト起動シーケンス
 
@@ -70,7 +70,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 
 `internal/sandbox/virtiofs.go`の`StartVirtiofs(dir, socketPath, logPath)`が1呼び出しにつき1つのvirtiofsdプロセスを起動し、1つのvhost-user UDSソケットで1ディレクトリを共有する。`vmStart`はこれを`/workspace`・`/masuda-state`・（トークン登録時のみ）`/masuda-secrets`の最大3回呼ぶ。
 
-- `killStalePID(pidPath(socketPath))`で前回の孤児プロセスを片付けてから、既存のソケットファイルを削除し、`virtiofsd --socket-path=<socketPath> --shared-dir=<dir> --sandbox=none`を起動する
+- `killStalePID(pidPath(socketPath), socketPath)`で前回の孤児プロセスを片付けてから、既存のソケットファイルを削除し、`virtiofsd --socket-path=<socketPath> --shared-dir=<dir> --sandbox=none`を起動する
 - `--sandbox=none`を使う。virtiofsd既定の`--sandbox=namespace`は`newuidmap`/`newgidmap`（uidmapパッケージ）を要求するが、これはmasudaのホスト前提条件に含まれていない（ADR-0049）
 - `waitForSocket(socketPath, virtiofsStartupTimeout)`（5秒）でソケットファイルの出現を待ち、間に合わなければ起動したプロセスを止めてエラーを返す
 - `pidPath(identity string) string`は`identity + ".pid"`を返す共通ヘルパーで、ソケットパス（virtiofsd）・listenアドレス（mcp-relay）のどちらの識別子にも使う。`VirtiofsProcess.Stop()`はpidfile経由でのプロセス停止とソケットファイル削除の両方を行う
@@ -95,9 +95,9 @@ git identityとClaude OAuthトークンの2種類を、rootfsへの焼き込み�
 
 `internal/sandbox/bgprocess.go`はvirtiofsd・mcp-relay・cloud-hypervisorのいずれにも使う、pidfileベースの起動/停止/孤児回収の共通実装。
 
-- `startBackgroundProcess(cmd, pidFilePath)`: まず`killStalePID(pidFilePath)`で前回の孤児を片付けてから`cmd.Start()`し、実際に起動したPIDを`pidFilePath`へ書く。書き込みに失敗したら起動したプロセスをkillしてロールバックする
+- `startBackgroundProcess(cmd, pidFilePath, marker)`: まず`killStalePID(pidFilePath, marker)`で前回の孤児を片付けてから`cmd.Start()`し、実際に起動したPIDを`pidFilePath`へ書く。書き込みに失敗したら起動したプロセスをkillしてロールバックする
 - `stopBackgroundProcess(proc, pidFilePath)`: `SIGTERM`を送って`proc.Wait()`し、pidfileを削除する。プロセスが既に終了済み（`os.ErrProcessDone`）でもエラーにしない
-- `killStalePID(pidFilePath)`: pidfileが指すPIDへ`SIGTERM`を送るだけのベストエフォート処理。`Process.Wait()`を呼ばない——このPIDは呼び出し元プロセスの子ではなく（masuda自体が前回異常終了して再起動した場合等）、`Wait`は実子にしか使えず`ECHILD`で失敗するため
+- `killStalePID(pidFilePath, marker)`: pidfileが指すPIDが`marker`を含むargvを持つ場合にだけ`SIGTERM`を送るベストエフォート処理。同定を経ないと、再起動でPIDが再利用されている場合に無関係なプロセスを殺す（ADR-0061）。`marker`はプロセスを1つに絞れる値でなければならない——virtiofsd・mcp-relayはソケットパス、cloud-hypervisorはrootfsイメージのパス、egress-proxyだけはホスト全体で1プロセスなのでバイナリ名。空文字列は「何もしない」を意味する。`Process.Wait()`を呼ばない——このPIDは呼び出し元プロセスの子ではなく（masuda自体が前回異常終了して再起動した場合等）、`Wait`は実子にしか使えず`ECHILD`で失敗するため
 
 ## 既知の問題
 

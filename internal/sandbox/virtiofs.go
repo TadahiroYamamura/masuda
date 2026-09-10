@@ -49,7 +49,7 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 		return nil, fmt.Errorf("%s not found on PATH (required for VM shared directories, Issue #31): %w", virtiofsdBinary, err)
 	}
 
-	killStalePID(pidPath(socketPath))
+	killStalePID(pidPath(socketPath), socketPath)
 
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("clearing stale socket %s: %w", socketPath, err)
@@ -68,7 +68,7 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidPath(socketPath)); err != nil {
+	if err := startBackgroundProcess(cmd, pidPath(socketPath), socketPath); err != nil {
 		return nil, fmt.Errorf("starting virtiofsd for %s: %w", dir, err)
 	}
 

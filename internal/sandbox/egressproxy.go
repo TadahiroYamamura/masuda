@@ -102,7 +102,11 @@ func EnsureEgressProxy() error {
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidPathVal); err != nil {
+	// Unlike the per-workspace processes, this one is host-wide and there is
+	// only ever one (see this function's doc comment), so the binary name is
+	// a sufficient identity -- there is no second egress proxy it could be
+	// confused with.
+	if err := startBackgroundProcess(cmd, pidPathVal, egressProxyBinary); err != nil {
 		return fmt.Errorf("starting egress-proxy: %w", err)
 	}
 

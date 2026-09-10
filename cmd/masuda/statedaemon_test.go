@@ -400,9 +400,15 @@ func writePID(t *testing.T, stateDir string, pid int) {
 // is our daemon" path without running a real one. `sh -c <script> <args...>`
 // puts the trailing arguments in $0/$1/... -- they never reach the script,
 // but they do land in /proc/<pid>/cmdline, which is what matters here.
+//
+// The script has to be a loop rather than a bare `sleep 30`: a shell whose
+// script is a single command execs it, replacing itself, and the markers go
+// with it. Every assertion here that expects *no* match would then hold for
+// the wrong reason, so the helper checks that its own process is actually
+// identifiable before handing it back.
 func fakeDaemonProcess(t *testing.T, stateDir string) *exec.Cmd {
 	t.Helper()
-	c := exec.Command("sh", "-c", "sleep 30", "internal", "statedaemon", "--state-dir", stateDir)
+	c := exec.Command("sh", "-c", "while :; do sleep 1; done", "internal", "statedaemon", "--state-dir", stateDir)
 	if err := c.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -410,6 +416,16 @@ func fakeDaemonProcess(t *testing.T, stateDir string) *exec.Cmd {
 		_ = c.Process.Kill()
 		_ = c.Wait()
 	})
+	// Start returns once the fork has happened, which is before the exec
+	// that replaces the child's argv -- until then /proc shows a copy of
+	// this test binary's own command line, not the one asked for here.
+	deadline := time.Now().Add(5 * time.Second)
+	for !isDaemonProcess(c.Process.Pid, stateDir) {
+		if time.Now().After(deadline) {
+			t.Fatalf("fakeDaemonProcess(%s) never became identifiable as a daemon -- the helper is broken, not the code under test", stateDir)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	return c
 }
 
