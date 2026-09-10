@@ -104,13 +104,5 @@ Discovery/Blueprint段階（ホスト側で動く、サンドボックスなし�
 
 ## 既知の問題
 
-未調査。修正時はここから消す。
-
-- **ゲート待機時の案内が、存在しないコマンドを提示する**: `masuda plan chat` / `masuda review chat` は CLI に存在せず（`masuda chat <workspace-id>` に統一済み）、以下の4箇所が生成する指示文にこの旧コマンド名が残っている。人間に打てないコマンドを案内している状態。
-  - `internal/hostloop/system_prompt.md.tmpl:20`（エージェントのシステムプロンプト）
-  - `orchestrator/investigate_plan_graph.py:494`（plan gate到達時のTASK.md）
-  - `orchestrator/implement_review_graph.py:1797`（plan gate再オープン時のTASK.md）
-  - `orchestrator/implement_review_graph.py:2333`（review gate到達時のTASK.md）
-
-  あわせて `orchestrator/tests/test_investigate_plan_graph.py:322` と `test_implement_review_graph.py:1588` が旧コマンド名をアサートしているため、修正時はテストも直す必要がある
+現在把握しているものは無い。
 
