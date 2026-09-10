@@ -32,8 +32,8 @@ Discovery↔Blueprintの往復、Build内のステップループ、Reviewのche
 Discovery/Blueprint段階は`orchestrator/investigate_plan_graph.py`、Build/Review段階は`orchestrator/implement_review_graph.py`が担当する。どちらもホスト上のPython venv（`internal/hostloop`の`ensureRuntime`が埋め込みから展開して用意する）で実行される。両ファイルは互いにimportし合わない独立したモジュールで、それぞれが同じ配線パターンを別々に持つ。
 
 - `detect_phase`ノード: 状態ディレクトリ・状態デーモンの中身から現在の`phase`（文字列）を判定する
-- `write_task_md`ノード: `phase`を見て対応するレンダラー関数（`_investigate_task`・`_plan_task`・`_implement_step_task`等）を呼び分ける単純なif/elif dispatchで`TASK.md`の内容を組み立て、書き出す（`investigate_plan_graph.py:516`、`implement_review_graph.py:2352`）。ゲート待機・`DONE`系の終端状態は`_TERMINAL`という`phase → 固定文面`の辞書で表現し、同じdispatchの中で分岐する
-- グラフ自体は`detect_phase → write_task_md → END`の2ノードのみ（`investigate_plan_graph.py:553`の`build_graph`、`implement_review_graph.py:2418`の`build_graph`）
+- `write_task_md`ノード: `phase`を見て対応するレンダラー関数（`_investigate_task`・`_plan_task`・`_implement_step_task`等）を呼び分ける単純なif/elif dispatchで`TASK.md`の内容を組み立て、書き出す（`investigate_plan_graph.py:537`、`implement_review_graph.py:1975`）。ゲート待機・`DONE`系の終端状態は`_TERMINAL`という`phase → 固定文面`の辞書で表現し、同じdispatchの中で分岐する
+- グラフ自体は`detect_phase → write_task_md → END`の2ノードのみ（`investigate_plan_graph.py:577`の`build_graph`、`implement_review_graph.py:2034`の`build_graph`）
 
 メインエージェントは受け取ったタスクに従うだけで、どちらの段階でもこの1往復（detect→render）がオーケストレーターの実行単位になる。Discovery/Blueprintのメインセッションは`TASK.md`をファイルとして読む（同一マシン）。Build/Reviewのメインセッションは`next_task`の戻り値を読む——`TASK.md`も従来どおり書かれるが、ホストの書き込みがゲストから見えるまでvirtiofsの属性キャッシュ分（実測0.5〜0.6秒）遅れるため、ファイルではなく戻り値が正となる。
 
@@ -44,9 +44,9 @@ Discovery/Blueprint段階は`orchestrator/investigate_plan_graph.py`、Build/Rev
 - Discovery/Blueprint: 固定値`ITERATION_BUDGET = 20`（調査/プランの往復`MAX_RETRIES = 3`に加え、plan gate再オープンの余裕を見込んだ値）
 - Build/Review: `_iteration_budget() = BASE_BUDGET(200) + PER_STEP_BUDGET(5 + 14観点 × 12) × plan/steps.jsonのステップ数`（ADR-0027）
 
-加算は実際にサブエージェントへ委譲する段階（`_SUBAGENT_PHASES`）でのみ行われ、ゲート待機や`DONE`系の終端状態は加算しない。`write_task_md`が`_record_iteration()`を呼ぶタイミングでカウントする（`investigate_plan_graph.py:161`が加算処理本体、呼び出しは`write_task_md`内。`implement_review_graph.py:624`）。Build/Review側の`_record_iteration(n)`は1ラウンドでn件のサブエージェントを並列委譲する場合（`review_batch`等、ADR-0021）にnをまとめて加算できるよう引数を取る。
+加算は実際にサブエージェントへ委譲する段階（`_SUBAGENT_PHASES`）でのみ行われ、ゲート待機や`DONE`系の終端状態は加算しない。`write_task_md`が`_record_iteration()`を呼ぶタイミングでカウントする（`investigate_plan_graph.py:166`が加算処理本体、呼び出しは`write_task_md`内。`implement_review_graph.py:665`）。Build/Review側の`_record_iteration(n)`は1ラウンドでn件のサブエージェントを並列委譲する場合（`review_batch`等、ADR-0021）にnをまとめて加算できるよう引数を取る。
 
-超過時は、各段階が持つredoループ（`MAX_RETRIES`・`MAX_REVIEW_RETRIES`）とは独立した最終防衛ラインとして、`write_task_md`冒頭で`phase`を`iteration_budget_exceeded`に差し替えて`DONE (blocked)`で停止する（`investigate_plan_graph.py:518`・`implement_review_graph.py:2358`）。redoループが無限ループを起こしていても、この上限だけは必ず効く。
+超過時は、各段階が持つredoループ（`MAX_RETRIES`・`MAX_REVIEW_RETRIES`）とは独立した最終防衛ラインとして、`write_task_md`冒頭で`phase`を`iteration_budget_exceeded`に差し替えて`DONE (blocked)`で停止する（`investigate_plan_graph.py:540`・`implement_review_graph.py:1982`）。redoループが無限ループを起こしていても、この上限だけは必ず効く。
 
 この予算が数えるのは**起動回数**だけで、1回の起動の内側は数えない。サブエージェントが1起動の中で何ターン探索しようと1単位として計上される。1起動内の暴走を止める機構はオーケストレーター側に存在せず、探索範囲を絞るようプロンプトで指示する自主規制のみで対応している（ADR-0011が想定する2層構造のうち、外側＝起動回数の上限だけが機構として実装された状態。内側の上限が必要になるのは主に横断的チェックのexplorerで、`docs/design/review.md`を参照）。
 

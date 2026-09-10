@@ -67,7 +67,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## 機械的バックストップ・plan gate再オープン
 
-- `_mechanical_deviation`（`:532`）がADR-0010のバックストップ本体。
+- `_mechanical_deviation`（`:542`）がADR-0010のバックストップ本体。
   `git status --porcelain --untracked-files=all`を計画済み`files`集合と突き合わせ、計画外ファイルが
   あれば逸脱理由の文字列を返す。commit範囲を決める`_committable_files`とは同じ実測を
   見ているが役割が違う——こちらは「承認された範囲の外に出たか」を人間に上げるための判定、
@@ -77,9 +77,9 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   (b) `plan/steps.json`の`expected_byproducts`にマッチするファイル
   （`_is_expected_byproduct`、`_glob_to_regex`が標準globセマンティクス——`*`は`/`を
   跨がず`**`は跨ぐ——でマッチ、ADR-0028）。
-- gate再オープンの解決ロジックは`_resolve_gate_reopen`（`:1146`）に共通化されている。
+- gate再オープンの解決ロジックは`_resolve_gate_reopen`（`:947`）に共通化されている。
   呼び出し元は5箇所: `_resolve_self_report_reopen`（自己申告の逸脱・ビルド/テスト
-  失敗）、`_resolve_mechanical_reopen`（`:1255`、機械的検知の逸脱）、
+  失敗）、`_resolve_mechanical_reopen`（`:1072`、機械的検知の逸脱）、
   `_resolve_interim_unresolved_reopen`（次節）。
 - `_resolve_gate_reopen`は3状態を扱う: (1) `DEVIATION_KEY`未設定＝初回検知——
   `plan_reopened`フェーズへ（`write_task_md`が`DEVIATION_KEY`を書いてゲートを開く）、
@@ -97,10 +97,10 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## trigger式途中レビュー
 
-- `_detect_interim_review_phase`（`:1314`）がステップのdiffに対する軽量レビューを
+- `_detect_interim_review_phase`（`:1126`）がステップのdiffに対する軽量レビューを
   駆動する。`trigger`をfrontmatterに持つ観点（`TRIGGERED_PERSPECTIVE_IDS`）が1つも
   なければ、判定自体をスキップして直接`_finalize_step`へ進む。
-- トリガー判定はステップごとに1回のバッチ呼び出し（`_trigger_match_task`、`:2061`）。
+- トリガー判定はステップごとに1回のバッチ呼び出し（`_trigger_match_task`、`:1687`）。
   `trigger`付き全観点の一覧とそのステップのdiffを1つのサブエージェント呼び出しに渡し、
   該当する観点idの配列を`trigger_match.json`へ書かせる（観点ごとの個別呼び出しはしない、
   ADR-0027）。
@@ -109,7 +109,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   `results_dir=_interim_step_dir(step_index)`（`interim_review/step{N}/`、
   `review_results/`とは別ディレクトリ）に向けて再利用して解決する。往復回数の上限
   （`MAX_REVIEW_RETRIES`=2）も共通。
-- 自動修正で収束しない指摘は`_resolve_interim_unresolved_reopen`（`:1277`）が
+- 自動修正で収束しない指摘は`_resolve_interim_unresolved_reopen`（`:1094`）が
   plan gate再オープンへ合流する（専用のエスカレーション体系が未着手なための暫定措置、
   ADR-0027。triageゲート・ADR-0029とは別経路）。承認→指摘を
   `INTERIM_CARRIED_FINDINGS_KEY`に積んでそのステップをそのままcommit、却下→
@@ -121,7 +121,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## G2却下時のredo
 
-- `_detect_post_implementation_phase`（`:1113`）が、全ステップcommit済み後のReview段階
+- `_detect_post_implementation_phase`（`:911`）が、全ステップcommit済み後のReview段階
   進行を判定する。`REVIEW_GATE_KEY`のstatusが`rejected`なら、review状態を
   `_clear_review_state()`で消去し、`REVIEW_FEEDBACK_KEY`に却下理由を書いて
   `implement_g2_redo`フェーズへ遷移する（ADR-0013）。

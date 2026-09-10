@@ -16,7 +16,7 @@
 - **`List(repoRoot)`**（`:253`）/**`ListAll()`**（`:224`）: 状態ディレクトリは全リポジトリ共有の1箇所（`~/.local/share/masuda/workspaces/`）にフラットに並ぶため、`List`は`Info.RepoRoot`が一致するものだけへ絞り込むフィルタでしかない。`ListAll`は`masuda update`（ADR-0032、CLIバイナリ差し替え前の「進行中ワークスペースが無いか」チェック）がリポジトリを問わず全件を見る必要があるために存在する。どちらも`CreatedAt`降順ソート——IDが完全な乱数（ADR-0030）になったため、ディレクトリ名（`os.ReadDir`のファイル名順）はもはや意味のある順序を持たない。
 - **`Remove(id)`**（`:271`）: 状態ディレクトリを`os.RemoveAll`するだけ。対応するgitクローン（`internal/worktree.Remove`）とサンドボックス/ホストループの停止は呼び出し側の責任——このパッケージは関知しない。
 - **`Status(id)`**（`:287`）: `TASK.md`の先頭行（`#`見出し）を読んで返すだけの薄い関数。オーケストレーター（`orchestrator/*.py`）が毎ループ`TASK.md`を書き換えるため、フェーズ判定ロジックをGo側で再実装せずに済む。`workspace list`表示用。
-- **`FormatEntries`**（`:314`）: `masuda workspace list`が表示する`text/tabwriter`整形テーブル。`EntryStatus`（`:305`）は`Info`に`TaskStatus`（`Status(id)`）と`Running`を足したもの——`Running`はこのパッケージでは計算しない（`internal/hostloop`・`internal/sandbox`を使う必要があるが、`internal/hostloop`が既に`internal/workspace`をimportしているため、逆方向にimportすると循環importになる。呼び出し元の`cmd/masuda`が計算して渡す）。
+- **`FormatEntries`**（`:326`）: `masuda workspace list`が表示する`text/tabwriter`整形テーブル。`EntryStatus`（`:317`）は`Info`に`TaskStatus`（`Status(id)`）と`Running`を足したもの——`Running`はこのパッケージでは計算しない（`internal/hostloop`・`internal/sandbox`を使う必要があるが、`internal/hostloop`が既に`internal/workspace`をimportしているため、逆方向にimportすると循環importになる。呼び出し元の`cmd/masuda`が計算して渡す）。
 
 ## `masuda workspace` CLI
 
@@ -61,7 +61,7 @@
 
 - **`Dir(repoRoot, id)`**（`:42`）: クローンの配置先は`repoRoot/.masuda/worktrees/<id>`。
 - **`Create(repoRoot, id, branch, base)`**（`:76`）: `Dir`が既に存在すればそのパスをそのまま返す（冪等、エラーにしない）。branchが既存なら`git clone --local --branch <branch> <repoRoot> <dir>`。branchが未作成なら`git clone --local --branch <base> <repoRoot> <dir>`してからクローン内で`git checkout -b <branch>`する。どちらの経路でも最後に`syncMasudaConfig(repoRoot, dir)`を呼ぶ。
-- **`syncMasudaConfig`**（`:140`）: 次の3つをrepoRootの現在のワーキングツリー内容で**常に上書き**する（ADR-0036）。
+- **`syncMasudaConfig`**（`:141`）: 次の3つをrepoRootの現在のワーキングツリー内容で**常に上書き**する（ADR-0036）。
   - `.masuda/settings.json`（`config.SettingsPath`）
   - `.masuda/reviews/`（`perspectives.ReviewsDir`。`copyDirIfExists`が先にdst側を`RemoveAll`してから丸ごとミラーする——リポジトリ側で削除された観点ファイルがクローン側に残り続けることを防ぐ）
   - `.masuda/.gitignore`（存在する場合のみ、`config.GitignorePath`）
