@@ -102,10 +102,11 @@
 
 ### 状態デーモン・MCP
 
-- **[0040](0040-per-workspace-state-daemon-for-masuda-owned-state.md)** masuda自身が読み書きする状態はワークスペース単位の常駐デーモンで管理する — *一部改訂: 0041, 0042, 0055*
+- **[0040](0040-per-workspace-state-daemon-for-masuda-owned-state.md)** masuda自身が読み書きする状態はワークスペース単位の常駐デーモンで管理する — *一部改訂: 0041, 0042, 0055, 0061*
 - **[0041](0041-mcp-protocol-with-trusted-and-curated-surfaces.md)** デーモンの通信はMCPに統一し、trusted用フルセットとcurated setの2面をUDSで公開する — *一部改訂: 0043*
 - **[0043](0043-child-mcp-server-aggregator-with-project-user-config-split.md)** 子MCPサーバーのアグリゲータ化は宣言と承認を分離し、宣言のハッシュ値で承認を紐付ける
 - **[0055](0055-gate-marker-is-an-unconsumed-decision-waited-on-by-presence.md)** ゲートマーカーは「未消費の決定」だけを意味し、待機はその存在を条件とし、消費は原子的に行う
+- **[0061](0061-daemon-liveness-by-socket-pid-only-after-proc-identification.md)** 状態デーモンの生存判定はソケットへの接続で行い、PIDは`/proc`で同定してから停止にだけ使う
 
 ## 新しいADRを書くとき
 

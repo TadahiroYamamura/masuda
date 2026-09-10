@@ -105,7 +105,11 @@ Claude Code自身のMCPクライアントは、ツール呼び出しに対して
 
 CLIとしては`masuda internal statedaemon --state-dir <dir> --repo-root <path>`（hidden subcommand、`newInternalStatedaemonCommand`）がフォアグラウンドでこれを実行する。実際の起動・停止はこれを包む2つの関数から行われる。
 
-- **`startDaemon(id)`**: `exec.Command`で自分自身（`os.Executable()`）を`internal statedaemon --state-dir <dir> --repo-root <repoRoot>`付きで`Setsid: true`のデタッチプロセスとして起動し、標準出力/標準エラーを`daemon.log`へ、PIDを`daemon.pid`へ書く。`daemonAlive(stateDir)`（PIDファイル読み取り＋signal 0による生死確認、実際にはシグナルを送らないPOSIXの存在確認）が真なら何もしない冪等な操作——`masuda workspace create`（`cmd/masuda/workspace.go`）と`masuda plan start`（`cmd/masuda/plan.go`、新規・再開どちらも）の両方から無条件に呼ばれる
-- **`stopDaemon(id)`**: `daemon.pid`のPIDへ`SIGTERM`を送る。PIDファイルが無ければ（この機能追加以前に作られたワークスペース）成功扱い。`masuda workspace remove`（`cmd/masuda/workspace.go`）から呼ばれる
+- **`startDaemon(id)`**: `exec.Command`で自分自身（`os.Executable()`）を`internal statedaemon --state-dir <dir> --repo-root <repoRoot> --worktree-dir <dir>`付きで`Setsid: true`のデタッチプロセスとして起動し、標準出力/標準エラーを`daemon.log`へ、PIDを`daemon.pid`へ書く。起動前に2段階を踏む冪等な操作（ADR-0061）:
+  1. `daemonServing(stateDir)`がtrustedソケットへ`net.DialTimeout`（1秒）。接続できれば何もしない。**PIDは生存判定に使わない**
+  2. 接続できなければ`reclaimStaleDaemon(stateDir)`。`daemon.pid`のPIDが`isDaemonProcess`（`/proc/<pid>/cmdline`のargvに`statedaemon`と当該状態ディレクトリが独立した引数として現れるか）で同定できた場合だけ`SIGTERM`を送り、終了を待つ（`daemonStopTimeout`＝5秒）。同定できなければ何もしない
+- **`stopDaemon(id)`**: `daemon.pid`のPIDを`isDaemonProcess`で同定してから`SIGTERM`を送る。PIDファイルが無ければ（この機能追加以前に作られたワークスペース）成功扱い。同定できないPIDには何もしない——PID再利用時に無関係なプロセスを殺さないため（ADR-0061）
+
+呼び出し元は、デーモンを必要とする入口すべて。起動側が`masuda workspace create`（`cmd/masuda/workspace.go`）・`masuda plan start`（`cmd/masuda/plan.go`、新規・再開どちらも）・`ensureGateWorkspace`（`cmd/masuda/gate.go`。plan/review/triageのゲート操作コマンドが必ず通る）・`masuda sandbox start`（`cmd/masuda/sandbox.go`。ゲストのmcp-relayがcuratedソケットを叩くため）。停止側が`masuda workspace remove`と`finalizeReviewApproval`（`cmd/masuda/gate.go`。承認はワークスペースが終わるもう一方の経路）
 
 状態ディレクトリ直下の関連ファイルは`daemon.pid`・`daemon.log`・`store/`（KVストアの永続化先ディレクトリ）の3つ（`daemonPIDName`/`daemonLogName`/`daemonStoreDirName`）。デーモンプロセス自体にスーパーバイザはなく、クラッシュしても次回`startDaemon`が呼ばれるまで気付かれない。

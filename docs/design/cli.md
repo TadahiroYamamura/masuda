@@ -11,7 +11,7 @@
 - **`resolveImage`/`resolveBase`**（`cmd/masuda/main.go:92,142`）: `--image`/`--base`（または`--into`）系フラグの解決。フラグが明示的に渡されていれば（`cmd.Flags().Changed`）その値を最優先で返し、渡されていなければ`.masuda/settings.json`の値、それも空なら呼び出し側が渡した組み込みデフォルトを返す。優先順位はCLIフラグ＞`settings.json`＞デフォルトの一本の連鎖。スキーマ・`settings.json`側の詳細は`docs/design/config.md`を参照
 - **`completeWorkspaceIDs`**（`cmd/masuda/main.go:115`）: 先頭引数が`<workspace-id>`であるほぼ全サブコマンド（chat、plan/review/triage show|approve|reject等、sandbox start|stop、workspace merge|remove等）が共有するシェル補完関数。`internal/workspace.List`が返す現在のリポジトリのワークスペース一覧からprefix一致するIDを返すだけで、リポジトリ外や一覧取得失敗時は補完候補なしにフォールバックする（エラーを表面化しない）
 - **`repoRoot`**（`cmd/masuda/main.go:68`）: `git rev-parse --show-toplevel`でカレントの masuda チェックアウトのルートを引く。worktree自体ではなく、worktreeの作成元になる「メインチェックアウト」を指す
-- **`gateStateDir`**（`cmd/masuda/gate.go:40`）: ワークスペースIDから状態ディレクトリを引く、plan/review/triageのゲート操作コマンド共通の入口。解決に使うのはIDだけで`repoRoot`を経由しない（状態ディレクトリはリポジトリ外のグローバルな場所にあるため）——したがってゲート操作はgitリポジトリの外からでも動く。`review approve`が反映先とするリポジトリも同様に`workspace.json`の`repo_root`から引く（`finalizeReviewApproval`）
+- **`ensureGateWorkspace`**（`cmd/masuda/gate.go:51`）: ワークスペースIDから状態ディレクトリを引き、あわせて状態デーモンを起動する（`startDaemon`、既に応答していれば何もしない）、plan/review/triageのゲート操作コマンド共通の入口。ゲートのマーカーはデーモン越しにしか読み書きできないため、デーモンが落ちていると承認も却下もできない（ADR-0061）。解決に使うのはIDだけで`repoRoot`を経由しない（状態ディレクトリはリポジトリ外のグローバルな場所にあるため）——したがってゲート操作はgitリポジトリの外からでも動く。`review approve`が反映先とするリポジトリも同様に`workspace.json`の`repo_root`から引く（`finalizeReviewApproval`）
 
 ## `masuda chat`: セッションアタッチ
 
@@ -69,7 +69,7 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 ### `masuda review`
 
-`show|approve|reject <id>`もゲート共通コマンド。`approve`だけは`n == gate.Review`のとき追加で`finalizeReviewApproval`（`cmd/masuda/gate.go:119`）を実行する——サンドボックス停止（起動中なら）→`worktree.Commit`（Review段階のfixerが加えた分だけ。Build段階の各ステップは既に個別commit済み）→`worktree.Pull`（fast-forwardのみ）→`worktree.Remove`（`deleteBranch=false`でブランチ自体は残す、ADR-0023）→`workspace.Remove`、の順。いずれかが失敗すると後続は実行されない。詳細は`docs/design/gates.md`を参照。
+`show|approve|reject <id>`もゲート共通コマンド。`approve`だけは`n == gate.Review`のとき追加で`finalizeReviewApproval`（`cmd/masuda/gate.go:133`）を実行する——サンドボックス停止（起動中なら）→`worktree.Commit`（Review段階のfixerが加えた分だけ。Build段階の各ステップは既に個別commit済み）→`worktree.Pull`（fast-forwardのみ）→`worktree.Remove`（`deleteBranch=false`でブランチ自体は残す、ADR-0023）→`workspace.Remove`、の順。いずれかが失敗すると後続は実行されない。詳細は`docs/design/gates.md`を参照。
 
 `start <branch-or-ref>`は既存の（新規作成ではない）ブランチに対し、Provision〜Reviewの機構を使い回してReviewだけを単体実行する入口。`branch-or-ref`が存在しなければエラー（`masuda plan start`と違い、存在しないブランチを新規作成することはしない）。`seedReviewOnly`で`implementation_result.json`を`{"status":"done"}`で事前投入することでBuild段階を丸ごとスキップし、直接サンドボックスを起動してReviewへ入る。中身の詳細（diff基準refの違い、機械的バックストップが自動スキップされる理由）は`docs/design/review.md`「レビュー単体実行」節を参照。
 
