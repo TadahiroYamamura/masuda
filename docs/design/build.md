@@ -41,17 +41,22 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   でスコープしても別タスクのtagが範囲的に混入しうる余地への保険。tagは`_finalize_step`
   からのみ`_tag_step`が打つ——スコープ内が無変更のステップは空commitになるなど、
   commit数とステップ数は一般には一致しないため。
-- 1ステップの処理順序: 実装への委譲（`_implement_step_task`、`:1502`）→
+- 1ステップの処理順序: 実装への委譲（`_implement_step_task`、`:1320`）→
   `implementation_result.json`の自己申告状態で分岐（`done`/`needs_plan_review`/
   `build_test_failed`）→ `done`なら機械的バックストップ（次節）→ 逸脱なしなら
   trigger式途中レビュー（後述の節）→ `_finalize_step`がcommitしてtagを打つ。commit対象は
   `_committable_files`が決める——**実測（`git status`）∩（このステップの計画ファイル ∪
   承認済み逸脱）**であって、エージェントの申告ではない（ADR-0058）。`git add -A`は使わない。
-- `_implement_step_task`が生成するプロンプトは、このステップの`files`一覧・
-  `_render_plan_text()`によるプラン全体の参考情報・逸脱時の自己申告手順（ADR-0010）・
-  ビルド/テスト自己修正ループの手順（ADR-0009、最大3回）・完了条件
-  （`_implementation_completion_section`: commitメッセージファイルと`{"status":"done"}`を
-  書き出す。変更ファイルの申告は求めない——commit対象は実測から決まるため）を含む。
+- `_implement_step_task`が生成するプロンプトは、依存解決とLSPの利用方法を指示する
+  共有節`_LSP_AND_DEPENDENCY_SECTION`（利用可能ならClaude Code純正のLSPツールを使う、
+  LSPが正しく機能するには依存解決が必要な場合があり未セットアップならCLAUDE.md・
+  README等を参照して行う、外部ネットワークに阻まれた場合は再試行せずLSP無しで
+  進める、という3点）に加えて、このステップの`files`一覧・`_render_plan_text()`による
+  プラン全体の参考情報・逸脱時の自己申告手順（ADR-0010）・ビルド/テスト自己修正
+  ループの手順（ADR-0009、最大3回）・完了条件（`_implementation_completion_section`:
+  commitメッセージファイルと`{"status":"done"}`を書き出す。変更ファイルの申告は
+  求めない——commit対象は実測から決まるため）を含む。同じ共有節は、G2却下時のredo
+  （後述、`_implement_g2_redo_task`）が生成するプロンプトにも含まれる。
 - ビルド/テスト自己修正ループの節には`_PRIVILEGED_COMMAND_SECTION`が続く。root権限や
   Dockerデーモンを要するテストはこのVMでは動かないため、宣言・承認済みの特権コマンドを
   `run_privileged_command`で実行するか、それが無ければ自己修正ループを空回りさせずに
@@ -62,7 +67,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## 機械的バックストップ・plan gate再オープン
 
-- `_mechanical_deviation`（`:532`）がADR-0010のバックストップ本体。
+- `_mechanical_deviation`（`:542`）がADR-0010のバックストップ本体。
   `git status --porcelain --untracked-files=all`を計画済み`files`集合と突き合わせ、計画外ファイルが
   あれば逸脱理由の文字列を返す。commit範囲を決める`_committable_files`とは同じ実測を
   見ているが役割が違う——こちらは「承認された範囲の外に出たか」を人間に上げるための判定、
@@ -72,9 +77,9 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   (b) `plan/steps.json`の`expected_byproducts`にマッチするファイル
   （`_is_expected_byproduct`、`_glob_to_regex`が標準globセマンティクス——`*`は`/`を
   跨がず`**`は跨ぐ——でマッチ、ADR-0028）。
-- gate再オープンの解決ロジックは`_resolve_gate_reopen`（`:1146`）に共通化されている。
+- gate再オープンの解決ロジックは`_resolve_gate_reopen`（`:947`）に共通化されている。
   呼び出し元は5箇所: `_resolve_self_report_reopen`（自己申告の逸脱・ビルド/テスト
-  失敗）、`_resolve_mechanical_reopen`（`:1255`、機械的検知の逸脱）、
+  失敗）、`_resolve_mechanical_reopen`（`:1072`、機械的検知の逸脱）、
   `_resolve_interim_unresolved_reopen`（次節）。
 - `_resolve_gate_reopen`は3状態を扱う: (1) `DEVIATION_KEY`未設定＝初回検知——
   `plan_reopened`フェーズへ（`write_task_md`が`DEVIATION_KEY`を書いてゲートを開く）、
@@ -92,10 +97,10 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## trigger式途中レビュー
 
-- `_detect_interim_review_phase`（`:1314`）がステップのdiffに対する軽量レビューを
+- `_detect_interim_review_phase`（`:1126`）がステップのdiffに対する軽量レビューを
   駆動する。`trigger`をfrontmatterに持つ観点（`TRIGGERED_PERSPECTIVE_IDS`）が1つも
   なければ、判定自体をスキップして直接`_finalize_step`へ進む。
-- トリガー判定はステップごとに1回のバッチ呼び出し（`_trigger_match_task`、`:2061`）。
+- トリガー判定はステップごとに1回のバッチ呼び出し（`_trigger_match_task`、`:1687`）。
   `trigger`付き全観点の一覧とそのステップのdiffを1つのサブエージェント呼び出しに渡し、
   該当する観点idの配列を`trigger_match.json`へ書かせる（観点ごとの個別呼び出しはしない、
   ADR-0027）。
@@ -104,7 +109,7 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
   `results_dir=_interim_step_dir(step_index)`（`interim_review/step{N}/`、
   `review_results/`とは別ディレクトリ）に向けて再利用して解決する。往復回数の上限
   （`MAX_REVIEW_RETRIES`=2）も共通。
-- 自動修正で収束しない指摘は`_resolve_interim_unresolved_reopen`（`:1277`）が
+- 自動修正で収束しない指摘は`_resolve_interim_unresolved_reopen`（`:1094`）が
   plan gate再オープンへ合流する（専用のエスカレーション体系が未着手なための暫定措置、
   ADR-0027。triageゲート・ADR-0029とは別経路）。承認→指摘を
   `INTERIM_CARRIED_FINDINGS_KEY`に積んでそのステップをそのままcommit、却下→
@@ -116,12 +121,12 @@ frontmatterの動的ロード・ゲートマーカーの読み書きは本ファ
 
 ## G2却下時のredo
 
-- `_detect_post_implementation_phase`（`:1113`）が、全ステップcommit済み後のReview段階
+- `_detect_post_implementation_phase`（`:911`）が、全ステップcommit済み後のReview段階
   進行を判定する。`REVIEW_GATE_KEY`のstatusが`rejected`なら、review状態を
   `_clear_review_state()`で消去し、`REVIEW_FEEDBACK_KEY`に却下理由を書いて
   `implement_g2_redo`フェーズへ遷移する（ADR-0013）。
 - `implement_g2_redo`はステップ機構を経由しない単発の再実装パス
-  （`_implement_g2_redo_task`、`:1747`）。全ステップが既にcommit済みで「次のステップ」が
+  （`_implement_g2_redo_task`、`:1375`）。全ステップが既にcommit済みで「次のステップ」が
   存在しないため、プラン全体スコープで却下フィードバックへの対応を1回のサブエージェント
   呼び出しに委譲する（ADR-0027）。
 - `implement_g2_redo`中の機械的バックストップは、単一ステップの`files`ではなく全ステップ

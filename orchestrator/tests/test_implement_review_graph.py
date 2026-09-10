@@ -1848,6 +1848,70 @@ def test_cross_cutting_verify_task_includes_triage_self_report_section():
     assert str(irg.TRIAGE_CONCERN_JSON) in content
 
 
+# --- _LSP_AND_DEPENDENCY_SECTION: ADR-0015 (tool/language non-specific) and
+# ADR-0003 (mechanical checks stay diff-only, no LSP guidance) -------------
+
+def test_implement_step_task_includes_lsp_and_dependency_guidance():
+    write_plan()
+    content = irg._implement_step_task(0)
+    assert "LSP" in content
+    assert "依存解決" in content
+
+
+def test_implement_g2_redo_task_includes_lsp_and_dependency_guidance():
+    write_plan()
+    content = irg._implement_g2_redo_task("フィードバック")
+    assert "LSP" in content
+    assert "依存解決" in content
+
+
+def test_cross_cutting_explore_task_includes_lsp_and_dependency_guidance():
+    init_git_repo()
+    content = irg._cross_cutting_explore_task()
+    assert irg._LSP_AND_DEPENDENCY_SECTION in content
+
+
+def test_cross_cutting_verify_task_includes_lsp_and_dependency_guidance():
+    init_git_repo()
+    write_cross_cutting_findings([])
+    content = irg._cross_cutting_verify_task()
+    assert "LSP" in content
+    assert "依存解決" in content
+
+
+def test_review_perspective_task_omits_lsp_guidance():
+    """ADR-0003: the 14 mechanical-check perspectives are diff-only, single
+    -shot judgments with no Bash/Read access -- recommending LSP tooling
+    here would be misleading, since the subagent has no way to invoke it."""
+    content = irg._review_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert "LSP" not in content
+
+
+def test_check_perspective_task_omits_lsp_guidance():
+    write_result("p00", 1)
+    content = irg._check_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert "LSP" not in content
+
+
+def test_fix_perspective_task_omits_lsp_guidance():
+    write_result("p00", 1, has_issues=True)
+    content = irg._fix_perspective_task(irg.REVIEW_RESULTS_DIR, "p00", 1, 1, "label")
+    assert "LSP" not in content
+
+
+def test_recheck_perspective_task_omits_lsp_guidance():
+    content = irg._recheck_perspective_task(irg.REVIEW_RESULTS_DIR, "diff", "p00", 1, "label")
+    assert "LSP" not in content
+
+
+def test_trigger_match_task_omits_lsp_guidance():
+    """トリガー判定（フェーズ4、ADR-0027）もdiffのみを見せる単発の機械的判定であり、
+    探索用のLSP案内は対象外（ADR-0003の2区分を固定する）。"""
+    init_git_repo()
+    content = irg._trigger_match_task(0)
+    assert "LSP" not in content
+
+
 def test_prompt_paths_are_the_state_dir_itself_by_default():
     """MASUDA_GUEST_STATE_DIR無しなら、書き手と読み手が同じマシンにいる
     （テスト・フェーズ1-2）ときと同じく、STATE_DIRがそのまま出る。"""

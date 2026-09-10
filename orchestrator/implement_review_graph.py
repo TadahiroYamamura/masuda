@@ -1265,6 +1265,15 @@ _TRIAGE_SELF_REPORT_SECTION = f"""## セキュリティ上の懸念の自己申�
 {{"agent": "<自分の役割>", "phase": "<今何をしていたか>", "description": "<何が疑わしいか、具体的に>", "evidence": "<疑わしい箇所の引用>", "reported_at": "<ISO8601形式の現在時刻>"}}"""
 
 
+_LSP_AND_DEPENDENCY_SECTION = """## LSPと依存解決
+利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を使うこと。
+LSPが正しく機能するには依存解決が必要な場合がある。環境が未セットアップの場合、
+CLAUDE.md・README等を参照して依存解決（`go mod download`・`npm install`等）を行ってから
+使うこと。依存解決が外部ネットワークに阻まれた場合、このVMのegressは既定で拒否のため
+再試行しても解決しない。LSPは補助であり必須ではないので、その場合はLSP無しで
+Read/Grep/Globで進めてよい。"""
+
+
 _PRIVILEGED_COMMAND_SECTION = """## rootやDockerを要するテスト（ADR-0053）
 このVMにはroot権限もDockerデーモンも無い。テストがDockerを要求する場合（testcontainers等）、
 パッケージのインストールや`dockerd`の起動を試みても解決しない。
@@ -1331,9 +1340,7 @@ VM内で完結するため、フェーズ1-2のようなBash制限は不要。wr
 通常のサブエージェントでよい。実装対象のコードはカレントディレクトリ＝`/workspace`に
 対して行うこと）。
 
-## 実装前の準備
-環境が未セットアップの場合、CLAUDE.md・README等を参照して依存解決
-（`go mod download`・`npm install`等）を行ってから実装に入ること。
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## このステップの内容
 {step.get("description", "")}
@@ -1379,6 +1386,8 @@ def _implement_g2_redo_task(feedback: str) -> str:
 
 これは既に全ステップがcommit済みの実装に対するG2からの差し戻しであり、PLAN.mdの
 ステップ分解を経由しない単発の修正である。
+
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## G2却下フィードバック
 {feedback}
@@ -1721,14 +1730,11 @@ def _cross_cutting_explore_task() -> str:
 問題を探索させ、結果を`{_agent_path(CROSS_CUTTING_FINDINGS_JSON)}`に書き出させよ。
 
 これは14観点の機械的チェックとは異なる種類のチェックである。機械的チェックは
-diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Glob、および
-利用可能ならClaude Code純正のLSPツール（find references・go to definition等）を
-使い、diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
+diffのみを見せる単発呼び出しだが、こちらはBash・Read・Grep・Globを使い、
+diffだけでは見えない「ファイルAとファイルBで実装方法が違う」といった
 問題を多ターンで探索してよい。
 
-## 準備
-LSPが正しく機能するには依存解決が必要な場合がある。`go mod download`・
-`npm install`等、必要なら実行してから探索に入ること。
+{_LSP_AND_DEPENDENCY_SECTION}
 
 ## 探索の起点・範囲
 以下のdiffを起点にすること。diffで変更されたファイルが依拠する既存コード
@@ -1777,6 +1783,8 @@ ADR-0011により、この種の複雑な指摘は自動修正しない（常に
 このステップの役割は「本当に妥当な指摘か（誤検知でないか）」を1回だけ独立検証
 することであり、redo（往復）は行わない——確認できなければその指摘は破棄する。
 
+{_LSP_AND_DEPENDENCY_SECTION}
+
 ## 検証対象の指摘
 ```json
 {findings}
@@ -1788,9 +1796,9 @@ ADR-0011により、この種の複雑な指摘は自動修正しない（常に
 ```
 
 ## 検証方針
-LSP（find references・go to definition等）や実際のコードを確認し、指摘が
-誤検知でないか判断すること。判断に確信が持てない指摘は含めないこと
-（人間に無駄な確認をさせないため、確信のあるものだけを残す）。
+実際のコードを確認し、指摘が誤検知でないか判断すること。判断に確信が
+持てない指摘は含めないこと（人間に無駄な確認をさせないため、確信のある
+ものだけを残す）。
 
 ## 出力するJSONのスキーマ（配列。確認できたものだけ抽出、全て誤検知なら空配列）
 [
