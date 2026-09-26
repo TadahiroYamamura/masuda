@@ -80,7 +80,7 @@ sudo systemctl restart masuda-vm-host    # 手動で再適用したいとき
 - `fakeroot`・`e2fsprogs`のインストール（`internal/rootfs.Build`がDockerイメージの所有権を保ったままext4イメージへ変換するために使用）
 - `vmlinuz`（ゲストOS用カーネル）を、一般ユーザーが読める場所へ複製（インストール直後はroot:root・mode 600のため）
 - TAP＋ブリッジ（`br-masuda0`）＋outbound NATのセットアップ（個々のワークスペース用TAPデバイスは`masuda-net-helper`が動的に作成・削除する、ブリッジ自体が複数VMで共有されるホスト単位のインフラ）
-- `masuda-net-helper`のビルド＋`setcap`: `internal/sandbox`のTAP管理（`EnsureTap`/`ReleaseTap`）が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）
+- `masuda-net-helper`のビルド＋`setcap`: `internal/microvm`のTAP管理が使う専用ヘルパーバイナリ。`CAP_NET_ADMIN`をこのバイナリ単体に付与する（masuda本体には付与しない——ブラスト半径を絞るため、詳細は`cmd/masuda-net-helper/main.go`のパッケージdocコメント参照）
 - `dnsmasq`のインストール＋設定＋有効化: `br-masuda0`だけにバインドしたDHCPサーバー。VMゲストのIPアドレスは`systemd-networkd`のDHCPクライアントで自動取得する（複数ワークスペースが並行稼働してもmasuda側で独自のIP割り当て機構を持たずに済む）
 
 ### VMゲストSSH鍵

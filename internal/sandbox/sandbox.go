@@ -3,7 +3,9 @@
 // a Docker image (internal/rootfs.Build converts it to a bootable rootfs --
 // `docker build`/`docker export` still run, but never `docker run`: nothing
 // here executes as a container any more, see the Backend interface's own
-// doc comment for the history).
+// doc comment for the history). Booting and tearing the VM down is
+// internal/microvm's job; this package supplies what is masuda's own
+// around it -- see that package's doc comment for where the line is.
 //
 // Everything here is keyed by workspace ID, not branch name: two workspaces
 // targeting the same branch (roadmap step 7) must get independent sandboxes,
@@ -12,7 +14,6 @@ package sandbox
 
 import (
 	"net"
-	"regexp"
 )
 
 // tmuxSession must match runtime/entrypoint.sh's SESSION.
@@ -24,13 +25,6 @@ type Handle struct {
 	ContainerName string
 	HostPort      int
 }
-
-// nameSanitizer keeps generated names (TapName, and previously
-// DockerBackend's ContainerName) within the character sets their respective
-// namespaces allow; workspace IDs are already sanitized to a safe subset
-// (internal/workspace.NewID), but this stays defensive in case that ever
-// changes.
-var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
 // freePort asks the OS for an unused TCP port. There's an inherent TOCTOU
 // race between closing this listener and whatever binds the port next

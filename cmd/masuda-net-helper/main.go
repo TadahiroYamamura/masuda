@@ -12,7 +12,7 @@
 // propagate to an exec.Command child.
 //
 // Not part of the public CLI surface -- masuda's Go code invokes it (see
-// internal/sandbox.EnsureTap/ReleaseTap), a human isn't meant to type it
+// internal/microvm's ensureTap/releaseTap), a human isn't meant to type it
 // directly. Requires, once, after building it (and again after every
 // rebuild, which clears the capability):
 //
@@ -79,7 +79,7 @@ func isMasudaTap(link netlink.Link) bool {
 
 // createTap is idempotent: if name already exists *and is ours* (see
 // isMasudaTap), it's left alone. This is a defensive fallback only --
-// internal/sandbox.EnsureTap always deletes any stale leftover before
+// internal/microvm's ensureTap always deletes any stale leftover before
 // calling this, so the "already exists" path here is normally unreachable;
 // it's here so a racing/duplicate call can't fail loudly for no operational
 // reason. If it exists and isn't ours, that's a name collision with
@@ -162,7 +162,7 @@ func createTap(name, bridge, ownerUser string) error {
 
 // deleteTap is not an error if name is already gone -- this is what makes
 // it safe to call unconditionally as the "clear any stale leftover" half of
-// EnsureTap's create sequence. If a link with that name exists but isn't a
+// ensureTap's create sequence. If a link with that name exists but isn't a
 // masuda-managed tap (see isMasudaTap), it refuses to touch it: a name
 // collision with something unrelated must fail loudly, not delete whatever
 // happens to be sitting there.

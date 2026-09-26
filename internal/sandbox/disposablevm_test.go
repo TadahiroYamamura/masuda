@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 )
 
 func TestHostTimeoutUsesDeclaredValueOrDefault(t *testing.T) {
@@ -116,11 +117,11 @@ func TestReadRunResultWithNothingWritten(t *testing.T) {
 // Linux caps interface names at 15 bytes; a run's TAP name has to fit
 // alongside the workspace VMs already on the bridge.
 func TestPrivilegedNetIDFitsAnInterfaceName(t *testing.T) {
-	name := TapName(privilegedNetID("abc123"))
+	name := microvm.TapName(privilegedNetID("abc123"))
 	if len(name) > 15 {
-		t.Errorf("TapName(%q) = %q (%d bytes), want at most 15", privilegedNetID("abc123"), name, len(name))
+		t.Errorf("microvm.TapName(%q) = %q (%d bytes), want at most 15", privilegedNetID("abc123"), name, len(name))
 	}
-	if name == TapName("abc123") {
+	if name == microvm.TapName("abc123") {
 		t.Error("a run's TAP name collides with the workspace VM's own")
 	}
 }
@@ -131,7 +132,7 @@ func TestPrivilegedNetIDFitsAnInterfaceName(t *testing.T) {
 func TestResolveWorkspaceByIPFindsRegisteredPrivilegedVM(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	repoRoot := t.TempDir()
-	mac := MACFor(privilegedNetID("abc123"))
+	mac := microvm.MACFor(privilegedNetID("abc123"))
 
 	leasePath := filepath.Join(t.TempDir(), "dnsmasq.leases")
 	if err := os.WriteFile(leasePath, []byte("1787000000 "+mac+" 192.168.200.51 priv *\n"), 0o644); err != nil {
@@ -385,7 +386,7 @@ func TestResolveApprovedPrivilegedCommandRefusals(t *testing.T) {
 // an allowlist that was never meant for it.
 func TestPrivilegedVMRegistryIgnoresRecordsFromDeadProcesses(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	mac := MACFor(privilegedNetID("abc123"))
+	mac := microvm.MACFor(privilegedNetID("abc123"))
 
 	path, err := privilegedVMRegistryPath(mac)
 	if err != nil {
@@ -406,7 +407,7 @@ func TestPrivilegedVMRegistryIgnoresRecordsFromDeadProcesses(t *testing.T) {
 
 func TestPrivilegedVMRegistryResolvesLiveRecords(t *testing.T) {
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	mac := MACFor(privilegedNetID("def456"))
+	mac := microvm.MACFor(privilegedNetID("def456"))
 
 	if err := registerPrivilegedVM(mac, "/some/repo"); err != nil {
 		t.Fatal(err)

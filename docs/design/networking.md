@@ -6,8 +6,8 @@ VMゲストとホストの間の到達性を扱う。ホスト共有のbridge+NA
 
 ### 命名・アドレス
 
-- `TapName(id)`はワークスペースIDから決定的なTAPデバイス名を導出する: `"tap-" + sanitize(id)`（`internal/sandbox/vmnet.go:29-31`。sanitizeは`nameSanitizer`、`[^a-zA-Z0-9_.-]+`を`-`に置換）。
-- `MACFor(id)`はワークスペースIDから決定的なMACアドレスを導出する: `52:54:00:xx:xx:xx`（先頭3バイトは固定、残り3バイトは`sha256(id)`の先頭3バイト、`internal/sandbox/sshattach.go:19-22`）。
+- `TapName(id)`はVMのIDから決定的なTAPデバイス名を導出する: `"tap-" + sanitize(id)`（`internal/microvm/tap.go`。sanitizeは`nameSanitizer`、`[^a-zA-Z0-9_.-]+`を`-`に置換）。masudaの常駐VMではIDはワークスペースID。
+- `MACFor(id)`はVMのIDから決定的なMACアドレスを導出する: `52:54:00:xx:xx:xx`（先頭3バイトは固定、残り3バイトは`sha256(id)`の先頭3バイト、`internal/microvm/ssh.go`）。
 
 いずれもID一つにつき値一つで、他の状態（実行中かどうか等）を参照しない純粋な導出関数。
 
@@ -15,9 +15,9 @@ VMゲストとホストの間の到達性を扱う。ホスト共有のbridge+NA
 
 ### 確保・解放・クラッシュ復旧
 
-- `EnsureTap(id, bridge, ownerUser)`（`internal/sandbox/vmnet.go:39-48`）がTAP確保の唯一の入口。呼ぶたびに必ず`delete-tap`→`create-tap`の順で実行する。同じ名前の既存TAP（前回実行のクラッシュ等で残ったもの）があれば先に消してから作るため、この一つの関数呼び出しが「確保」と「クラッシュ復旧」を兼ねる。`VMBackend`の起動処理（`internal/sandbox/vmbackend.go:259`）から呼ばれる。
-- `ReleaseTap(id)`（`vmnet.go:52-55`）は`delete-tap`のみを行う。既に存在しない場合はエラーにならない。`VMBackend`の停止処理（`vmbackend.go:429`）から呼ばれる。
-- `EnsureTap`・`ReleaseTap`はどちらもnetlink操作を直接行わず、別バイナリ`masuda-net-helper`を`exec.Command`で起動して結果を待つだけ（`runNetHelper`、`vmnet.go:57-69`）。`masuda-net-helper`がPATH上に無ければ、その旨のエラーで即座に失敗する。
+- `Host.ensureTap(id, ownerUser)`（`internal/microvm/tap.go`）がTAP確保の唯一の入口。呼ぶたびに必ず`delete-tap`→`create-tap`の順で実行する。同じ名前の既存TAP（前回実行のクラッシュ等で残ったもの）があれば先に消してから作るため、この一つの関数呼び出しが「確保」と「クラッシュ復旧」を兼ねる。`Host.Start`/`Host.Run`（`internal/microvm/vm.go`）から呼ばれる。接続先のbridgeは`Host.Bridge`。
+- `Host.releaseTap(id)`は`delete-tap`のみを行う。既に存在しない場合はエラーにならない。`Host.Shutdown`と、`Host.Run`の終了時・起動失敗時のロールバックから呼ばれる。
+- `ensureTap`・`releaseTap`はどちらもnetlink操作を直接行わず、`Host.NetHelper`（masudaでは`masuda-net-helper`）を`exec.Command`で起動して結果を待つだけ（`runNetHelper`）。PATH上に無ければ、その旨のエラーで即座に失敗する。
 
 ### `masuda-net-helper`（`cmd/masuda-net-helper/main.go`）
 
@@ -36,15 +36,15 @@ CAP_NET_ADMINを要するTAP操作だけを行う専用バイナリ。サブコ�
 
 masuda自身はゲストIPを割り当てない。ゲストは起動時にDHCPでIPを取得し、そのリースをdnsmasqのリースファイルから読み取る。
 
-- `LookupGuestIP(mac, leaseFilePath, timeout)`（`internal/sandbox/sshattach.go:36-51`）は`leaseFilePath`を`guestIPPollInterval`（200ms）間隔で`timeout`まで読み直し、`mac`に一致するリースが現れた時点でそのIPを返す。
-- リースファイルの1行のフォーマットは`<expiry-epoch> <mac> <ip> <hostname-or-*> <client-id-or-*>`（`findLeaseIP`、`sshattach.go:56-71`、大文字小文字を区別せずMACを比較）。
-- 実運用でのリースファイルパスは`/var/lib/misc/masuda-dnsmasq.leases`（`internal/sandbox/vmbackend.go`の`vmDHCPLeaseFile`定数。`scripts/setup-vm-host.sh`が書き出すdnsmasq設定の`dhcp-leasefile`と一致）。
-- 呼び出し元ごとにタイムアウトが異なる: VM起動待ち（`vmStart`）は`vmBootTimeout`（30秒）、`masuda chat`用の`AttachArgs`は`vmDHCPTimeout`（20秒）、`vmStop`の正常シャットダウンSSHは2秒（ゲストが既に落ちている可能性があるためベストエフォート）。
+- `LookupGuestIP(mac, leaseFilePath, timeout)`（`internal/microvm/ssh.go`）は`leaseFilePath`を`guestIPPollInterval`（200ms）間隔で`timeout`まで読み直し、`mac`に一致するリースが現れた時点でそのIPを返す。
+- リースファイルの1行のフォーマットは`<expiry-epoch> <mac> <ip> <hostname-or-*> <client-id-or-*>`（`findLeaseIP`、大文字小文字を区別せずMACを比較）。
+- 実運用でのリースファイルパスは`/var/lib/misc/masuda-dnsmasq.leases`（`internal/sandbox/vmbackend.go`の`vmDHCPLeaseFile`定数を`Host.LeaseFile`として渡す。`scripts/setup-vm-host.sh`が書き出すdnsmasq設定の`dhcp-leasefile`と一致）。
+- 呼び出し元ごとにタイムアウトが異なる: VM起動待ち（`Host.Start`）は`vmBootTimeout`（30秒）、`masuda chat`用の`Host.AttachArgs`は`vmDHCPTimeout`（20秒）、`Host.Shutdown`の正常シャットダウンSSHは2秒（ゲストが既に落ちている可能性があるためベストエフォート）。
 
 ### SSH接続
 
-- `SSHAttachArgs(guestIP, privateKeyPath)`（`sshattach.go:90-92`）は`masuda chat`がゲストのtmuxセッションへ対話的にアタッチするためのargvを返す（`ssh ... tmux attach -t <session>`）。
-- 接続オプションは`StrictHostKeyChecking=no`・`UserKnownHostsFile=/dev/null`固定（`sshBaseArgs`、`sshattach.go:98-107`）。クライアント認証は秘密鍵（`privateKeyPath`）側で行われ、ホスト鍵検証はしない。
+- `Host.AttachArgs(id, remoteCmd...)`（`internal/microvm/vm.go`）はゲストIPを引き、ssh argvの末尾に`remoteCmd`を付けて返す。`masuda chat`は`internal/sandbox.vmAttachArgs`経由で`tmux attach -t claude-work`を渡し、ゲストのtmuxセッションへ対話的にアタッチする。
+- 接続オプションは`StrictHostKeyChecking=no`・`UserKnownHostsFile=/dev/null`固定（`sshBaseArgs`、`internal/microvm/ssh.go`）。ログインユーザーは`Host.GuestUser.Name`。クライアント認証は秘密鍵（`privateKeyPath`）側で行われ、ホスト鍵検証はしない。
 - 秘密鍵の生成・配置（`EnsureSSHKeypair`）自体は`docs/design/sandbox-vm.md`の範囲。
 
 ## MCPリレー（TCP↔UDS中継）
@@ -63,8 +63,8 @@ Claude Codeの`--mcp-config`は`http://host:port`形式のURLしか受け付け�
 MCPリレーは2箇所から起動され、bindアドレスとportの決め方が異なる。
 
 - **ホストループ側**（Discovery/Blueprint段階、`internal/hostloop.startMCPRelay`、`internal/hostloop/hostloop.go:238-263`）: `127.0.0.1`にbindし、`freeTCPPort()`（`hostloop.go:214-221`。`127.0.0.1:0`で一時的にリスンして空きポート番号だけを取得しすぐ閉じる）で毎回のStart呼び出しごとに新たに空きポートを選ぶ。同一ワークスペースの前回起動が残したリレーとの重複排除は行わない（`Start()`のIsRunningガードにより、生きているtmuxセッションが無い時しかこの経路は動かないため）。得られたポートは`mcpConfigJSON(relayPort)`（`hostloop.go:201-208`）が`--mcp-config`のJSONへ埋め込む。per-serverの`"timeout"`には`mcpToolTimeoutMillis`（7日、`hostloop.go:191-199`）を設定する。
-- **サンドボックスVM側**（Build/Review段階、`VMBackend.vmStart`、`internal/sandbox/vmbackend.go:309-322`）: リレーはゲスト内ではなく**ホスト側**で動く——virtiofsはUnix domain socketのスペシャルファイルをカーネルをまたいで共有できないため、ゲスト側にブリッジ元となるローカルソケットがそもそも存在しない。bindアドレスはループバックではなくブリッジのゲートウェイIP（`vmBridgeGatewayIP`＝`192.168.200.1`）、ポートはホストループ側と同じ`freePort()`（`internal/sandbox/sandbox.go:43`）で都度選ぶ。選んだ`<ブリッジゲートウェイIP>:<port>`はcloud-hypervisorの`--cmdline`に`masuda.mcp_relay=<addr>`として渡す（`vmbackend.go:348-349`）。ゲスト内の`runtime/entrypoint.sh`・`runtime/start_claude.sh`はこのカーネルコマンドライン引数を`/proc/cmdline`から`sed`で読み取り、その値をそのまま自分の`--mcp-config`に使う——ゲスト内でリレープロセスが動くことはない。
-- **ポートの永続化**: VM側は選んだポートを`workDir/mcp-relay.port`（`vmRelayPortFile`）に書き出す（`vmbackend.go:337`）。`masuda sandbox stop`は起動時の`*MCPRelayProcess`を持たない別プロセスとして実行されるため、このファイルを読んでkillすべきアドレスを再構成する（`vmbackend.go:424-427`）。ホストループ側には同等のファイルは無い——そのリレーはホストループプロセス自身の子プロセスとして存在し、明示的な永続化なしにホストループの終了と運命を共にする。
+- **サンドボックスVM側**（Build/Review段階、`VMBackend.vmStart`、`internal/sandbox/vmbackend.go`）: リレーはゲスト内ではなく**ホスト側**で動く——virtiofsはUnix domain socketのスペシャルファイルをカーネルをまたいで共有できないため、ゲスト側にブリッジ元となるローカルソケットがそもそも存在しない。bindアドレスはループバックではなくブリッジのゲートウェイIP（`vmBridgeGatewayIP`＝`192.168.200.1`）、ポートは`freePort()`（`internal/sandbox/sandbox.go`）で都度選ぶ。選んだ`<ブリッジゲートウェイIP>:<port>`は`microvm.Spec.KernelArgs`に`masuda.mcp_relay=<addr>`として載せ、ゲストのカーネルコマンドラインへ渡す。ゲスト内の`runtime/entrypoint.sh`・`runtime/start_claude.sh`はこのカーネルコマンドライン引数を`/proc/cmdline`から`sed`で読み取り、その値をそのまま自分の`--mcp-config`に使う——ゲスト内でリレープロセスが動くことはない。
+- **停止のための永続化**: VM側はリレーのPIDをVMの作業ディレクトリの`mcp-relay.pid`（`vmRelayPIDFile`）に書き、選んだポートも`mcp-relay.port`（`vmRelayPortFile`）に書き出す。`masuda sandbox stop`は起動時の`*MCPRelayProcess`を持たない別プロセスとして実行されるため、pidfileとcurated socketのパスを目印にkillする。ホストループ側には同等のファイルは無い——そのリレーはホストループプロセス自身の子プロセスとして存在し、明示的な永続化なしにホストループの終了と運命を共にする。
 
 ## VMホスト一次セットアップ
 
@@ -81,7 +81,7 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 
 `systemctl status masuda-vm-host`が「ホストはセットアップ済みか」に答える（`active (exited)`＝適用済み、`inactive`＝未適用）。適用済みの状態では`start`がno-opになるため、再適用の動詞は`restart`。
 
-masuda側は`internal/sandbox.EnsureTap`の入口（`requireBridge`）でbridgeの存在を確認し、無ければ`systemctl restart masuda-vm-host`を名指しで案内して落ちる。
+`internal/microvm`はTAP確保の入口（`requireBridge`）でbridgeの存在を確認し、無ければ`Host.BridgeMissingHint`を付けて落ちる。masudaはこのヒントに`systemctl restart masuda-vm-host`を名指しで入れている（`internal/sandbox/vmbackend.go`の`vmHost`）。
 
 以下は各ステップが何をするか。
 

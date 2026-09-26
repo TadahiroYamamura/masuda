@@ -67,7 +67,7 @@ VM起動関連ファイル（`runtime/masuda-loop.service`・`runtime/fstab.vm`�
 
 ## Dockerイメージ→VM rootfs変換
 
-`internal/rootfs.Build(image, outputPath string, opts Options) error`が、指定したDockerイメージのファイルシステムをブート可能なext4ディスクイメージへ変換する。VMBackend（`internal/sandbox/vmbackend.go`）が起動のたびにこの関数を直接呼ぶほか、使い捨て特権VM（`internal/sandbox/disposablevm.go`）と、デバッグ用の隠しCLIサブコマンド`masuda internal rootfs build --image --output [--size-mib]`（`cmd/masuda/internalrootfs.go`）も同じ関数を呼ぶ。
+`internal/rootfs.Build(image, outputPath string, opts Options) error`が、指定したDockerイメージのファイルシステムをブート可能なext4ディスクイメージへ変換する。VMの起動のたびに`internal/microvm`（`Host.Start`・`Host.Run`、`internal/microvm/vm.go`）がこの関数を呼ぶ——常駐VM（`internal/sandbox/vmbackend.go`）も使い捨て特権VM（`internal/sandbox/disposablevm.go`）もこの経路を通る。ほかにデバッグ用の隠しCLIサブコマンド`masuda internal rootfs build --image --output [--size-mib]`（`cmd/masuda/internalrootfs.go`）も同じ関数を呼ぶ。
 
 `Options`の4フィールドが、Dockerイメージに無いものをイメージへ足す経路になる。
 
