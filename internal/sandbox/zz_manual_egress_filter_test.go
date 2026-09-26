@@ -43,7 +43,13 @@ func TestManualEgressFiltering(t *testing.T) {
 	t.Cleanup(func() { _ = workspace.Remove(id) })
 
 	worktreeDir := t.TempDir()
-	stateDir := t.TempDir()
+	// The workspace's own state directory, not a temp one: Stop finds the
+	// mcp-relay to kill by the curated socket under workspace.StateDir(id),
+	// so a different directory here leaves the relay running after the test.
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var backend Backend = VMBackend{}
 	t.Cleanup(func() { _ = backend.Stop(id) })
 
