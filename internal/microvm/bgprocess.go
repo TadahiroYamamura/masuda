@@ -19,10 +19,20 @@ import (
 // last time without a clean Stop, the next Start for the same identity
 // (socket path, listen address, ...) must clean up the orphan rather than
 // leaving it running forever or colliding with the new one. This is the
-// same "clear any stale leftover, then create" pattern EnsureTap uses for
+// same "clear any stale leftover, then create" pattern ensureTap uses for
 // TAP devices, translated to processes instead of network interfaces.
+//
+// The process is started in a session of its own (Setsid), detached from
+// the terminal of whichever CLI invocation happened to start it. These
+// processes outlive that invocation by design, and without this a Ctrl-C
+// typed while `masuda sandbox start` is still building the rootfs or waiting
+// for a DHCP lease reaches every one of them already started -- the
+// virtiofsd and VMM die mid-boot, and the host-wide egress proxy dies along
+// with whichever invocation first launched it. Any SysProcAttr the caller
+// set is overwritten.
 func StartBackgroundProcess(cmd *exec.Cmd, pidFilePath, marker string) error {
 	KillStalePID(pidFilePath, marker)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}

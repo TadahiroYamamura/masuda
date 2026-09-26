@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -179,5 +180,43 @@ func TestKillStalePIDWithoutMarkerDoesNothing(t *testing.T) {
 
 	if err := c.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Errorf("a process was signalled despite an empty marker: %v", err)
+	}
+}
+
+// sessionID reads the session ID from /proc/<pid>/stat. The fields after the
+// parenthesised command name are fixed; session is the fourth of them.
+func sessionID(t *testing.T, pid int) int {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(string(data[strings.LastIndexByte(string(data), ')')+1:]))
+	sid, err := strconv.Atoi(fields[3])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sid
+}
+
+// TestStartBackgroundProcessDetachesFromCallerSession: a Ctrl-C at the
+// terminal that started `masuda sandbox start` must not reach the VMM,
+// virtiofsd, or egress proxy it launched.
+func TestStartBackgroundProcessDetachesFromCallerSession(t *testing.T) {
+	dir := t.TempDir()
+	c := exec.Command("sh", "-c", "while :; do sleep 1; done")
+	if err := StartBackgroundProcess(c, filepath.Join(dir, "p.pid"), "unused"); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = c.Process.Kill()
+		_ = c.Wait()
+	})
+
+	if got := sessionID(t, c.Process.Pid); got != c.Process.Pid {
+		t.Errorf("child session = %d, want it to lead its own session (%d)", got, c.Process.Pid)
+	}
+	if got, own := sessionID(t, c.Process.Pid), sessionID(t, os.Getpid()); got == own {
+		t.Errorf("child shares the caller's session %d", own)
 	}
 }
