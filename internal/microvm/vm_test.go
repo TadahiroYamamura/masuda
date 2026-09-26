@@ -1,4 +1,4 @@
-package sandbox
+package microvm
 
 import (
 	"os"
@@ -44,9 +44,9 @@ func fakeProcess(t *testing.T, marker string) *exec.Cmd {
 	return c
 }
 
-func recordVMPID(t *testing.T, id string, pid int) string {
+func recordVMPID(t *testing.T, h Host, id string, pid int) string {
 	t.Helper()
-	workDir, err := vmWorkDir(id)
+	workDir, err := h.WorkDir(id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,39 +57,39 @@ func recordVMPID(t *testing.T, id string, pid int) string {
 }
 
 func TestVMIsRunningWithNoPIDFile(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	if vmIsRunning("nosuch") {
-		t.Fatal("vmIsRunning() = true with no pid file, want false")
+	h := Host{DataDir: t.TempDir()}
+	if h.IsRunning("nosuch") {
+		t.Fatal("h.IsRunning() = true with no pid file, want false")
 	}
 }
 
 // TestVMIsRunningRejectsRecycledPID is the reason the identity check exists.
 // A host reboot kills the VM and resets the PID space at once, so the PID
 // left in cloud-hypervisor.pid can belong to anything by the time masuda
-// reads it back. Reported as running, vmStart returns early and `masuda
-// sandbox start` reports success while starting nothing.
+// reads it back. Reported as running, a caller skips Start and reports
+// success while starting nothing.
 func TestVMIsRunningRejectsRecycledPID(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	h := Host{DataDir: t.TempDir()}
 	c := fakeProcess(t, "something-unrelated")
-	recordVMPID(t, "ws0001", c.Process.Pid)
+	recordVMPID(t, h, "ws0001", c.Process.Pid)
 
-	if vmIsRunning("ws0001") {
-		t.Fatal("vmIsRunning() = true for a live but unrelated PID, want false")
+	if h.IsRunning("ws0001") {
+		t.Fatal("h.IsRunning() = true for a live but unrelated PID, want false")
 	}
 }
 
 func TestVMIsRunningAcceptsThisWorkspacesVM(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	workDir, err := vmWorkDir("ws0002")
+	h := Host{DataDir: t.TempDir()}
+	workDir, err := h.WorkDir("ws0002")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The real argv embeds the image path in a composite --disk argument.
 	c := fakeProcess(t, "path="+filepath.Join(workDir, "rootfs.img")+",readonly=off,image_type=raw")
-	recordVMPID(t, "ws0002", c.Process.Pid)
+	recordVMPID(t, h, "ws0002", c.Process.Pid)
 
-	if !vmIsRunning("ws0002") {
-		t.Fatal("vmIsRunning() = false for this workspace's own cloud-hypervisor, want true")
+	if !h.IsRunning("ws0002") {
+		t.Fatal("h.IsRunning() = false for this workspace's own cloud-hypervisor, want true")
 	}
 }
 
@@ -97,16 +97,16 @@ func TestVMIsRunningAcceptsThisWorkspacesVM(t *testing.T) {
 // workspaces' VMs run the same binary, so only the per-workspace image path
 // tells them apart.
 func TestVMIsRunningRejectsAnotherWorkspacesVM(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
-	theirs, err := vmWorkDir("ws0003")
+	h := Host{DataDir: t.TempDir()}
+	theirs, err := h.WorkDir("ws0003")
 	if err != nil {
 		t.Fatal(err)
 	}
 	c := fakeProcess(t, "path="+filepath.Join(theirs, "rootfs.img")+",readonly=off,image_type=raw")
-	recordVMPID(t, "ws0004", c.Process.Pid)
+	recordVMPID(t, h, "ws0004", c.Process.Pid)
 
-	if vmIsRunning("ws0004") {
-		t.Fatal("vmIsRunning() = true for another workspace's VM, want false")
+	if h.IsRunning("ws0004") {
+		t.Fatal("h.IsRunning() = true for another workspace's VM, want false")
 	}
 }
 
@@ -138,7 +138,7 @@ func TestKillStalePIDLeavesUnidentifiedProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	killStalePID(pidFile, "/run/masuda/virtiofs-workspace.sock")
+	KillStalePID(pidFile, "/run/masuda/virtiofs-workspace.sock")
 
 	if err := c.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Errorf("an unrelated process was signalled: %v", err)
@@ -154,14 +154,14 @@ func TestKillStalePIDStopsTheIdentifiedProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	killStalePID(pidFile, marker)
+	KillStalePID(pidFile, marker)
 
 	deadline := time.Now().Add(5 * time.Second)
 	for processCmdlineContains(c.Process.Pid, marker) && time.Now().Before(deadline) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	if processCmdlineContains(c.Process.Pid, marker) {
-		t.Error("the identified process is still running after killStalePID()")
+		t.Error("the identified process is still running after KillStalePID()")
 	}
 }
 
@@ -173,9 +173,9 @@ func TestKillStalePIDWithoutMarkerDoesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// vmStop passes "" when it cannot resolve the relay's identity; that has
+	// internal/sandbox passes "" when it cannot resolve the relay's identity; that has
 	// to mean "leave it alone", not "signal whatever is there".
-	killStalePID(pidFile, "")
+	KillStalePID(pidFile, "")
 
 	if err := c.Process.Signal(syscall.Signal(0)); err != nil {
 		t.Errorf("a process was signalled despite an empty marker: %v", err)

@@ -25,12 +25,12 @@
 2. 実行ごとのディレクトリを作る: `<stateDir>/privilegedCommands/<name>/<run-id>/`。`run-id`はワークスペースIDと同じ形式の乱数（`workspace.NewRandomID`）。既存の実行を上書きしない
 3. そのディレクトリへ実行指示を書く（`command`・`timeout-seconds`・`max-log-bytes`）
 4. worktreeを`cp -a`でスナップショットする（VMが見るのはこのコピーで、ライブのworktreeではない）
-5. rootfsをビルドする。イメージエントリのDockerタグから変換し、runnerスクリプト・そのunit・`multi-user.target.wants`リンク・ゲストカーネルのモジュールツリー全体を注入する
-6. TAPを確保し、MACとリポジトリの対応をegressレジストリへ記録する（後述）
-7. virtiofsdを2つ起動する（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）
-8. cloud-hypervisorを起動し、VMが自分でpoweroffするまで待つ。宣言のタイムアウト＋余裕を過ぎたらVMを落とす（`hostTimeout`）
-9. 実行ディレクトリから`exit-code`と`log`を読み、`outputs`を回収する
-10. TAP・レジストリ・virtiofsd・スナップショット・rootfsイメージをすべて片付ける
+5. MACとリポジトリの対応をegressレジストリへ記録し（後述）、egress-proxyが起動済みであることを確かめる
+6. `microvm.Host.Run`でVMを起動し、VMが自分でpoweroffするまで待つ。`Run`はrootfsのビルド（runnerスクリプト・そのunit・`multi-user.target.wants`リンクと、`WholeModuleTree`によるゲストカーネルのモジュールツリー全体を注入）、TAPの確保、virtiofsd 2つ（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）の起動を順に行う。宣言のタイムアウト＋余裕を過ぎたらVMを落とし、`microvm.ErrTimeout`を返す（`hostTimeout`）
+7. 実行ディレクトリから`exit-code`と`log`を読み、`outputs`を回収する。`Run`はVMの作業ディレクトリを消さないため、スナップショットはこの時点でまだ残っている
+8. TAP・virtiofsdは`Run`が、レジストリとVMの作業ディレクトリ（スナップショット・rootfsイメージ）は`RunPrivilegedCommand`が片付ける
+
+`cloud-hypervisor`とカーネルの存在は、手順2で実行ディレクトリを作る前に`Host.Check`で確かめる。
 
 VMが受け取らないもの: `/masuda-secrets`（Claude OAuthトークン）、MCPリレー、SSH鍵。対話アタッチの経路も無く、コンソールは実行ディレクトリの`console.log`へ落ちる。
 

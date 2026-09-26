@@ -1,7 +1,6 @@
 // disposablevm.go runs one declared privileged command in a VM that exists
-// only for that command (ADR-0053). It reuses VMBackend's building blocks
-// -- rootfs.Build, the TAP pool, virtiofsd, cloud-hypervisor -- but gives
-// the guest far less: a *copy* of the workspace tree, a results directory,
+// only for that command (ADR-0053). It boots through internal/microvm like
+// VMBackend does, but gives the guest far less: a *copy* of the workspace tree, a results directory,
 // and nothing else. No /masuda-secrets, no MCP relay, no SSH. The VM is
 // destroyed the moment its command finishes, so the exposure is bounded by
 // that command's runtime rather than the AI session's.
@@ -19,6 +18,7 @@ import (
 
 	masuda "github.com/TadahiroYamamura/masuda"
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 	"github.com/TadahiroYamamura/masuda/internal/rootfs"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -150,15 +150,13 @@ func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error)
 	if err != nil {
 		return PrivilegedRunResult{}, err
 	}
-	if _, err := exec.LookPath(cloudHypervisorBinary); err != nil {
-		return PrivilegedRunResult{}, fmt.Errorf("%s not found on PATH: %w", cloudHypervisorBinary, err)
-	}
-	kernelPath, err := findKernel()
+	h, err := vmHost()
 	if err != nil {
 		return PrivilegedRunResult{}, err
 	}
-	username, err := currentUsername()
-	if err != nil {
+	// Checked before the run directory exists, so a host that cannot boot a
+	// VM at all leaves no empty run behind.
+	if err := h.Check(); err != nil {
 		return PrivilegedRunResult{}, err
 	}
 
@@ -170,29 +168,25 @@ func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error)
 		return PrivilegedRunResult{}, err
 	}
 
-	workDir, err := privilegedWorkDir(runID)
+	vmID := privilegedNetID(runID)
+	workDir, err := h.WorkDir(vmID)
 	if err != nil {
 		return PrivilegedRunResult{}, err
 	}
 	// Everything under workDir is scaffolding -- the workspace copy and the
 	// rootfs image -- and none of it outlives the run. The results the
 	// caller keeps live under runDir instead.
-	defer os.RemoveAll(workDir)
+	defer func() { _ = h.Remove(vmID) }()
 
 	snapshotDir := filepath.Join(workDir, "workspace")
 	if err := snapshotWorktree(req.WorktreeDir, snapshotDir); err != nil {
 		return PrivilegedRunResult{}, err
 	}
 
-	rootfsPath := filepath.Join(workDir, "rootfs.img")
-	if err := buildPrivilegedRootfs(imageTag, rootfsPath, kernelPath, imageCfg.RootfsSizeMiB); err != nil {
-		return PrivilegedRunResult{}, err
-	}
-
-	if err := bootPrivilegedVM(runID, req.RepoRoot, workDir, snapshotDir, runDir, rootfsPath, kernelPath, username, hostTimeout(req.Decl)); err != nil {
+	if err := bootPrivilegedVM(h, vmID, req.RepoRoot, imageTag, imageCfg.RootfsSizeMiB, snapshotDir, runDir, hostTimeout(req.Decl)); err != nil {
 		// A timed-out run still has whatever the guest managed to write, so
 		// it is reported as a result, not swallowed as an error.
-		if _, timedOut := err.(privilegedTimeoutError); !timedOut {
+		if err != microvm.ErrTimeout {
 			return PrivilegedRunResult{}, err
 		}
 		result := readRunResult(runDir, runID, req)
@@ -327,12 +321,6 @@ func copyCollected(src, outputsDir, rel string, info os.FileInfo, totalBytes *in
 	return nil
 }
 
-type privilegedTimeoutError struct{}
-
-func (privilegedTimeoutError) Error() string {
-	return "privileged command VM did not power off in time"
-}
-
 // hostTimeout is the wall-clock backstop for one run: the declared timeout
 // (or masuda's default) plus enough room for boot and shutdown.
 func hostTimeout(decl config.PrivilegedCommandDecl) time.Duration {
@@ -385,18 +373,6 @@ func stageRunRequest(runDir string, decl config.PrivilegedCommandDecl) error {
 	return nil
 }
 
-func privilegedWorkDir(runID string) (string, error) {
-	dataHome, err := workspace.DataHome()
-	if err != nil {
-		return "", err
-	}
-	dir := filepath.Join(dataHome, "vm", "privileged-"+runID)
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
 // snapshotWorktree copies the workspace tree the command will see. A copy,
 // not a share: the main VM's AI session goes on editing the real worktree
 // while this runs, and a privileged command's writes -- deliberate or not --
@@ -412,57 +388,20 @@ func snapshotWorktree(worktreeDir, snapshotDir string) error {
 	return nil
 }
 
-// buildPrivilegedRootfs converts the declared image entry into a bootable
-// rootfs, injecting what masuda -- not the project's Dockerfile -- is
-// responsible for: the runner, and the guest kernel's module tree.
+// bootPrivilegedVM boots the disposable VM and blocks until it powers itself
+// off (the runner's last act) or the backstop fires, returning
+// microvm.ErrTimeout in the latter case.
 //
-// The whole module tree, not just virtiofs.ko as VMBackend injects for the
-// main VM: a distribution kernel keeps overlay, bridge, veth and the
-// netfilter chains as modules, and a Docker daemon needs all of them (see
-// ADR-0053 -- confirmed live, dockerd otherwise fails to start at all).
-// Which modules a given command's workload will reach for is not knowable
-// in advance, so the tree goes in whole.
-func buildPrivilegedRootfs(imageTag, rootfsPath, kernelPath string, minSizeMiB int) error {
-	kernelVersion := kernelVersionFromPath(kernelPath)
-	modulesDir := filepath.Join("/lib/modules", kernelVersion)
-	if _, err := os.Stat(modulesDir); err != nil {
-		return fmt.Errorf("no kernel module tree at %s -- is linux-modules-%s installed?: %w", modulesDir, kernelVersion, err)
-	}
-	return rootfs.Build(imageTag, rootfsPath, rootfs.Options{
-		ExtraFiles: []rootfs.ExtraFile{
-			{GuestPath: "usr/local/bin/masuda-run", Content: masuda.PrivilegedRunner, Mode: 0o755, UID: 0, GID: 0},
-			{GuestPath: "etc/systemd/system/masuda-run.service", Content: masuda.PrivilegedRunnerUnit, Mode: 0o644, UID: 0, GID: 0},
-		},
-		// usr/lib/..., not lib/...: an Ubuntu image is usrmerged, so /lib is
-		// a symlink and copying a real directory onto it fails (see
-		// virtiofsModuleExtraFile's own comment).
-		ExtraDirs: []rootfs.ExtraDir{{HostPath: modulesDir, GuestPath: filepath.Join("usr/lib/modules", kernelVersion)}},
-		// What `systemctl enable` would have written, had there been a
-		// running systemd at image build time to run it. Not systemd.wants=
-		// on the kernel command line: systemd in this guest reports
-		// "Detected virtualization docker" (docker export carries
-		// /.dockerenv along) and a systemd that believes it is containerized
-		// ignores systemd.* options entirely -- see rootfs.ExtraSymlink.
-		ExtraSymlinks: []rootfs.ExtraSymlink{{
-			GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
-			Target:    "/etc/systemd/system/masuda-run.service",
-		}},
-		MinSizeMiB: minSizeMiB,
-	})
-}
-
-// bootPrivilegedVM starts the VM and blocks until it powers itself off (the
-// runner's last act) or the backstop fires. Everything it allocates is
-// released before it returns, including on the timeout path.
-func bootPrivilegedVM(runID, repoRoot, workDir, snapshotDir, runDir, rootfsPath, kernelPath, username string, timeout time.Duration) error {
-	netID := privilegedNetID(runID)
-	tapName, err := EnsureTap(netID, vmBridge, username)
-	if err != nil {
-		return fmt.Errorf("allocating the disposable VM's network interface: %w", err)
-	}
-	defer func() { _ = ReleaseTap(netID) }()
-
-	mac := MACFor(netID)
+// What goes into the rootfs is what masuda -- not the project's Dockerfile
+// -- is responsible for: the runner, and the guest kernel's whole module
+// tree, not just virtiofs.ko as VMBackend injects for the main VM. A
+// distribution kernel keeps overlay, bridge, veth and the netfilter chains
+// as modules, and a Docker daemon needs all of them (see ADR-0053 --
+// confirmed live, dockerd otherwise fails to start at all). Which modules a
+// given command's workload will reach for is not knowable in advance, so
+// the tree goes in whole.
+func bootPrivilegedVM(h microvm.Host, vmID, repoRoot, imageTag string, minSizeMiB int, snapshotDir, runDir string, timeout time.Duration) error {
+	mac := microvm.MACFor(vmID)
 	// Without this the egress proxy has no way to tell which repository's
 	// allowlist applies: it resolves a client IP through the DHCP lease to a
 	// MAC, and then to a *workspace* -- and this VM is not one
@@ -476,48 +415,34 @@ func bootPrivilegedVM(runID, repoRoot, workDir, snapshotDir, runDir, rootfsPath,
 		return fmt.Errorf("ensuring egress-proxy is running: %w", err)
 	}
 
-	wsVF, err := StartVirtiofs(snapshotDir, filepath.Join(workDir, "virtiofs-workspace.sock"), filepath.Join(workDir, "virtiofs-workspace.log"))
-	if err != nil {
-		return fmt.Errorf("starting virtiofsd for /workspace: %w", err)
-	}
-	defer func() { _ = wsVF.Stop() }()
-
-	resultsVF, err := StartVirtiofs(runDir, filepath.Join(workDir, "virtiofs-results.sock"), filepath.Join(workDir, "virtiofs-results.log"))
-	if err != nil {
-		return fmt.Errorf("starting virtiofsd for /masuda-results: %w", err)
-	}
-	defer func() { _ = resultsVF.Stop() }()
-
-	cmd := exec.Command(cloudHypervisorBinary,
-		"--kernel", kernelPath,
-		"--disk", "path="+rootfsPath+",readonly=off,image_type=raw",
-		"--fs",
-		"tag=workspace,socket="+wsVF.SocketPath,
-		"tag=masuda-results,socket="+resultsVF.SocketPath,
-		"--net", "tap="+tapName+",mac="+mac,
-		"--cpus", vmCPUs,
-		"--memory", "size="+vmMemorySize+",shared=on",
-		"--cmdline", "console=ttyS0 root=/dev/vda rw",
-		"--console", "off",
-		"--serial", "file="+filepath.Join(runDir, "console.log"),
-	)
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("starting cloud-hypervisor: %w", err)
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-	select {
-	case err := <-done:
-		if err != nil {
-			return fmt.Errorf("cloud-hypervisor exited abnormally: %w", err)
-		}
-		return nil
-	case <-time.After(timeout):
-		_ = cmd.Process.Kill()
-		<-done
-		return privilegedTimeoutError{}
-	}
+	return h.Run(microvm.Spec{
+		ID:    vmID,
+		Image: imageTag,
+		Rootfs: rootfs.Options{
+			ExtraFiles: []rootfs.ExtraFile{
+				{GuestPath: "usr/local/bin/masuda-run", Content: masuda.PrivilegedRunner, Mode: 0o755, UID: 0, GID: 0},
+				{GuestPath: "etc/systemd/system/masuda-run.service", Content: masuda.PrivilegedRunnerUnit, Mode: 0o644, UID: 0, GID: 0},
+			},
+			// What `systemctl enable` would have written, had there been a
+			// running systemd at image build time to run it. Not
+			// systemd.wants= on the kernel command line: systemd in this
+			// guest reports "Detected virtualization docker" (docker export
+			// carries /.dockerenv along) and a systemd that believes it is
+			// containerized ignores systemd.* options entirely -- see
+			// rootfs.ExtraSymlink.
+			ExtraSymlinks: []rootfs.ExtraSymlink{{
+				GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
+				Target:    "/etc/systemd/system/masuda-run.service",
+			}},
+			MinSizeMiB: minSizeMiB,
+		},
+		Modules: microvm.WholeModuleTree,
+		Shares: []microvm.Share{
+			{Tag: "workspace", HostDir: snapshotDir},
+			{Tag: "masuda-results", HostDir: runDir},
+		},
+		SerialLog: filepath.Join(runDir, "console.log"),
+	}, timeout)
 }
 
 // privilegedNetID keys this run's TAP device and MAC. Deliberately derived

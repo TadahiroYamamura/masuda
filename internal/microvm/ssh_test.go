@@ -1,4 +1,4 @@
-package sandbox
+package microvm
 
 import (
 	"os"
@@ -62,15 +62,15 @@ func TestLookupGuestIPTimesOutWhenAbsent(t *testing.T) {
 	}
 }
 
-func TestSSHAttachArgsShape(t *testing.T) {
-	args := SSHAttachArgs("192.168.200.42", "/path/to/key")
+func TestSSHBaseArgsShape(t *testing.T) {
+	args := sshBaseArgs("ubuntu", "192.168.200.42", "/path/to/key")
 	if args[0] != "ssh" {
-		t.Fatalf("SSHAttachArgs()[0] = %q, want %q", args[0], "ssh")
+		t.Fatalf("sshBaseArgs()[0] = %q, want %q", args[0], "ssh")
 	}
-	joined := strings.Join(args, " ")
-	for _, want := range []string{"-i /path/to/key", "ubuntu@192.168.200.42", "tmux attach -t claude-work"} {
-		if !strings.Contains(joined, want) {
-			t.Errorf("SSHAttachArgs() = %v, want it to contain %q", args, want)
-		}
+	if last := args[len(args)-1]; last != "ubuntu@192.168.200.42" {
+		t.Errorf("sshBaseArgs() ends with %q, want the target so a remote command can follow it", last)
+	}
+	if joined := strings.Join(args, " "); !strings.Contains(joined, "-i /path/to/key") {
+		t.Errorf("sshBaseArgs() = %v, want it to contain %q", args, "-i /path/to/key")
 	}
 }

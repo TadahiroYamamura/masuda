@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
+
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 )
 
 // mcpRelayStartupTimeout bounds how long StartMCPRelay waits for the relay
@@ -44,7 +46,7 @@ type MCPRelayProcess struct {
 // the same self-exec pattern internal/statedaemon's detached daemon uses),
 // logging its stdout/stderr to logPath. Safe to call again for the same
 // bind:port a crashed previous run left behind -- see
-// startBackgroundProcess.
+// microvm.StartBackgroundProcess.
 //
 // pidFile is passed in rather than derived from the listen address the way
 // virtiofsd's is derived from its socket path. A socket path is absolute, so
@@ -72,12 +74,12 @@ func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidFile, socketPath); err != nil {
+	if err := microvm.StartBackgroundProcess(cmd, pidFile, socketPath); err != nil {
 		return nil, fmt.Errorf("starting mcp-relay on %s: %w", addr, err)
 	}
 
 	if err := waitForTCP(addr, mcpRelayStartupTimeout); err != nil {
-		_ = stopBackgroundProcess(cmd.Process, pidFile)
+		_ = microvm.StopBackgroundProcess(cmd.Process, pidFile)
 		return nil, fmt.Errorf("mcp-relay on %s did not start listening in time: %w", addr, err)
 	}
 
@@ -87,7 +89,7 @@ func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (
 // Stop terminates the mcp-relay process and removes its pid file. Not an
 // error if it's already exited on its own.
 func (m *MCPRelayProcess) Stop() error {
-	return stopBackgroundProcess(m.cmd.Process, m.pidFile)
+	return microvm.StopBackgroundProcess(m.cmd.Process, m.pidFile)
 }
 
 func waitForTCP(addr string, timeout time.Duration) error {

@@ -47,23 +47,38 @@ func TestManualEgressFiltering(t *testing.T) {
 	var backend Backend = VMBackend{}
 	t.Cleanup(func() { _ = backend.Stop(id) })
 
-	if _, err := backend.Start(id, worktreeDir, stateDir, repoRoot, "masuda-loop:latest"); err != nil {
+	writeImageEntry(t, repoRoot, config.DefaultImageEntry, "FROM masuda-loop:latest\n")
+	buildImageEntry(t, repoRoot, config.DefaultImageEntry)
+	if _, err := backend.Start(id, worktreeDir, stateDir, repoRoot, config.DefaultImageEntry); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	time.Sleep(3 * time.Second)
-	guestIP, err := LookupGuestIP(MACFor(id), vmDHCPLeaseFile, 5*time.Second)
+	h, err := vmHost()
 	if err != nil {
-		t.Fatalf("LookupGuestIP: %v", err)
-	}
-	privKeyPath, _, err := SSHKeyPaths()
-	if err != nil {
-		t.Fatalf("SSHKeyPaths: %v", err)
+		t.Fatal(err)
 	}
 	run := func(remoteCmd string) (string, error) {
-		args := append(sshBaseArgs(guestIP, privKeyPath), remoteCmd)
+		args, err := h.AttachArgs(id, remoteCmd)
+		if err != nil {
+			return "", err
+		}
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		return string(out), err
+	}
+
+	// Start returns once the guest has a DHCP lease, but sshd starts only
+	// after the guest has generated its host keys (ssh-host-keys.service),
+	// which can take several more seconds.
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		out, err := run("true")
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("guest sshd never became reachable: %v\n%s", err, out)
+		}
+		time.Sleep(time.Second)
 	}
 
 	// DNS resolution itself is never blocked (only the TLS connection

@@ -1,4 +1,4 @@
-package sandbox
+package microvm
 
 import (
 	"fmt"
@@ -25,7 +25,7 @@ type VirtiofsProcess struct {
 	SocketPath string
 }
 
-// pidPath derives the file startBackgroundProcess records a process's PID
+// pidPath derives the file StartBackgroundProcess records a process's PID
 // in, from the path that identifies it (a socket path here; a listen
 // address for StartMCPRelay). A later Start for the same identity uses this
 // to find and kill an orphan from a crashed previous run.
@@ -36,7 +36,7 @@ func pidPath(identity string) string {
 // StartVirtiofs launches virtiofsd serving dir over a fresh vhost-user UDS
 // at socketPath, logging virtiofsd's own stdout/stderr to logPath for
 // diagnostics. Safe to call again for a socketPath a crashed previous run
-// left behind -- see startBackgroundProcess.
+// left behind -- see StartBackgroundProcess.
 //
 // --sandbox=none: virtiofsd's own default (--sandbox=namespace) needs
 // newuidmap/newgidmap (the uidmap package), which isn't a masuda host
@@ -49,7 +49,7 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 		return nil, fmt.Errorf("%s not found on PATH (required for VM shared directories, Issue #31): %w", virtiofsdBinary, err)
 	}
 
-	killStalePID(pidPath(socketPath), socketPath)
+	KillStalePID(pidPath(socketPath), socketPath)
 
 	if err := os.Remove(socketPath); err != nil && !os.IsNotExist(err) {
 		return nil, fmt.Errorf("clearing stale socket %s: %w", socketPath, err)
@@ -68,12 +68,12 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 	)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidPath(socketPath), socketPath); err != nil {
+	if err := StartBackgroundProcess(cmd, pidPath(socketPath), socketPath); err != nil {
 		return nil, fmt.Errorf("starting virtiofsd for %s: %w", dir, err)
 	}
 
 	if err := waitForSocket(socketPath, virtiofsStartupTimeout); err != nil {
-		_ = stopBackgroundProcess(cmd.Process, pidPath(socketPath))
+		_ = StopBackgroundProcess(cmd.Process, pidPath(socketPath))
 		return nil, fmt.Errorf("virtiofsd for %s did not create its socket in time: %w", dir, err)
 	}
 
@@ -83,7 +83,7 @@ func StartVirtiofs(dir, socketPath, logPath string) (*VirtiofsProcess, error) {
 // Stop terminates the virtiofsd process and removes its socket and pid
 // files. Not an error if the process has already exited on its own.
 func (v *VirtiofsProcess) Stop() error {
-	if err := stopBackgroundProcess(v.cmd.Process, pidPath(v.SocketPath)); err != nil {
+	if err := StopBackgroundProcess(v.cmd.Process, pidPath(v.SocketPath)); err != nil {
 		return err
 	}
 	if err := os.Remove(v.SocketPath); err != nil && !os.IsNotExist(err) {
