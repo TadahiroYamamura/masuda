@@ -173,6 +173,10 @@ func (h Host) Run(spec Spec, timeout time.Duration) error {
 	}
 	defer b.release(h, spec.ID)
 
+	// Deliberately left in the caller's session, unlike Start's VMM (see
+	// StartBackgroundProcess): nothing but this call supervises the VM, so a
+	// Ctrl-C that kills the caller has to take the VM down with it rather
+	// than leave it running unwatched.
 	cmd := exec.Command(cloudHypervisorBinary, b.args...)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("starting cloud-hypervisor: %w", err)
