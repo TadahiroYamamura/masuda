@@ -32,7 +32,7 @@ func ServeUDS(ctx context.Context, store *statedaemon.Store, socketPath string) 
 // tools are not offered -- the real daemon builds the server itself and
 // passes them (see ServeCuratedServerUDS and runStatedaemon).
 func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {
-	return ServeCuratedServerUDS(ctx, NewCurated(store, nil, nil), socketPath)
+	return ServeCuratedServerUDS(ctx, NewCurated(store, nil), socketPath)
 }
 
 // ServeCuratedServerUDS serves an already-constructed curated *mcp.Server

@@ -1,4 +1,4 @@
-.PHONY: build vet fmt fmt-check test test-go test-py install docker-images reviews-zip
+.PHONY: build vet fmt fmt-check test test-go install docker-images reviews-zip
 
 PREFIX ?= /usr/local
 # VERSION is embedded via ldflags (ADR-0032) the same way CI does
@@ -26,10 +26,7 @@ fmt-check:
 test-go:
 	go test ./...
 
-test-py:
-	venv/bin/pytest orchestrator/tests/
-
-test: test-go test-py
+test: test-go
 
 install: build
 	install -m 0755 masuda $(PREFIX)/bin/masuda

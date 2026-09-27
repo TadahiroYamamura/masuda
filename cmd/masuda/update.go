@@ -10,7 +10,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
-	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/selfupdate"
 	"github.com/TadahiroYamamura/masuda/internal/verify"
@@ -48,7 +47,7 @@ func newUpdateCommand() *cobra.Command {
 				return fmt.Errorf("listing workspaces: %w", err)
 			}
 			blocking := selfupdate.BlockingWorkspaces(infos, func(id string) bool {
-				return hostloop.IsRunning(id) || sandboxBackend.IsRunning(id)
+				return sandboxBackend.IsRunning(id)
 			})
 			if len(blocking) > 0 {
 				ids := make([]string, len(blocking))
