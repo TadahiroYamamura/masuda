@@ -208,21 +208,20 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		}
 	}
 
-	relayPort, err := freePort()
+	relayPort, err := freeRelayPort()
 	if err != nil {
 		return Handle{}, fmt.Errorf("allocating mcp-relay port: %w", err)
 	}
 	relay, err := StartMCPRelay(
 		statedaemon.CuratedSocketPath(stateDir),
 		vmBridgeGatewayIP, relayPort,
-		filepath.Join(workDir, "mcp-relay.log"), vmRelayPIDFile(workDir))
+		filepath.Join(workDir, "mcp-relay.log"), vmRelayPIDFile(workDir),
+		microvm.MACFor(id), vmDHCPLeaseFile)
 	if err != nil {
 		return Handle{}, fmt.Errorf("starting mcp-relay: %w", err)
 	}
-	// vmStop runs as a separate invocation (a later masuda command run),
-	// with no access to the *MCPRelayProcess this call returned -- relayPort
-	// was randomly chosen by freePort(), so it has to be persisted for Stop
-	// to find and kill the right process.
+	// Recorded for tests and diagnostics: vmStop finds the relay by its pid
+	// file, but nothing else records which port this VM's relay got.
 	if err := os.WriteFile(vmRelayPortFile(workDir), []byte(strconv.Itoa(relayPort)), 0o644); err != nil {
 		_ = relay.Stop()
 		return Handle{}, fmt.Errorf("recording mcp-relay port: %w", err)

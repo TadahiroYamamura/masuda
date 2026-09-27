@@ -61,7 +61,7 @@ func TestStartMCPRelayAndStop(t *testing.T) {
 	logPath := filepath.Join(workDir, "relay.log")
 	pidFile := filepath.Join(workDir, "mcp-relay.pid")
 
-	relay, err := StartMCPRelay(socketPath, bind, port, logPath, pidFile)
+	relay, err := StartMCPRelay(socketPath, bind, port, logPath, pidFile, "", "")
 	if err != nil {
 		t.Fatalf("StartMCPRelay() error = %v", err)
 	}
@@ -98,5 +98,16 @@ func waitForSocketAccepting(t *testing.T, path string, serveErr <-chan error) {
 	t.Helper()
 	if err := testutil.WaitForUDS(path, serveErr); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestFreeRelayPortStaysInTheFilteredRange(t *testing.T) {
+	requireVMBridge(t)
+	port, err := freeRelayPort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if port < relayPortMin || port > relayPortMax {
+		t.Errorf("freeRelayPort() = %d, want within %d-%d (the range setup-vm-host.sh lets guests reach)", port, relayPortMin, relayPortMax)
 	}
 }
