@@ -23,7 +23,7 @@ VMの起動・停止は2層に分かれる。
 
 `vmStart(id, worktreeDir, stateDir, repoRoot, image)`（`internal/sandbox/vmbackend.go`）はワークスペースID単位で冪等に動く。既に`IsRunning(id)`なら何もせず即座に`Handle`を返す。新規起動時はまずmasuda側の準備をする。
 
-1. `Host.Check()`で`cloud-hypervisor`バイナリとカーネル（`~/.local/share/masuda/vmlinuz-*`）の存在を確かめる
+1. `Host.Check()`で`cloud-hypervisor`バイナリと、使えるカーネルの存在を確かめる。カーネルは`findKernel`（`internal/microvm/host.go`）が`~/.local/share/masuda/vmlinuz-*`から選ぶ。ホストに`/lib/modules/<version>`が残っているものだけを候補にし、その中でバージョン順（`sort -V`と同じ比較）の最新を使う。ゲストはホストのカーネルとモジュールを使うため、パッケージの更新で古いカーネルのモジュールが消えると、そのコピーでは起動できない（#57）。候補が1つも無ければ、`setup-vm-host.sh`を実行し直すよう案内して失敗する
 2. `WriteGitIdentity(stateDir, repoRoot)`でgit identityをstateDir直下に書き込む（後述）
 3. `resolveImageEntry(repoRoot, image)`で、渡されたイメージ**エントリ名**（ADR-0054）をローカルDockerタグとそのエントリのビルドパラメータへ解決する。エントリの`Dockerfile`が存在しなければ、`masuda init`か`masuda sandbox build`を促すエラーで止まる
 4. `freeRelayPort()`でmcp-relay用ポートを予約範囲（39300〜39399）から取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ..., MACFor(id), vmDHCPLeaseFile)`をホスト側プロセスとして起動する。リレーはこのVMのMACを持つゲストの接続だけを受け付ける（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。選んだポートは`mcp-relay.port`に書き残す。VMより先に起動するのは、そのアドレスをゲストのカーネル引数`masuda.mcp_relay=`に載せるため

@@ -124,8 +124,21 @@ func (h Host) WorkDir(id string) (string, error) {
 	return dir, nil
 }
 
-// findKernel returns the newest vmlinuz-* under DataDir. The one under /boot
-// is typically readable by root only, so host setup copies it here.
+// hostModulesRoot is where the host's kernel modules live; a variable so
+// tests can point it at a fixture tree.
+var hostModulesRoot = "/lib/modules"
+
+// findKernel returns the newest vmlinuz-* under DataDir whose modules are
+// still installed on the host. The one under /boot is typically readable by
+// root only, so host setup copies it here -- and that copy outlives the
+// kernel it came from: when a package upgrade removes an old kernel's
+// modules (#57), its vmlinuz stays behind here, and booting it fails for
+// want of a virtiofs.ko to inject. Such a copy is skipped rather than
+// chosen.
+//
+// Newest is by version, not by name: "6.8.0-99" sorts after "6.8.0-142" as
+// a string. scripts/setup-vm-host.sh picks with `sort -V`, and the two have
+// to agree.
 func (h Host) findKernel() (string, error) {
 	matches, err := filepath.Glob(filepath.Join(h.DataDir, "vmlinuz-*"))
 	if err != nil {
@@ -134,8 +147,61 @@ func (h Host) findKernel() (string, error) {
 	if len(matches) == 0 {
 		return "", fmt.Errorf("no vmlinuz-* found under %s -- run scripts/setup-vm-host.sh first", h.DataDir)
 	}
-	sort.Strings(matches)
-	return matches[len(matches)-1], nil
+	sort.Slice(matches, func(i, j int) bool {
+		return compareVersions(kernelVersionFromPath(matches[i]), kernelVersionFromPath(matches[j])) < 0
+	})
+	for i := len(matches) - 1; i >= 0; i-- {
+		if info, err := os.Stat(filepath.Join(hostModulesRoot, kernelVersionFromPath(matches[i]))); err == nil && info.IsDir() {
+			return matches[i], nil
+		}
+	}
+	return "", fmt.Errorf("none of the kernels copied under %s (%s) has its modules under %s any more -- "+
+		"the host kernel was probably upgraded and the old one removed. "+
+		"Copy the current one by running ./scripts/setup-vm-host.sh from the masuda repository root (its kernel step does this)",
+		h.DataDir, strings.Join(kernelVersions(matches), ", "), hostModulesRoot)
+}
+
+func kernelVersions(paths []string) []string {
+	out := make([]string, len(paths))
+	for i, p := range paths {
+		out[i] = kernelVersionFromPath(p)
+	}
+	return out
+}
+
+// compareVersions orders version strings the way `sort -V` does for kernel
+// release names: runs of digits compare as numbers, everything else as text.
+func compareVersions(a, b string) int {
+	for a != "" && b != "" {
+		ra, restA := leadingRun(a)
+		rb, restB := leadingRun(b)
+		if c := compareRuns(ra, rb); c != 0 {
+			return c
+		}
+		a, b = restA, restB
+	}
+	return strings.Compare(a, b)
+}
+
+func isDigit(c byte) bool { return c >= '0' && c <= '9' }
+
+// leadingRun splits off s's leading run of all-digit or all-non-digit bytes.
+func leadingRun(s string) (string, string) {
+	i := 1
+	for i < len(s) && isDigit(s[i]) == isDigit(s[0]) {
+		i++
+	}
+	return s[:i], s[i:]
+}
+
+func compareRuns(a, b string) int {
+	if isDigit(a[0]) && isDigit(b[0]) {
+		a, b = strings.TrimLeft(a, "0"), strings.TrimLeft(b, "0")
+		if len(a) != len(b) {
+			return len(a) - len(b)
+		}
+	}
+	return strings.Compare(a, b)
 }
 
 func currentUsername() (string, error) {
@@ -168,7 +234,7 @@ func kernelVersionFromPath(kernelPath string) string {
 func addModules(opts *rootfs.Options, set ModuleSet, kernelVersion string) error {
 	switch set {
 	case WholeModuleTree:
-		modulesDir := filepath.Join("/lib/modules", kernelVersion)
+		modulesDir := filepath.Join(hostModulesRoot, kernelVersion)
 		if _, err := os.Stat(modulesDir); err != nil {
 			return fmt.Errorf("no kernel module tree at %s -- is linux-modules-%s installed?: %w", modulesDir, kernelVersion, err)
 		}
@@ -191,19 +257,19 @@ func addModules(opts *rootfs.Options, set ModuleSet, kernelVersion string) error
 // otherwise, and virtio-fs support isn't built into a generic distro kernel,
 // so no Share would mount without this.
 func virtiofsModuleExtraFile(kernelVersion string) (rootfs.ExtraFile, error) {
-	pattern := filepath.Join("/lib/modules", kernelVersion, "kernel/fs/fuse/virtiofs.ko*")
+	pattern := filepath.Join(hostModulesRoot, kernelVersion, "kernel/fs/fuse/virtiofs.ko*")
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return rootfs.ExtraFile{}, err
 	}
 	if len(matches) == 0 {
-		return rootfs.ExtraFile{}, fmt.Errorf("no virtiofs kernel module found at %s -- is linux-modules-%s-generic installed?", pattern, kernelVersion)
+		return rootfs.ExtraFile{}, fmt.Errorf("no virtiofs kernel module found at %s -- is linux-modules-%s installed?", pattern, kernelVersion)
 	}
 	content, err := os.ReadFile(matches[0])
 	if err != nil {
 		return rootfs.ExtraFile{}, fmt.Errorf("reading %s: %w", matches[0], err)
 	}
-	rel, err := filepath.Rel("/lib/modules/"+kernelVersion, matches[0])
+	rel, err := filepath.Rel(filepath.Join(hostModulesRoot, kernelVersion), matches[0])
 	if err != nil {
 		return rootfs.ExtraFile{}, err
 	}
