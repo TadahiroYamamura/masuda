@@ -72,7 +72,11 @@ func (e *Env) logFile() string     { return e.wf("execution-log.jsonl") }
 func (e *Env) Data(name string) (string, bool, error) {
 	switch name {
 	case def.DataDiff:
-		return e.writeDiff(name, e.BaseRef)
+		fork, err := worktree.ForkPoint(e.Worktree, e.BaseRef)
+		if err != nil {
+			return "", false, err
+		}
+		return e.writeDiff(name, fork)
 	case def.DataStepDiff:
 		// Steps commit at their boundary, so a step's changes are exactly
 		// what differs from HEAD: this equals the diff from the last step
@@ -420,7 +424,11 @@ func (e *Env) TargetHash(target string) (string, error) {
 		_, hash, err := e.plan()
 		return hash, err
 	case "diff":
-		d, err := worktree.DiffAgainst(e.Worktree, e.BaseRef)
+		fork, err := worktree.ForkPoint(e.Worktree, e.BaseRef)
+		if err != nil {
+			return "", err
+		}
+		d, err := worktree.DiffAgainst(e.Worktree, fork)
 		if err != nil {
 			return "", err
 		}

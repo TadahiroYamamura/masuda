@@ -182,15 +182,19 @@ func SnapshotTree(dir string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// BaseRev names base as a revision dir can resolve. A workspace cloned
-// from an existing branch has only that branch locally (Create), so its
-// base exists there only as origin/<base>.
-func BaseRev(dir, base string) string {
-	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", base+"^{commit}"); err == nil {
-		return base
+// ForkPoint returns the commit where dir's HEAD left base, so a diff from
+// it shows only the branch's own changes even after base has moved on. A
+// workspace cloned from an existing branch has only that branch locally
+// (Create), so base is looked up as origin/<base> when there is no local
+// branch of that name.
+func ForkPoint(dir, base string) (string, error) {
+	rev := base
+	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", base+"^{commit}"); err != nil {
+		rev = "origin/" + base
 	}
-	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", "origin/"+base+"^{commit}"); err == nil {
-		return "origin/" + base
+	out, err := runGit(dir, "merge-base", rev, "HEAD")
+	if err != nil {
+		return "", err
 	}
-	return base
+	return strings.TrimSpace(out), nil
 }

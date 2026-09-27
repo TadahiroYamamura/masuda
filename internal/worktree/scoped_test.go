@@ -95,19 +95,31 @@ func TestSnapshotTreeIsolatesLaterChanges(t *testing.T) {
 	}
 }
 
-func TestBaseRevFallsBackToOriginForAnExistingBranch(t *testing.T) {
+func TestForkPointIsWhereTheBranchLeftTheBase(t *testing.T) {
 	repo := initTestRepo(t, "develop")
 	runGitT(t, repo, "branch", "feature/x")
+	out, err := runGit(repo, "rev-parse", "HEAD")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fork := strings.TrimSpace(out)
+	// The base moves on after the branch was cut; its new commit must not
+	// show up in the branch's diff as a reverse change.
+	writeFile(t, filepath.Join(repo, "later.md"), "later\n")
+	runGitT(t, repo, "add", "later.md")
+	runGitT(t, repo, "commit", "-q", "-m", "later")
+	// Cloning an existing branch checks out only that branch, so the base
+	// is there only as a remote-tracking ref.
 	dir, err := Create(repo, "abc123", "feature/x", "develop")
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Cloning an existing branch checks out only that branch, so the base
-	// is there only as a remote-tracking ref.
-	if got := BaseRev(dir, "develop"); got != "origin/develop" {
-		t.Fatalf("BaseRev = %q, want origin/develop", got)
+	got, err := ForkPoint(dir, "develop")
+	if err != nil || got != fork {
+		t.Fatalf("ForkPoint = %q, %v; want %s", got, err, fork)
 	}
-	if got := BaseRev(repo, "develop"); got != "develop" {
-		t.Fatalf("BaseRev in a repo that has the branch = %q, want develop", got)
+	d, err := DiffAgainst(dir, got)
+	if err != nil || strings.Contains(d, "later.md") {
+		t.Fatalf("diff from the fork point = %q, %v; want no later.md", d, err)
 	}
 }

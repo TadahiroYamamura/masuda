@@ -484,7 +484,7 @@ func workflowEnv(stateDir, repoRoot, worktreeDir string) *hostenv.Env {
 		RepoRoot:     repoRoot,
 		Worktree:     worktreeDir,
 		StateDir:     stateDir,
-		BaseRef:      worktree.BaseRev(worktreeDir, info.Base),
+		BaseRef:      info.Base,
 		Branch:       info.Branch,
 		Perspectives: repoPerspectives(repoRoot),
 		// runtime/entrypoint.sh points the guest's ~/.claude/projects here.
