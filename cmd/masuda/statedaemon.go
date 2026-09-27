@@ -78,7 +78,16 @@ func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeD
 	}
 	var curated *mcp.Server
 	if repoRoot != "" && worktreeDir != "" {
-		curated = mcpserver.NewCurated(store, runPrivileged, &host.Lazy{Store: store, Env: workflowEnv(stateDir, repoRoot, worktreeDir)})
+		env := workflowEnv(stateDir, repoRoot, worktreeDir)
+		env.Teardown = func() error {
+			go teardownWorkspace(env.WorkspaceID, repoRoot, env.Branch, cancel)
+			return nil
+		}
+		statusFile := ""
+		if trusted, err := workspace.TrustedDir(env.WorkspaceID); err == nil {
+			statusFile = filepath.Join(trusted, workspace.StatusFileName)
+		}
+		curated = mcpserver.NewCurated(store, runPrivileged, &host.Lazy{Store: store, Env: env, StatusFile: statusFile})
 	} else {
 		curated = mcpserver.NewCurated(store, runPrivileged)
 	}
@@ -504,4 +513,24 @@ func repoPerspectives(repoRoot string) func() ([]hostenv.Perspective, error) {
 		}
 		return out, nil
 	}
+}
+
+// teardownWorkspace removes a workspace after its workflow published or
+// discarded it, then stops this daemon. It waits a moment first so the
+// engine can record the node's result before the store's directory goes
+// away; removing it mid-write would leave a half-recreated directory.
+func teardownWorkspace(id, repoRoot, branch string, stop context.CancelFunc) {
+	time.Sleep(2 * time.Second)
+	if sandboxBackend.IsRunning(id) {
+		if err := sandboxBackend.Stop(id); err != nil {
+			fmt.Fprintf(os.Stderr, "teardown: stopping the sandbox: %v\n", err)
+		}
+	}
+	if err := worktree.Remove(repoRoot, id, branch, false); err != nil {
+		fmt.Fprintf(os.Stderr, "teardown: removing the clone: %v\n", err)
+	}
+	if err := workspace.Remove(id); err != nil {
+		fmt.Fprintf(os.Stderr, "teardown: removing the workspace: %v\n", err)
+	}
+	stop()
 }

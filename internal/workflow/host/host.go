@@ -32,6 +32,9 @@ type Host struct {
 	mu  sync.Mutex
 	eng *engine.Engine
 	env *hostenv.Env
+	// StatusFile, if set, gets a one-line summary after every move, for
+	// `masuda workspace list`.
+	StatusFile string
 }
 
 // New loads the run's fixed definitions from the store. It returns nil,
@@ -72,8 +75,10 @@ func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	}
 	st, err := h.eng.Advance()
 	if err != nil {
+		h.writeStatus("error: " + err.Error())
 		return Next{}, err
 	}
+	h.writeStatus(summary(st))
 	switch st.Kind {
 	case engine.StatusAgent:
 		p, err := h.writeInstructions(st.Task)
@@ -88,6 +93,26 @@ func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	default:
 		return Next{Kind: "blocked", Reason: st.Reason}, nil
 	}
+}
+
+func summary(st engine.Status) string {
+	switch st.Kind {
+	case engine.StatusAgent:
+		return fmt.Sprintf("running %s (%s, %s)", agentName(st.Task.Role), st.Task.Workflow, st.Task.Node)
+	case engine.StatusGate:
+		return "waiting for gate " + st.Gate.Name
+	case engine.StatusDone:
+		return "finished: " + st.Outcome
+	}
+	return "blocked: " + st.Reason
+}
+
+func (h *Host) writeStatus(line string) {
+	if h.StatusFile == "" {
+		return
+	}
+	line = strings.ReplaceAll(line, "\n", " ")
+	_ = os.WriteFile(h.StatusFile, []byte(line+"\n"), 0o644)
 }
 
 // Report records how an agent task ended.
@@ -208,8 +233,9 @@ func sortedKeys(m map[string]string) []string {
 // Lazy creates the Host on first use. The daemon starts before `masuda run`
 // has fixed the definitions, so the engine cannot be built at startup.
 type Lazy struct {
-	Store engine.Store
-	Env   *hostenv.Env
+	Store      engine.Store
+	Env        *hostenv.Env
+	StatusFile string
 
 	mu sync.Mutex
 	h  *Host
@@ -229,6 +255,7 @@ func (l *Lazy) Get() (*Host, error) {
 	if h == nil {
 		return nil, fmt.Errorf("no workflow is running in this workspace; start one with `masuda run` on the host")
 	}
+	h.StatusFile = l.StatusFile
 	l.h = h
 	return h, nil
 }
