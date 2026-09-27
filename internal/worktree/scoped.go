@@ -181,3 +181,16 @@ func SnapshotTree(dir string) (string, error) {
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+// BaseRev names base as a revision dir can resolve. A workspace cloned
+// from an existing branch has only that branch locally (Create), so its
+// base exists there only as origin/<base>.
+func BaseRev(dir, base string) string {
+	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", base+"^{commit}"); err == nil {
+		return base
+	}
+	if _, err := runGit(dir, "rev-parse", "--verify", "--quiet", "origin/"+base+"^{commit}"); err == nil {
+		return "origin/" + base
+	}
+	return base
+}

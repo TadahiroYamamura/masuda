@@ -121,13 +121,26 @@ func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name 
 	if err != nil {
 		return err
 	}
-	if !worktree.BranchExists(root, branch) {
+	branchExisted := worktree.BranchExists(root, branch)
+	if !branchExisted {
 		fmt.Fprintf(cmd.OutOrStdout(), "branch %s does not exist; creating it from %s\n", branch, resolvedBase)
 	}
 	info, worktreeDir, err := newWorkspace(root, branch, resolvedBase, name)
 	if err != nil {
 		return err
 	}
+	// A run that fails to start leaves nothing to resume, so the workspace
+	// would only sit in `workspace list` as "(not started)".
+	started := false
+	defer func() {
+		if started {
+			return
+		}
+		_ = sandboxBackend.Stop(info.ID)
+		_ = stopDaemon(info.ID)
+		_ = worktree.Remove(root, info.ID, info.Branch, !branchExisted)
+		_ = workspace.Remove(info.ID)
+	}()
 	stateDir, err := workspace.StateDir(info.ID)
 	if err != nil {
 		return err
@@ -157,6 +170,7 @@ func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name 
 	if err := bootSandbox(cmd, root, info.ID, worktreeDir, stateDir, image); err != nil {
 		return err
 	}
+	started = true
 	fmt.Fprintf(cmd.OutOrStdout(), "workspace=%s workflow=%s branch=%s\n", info.ID, workflowPath, branch)
 	return nil
 }

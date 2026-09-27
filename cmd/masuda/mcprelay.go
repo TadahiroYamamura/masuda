@@ -66,9 +66,9 @@ func newInternalMCPRelayCommand() *cobra.Command {
 // dials socketPath and pipes bytes bidirectionally until either side closes.
 // Blocks until ctx is cancelled.
 //
-// The port is chosen by the caller, which every caller does by binding port
-// zero and closing that listener (freeTCPPort here, internal/sandbox.freePort,
-// internal/hostloop.freeTCPPort). Besides the obvious TOCTOU those all
+// The port is chosen by the caller, which every caller does by binding a
+// port and closing that listener (freeTCPPort in the tests,
+// internal/sandbox.freeRelayPort). Besides the obvious TOCTOU those all
 // accept, that leftover listener stays in LISTEN for a moment after Close()
 // returns -- long enough to answer a readiness probe on behalf of a relay
 // that has not bound anything yet, which is what Issue #42's "connection

@@ -93,7 +93,8 @@ func newGateShowCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				stat, err := exec.Command("git", "-C", worktree.Dir(info.RepoRoot, args[0]), "diff", "--stat", info.Base).CombinedOutput()
+				dir := worktree.Dir(info.RepoRoot, args[0])
+				stat, err := exec.Command("git", "-C", dir, "diff", "--stat", worktree.BaseRev(dir, info.Base)).CombinedOutput()
 				if err != nil {
 					return fmt.Errorf("git diff --stat: %w\n%s", err, stat)
 				}

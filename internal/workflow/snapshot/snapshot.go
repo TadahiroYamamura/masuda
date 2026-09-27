@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing/fstest"
 
@@ -50,7 +51,7 @@ func Save(store engine.Store, src def.Source, root string, opts check.Options) (
 	m := manifest{Root: root, Hashes: map[string]string{}, Origins: set.Origins}
 	for ref, b := range set.Raw {
 		m.Hashes[ref] = hash(b)
-		if err := store.Put(prefixFile+ref, b); err != nil {
+		if err := store.Put(fileKey(ref), b); err != nil {
 			return nil, err
 		}
 	}
@@ -74,7 +75,7 @@ func Load(store engine.Store) (*def.Set, error) {
 	}
 	fsys := fstest.MapFS{}
 	for ref, want := range m.Hashes {
-		b, ok := store.Get(prefixFile + ref)
+		b, ok := store.Get(fileKey(ref))
 		if !ok {
 			return nil, fmt.Errorf("snapshot is missing %s", ref)
 		}
@@ -94,6 +95,12 @@ func Load(store engine.Store) (*def.Set, error) {
 	set.Origins = m.Origins
 	return set, nil
 }
+
+// fileKey flattens ref into one key segment. Refs have no extension, so
+// workflows/review and workflows/review/default are both refs, and the
+// daemon's store, which keeps a key as a path, cannot hold a file and a
+// directory under the same name.
+func fileKey(ref string) string { return prefixFile + url.PathEscape(ref) }
 
 func hash(b []byte) string {
 	sum := sha256.Sum256(b)

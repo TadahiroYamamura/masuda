@@ -94,3 +94,20 @@ func TestSnapshotTreeIsolatesLaterChanges(t *testing.T) {
 		t.Fatalf("diff since the snapshot:\n%s", d)
 	}
 }
+
+func TestBaseRevFallsBackToOriginForAnExistingBranch(t *testing.T) {
+	repo := initTestRepo(t, "develop")
+	runGitT(t, repo, "branch", "feature/x")
+	dir, err := Create(repo, "abc123", "feature/x", "develop")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Cloning an existing branch checks out only that branch, so the base
+	// is there only as a remote-tracking ref.
+	if got := BaseRev(dir, "develop"); got != "origin/develop" {
+		t.Fatalf("BaseRev = %q, want origin/develop", got)
+	}
+	if got := BaseRev(repo, "develop"); got != "develop" {
+		t.Fatalf("BaseRev in a repo that has the branch = %q, want develop", got)
+	}
+}

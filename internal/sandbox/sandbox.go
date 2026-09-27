@@ -11,8 +11,11 @@
 package sandbox
 
 import (
+	"fmt"
+	"math/rand/v2"
 	"net"
 	"regexp"
+	"strconv"
 )
 
 // tmuxSession must match runtime/entrypoint.sh's SESSION.
@@ -32,15 +35,31 @@ type Handle struct {
 // changes.
 var nameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9_.-]+`)
 
-// freePort asks the OS for an unused TCP port. There's an inherent TOCTOU
-// race between closing this listener and whatever binds the port next
-// (VMBackend's mcp-relay), but it's an acceptable risk for a
-// per-invocation allocation, not a long-lived service.
-func freePort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
+// relayPortMin/relayPortMax bound the ports a workspace VM's mcp-relay
+// listens on at the bridge gateway. A fixed range rather than any free
+// port, so a host firewall that closes the gateway to guests can name the
+// ports they may reach statically.
+const (
+	relayPortMin = 39300
+	relayPortMax = 39399
+)
+
+// freeRelayPort finds an unused port in the relay range by binding each
+// candidate on the bridge gateway. The scan starts at a random offset so
+// two VMs starting at once do not both race for the lowest free port. Like
+// any bind-then-close allocation there's a TOCTOU window before the relay
+// binds it; an acceptable risk for a per-invocation port.
+func freeRelayPort() (int, error) {
+	n := relayPortMax - relayPortMin + 1
+	offset := rand.IntN(n)
+	for i := range n {
+		port := relayPortMin + (offset+i)%n
+		l, err := net.Listen("tcp", net.JoinHostPort(vmBridgeGatewayIP, strconv.Itoa(port)))
+		if err != nil {
+			continue
+		}
+		l.Close()
+		return port, nil
 	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	return 0, fmt.Errorf("no free mcp-relay port in %d-%d on %s", relayPortMin, relayPortMax, vmBridgeGatewayIP)
 }

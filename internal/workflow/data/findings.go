@@ -101,6 +101,11 @@ func (l Ledger) Load() ([]Record, error) {
 }
 
 func (l Ledger) save(rs []Record) error {
+	// Agents read this file; "null" reads to them as a missing ledger
+	// rather than one with no findings.
+	if rs == nil {
+		rs = []Record{}
+	}
 	b, err := json.MarshalIndent(rs, "", "  ")
 	if err != nil {
 		return err

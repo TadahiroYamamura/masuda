@@ -374,7 +374,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		}
 	}
 
-	relayPort, err := freePort()
+	relayPort, err := freeRelayPort()
 	if err != nil {
 		if secretsVF != nil {
 			_ = secretsVF.Stop()
@@ -400,7 +400,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	// vmStop runs as a separate invocation (a later masuda command run),
 	// with no access to the *MCPRelayProcess this call returned -- unlike
 	// the virtiofsd sockets, whose paths are deterministic and can just be
-	// recomputed, relayPort was randomly chosen by freePort(), so it has to
+	// recomputed, relayPort was picked at random by freeRelayPort(), so it has to
 	// be persisted for Stop to find and kill the right process.
 	if err := os.WriteFile(vmRelayPortFile(workDir), []byte(strconv.Itoa(relayPort)), 0o644); err != nil {
 		if secretsVF != nil {

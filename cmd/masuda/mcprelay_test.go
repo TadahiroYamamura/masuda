@@ -18,7 +18,7 @@ import (
 )
 
 // freeTCPPort asks the OS for an unused TCP port on 127.0.0.1, the same
-// TOCTOU-accepting pattern internal/sandbox.freePort uses for a
+// TOCTOU-accepting pattern internal/sandbox.freeRelayPort uses for a
 // per-invocation port that gets rebound almost immediately after.
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
