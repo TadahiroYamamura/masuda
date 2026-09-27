@@ -35,6 +35,14 @@ func (e *Engine) foreach(r *records, cur *Occurrence, n *def.Node, fr Frame) (St
 	for i, item := range cur.Items {
 		frameID := iterFrame(cur.ID, i)
 		if out, ended := e.frameEnd(frameID); ended {
+			if !e.itemRecorded(frameID) {
+				if err := e.Env.ItemFinished(n.Over, item.Key, out); err != nil {
+					return Status{}, false, err
+				}
+				if err := e.Store.Put(prefixItemDone+frameID, []byte(out)); err != nil {
+					return Status{}, false, err
+				}
+			}
 			if out == def.OutcomeDone {
 				continue
 			}
@@ -68,4 +76,11 @@ func (e *Engine) foreach(r *records, cur *Occurrence, n *def.Node, fr Frame) (St
 		return Status{}, true, e.finish(cur, def.OutcomeIncomplete, "次の項目が完了しなかった:\n"+strings.Join(incomplete, "\n"))
 	}
 	return Status{}, true, e.finish(cur, def.OutcomeDone, "")
+}
+
+const prefixItemDone = "wf:item-done/"
+
+func (e *Engine) itemRecorded(frameID string) bool {
+	_, ok := e.Store.Get(prefixItemDone + frameID)
+	return ok
 }

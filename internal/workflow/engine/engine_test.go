@@ -153,7 +153,7 @@ func TestStaleDecisionIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 		if st.Kind == StatusAgent {
-			if err := e.Report(st.Task.Occurrence, "done", ""); err != nil {
+			if err := e.Report(st.Task.Occurrence, "done", "", ""); err != nil {
 				t.Fatal(err)
 			}
 		}

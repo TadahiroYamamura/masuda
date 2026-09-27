@@ -38,9 +38,26 @@ type Env interface {
 	HasOutput(name, occurrence string) bool
 	// OutputsDone is called when an agent occurrence finishes done, so the
 	// environment can take in what it wrote (findings, ADR-0082).
-	OutputsDone(occurrence, role string, outputs []string) error
+	OutputsDone(ctx OutputContext, outputs []string) error
+	// ItemFinished is called once a foreach item's iteration has ended, so
+	// the environment can record how (a finding resolved or not).
+	ItemFinished(over, key, outcome string) error
 	WriteFeedback(occurrence, text string) (path string, err error)
 	Log(e Event)
+}
+
+// OutputContext says where an agent's outputs came from.
+type OutputContext struct {
+	Occurrence string
+	Frame      string
+	Workflow   string
+	Node       string
+	Role       string
+	// Inputs are the frame's inputs; a review's perspective is among them.
+	Inputs map[string]string
+	// AgentID is the Claude Code agent that did the work, if the session
+	// reported it (ADR-0074).
+	AgentID string
 }
 
 // Event is one line of the execution record (ADR-0075).
@@ -338,7 +355,7 @@ func (e *Engine) transition(r *records, fr Frame, w *def.Workflow, cur *Occurren
 // this). An outcome the agent does not declare, or a done without the
 // declared outputs, is refused and the node runs again (ADR-0065,
 // ADR-0073).
-func (e *Engine) Report(occurrence, outcome, feedback string) error {
+func (e *Engine) Report(occurrence, outcome, feedback, agentID string) error {
 	var o Occurrence
 	if err := getJSON(e.Store, prefixOcc+occurrence, &o); err != nil {
 		return err
@@ -372,9 +389,9 @@ func (e *Engine) Report(occurrence, outcome, feedback string) error {
 	}
 	if !a.WriteCapable() {
 		// Stored as a claim until the worktree check in agent() has run.
-		return putJSON(e.Store, prefixReport+occurrence, pendingReport{Outcome: outcome, Feedback: feedback})
+		return putJSON(e.Store, prefixReport+occurrence, pendingReport{Outcome: outcome, Feedback: feedback, AgentID: agentID})
 	}
-	return e.accept(&o, a, outcome, feedback)
+	return e.accept(&o, a, outcome, feedback, agentID)
 }
 
 const prefixReport = "wf:report/"
@@ -382,11 +399,17 @@ const prefixReport = "wf:report/"
 type pendingReport struct {
 	Outcome  string `json:"outcome"`
 	Feedback string `json:"feedback,omitempty"`
+	AgentID  string `json:"agentId,omitempty"`
 }
 
-func (e *Engine) accept(o *Occurrence, a *def.Agent, outcome, feedback string) error {
+func (e *Engine) accept(o *Occurrence, a *def.Agent, outcome, feedback, agentID string) error {
 	if outcome == def.OutcomeDone && len(a.Outputs) > 0 {
-		if err := e.Env.OutputsDone(o.ID, a.Path, a.Outputs); err != nil {
+		var fr Frame
+		if err := getJSON(e.Store, prefixFrame+o.Frame, &fr); err != nil {
+			return err
+		}
+		ctx := OutputContext{Occurrence: o.ID, Frame: o.Frame, Workflow: o.Workflow, Node: o.Node, Role: a.Path, Inputs: fr.Inputs, AgentID: agentID}
+		if err := e.Env.OutputsDone(ctx, a.Outputs); err != nil {
 			return err
 		}
 	}
@@ -416,7 +439,7 @@ func (e *Engine) agent(cur *Occurrence, n *def.Node, fr Frame) (Status, bool, er
 		}
 		if len(files) == 0 {
 			_ = e.Store.Delete(prefixReport + cur.ID)
-			return Status{}, true, e.accept(cur, a, claim.Outcome, claim.Feedback)
+			return Status{}, true, e.accept(cur, a, claim.Outcome, claim.Feedback, claim.AgentID)
 		}
 		dec, decided, err := e.decision(gateDeviation, cur.ID, hash)
 		if err != nil {
@@ -431,7 +454,7 @@ func (e *Engine) agent(cur *Occurrence, n *def.Node, fr Frame) (Status, bool, er
 			reason := fmt.Sprintf("%s changed %v without Write/Edit, and the change was rejected", n.Role, files)
 			return Status{}, true, e.Store.Put(keyBlocked, []byte(reason))
 		}
-		return Status{}, true, e.accept(cur, a, claim.Outcome, claim.Feedback)
+		return Status{}, true, e.accept(cur, a, claim.Outcome, claim.Feedback, claim.AgentID)
 	}
 	return Status{Kind: StatusAgent, Task: &Task{
 		Occurrence: cur.ID, Workflow: cur.Workflow, Node: cur.Node, Role: n.Role,

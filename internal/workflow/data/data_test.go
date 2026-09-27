@@ -1,0 +1,103 @@
+package data
+
+import (
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+const validPlan = `{"summary": "方針", "steps": [
+  {"description": "s1", "files": [{"path": "a.go", "description": "x"}]},
+  {"description": "s2", "files": [{"path": "b.go", "description": "y"}, {"path": "a.go", "description": "z"}]}
+], "expected_byproducts": ["**/__pycache__/**", "*.log"]}`
+
+func TestStoreWriteLatestHas(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	if _, err := s.Write("0000003", "investigation", []byte("調査")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Write("0000010", "investigation", []byte("調査2")); err != nil {
+		t.Fatal(err)
+	}
+	p, ok, err := s.Latest("investigation")
+	if err != nil || !ok || !strings.Contains(p, "0000010") {
+		t.Fatalf("Latest = %q %v %v", p, ok, err)
+	}
+	if !s.Has("0000003", "investigation") || s.Has("0000003", "report") {
+		t.Fatal("Has is wrong")
+	}
+	if filepath.Ext(s.Path("1", "plan")) != ".json" || filepath.Ext(s.Path("1", "security-notes")) != ".md" {
+		t.Fatal("unexpected file names")
+	}
+}
+
+func TestStoreRejects(t *testing.T) {
+	s := Store{Dir: t.TempDir()}
+	cases := map[string]string{
+		"diff":                  "anything",
+		"plan":                  `{"summary": "", "steps": []}`,
+		"findings":              `[{"file": "../x", "startLine": 0, "endLine": 0, "severity": "大", "description": ""}]`,
+		"selected-perspectives": `{"a": 1}`,
+		"commit-message":        "\n\n",
+		"report":                "   ",
+	}
+	for name, content := range cases {
+		if _, err := s.Write("1", name, []byte(content)); err == nil {
+			t.Errorf("Write(%s) accepted %q", name, content)
+		}
+	}
+}
+
+func TestPlanFilesAndByproducts(t *testing.T) {
+	p, err := ParsePlan([]byte(validPlan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(p.Files(1), ","); got != "b.go,a.go" {
+		t.Fatalf("Files(1) = %s", got)
+	}
+	if got := strings.Join(p.Files(-1), ","); got != "a.go,b.go" {
+		t.Fatalf("Files(-1) = %s", got)
+	}
+	for file, want := range map[string]bool{
+		"pkg/__pycache__/m.pyc": true,
+		"__pycache__/m.pyc":     true,
+		"build.log":             true,
+		"dir/build.log":         false,
+		"a.go":                  false,
+	} {
+		if got := p.Byproduct(file); got != want {
+			t.Errorf("Byproduct(%s) = %v, want %v", file, got, want)
+		}
+	}
+}
+
+func TestLedgerImportReplacesSameSourceAndListsToFix(t *testing.T) {
+	l := Ledger{File: filepath.Join(t.TempDir(), "findings.json")}
+	f := func(desc string, autofix bool) Finding {
+		return Finding{File: "a.go", StartLine: 1, EndLine: 2, Severity: "中", Description: desc, Autofix: autofix}
+	}
+	if err := l.Import(Record{Workflow: "w", Occurrence: "0000005", Source: "0000004.0/review"}, []Finding{f("old", true)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Import(Record{Workflow: "w", Occurrence: "0000007", Source: "0000004.0/review"}, []Finding{f("new", true), f("design", false)}); err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Import(Record{Workflow: "w", Occurrence: "0000009", Source: "0000004.1/review"}, []Finding{f("other", true)}); err != nil {
+		t.Fatal(err)
+	}
+	all, _ := l.Load()
+	if len(all) != 3 {
+		t.Fatalf("records = %d, want 3 (the rewritten source replaced its old finding)", len(all))
+	}
+	if err := l.SetStatus("0000009-001", StatusResolved); err != nil {
+		t.Fatal(err)
+	}
+	todo, err := l.ToFix("0000006")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(todo) != 1 || todo[0].Description != "new" {
+		t.Fatalf("ToFix = %+v, want only the open auto-fixable one", todo)
+	}
+}

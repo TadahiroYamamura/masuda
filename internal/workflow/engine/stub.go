@@ -137,8 +137,9 @@ func (s *StubEnv) ChangedSince(snapshot string) ([]string, string, error) {
 	return s.Changes, strings.Join(s.Changes, ","), nil
 }
 
-func (s *StubEnv) HasOutput(name, occurrence string) bool                   { return true }
-func (s *StubEnv) OutputsDone(occurrence, role string, outs []string) error { return nil }
+func (s *StubEnv) HasOutput(name, occurrence string) bool       { return true }
+func (s *StubEnv) OutputsDone(OutputContext, []string) error    { return nil }
+func (s *StubEnv) ItemFinished(over, key, outcome string) error { return nil }
 func (s *StubEnv) WriteFeedback(occ, text string) (string, error) {
 	return "stub://feedback/" + occ, nil
 }
@@ -170,7 +171,7 @@ func DryRun(e *Engine, s Stubs, limit int) ([]string, Status, error) {
 				outcome = defaultOutcome(e.Set.Agents[st.Task.Role])
 			}
 			trace = append(trace, fmt.Sprintf("%s → %s", key, outcome))
-			if err := e.Report(st.Task.Occurrence, outcome, ""); err != nil {
+			if err := e.Report(st.Task.Occurrence, outcome, "", ""); err != nil {
 				return trace, st, err
 			}
 		case StatusGate:
