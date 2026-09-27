@@ -285,7 +285,29 @@ func Remove(id string) error {
 	if err != nil {
 		return err
 	}
+	trusted, err := TrustedDir(id)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(trusted); err != nil {
+		return err
+	}
 	return os.RemoveAll(dir)
+}
+
+// TrustedDir returns the host-only directory of workspace id: what must
+// never be writable from the sandbox. The state directory (StateDir) is
+// shared into the guest as /masuda-state, so the state daemon's store —
+// gate decisions, the workflow engine's records, the snapshot of the
+// workflow definitions (ADR-0070) — lives here instead. A guest that
+// wrote files under /masuda-state would otherwise have them loaded the
+// next time the daemon starts.
+func TrustedDir(id string) (string, error) {
+	dh, err := DataHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dh, "trusted", id), nil
 }
 
 // Status derives a short, human-readable progress summary for workspace id

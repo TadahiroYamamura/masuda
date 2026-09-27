@@ -70,7 +70,7 @@ func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
 	go func() {
 		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "plan"},
+			Arguments: map[string]any{"name": "triage"},
 		})
 		if err != nil || res.IsError {
 			t.Errorf("CallTool(wait_for_gate_resolution) = (%+v, %v), want success", res, err)
@@ -89,7 +89,7 @@ func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	if err := store.Put("gate:plan", []byte(`{"status":"approved","feedback":"lgtm"}`)); err != nil {
+	if err := store.Put("gate:triage", []byte(`{"status":"approved","feedback":"lgtm"}`)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -114,6 +114,46 @@ func TestWaitForGateChangeRejectsUnknownGateName(t *testing.T) {
 	}
 	if !res.IsError {
 		t.Fatal("wait_for_gate_resolution with an unknown gate name: IsError = false, want true")
+	}
+}
+
+// A workflow gate is waited on through the decision `masuda gate` writes;
+// the decision stays in place for the engine to validate and take.
+func TestWaitForWorkflowGateReturnsDecision(t *testing.T) {
+	store, session := connectCurated(t)
+	if err := store.Put("wf:gate-open/plan", []byte(`{"name":"plan","occurrence":"0000003","hash":"h"}`)); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan *mcp.CallToolResult, 1)
+	go func() {
+		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "wait_for_gate_resolution",
+			Arguments: map[string]any{"name": "plan"},
+		})
+		if err != nil {
+			t.Error(err)
+		}
+		done <- res
+	}()
+	select {
+	case <-done:
+		t.Fatal("returned before a decision")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := store.Put("wf:gate-decision/plan", []byte(`{"occurrence":"0000003","hash":"h","approved":false,"comment":"fix it"}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case res := <-done:
+		data, _ := json.Marshal(res.StructuredContent)
+		if res.IsError || !strings.Contains(string(data), `"status":"rejected"`) || !strings.Contains(string(data), "fix it") {
+			t.Fatalf("result = %s (error %v)", data, res.IsError)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("did not return after the decision")
+	}
+	if _, ok := store.Get("wf:gate-decision/plan"); !ok {
+		t.Fatal("the wait consumed the decision; the engine must take it")
 	}
 }
 

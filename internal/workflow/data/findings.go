@@ -170,3 +170,23 @@ func (l Ledger) ToFix(since string) ([]Record, error) {
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }
+
+// SetAgentID records which Claude Code agent wrote an occurrence's
+// findings, once the main session knows it (ADR-0074).
+func (l Ledger) SetAgentID(occurrence, agentID string) error {
+	rs, err := l.Load()
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i := range rs {
+		if rs[i].Occurrence == occurrence && rs[i].AgentID == "" {
+			rs[i].AgentID = agentID
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return l.save(rs)
+}

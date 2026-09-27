@@ -89,7 +89,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 		defer close(waitReturned)
 		res, err := session.CallTool(waitCtx, &mcp.CallToolParams{
 			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "plan"},
+			Arguments: map[string]any{"name": "triage"},
 		})
 		if waitCtx.Err() != nil {
 			return // cancelled by the deferred cleanup; the real failure is already recorded
@@ -114,7 +114,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	if err := store.Put("gate:plan", []byte(`{"status":"approved"}`)); err != nil {
+	if err := store.Put("gate:triage", []byte(`{"status":"approved"}`)); err != nil {
 		t.Fatal(err)
 	}
 

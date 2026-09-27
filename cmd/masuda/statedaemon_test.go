@@ -81,7 +81,7 @@ func TestRunStatedaemonServesWorkspaceStore(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "") }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "", "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -152,7 +152,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "") }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", "", "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -220,7 +220,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 		defer close(waitReturned)
 		res, err := curated.CallTool(waitCtx, &mcp.CallToolParams{
 			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "plan"},
+			Arguments: map[string]any{"name": "triage"},
 		})
 		if waitCtx.Err() != nil {
 			// Cancelled by the cleanup above: the real failure is already
@@ -242,7 +242,7 @@ func TestRunStatedaemonServesCuratedSocketToo(t *testing.T) {
 	// through the trusted socket, the wait is unblocked on the curated one.
 	if _, err := trusted.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "state_put",
-		Arguments: map[string]any{"key": "gate:plan", "value": `{"status":"approved"}`},
+		Arguments: map[string]any{"key": "gate:triage", "value": `{"status":"approved"}`},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestRunStatedaemonAggregatesApprovedMCPServer(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, repoRoot, "") }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", repoRoot, "") }()
 	t.Cleanup(func() {
 		cancel()
 		select {

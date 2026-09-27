@@ -6,16 +6,9 @@ import (
 	"fmt"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/host"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-// gateNames is the fixed, small set of gates wait_for_gate_resolution accepts --
-// deliberately not "any key": exposing the generic store to Claude the way
-// the trusted tool set does would let it write (not just wait on) arbitrary
-// state, including the triage gate ADR-0029 says Claude must never resolve
-// itself. See New's curated variant, NewCurated, for the guest-facing
-// (Claude) tool set this belongs to.
-var gateNames = map[string]bool{"plan": true, "review": true, "triage": true}
 
 // NewCurated returns an MCP server exposing the narrow, human-approval-flow
 // tool set meant for Claude itself (the main session inside a sandbox,
@@ -59,7 +52,13 @@ type PrivilegedRunner func(ctx context.Context, name string) (PrivilegedRunResul
 // (ADR-0053).
 const maxToolLogBytes = 200 << 10
 
-func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.Server {
+// Workflow is the workflow engine as the curated tools see it; nil leaves
+// the workflow tools unregistered (a daemon with no workspace to run).
+type Workflow interface {
+	Get() (*host.Host, error)
+}
+
+func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner, workflow ...Workflow) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{
 		Name:    "masuda-statedaemon-curated",
 		Version: "0.1.0",
@@ -81,6 +80,10 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner) *mcp.S
 				"approved, so there is no way to pass a command line of your own. Blocks until the run finishes. " +
 				"If a command you need is missing or unapproved, say so and ask the human -- you cannot approve it.",
 		}, runPrivilegedCommand(runPrivileged))
+	}
+
+	if len(workflow) > 0 && workflow[0] != nil {
+		addWorkflowTools(server, workflow[0])
 	}
 
 	return server
@@ -144,9 +147,8 @@ type waitForGateResolutionOutput struct {
 
 func waitForGateResolution(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateResolutionInput, waitForGateResolutionOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in waitForGateResolutionInput) (*mcp.CallToolResult, waitForGateResolutionOutput, error) {
-		if !gateNames[in.Name] {
-			return nil, waitForGateResolutionOutput{}, fmt.Errorf(
-				"wait_for_gate_resolution: unknown gate %q, want \"plan\", \"review\", or \"triage\"", in.Name)
+		if in.Name != "triage" {
+			return waitForWorkflowGate(ctx, store, in.Name)
 		}
 		// An absent marker *is* the unresolved state (nothing ever writes a
 		// "pending" one -- orchestrator/*.py reads a missing key as pending

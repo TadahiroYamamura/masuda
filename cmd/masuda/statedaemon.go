@@ -15,12 +15,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/host"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/hostenv"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -49,8 +53,11 @@ const (
 // pytest-fixture use of this command (see newInternalStatedaemonCommand's
 // --state-dir doc comment) has no associated repository to read either
 // file from.
-func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string) error {
-	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
+func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeDir string) error {
+	if storeDir == "" {
+		storeDir = filepath.Join(stateDir, daemonStoreDirName)
+	}
+	store, err := statedaemon.Open(storeDir)
 	if err != nil {
 		return err
 	}
@@ -69,7 +76,12 @@ func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string)
 	if repoRoot != "" && worktreeDir != "" {
 		runPrivileged = privilegedRunner(repoRoot, worktreeDir, stateDir)
 	}
-	curated := mcpserver.NewCurated(store, runPrivileged)
+	var curated *mcp.Server
+	if repoRoot != "" && worktreeDir != "" {
+		curated = mcpserver.NewCurated(store, runPrivileged, &host.Lazy{Store: store, Env: workflowEnv(stateDir, repoRoot, worktreeDir)})
+	} else {
+		curated = mcpserver.NewCurated(store, runPrivileged)
+	}
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
@@ -115,7 +127,7 @@ func newInternalCommand() *cobra.Command {
 }
 
 func newInternalStatedaemonCommand() *cobra.Command {
-	var stateDir, repoRoot, worktreeDir string
+	var stateDir, storeDir, repoRoot, worktreeDir string
 	cmd := &cobra.Command{
 		Use:    "statedaemon",
 		Hidden: true,
@@ -127,7 +139,7 @@ func newInternalStatedaemonCommand() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			err := runStatedaemon(ctx, stateDir, repoRoot, worktreeDir)
+			err := runStatedaemon(ctx, stateDir, storeDir, repoRoot, worktreeDir)
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
@@ -140,6 +152,8 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	// workspace.Create involved) as well as the real per-workspace process
 	// startDaemon spawns.
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "directory to persist state under and serve (required)")
+	cmd.Flags().StringVar(&storeDir, "store-dir", "",
+		"where the key/value store lives; a real workspace passes its host-only trusted directory (default: <state-dir>/store)")
 	// Optional: omitting it (the pytest-fixture case above) disables the
 	// child-MCP-server aggregator rather than erroring, since those
 	// fixtures have no real target repository to read
@@ -231,8 +245,13 @@ func startDaemon(id string) error {
 	}
 	defer logFile.Close()
 
+	trusted, err := workspace.TrustedDir(id)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(exe, "internal", "statedaemon",
 		"--state-dir", stateDir,
+		"--store-dir", filepath.Join(trusted, daemonStoreDirName),
 		"--repo-root", info.RepoRoot,
 		"--worktree-dir", worktree.Dir(info.RepoRoot, id),
 	)
@@ -443,4 +462,46 @@ func stopDaemon(id string) error {
 		return err
 	}
 	return nil
+}
+
+// workflowEnv builds the engine's environment for the workspace whose
+// state directory is stateDir.
+func workflowEnv(stateDir, repoRoot, worktreeDir string) *hostenv.Env {
+	id := filepath.Base(stateDir)
+	info, _ := workspace.Load(id)
+	env := &hostenv.Env{
+		WorkspaceID:  id,
+		RepoRoot:     repoRoot,
+		Worktree:     worktreeDir,
+		StateDir:     stateDir,
+		BaseRef:      info.Base,
+		Branch:       info.Branch,
+		Perspectives: repoPerspectives(repoRoot),
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		env.ExportDir = filepath.Join(home, ".masuda", "exports", id)
+	}
+	return env
+}
+
+// repoPerspectives reads review perspectives from the host repository's
+// .masuda/reviews/. How perspectives are held is undecided (ADR-0082) and
+// the old mechanism is not carried over; this stopgap only lets the
+// bundled review workflows run until that is designed.
+func repoPerspectives(repoRoot string) func() ([]hostenv.Perspective, error) {
+	return func() ([]hostenv.Perspective, error) {
+		files, err := filepath.Glob(filepath.Join(repoRoot, config.DirName, "reviews", "*.md"))
+		if err != nil {
+			return nil, err
+		}
+		var out []hostenv.Perspective
+		for _, f := range files {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, hostenv.Perspective{Name: strings.TrimSuffix(filepath.Base(f), ".md"), Content: string(b)})
+		}
+		return out, nil
+	}
 }

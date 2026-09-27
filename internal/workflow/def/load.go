@@ -70,6 +70,9 @@ type Set struct {
 	Workflows map[string]*Workflow
 	Agents    map[string]*Agent
 	Origins   map[string]Origin
+	// Raw keeps each file's bytes as read, so the set can be snapshotted
+	// and verified later (ADR-0070).
+	Raw map[string][]byte
 }
 
 // pending is a reference waiting to be loaded, with where it was
@@ -84,7 +87,7 @@ type pending struct {
 // returned together; a missing or unparsable file does not stop the rest
 // from loading, so one run reports as much as possible.
 func Load(src Source, root string) (*Set, []*Error) {
-	set := &Set{Root: root, Workflows: map[string]*Workflow{}, Agents: map[string]*Agent{}, Origins: map[string]Origin{}}
+	set := &Set{Root: root, Workflows: map[string]*Workflow{}, Agents: map[string]*Agent{}, Origins: map[string]Origin{}, Raw: map[string][]byte{}}
 	var errs []*Error
 	seen := map[string]bool{}
 	queue := []pending{{root, Pos{}}}
@@ -105,6 +108,7 @@ func Load(src Source, root string) (*Set, []*Error) {
 			continue
 		}
 		set.Origins[item.ref] = origin
+		set.Raw[item.ref] = b
 		if validRef(item.ref, "agents/") {
 			a, aerrs := ParseAgent(item.ref, b)
 			errs = append(errs, aerrs...)

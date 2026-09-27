@@ -162,7 +162,7 @@ func startDaemonForPrivilegedTool(t *testing.T, repoRoot string) *mcp.ClientSess
 
 	ctx, cancel := context.WithCancel(context.Background())
 	serveErr := make(chan error, 1)
-	go func() { serveErr <- runStatedaemon(ctx, stateDir, repoRoot, worktreeDir) }()
+	go func() { serveErr <- runStatedaemon(ctx, stateDir, "", repoRoot, worktreeDir) }()
 	t.Cleanup(func() {
 		cancel()
 		select {

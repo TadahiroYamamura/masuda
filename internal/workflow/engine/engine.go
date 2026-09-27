@@ -566,3 +566,22 @@ func (e *Engine) OpenGate(gate string) (GateRequest, bool) {
 	}
 	return req, true
 }
+
+// AgentOccurrence returns an agent occurrence that is still waiting for its
+// report, with its agent definition. Outputs may only be written against
+// such an occurrence.
+func (e *Engine) AgentOccurrence(id string) (*Occurrence, *def.Agent, error) {
+	var o Occurrence
+	if err := getJSON(e.Store, prefixOcc+id, &o); err != nil {
+		return nil, nil, fmt.Errorf("no occurrence %s", id)
+	}
+	if _, done := e.Store.Get(prefixResult + id); done {
+		return nil, nil, fmt.Errorf("occurrence %s has already finished", id)
+	}
+	w := e.Set.Workflows[o.Workflow]
+	n := w.Nodes[o.Node]
+	if n.Type != def.TypeAgent {
+		return nil, nil, fmt.Errorf("occurrence %s is not an agent task", id)
+	}
+	return &o, e.Set.Agents[n.Role], nil
+}

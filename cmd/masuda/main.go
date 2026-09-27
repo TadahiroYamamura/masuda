@@ -50,6 +50,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newWorkflowCommand())
 	root.AddCommand(newRunCommand())
+	root.AddCommand(newGateCommand())
 
 	root.AddCommand(newTriageCommand())
 	root.AddCommand(newMCPCommand())
