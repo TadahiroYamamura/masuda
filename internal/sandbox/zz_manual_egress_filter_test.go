@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -70,21 +69,6 @@ func TestManualEgressFiltering(t *testing.T) {
 		}
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		return string(out), err
-	}
-
-	// Start returns once the guest has a DHCP lease, but sshd starts only
-	// after the guest has generated its host keys (ssh-host-keys.service),
-	// which can take several more seconds.
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		out, err := run("true")
-		if err == nil {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("guest sshd never became reachable: %v\n%s", err, out)
-		}
-		time.Sleep(time.Second)
 	}
 
 	// DNS resolution itself is never blocked (only the TLS connection

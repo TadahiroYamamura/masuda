@@ -19,6 +19,8 @@ const (
 	vmCPUs       = "boot=1"
 
 	vmBootTimeout     = 30 * time.Second
+	vmSSHReadyTimeout = 60 * time.Second
+	sshReadyInterval  = time.Second
 	vmShutdownTimeout = 15 * time.Second
 	vmDHCPTimeout     = 20 * time.Second
 
@@ -137,8 +139,12 @@ func (h Host) prepare(spec Spec) (*booted, error) {
 	return b, nil
 }
 
-// Start boots spec as a long-lived VM and returns once it has a DHCP lease.
-// It is not idempotent on its own -- callers check IsRunning first. The VMM
+// Start boots spec as a long-lived VM and returns once the guest accepts SSH.
+// A DHCP lease alone is not enough: sshd starts only after the guest has
+// generated its host keys, several seconds later, and until then Shutdown's
+// graceful poweroff cannot run (it falls back to killing the VMM, which can
+// corrupt the disk image) and AttachArgs's session is refused. It is not
+// idempotent on its own -- callers check IsRunning first. The VMM
 // keeps running after this process exits; Shutdown stops it.
 func (h Host) Start(spec Spec) error {
 	b, err := h.prepare(spec)
@@ -150,12 +156,53 @@ func (h Host) Start(spec Spec) error {
 		b.release(h, spec.ID)
 		return fmt.Errorf("starting cloud-hypervisor: %w", err)
 	}
-	if _, err := LookupGuestIP(b.mac, h.LeaseFile, vmBootTimeout); err != nil {
+	guestIP, err := LookupGuestIP(b.mac, h.LeaseFile, vmBootTimeout)
+	if err != nil {
 		_ = h.Shutdown(spec.ID)
 		_ = h.Remove(spec.ID)
 		return fmt.Errorf("VM did not obtain a DHCP lease in time (boot failure?): %w", err)
 	}
+	if err := waitUntil(func() error { return h.sshProbe(guestIP) }, vmSSHReadyTimeout, sshReadyInterval); err != nil {
+		_ = h.Shutdown(spec.ID)
+		_ = h.Remove(spec.ID)
+		return fmt.Errorf("VM's sshd did not become reachable in time: %w", err)
+	}
 	return nil
+}
+
+// sshProbe runs `true` in the guest. An actual SSH session rather than a
+// check that port 22 is open: the guest's sshd is socket-activated, so the
+// port can accept before sshd itself is able to serve.
+func (h Host) sshProbe(guestIP string) error {
+	privKeyPath, _, err := h.SSHKeyPaths()
+	if err != nil {
+		return err
+	}
+	base := sshBaseArgs(h.GuestUser.Name, guestIP, privKeyPath)
+	// ConnectTimeout: a dropped (rather than refused) connection would
+	// otherwise hold one attempt for the TCP timeout, far past the deadline.
+	args := append([]string{base[0], "-o", "ConnectTimeout=5", "-o", "BatchMode=yes"}, base[1:]...)
+	out, err := exec.Command(args[0], append(args[1:], "true")...).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// waitUntil calls try every interval until it succeeds or timeout passes,
+// returning try's last error in the latter case.
+func waitUntil(try func() error, timeout, interval time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		err := try()
+		if err == nil {
+			return nil
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("gave up after %s: %w", timeout, err)
+		}
+		time.Sleep(interval)
+	}
 }
 
 // Run boots spec, blocks until the guest powers itself off, and releases
@@ -277,11 +324,27 @@ func waitForProcessExit(pidFilePath string, timeout time.Duration) {
 	}
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
-		if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil {
+		if sigErr := proc.Signal(syscall.Signal(0)); sigErr != nil || isZombie(pid) {
 			return // process is gone
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
+}
+
+// isZombie reports whether pid has exited but not been reaped. When the
+// process that started the VMM is still alive -- Start and Shutdown called
+// from one process, as a long-lived supervisor or a test does -- the exited
+// VMM stays a zombie, and a signal-0 probe keeps answering that it is alive.
+func isZombie(pid int) bool {
+	data, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "stat"))
+	if err != nil {
+		return false
+	}
+	// The state is the first field after the parenthesised command name,
+	// which may itself contain spaces or parentheses.
+	rest := string(data[strings.LastIndexByte(string(data), ')')+1:])
+	fields := strings.Fields(rest)
+	return len(fields) > 0 && fields[0] == "Z"
 }
 
 // IsRunning reports whether VM id is running, by checking that the PID

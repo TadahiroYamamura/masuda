@@ -1,6 +1,7 @@
 package microvm
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,5 +219,58 @@ func TestStartBackgroundProcessDetachesFromCallerSession(t *testing.T) {
 	}
 	if got, own := sessionID(t, c.Process.Pid), sessionID(t, os.Getpid()); got == own {
 		t.Errorf("child shares the caller's session %d", own)
+	}
+}
+
+func TestWaitUntilRetriesUntilSuccess(t *testing.T) {
+	calls := 0
+	err := waitUntil(func() error {
+		calls++
+		if calls < 3 {
+			return errors.New("not yet")
+		}
+		return nil
+	}, time.Second, time.Millisecond)
+	if err != nil || calls != 3 {
+		t.Errorf("waitUntil() = %v after %d calls, want nil after 3", err, calls)
+	}
+}
+
+func TestWaitUntilGivesUpWithTheLastError(t *testing.T) {
+	start := time.Now()
+	err := waitUntil(func() error { return errors.New("connection refused") }, 50*time.Millisecond, 5*time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "connection refused") {
+		t.Errorf("waitUntil() = %v, want the last attempt's error", err)
+	}
+	if time.Since(start) < 50*time.Millisecond {
+		t.Error("waitUntil() gave up before its timeout")
+	}
+}
+
+// TestWaitForProcessExitSeesAnUnreapedChild: a VMM started by this very
+// process stays a zombie after it exits, which a signal-0 probe reports as
+// alive -- waitForProcessExit must not wait out its timeout on it.
+func TestWaitForProcessExitSeesAnUnreapedChild(t *testing.T) {
+	c := exec.Command("true")
+	if err := c.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = c.Wait() })
+	pidFile := filepath.Join(t.TempDir(), "p.pid")
+	if err := os.WriteFile(pidFile, []byte(strconv.Itoa(c.Process.Pid)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for !isZombie(c.Process.Pid) {
+		if time.Now().After(deadline) {
+			t.Fatal("the child never became a zombie -- the helper is broken, not the code under test")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	begin := time.Now()
+	waitForProcessExit(pidFile, 5*time.Second)
+	if took := time.Since(begin); took > time.Second {
+		t.Errorf("waitForProcessExit() took %s on an exited, unreaped child, want it to return at once", took)
 	}
 }

@@ -40,8 +40,9 @@ VMの起動・停止は2層に分かれる。
 6. 共有ごとに`StartVirtiofs`でvirtiofsdを起動する。ソケットは`virtiofs-<tag>.sock`
 7. `cloud-hypervisor`をカーネル・rootfs・`--fs`・`--net`（TAP＋`MACFor(id)`のMACアドレス）・`--cmdline`（`console=ttyS0 root=/dev/vda rw`に`spec.KernelArgs`を足したもの）付きで起動し、`StartBackgroundProcess`でpidfile化する
 8. `LookupGuestIP(mac, LeaseFile, 30秒)`でDHCPリースが付くまで待つ
+9. `sshProbe`でゲストに`ssh ... true`が通るまで1秒間隔で待つ（上限60秒）。sshdはゲストがホスト鍵を生成し終えてから起動するので、リースから数秒遅れる。ポート22が開いたかではなく実際のSSHで確かめるのは、sshdがソケットで起動されるためポートが先に開きうるから。これを待たずに戻ると、直後の`Shutdown`の正常停止が失敗して強制終了にフォールバックし、`AttachArgs`の接続も拒否される
 
-`Host.Start`の手順5以降は、失敗時にそこまでに確保したTAPとvirtiofsdを解放してからエラーを返す。DHCPリース待ちの失敗だけは`Shutdown`と`Remove`をまるごと呼ぶ形でロールバックする。`Host.Start`が失敗すると、`vmStart`は自分で起動したAPIゲートウェイとmcp-relayを止める。egress-proxyは他のワークスペースのVMが使っている可能性があるため止めない。
+`Host.Start`の手順5以降は、失敗時にそこまでに確保したTAPとvirtiofsdを解放してからエラーを返す。DHCPリース待ちとSSH待ちの失敗だけは`Shutdown`と`Remove`をまるごと呼ぶ形でロールバックする。`Host.Start`が失敗すると、`vmStart`は自分で起動したAPIゲートウェイとmcp-relayを止める。egress-proxyは他のワークスペースのVMが使っている可能性があるため止めない。
 
 ## VM停止とステータス確認
 

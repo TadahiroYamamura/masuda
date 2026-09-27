@@ -39,7 +39,7 @@ masuda自身はゲストIPを割り当てない。ゲストは起動時にDHCP�
 - `LookupGuestIP(mac, leaseFilePath, timeout)`（`internal/microvm/ssh.go`）は`leaseFilePath`を`guestIPPollInterval`（200ms）間隔で`timeout`まで読み直し、`mac`に一致するリースが現れた時点でそのIPを返す。
 - リースファイルの1行のフォーマットは`<expiry-epoch> <mac> <ip> <hostname-or-*> <client-id-or-*>`（`findLeaseIP`、大文字小文字を区別せずMACを比較）。
 - 実運用でのリースファイルパスは`/var/lib/misc/masuda-dnsmasq.leases`（`internal/sandbox/vmbackend.go`の`vmDHCPLeaseFile`定数を`Host.LeaseFile`として渡す。`scripts/setup-vm-host.sh`が書き出すdnsmasq設定の`dhcp-leasefile`と一致）。
-- 呼び出し元ごとにタイムアウトが異なる: VM起動待ち（`Host.Start`）は`vmBootTimeout`（30秒）、`masuda chat`用の`Host.AttachArgs`は`vmDHCPTimeout`（20秒）、`Host.Shutdown`の正常シャットダウンSSHは2秒（ゲストが既に落ちている可能性があるためベストエフォート）。
+- 呼び出し元ごとにタイムアウトが異なる: VM起動待ち（`Host.Start`）は`vmBootTimeout`（30秒、その後さらにSSHが通るまで最大60秒待つ——`docs/design/sandbox-vm.md`）、`masuda chat`用の`Host.AttachArgs`は`vmDHCPTimeout`（20秒）、`Host.Shutdown`の正常シャットダウンSSHは2秒（ゲストが既に落ちている可能性があるためベストエフォート）。
 
 ### SSH接続
 
