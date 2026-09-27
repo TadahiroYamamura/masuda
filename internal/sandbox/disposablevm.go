@@ -1,7 +1,7 @@
 // disposablevm.go runs one declared privileged command in a VM that exists
 // only for that command (ADR-0053). It boots through internal/microvm like
 // VMBackend does, but gives the guest far less: a *copy* of the workspace tree, a results directory,
-// and nothing else. No /masuda-secrets, no MCP relay, no SSH. The VM is
+// and nothing else. No API gateway (so no Claude token), no MCP relay, no SSH. The VM is
 // destroyed the moment its command finishes, so the exposure is bounded by
 // that command's runtime rather than the AI session's.
 package sandbox

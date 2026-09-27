@@ -29,12 +29,16 @@ MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http:/
 MERGED_SETTINGS=/tmp/masuda-claude-settings.json
 python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
 
-# See runtime/entrypoint.sh for what this is and why it's export'd rather
-# than inlined into the tmux command string.
-if [ -r /masuda-secrets/token ]; then
-    export CLAUDE_CODE_OAUTH_TOKEN
-    CLAUDE_CODE_OAUTH_TOKEN=$(cat /masuda-secrets/token)
+# See runtime/entrypoint.sh for what these are and why they're export'd
+# rather than inlined into the tmux command string.
+API_GATEWAY_ADDR=$(sed -n 's/.*masuda\.api_gateway=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -z "$API_GATEWAY_ADDR" ]; then
+    echo "[start_claude] masuda.api_gateway= missing from /proc/cmdline -- no way to reach the Anthropic API" >&2
+    exit 1
 fi
+export ANTHROPIC_BASE_URL="http://$API_GATEWAY_ADDR"
+export CLAUDE_CODE_OAUTH_TOKEN=masuda-sandbox-placeholder-token
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
 # See runtime/entrypoint.sh for what this is and why it's two plain lines,
 # not sourced as shell.

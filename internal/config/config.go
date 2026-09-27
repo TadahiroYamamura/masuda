@@ -144,7 +144,7 @@ type MCPServerDecl struct {
 // MCPServerDecl it never carries secret values -- but where a child MCP
 // server at least needs the *names* of the credentials it wants, a
 // privileged command needs none at all: its VM is deliberately given none
-// of the session's long-lived assets (no /masuda-secrets, no MCP relay,
+// of the session's long-lived assets (no API gateway, no MCP relay,
 // no SSH), so there is nothing for a credential name to refer to.
 type PrivilegedCommandDecl struct {
 	// Command is the command line to run inside the disposable VM, against
