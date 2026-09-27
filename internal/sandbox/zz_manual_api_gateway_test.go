@@ -61,7 +61,6 @@ func TestManualGuestReachesAPIWithoutHoldingToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := guestRunner(t, h.AttachArgs, id)
-	waitForGuestSSH(t, run)
 
 	// Searched as the guest's own user, the one the agent runs as: what
 	// matters is whether the agent can read the token, and files only root

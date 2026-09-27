@@ -91,7 +91,6 @@ func TestManualGuestCannotReachOtherHostListeners(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := guestRunner(t, h.AttachArgs, id)
-	waitForGuestSSH(t, run)
 
 	workDir, err := h.WorkDir(id)
 	if err != nil {
@@ -163,23 +162,5 @@ func guestRunner(t *testing.T, attachArgs func(string, ...string) ([]string, err
 		}
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		return string(out), err
-	}
-}
-
-// waitForGuestSSH blocks until the guest accepts SSH. Start returns once the
-// guest has a DHCP lease, but sshd starts only after the guest has
-// generated its host keys, which can take several more seconds.
-func waitForGuestSSH(t *testing.T, run func(string) (string, error)) {
-	t.Helper()
-	deadline := time.Now().Add(60 * time.Second)
-	for {
-		out, err := run("true")
-		if err == nil {
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("guest sshd never became reachable: %v\n%s", err, out)
-		}
-		time.Sleep(time.Second)
 	}
 }
