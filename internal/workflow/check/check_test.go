@@ -386,3 +386,12 @@ nodes:
 	set := load(t, "workflows/top", map[string]string{"workflows/top": wf("planner", top), "workflows/impl": impl, "workflows/step": step})
 	expectNone(t, Run(set, Options{}))
 }
+
+func TestAgentInputsMustBeAvailable(t *testing.T) {
+	fixtureAgents["agents/needs-report"] = "---\ntools: Read\ninputs: [report]\noutcomes:\n  done: ok\n---\nread the report\n"
+	defer delete(fixtureAgents, "agents/needs-report")
+	missing := load(t, "workflows/top", map[string]string{"workflows/top": wf("r", "  r:\n    type: agent\n    role: agents/needs-report\n    next: end\n")})
+	expectError(t, Run(missing, Options{}), `reads "report"`)
+	present := load(t, "workflows/top", map[string]string{"workflows/top": wf("s", "  s:\n    type: agent\n    role: agents/synth\n    next: r\n  r:\n    type: agent\n    role: agents/needs-report\n    next: end\n")})
+	expectNone(t, Run(present, Options{}))
+}

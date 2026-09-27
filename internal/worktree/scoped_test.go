@@ -77,3 +77,20 @@ func TestDiffAgainstIncludesUntrackedAndKeepsIndex(t *testing.T) {
 		t.Fatal("DiffAgainst touched the real index")
 	}
 }
+
+func TestSnapshotTreeIsolatesLaterChanges(t *testing.T) {
+	dir := initTestRepo(t, "main")
+	writeFile(t, filepath.Join(dir, "before.go"), "left over from earlier work\n")
+	tree, err := SnapshotTree(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "fix.go"), "the fixer's change\n")
+	d, err := DiffAgainst(dir, tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(d, "fix.go") || strings.Contains(d, "before.go") {
+		t.Fatalf("diff since the snapshot:\n%s", d)
+	}
+}

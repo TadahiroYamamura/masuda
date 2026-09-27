@@ -12,6 +12,9 @@ const (
 	DataCommitMessage        = "commit-message"
 	DataSelectedPerspectives = "selected-perspectives"
 	DataReport               = "report"
+	// DataFixDiff is what changed during the current fix-finding
+	// iteration: the fixer's own change, for the recheck (ADR-0074).
+	DataFixDiff = "fix-diff"
 )
 
 // EngineComputed are data the engine can produce at any point, so an input
@@ -19,6 +22,7 @@ const (
 var EngineComputed = map[string]bool{
 	DataDiff:     true,
 	DataStepDiff: true,
+	DataFixDiff:  true,
 }
 
 // EngineRead are outputs whose content the engine reads and validates

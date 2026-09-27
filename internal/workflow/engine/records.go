@@ -88,6 +88,9 @@ type Frame struct {
 	ID       string            `json:"id"`
 	Workflow string            `json:"workflow"`
 	Inputs   map[string]string `json:"inputs,omitempty"`
+	// Tree is the worktree as it was when a foreach-over-findings iteration
+	// started, so fix-diff can show just that iteration's change.
+	Tree string `json:"tree,omitempty"`
 }
 
 // records is everything the store holds about a run, loaded once per

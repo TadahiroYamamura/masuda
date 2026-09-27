@@ -54,7 +54,8 @@ func (c *checker) flow() {
 	// it is a workflow meant to be started on a workspace that already has
 	// an approved plan (e.g. build-step run standalone). `masuda run`
 	// enforces that precondition, so check it again with a plan.
-	if hasNoPlanWrite(s.violations) {
+	startsWithPlan := hasNoPlanWrite(s.violations)
+	if startsWithPlan {
 		s = f.summarize(root, state{plan: true})
 	}
 	seen := map[string]bool{}
@@ -70,7 +71,7 @@ func (c *checker) flow() {
 		}
 		c.errs = append(c.errs, &def.Error{Pos: v.pos, Msg: msg})
 	}
-	f.availability()
+	f.availability(startsWithPlan)
 }
 
 // RequiresPlan reports whether a workflow can only start on a workspace
@@ -299,7 +300,7 @@ func (f *flow) inherit(n *def.Node, sub *summary, s *summary) {
 // on every path that reaches it, and that stages whose contract requires
 // outputs write them on every path to `end`. It is a must-analysis: at
 // merges, only data available on all incoming paths survives.
-func (f *flow) availability() {
+func (f *flow) availability(startsWithPlan bool) {
 	a := &avail{c: f.c}
 	root := f.c.set.Workflows[f.c.set.Root]
 	if root == nil {
@@ -308,6 +309,11 @@ func (f *flow) availability() {
 	entry := map[string]bool{}
 	for _, in := range root.Inputs {
 		entry[in] = true
+	}
+	// A workflow that must start on a workspace with an approved plan
+	// (masuda run enforces that) can rely on the plan being there.
+	if startsWithPlan {
+		entry[def.DataPlan] = true
 	}
 	a.run(root, entry, true)
 }
@@ -380,6 +386,13 @@ func (a *avail) effect(w *def.Workflow, n *def.Node, o string, have map[string]b
 	}
 	switch n.Type {
 	case def.TypeAgent:
+		if ag := a.c.set.Agents[n.Role]; ag != nil && report {
+			for _, in := range ag.Inputs {
+				if !available(in, nil) {
+					fail("agent %s reads %q, which is not available on every path to this node", n.Role, in)
+				}
+			}
+		}
 		if o == def.OutcomeDone {
 			if ag := a.c.set.Agents[n.Role]; ag != nil {
 				for _, out := range ag.Outputs {
@@ -439,7 +452,10 @@ func (a *avail) effect(w *def.Workflow, n *def.Node, o string, have map[string]b
 // own name unless `with:` binds it elsewhere), reports those not
 // available, and returns the callee's entry set in its own input names.
 func (a *avail) bindInputs(callee *def.Workflow, n *def.Node, have, extra map[string]bool, available func(string, map[string]bool) bool, fail func(string, ...any)) map[string]bool {
-	entry := map[string]bool{}
+	// Data are resolved by name across the whole workspace (the latest
+	// value written wins), so whatever the caller has available is
+	// available inside the callee too, alongside its declared inputs.
+	entry := copySet(have)
 	for _, in := range callee.Inputs {
 		src := in
 		if b, ok := n.With[in]; ok {

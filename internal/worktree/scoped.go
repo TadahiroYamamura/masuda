@@ -153,3 +153,31 @@ func DiffAgainst(dir, rev string) (string, error) {
 	}
 	return run("diff", "--cached", rev)
 }
+
+// SnapshotTree records the working tree, untracked files included, as a
+// git tree object and returns its ID. DiffAgainst(dir, id) later shows what
+// changed since, which is how a fixer's own change is isolated for the
+// recheck (ADR-0074). The real index is not touched.
+func SnapshotTree(dir string) (string, error) {
+	tmp, err := os.CreateTemp("", "masuda-index-*")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	env := append(os.Environ(), "GIT_INDEX_FILE="+tmp.Name())
+	for _, args := range [][]string{{"read-tree", "HEAD"}, {"add", "-A"}} {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, out)
+		}
+	}
+	cmd := exec.Command("git", "-C", dir, "write-tree")
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git write-tree: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}

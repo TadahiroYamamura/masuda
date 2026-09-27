@@ -23,8 +23,11 @@ type Agent struct {
 	Outcomes     map[string]string
 	OutcomeOrder []string
 	Outputs      []string
-	Resume       bool
-	Prompt       string
+	// Inputs are data the agent reads besides its workflow's inputs,
+	// resolved by name when its task is handed out (ADR-0082).
+	Inputs []string
+	Resume bool
+	Prompt string
 }
 
 // writeTools are the tools that let an agent change files directly. An
@@ -143,6 +146,18 @@ func ParseAgent(path string, src []byte) (*Agent, []*Error) {
 				}
 			}
 			a.Outputs = names
+		case "inputs":
+			names, ok := stringList(v)
+			if !ok {
+				fail("inputs must be a list of data names")
+				continue
+			}
+			for _, n := range names {
+				if !namePattern.MatchString(n) {
+					fail("invalid input name %q", n)
+				}
+			}
+			a.Inputs = names
 		case "resume":
 			a.Resume = v.Value == "true"
 			if v.Value != "true" && v.Value != "false" {

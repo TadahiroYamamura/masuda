@@ -68,7 +68,13 @@ func (e *Engine) foreach(r *records, cur *Occurrence, n *def.Node, fr Frame) (St
 			if err != nil {
 				return Status{}, false, err
 			}
-			return Status{}, true, putJSON(e.Store, prefixFrame+frameID, Frame{ID: frameID, Workflow: body.Path, Inputs: inputs})
+			frame := Frame{ID: frameID, Workflow: body.Path, Inputs: inputs}
+			if n.Over == def.OverFindings {
+				if frame.Tree, err = e.Env.TreeSnapshot(); err != nil {
+					return Status{}, false, err
+				}
+			}
+			return Status{}, true, putJSON(e.Store, prefixFrame+frameID, frame)
 		}
 		return e.stepFrame(r, frameID)
 	}

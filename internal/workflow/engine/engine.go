@@ -34,6 +34,10 @@ type Env interface {
 	TargetHash(target string) (string, error)
 	Snapshot() (string, error)
 	ChangedSince(snapshot string) (files []string, hash string, err error)
+	// TreeSnapshot records the worktree as a git tree, and DiffSince
+	// writes the diff from such a tree to now, for fix-diff (ADR-0074).
+	TreeSnapshot() (string, error)
+	DiffSince(tree string) (path string, err error)
 	// HasOutput reports whether an agent occurrence wrote the named output.
 	HasOutput(name, occurrence string) bool
 	// OutputsDone is called when an agent occurrence finishes done, so the
@@ -490,10 +494,48 @@ func (e *Engine) agent(cur *Occurrence, n *def.Node, fr Frame) (Status, bool, er
 		}
 		return Status{}, true, e.accept(cur, a, claim.Outcome, claim.Feedback, claim.AgentID)
 	}
+	inputs, err := e.agentInputs(fr, a)
+	if err != nil {
+		return Status{}, false, err
+	}
 	return Status{Kind: StatusAgent, Task: &Task{
 		Occurrence: cur.ID, Workflow: cur.Workflow, Node: cur.Node, Role: n.Role,
-		Inputs: fr.Inputs, Feedback: cur.Feedback,
+		Inputs: inputs, Feedback: cur.Feedback,
 	}}, false, nil
+}
+
+// agentInputs is what an agent's task gets to read: its workflow's inputs
+// plus the data its definition names, resolved now (ADR-0082).
+func (e *Engine) agentInputs(fr Frame, a *def.Agent) (map[string]string, error) {
+	out := map[string]string{}
+	for k, v := range fr.Inputs {
+		out[k] = v
+	}
+	for _, name := range a.Inputs {
+		if _, ok := out[name]; ok {
+			continue
+		}
+		if name == def.DataFixDiff {
+			if fr.Tree == "" {
+				return nil, fmt.Errorf("%s reads fix-diff, which only exists inside a foreach over findings", a.Path)
+			}
+			p, err := e.Env.DiffSince(fr.Tree)
+			if err != nil {
+				return nil, err
+			}
+			out[name] = p
+			continue
+		}
+		p, ok, err := e.Env.Data(name)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			return nil, fmt.Errorf("%s reads %q, which has not been written", a.Path, name)
+		}
+		out[name] = p
+	}
+	return out, nil
 }
 
 const gateDeviation = "deviation"

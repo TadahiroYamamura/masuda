@@ -472,6 +472,13 @@ func (e *Env) ChangedSince(snapshot string) ([]string, string, error) {
 	return files, worktree.HashDigests(changed), nil
 }
 
+func (e *Env) TreeSnapshot() (string, error) { return worktree.SnapshotTree(e.Worktree) }
+
+func (e *Env) DiffSince(tree string) (string, error) {
+	p, _, err := e.writeDiff(def.DataFixDiff, tree)
+	return p, err
+}
+
 func (e *Env) HasOutput(name, occurrence string) bool { return e.data().Has(occurrence, name) }
 
 func (e *Env) OutputsDone(ctx engine.OutputContext, outputs []string) error {

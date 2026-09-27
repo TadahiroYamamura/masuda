@@ -137,6 +137,9 @@ func (s *StubEnv) ChangedSince(snapshot string) ([]string, string, error) {
 	return s.Changes, strings.Join(s.Changes, ","), nil
 }
 
+func (s *StubEnv) TreeSnapshot() (string, error)         { return "stub-tree", nil }
+func (s *StubEnv) DiffSince(tree string) (string, error) { return "stub://fix-diff", nil }
+
 func (s *StubEnv) HasOutput(name, occurrence string) bool       { return true }
 func (s *StubEnv) OutputsDone(OutputContext, []string) error    { return nil }
 func (s *StubEnv) ItemFinished(over, key, outcome string) error { return nil }
