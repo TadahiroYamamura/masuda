@@ -86,10 +86,21 @@ func workflowSourceFor(root string) def.Source {
 }
 
 func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name string, rawInputs []string) error {
+	cfg, err := loadConfig(root)
+	if err != nil {
+		return err
+	}
+	if err := cfg.ValidateChecks(); err != nil {
+		return err
+	}
+	opts := check.Options{CheckNames: map[string]bool{}}
+	for n := range cfg.Checks {
+		opts.CheckNames[n] = true
+	}
 	src := workflowSourceFor(root)
 	set, errs := def.Load(src, workflowPath)
 	if len(errs) == 0 {
-		errs = check.Run(set, check.Options{})
+		errs = check.Run(set, opts)
 	}
 	if len(errs) != 0 {
 		for _, e := range errs {
@@ -130,8 +141,11 @@ func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name 
 		return err
 	}
 	defer closeStore()
-	fixed, err := snapshot.Save(store, src, workflowPath, check.Options{})
+	fixed, err := snapshot.Save(store, src, workflowPath, opts)
 	if err != nil {
+		return err
+	}
+	if err := snapshot.SaveChecks(store, cfg.Checks); err != nil {
 		return err
 	}
 	if err := (&engine.Engine{Set: fixed, Store: store}).Start(paths); err != nil {

@@ -126,3 +126,17 @@ func sshBaseArgs(guestIP, privateKeyPath string) []string {
 		"ubuntu@" + guestIP,
 	}
 }
+
+// VMExecArgs returns the argv that runs command in workspace id's VM over
+// SSH, for the workflow engine's check nodes (ADR-0071).
+func VMExecArgs(id, command string) ([]string, error) {
+	guestIP, err := LookupGuestIP(MACFor(id), vmDHCPLeaseFile, vmDHCPTimeout)
+	if err != nil {
+		return nil, fmt.Errorf("looking up VM guest IP for %s: %w", id, err)
+	}
+	privKeyPath, _, err := SSHKeyPaths()
+	if err != nil {
+		return nil, err
+	}
+	return append(sshBaseArgs(guestIP, privKeyPath), command), nil
+}

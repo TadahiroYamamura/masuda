@@ -79,6 +79,7 @@ func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeD
 	var curated *mcp.Server
 	if repoRoot != "" && worktreeDir != "" {
 		env := workflowEnv(stateDir, repoRoot, worktreeDir)
+		env.RunCheckFn = checkRunner(env.WorkspaceID, repoRoot, worktreeDir, stateDir, store)
 		env.Teardown = func() error {
 			go teardownWorkspace(env.WorkspaceID, repoRoot, env.Branch, cancel)
 			return nil

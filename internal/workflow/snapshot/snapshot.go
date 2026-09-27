@@ -107,3 +107,25 @@ func joinErrors(errs []*def.Error) error {
 	}
 	return fmt.Errorf("workflow definitions are invalid:\n  %s", strings.Join(lines, "\n  "))
 }
+
+const keyChecks = "wf:checks"
+
+// SaveChecks fixes the settings.json checks a run uses (ADR-0070, ADR-0071):
+// an agent that rewrites settings.json during the run cannot swap the
+// command a check node runs.
+func SaveChecks(store engine.Store, checks any) error {
+	b, err := json.Marshal(checks)
+	if err != nil {
+		return err
+	}
+	return store.Put(keyChecks, b)
+}
+
+// LoadChecks reads the fixed checks into v.
+func LoadChecks(store engine.Store, v any) error {
+	b, ok := store.Get(keyChecks)
+	if !ok {
+		return fmt.Errorf("no checks were fixed for this run")
+	}
+	return json.Unmarshal(b, v)
+}

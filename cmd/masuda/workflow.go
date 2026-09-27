@@ -59,9 +59,22 @@ workflows/ is checked, in the repository and among the bundled defaults.`,
 					return err
 				}
 			}
-			// settings.json has no `checks` field yet (it arrives with the
-			// check node's runner), so check names are not verified here.
+			// Check names are verified against the repository's settings when
+			// there is one; outside a repository they are left unverified.
 			var opts check.Options
+			if root, err := repoRoot(); err == nil {
+				cfg, err := loadConfig(root)
+				if err != nil {
+					return err
+				}
+				if err := cfg.ValidateChecks(); err != nil {
+					return err
+				}
+				opts.CheckNames = map[string]bool{}
+				for n := range cfg.Checks {
+					opts.CheckNames[n] = true
+				}
+			}
 			failed := false
 			out := cmd.OutOrStdout()
 			for _, p := range paths {

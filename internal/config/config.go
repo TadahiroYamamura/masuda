@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -115,6 +116,48 @@ type Config struct {
 	// that a project-side edit could swap out from under an approval
 	// granted against something else.
 	PrivilegedCommands map[string]PrivilegedCommandDecl `json:"privilegedCommands,omitempty"`
+
+	// Checks declares the objective quality conditions a workflow's
+	// `type: check` nodes run, by name (ADR-0071). Workflows name a check;
+	// the command lives here, so the same command can be shared and so a
+	// check that needs root or Docker points at an approved privileged
+	// command instead of carrying a command line of its own.
+	Checks map[string]CheckDecl `json:"checks,omitempty"`
+}
+
+// CheckDecl is one entry in Config.Checks. Exactly one of Command and
+// PrivilegedCommand is set: where the check runs follows from which, and
+// no agent gets to choose (ADR-0071).
+type CheckDecl struct {
+	// Command runs in the workspace's own VM, in /workspace.
+	Command string `json:"command,omitempty"`
+	// PrivilegedCommand names a privilegedCommands entry, run in a
+	// disposable VM under that declaration's approval.
+	PrivilegedCommand string `json:"privilegedCommand,omitempty"`
+	TimeoutSeconds    int    `json:"timeoutSeconds,omitempty"`
+}
+
+// ValidateChecks reports declarations that set neither or both of
+// Command and PrivilegedCommand, or name an undeclared privileged command.
+func (c Config) ValidateChecks() error {
+	var problems []string
+	for name, d := range c.Checks {
+		switch {
+		case d.Command == "" && d.PrivilegedCommand == "":
+			problems = append(problems, fmt.Sprintf("checks.%s sets neither command nor privilegedCommand", name))
+		case d.Command != "" && d.PrivilegedCommand != "":
+			problems = append(problems, fmt.Sprintf("checks.%s sets both command and privilegedCommand; choose one", name))
+		case d.PrivilegedCommand != "":
+			if _, ok := c.PrivilegedCommands[d.PrivilegedCommand]; !ok {
+				problems = append(problems, fmt.Sprintf("checks.%s names privilegedCommand %q, which is not declared", name, d.PrivilegedCommand))
+			}
+		}
+	}
+	if len(problems) > 0 {
+		sort.Strings(problems)
+		return errors.New(strings.Join(problems, "; "))
+	}
+	return nil
 }
 
 // MCPServerDecl is one entry in Config.MCPServers: how to launch a child

@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -217,5 +218,26 @@ func write(t *testing.T, dir, content string) {
 	}
 	if err := os.WriteFile(filepath.Join(settingsDir, SettingsFileName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateChecks(t *testing.T) {
+	ok := Config{
+		Checks:             map[string]CheckDecl{"test": {Command: "go test ./..."}, "it": {PrivilegedCommand: "docker-tests"}},
+		PrivilegedCommands: map[string]PrivilegedCommandDecl{"docker-tests": {Command: "make it", Image: "docker"}},
+	}
+	if err := ok.ValidateChecks(); err != nil {
+		t.Fatalf("valid checks rejected: %v", err)
+	}
+	bad := Config{Checks: map[string]CheckDecl{
+		"none": {},
+		"both": {Command: "x", PrivilegedCommand: "y"},
+		"ref":  {PrivilegedCommand: "missing"},
+	}}
+	err := bad.ValidateChecks()
+	for _, want := range []string{"checks.none sets neither", "checks.both sets both", `names privilegedCommand "missing"`} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("ValidateChecks() = %v, want it to mention %q", err, want)
+		}
 	}
 }
