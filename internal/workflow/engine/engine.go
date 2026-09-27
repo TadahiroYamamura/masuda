@@ -106,6 +106,9 @@ type GateRequest struct {
 	Target     string   `json:"target"`
 	Hash       string   `json:"hash"`
 	Files      []string `json:"files,omitempty"`
+	// Detail is what the human is asked to judge, when it is text rather
+	// than content the engine hashes elsewhere (a triage concern).
+	Detail string `json:"detail,omitempty"`
 }
 
 // Decision is a human's answer to a GateRequest. It names the occurrence
@@ -114,7 +117,10 @@ type Decision struct {
 	Occurrence string `json:"occurrence"`
 	Hash       string `json:"hash"`
 	Approved   bool   `json:"approved"`
-	Comment    string `json:"comment,omitempty"`
+	// Halt stops the run for good; only the triage gate offers it
+	// (ADR-0029).
+	Halt    bool   `json:"halt,omitempty"`
+	Comment string `json:"comment,omitempty"`
 }
 
 // Engine runs one workflow set against one store and environment.
@@ -154,7 +160,19 @@ func (e *Engine) Advance() (Status, error) {
 		if end, ok := e.frameEnd(rootFrame); ok {
 			return Status{Kind: StatusDone, Outcome: end}, nil
 		}
-		st, progressed, err := e.stepFrame(r, rootFrame)
+		// A reported concern comes before anything else (ADR-0029,
+		// ADR-0063): no node moves until a human has looked at it.
+		st, progressed, err := e.triage(r)
+		if err != nil {
+			return Status{}, err
+		}
+		if st.Kind != "" || progressed {
+			if !progressed {
+				return st, nil
+			}
+			continue
+		}
+		st, progressed, err = e.stepFrame(r, rootFrame)
 		if err != nil {
 			return Status{}, err
 		}
@@ -273,19 +291,29 @@ func (e *Engine) bind(caller Frame, n *def.Node, callee *def.Workflow, item *Ite
 // when the node's max is reached. Entries are counted since the frame's
 // last decided approval (ADR-0067).
 func (e *Engine) enter(r *records, fr Frame, w *def.Workflow, id, feedback string) error {
+	return e.enterWith(r, fr, w, id, feedback, false)
+}
+
+// enterUncounted is enter for a re-entry a human ordered, which must not
+// use up the node's entries.
+func (e *Engine) enterUncounted(r *records, fr Frame, w *def.Workflow, id, feedback string) error {
+	return e.enterWith(r, fr, w, id, feedback, true)
+}
+
+func (e *Engine) enterWith(r *records, fr Frame, w *def.Workflow, id, feedback string, uncounted bool) error {
 	if len(r.occs) >= fuse {
 		return ErrFuse
 	}
 	n := w.Nodes[id]
-	occ := &Occurrence{ID: e.nextID(), Frame: fr.ID, Workflow: w.Path, Node: id, Feedback: feedback}
-	if max := n.EffectiveMax(); max > 0 {
+	occ := &Occurrence{ID: e.nextID(), Frame: fr.ID, Workflow: w.Path, Node: id, Feedback: feedback, Uncounted: uncounted}
+	if max := n.EffectiveMax(); max > 0 && !uncounted {
 		count := 0
 		for _, o := range r.byFrame[fr.ID] {
 			if w.Nodes[o.Node].Type == def.TypeApproval && r.results[o.ID] != nil {
 				count = 0
 				continue
 			}
-			if o.Node == id && !o.Exhausted {
+			if o.Node == id && !o.Exhausted && !o.Uncounted {
 				count++
 			}
 		}
@@ -337,6 +365,12 @@ func (e *Engine) transition(r *records, fr Frame, w *def.Workflow, cur *Occurren
 		// The agent's report was refused: run the same node again. The
 		// entry counts toward max, so a node that keeps failing stops.
 		return Status{}, true, e.enter(r, fr, w, n.ID, res.Feedback)
+	}
+	if res.Retry {
+		// A human decided on a triage concern and sent the node back to
+		// work. Like passing an approval, that does not use up the node's
+		// entries.
+		return Status{}, true, e.enterUncounted(r, fr, w, n.ID, res.Feedback)
 	}
 	t, ok := n.Next[res.Outcome]
 	if !ok {

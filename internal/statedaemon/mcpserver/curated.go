@@ -2,7 +2,6 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
@@ -66,7 +65,7 @@ func NewCurated(store *statedaemon.Store, runPrivileged PrivilegedRunner, workfl
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "wait_for_gate_resolution",
-		Description: "Block until the given gate (\"plan\", \"review\", or \"triage\") is resolved by a human, " +
+		Description: "Block until the gate next_task named is resolved by a human on the host, " +
 			"then return its status. Returns immediately when the gate is already resolved, so calling it again " +
 			"after a dropped connection is safe and costs nothing. One call per wait, no polling.",
 	}, waitForGateResolution(store))
@@ -137,7 +136,7 @@ func truncateLog(log string, max int) (string, bool) {
 }
 
 type waitForGateResolutionInput struct {
-	Name string `json:"name" jsonschema:"the gate to wait on: \"plan\", \"review\", or \"triage\""`
+	Name string `json:"name" jsonschema:"the gate to wait on, as next_task named it"`
 }
 
 type waitForGateResolutionOutput struct {
@@ -145,27 +144,10 @@ type waitForGateResolutionOutput struct {
 	Feedback string `json:"feedback,omitempty" jsonschema:"human-provided feedback, if any"`
 }
 
+// waitForGateResolution waits for a human's decision on a gate the
+// workflow engine opened, triage included (ADR-0066).
 func waitForGateResolution(store *statedaemon.Store) mcp.ToolHandlerFor[waitForGateResolutionInput, waitForGateResolutionOutput] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in waitForGateResolutionInput) (*mcp.CallToolResult, waitForGateResolutionOutput, error) {
-		if in.Name != "triage" {
-			return waitForWorkflowGate(ctx, store, in.Name)
-		}
-		// An absent marker *is* the unresolved state (nothing ever writes a
-		// "pending" one -- orchestrator/*.py reads a missing key as pending
-		// and deletes the marker once it has consumed the decision), so
-		// waiting for the key to exist is exactly waiting for a human to
-		// decide.
-		value, err := store.WaitForPresence(ctx, "gate:"+in.Name)
-		if err != nil {
-			return nil, waitForGateResolutionOutput{}, fmt.Errorf("wait_for_gate_resolution: %w", err)
-		}
-		var marker struct {
-			Status   string `json:"status"`
-			Feedback string `json:"feedback,omitempty"`
-		}
-		if err := json.Unmarshal([]byte(value), &marker); err != nil {
-			return nil, waitForGateResolutionOutput{}, fmt.Errorf("wait_for_gate_resolution: parsing marker: %w", err)
-		}
-		return nil, waitForGateResolutionOutput{Status: marker.Status, Feedback: marker.Feedback}, nil
+		return waitForWorkflowGate(ctx, store, in.Name)
 	}
 }

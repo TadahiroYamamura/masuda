@@ -59,50 +59,6 @@ func TestCuratedExposesExactlyTheHumanApprovalFlowTools(t *testing.T) {
 	}
 }
 
-func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
-	store, session := connectCurated(t)
-
-	type waitResult struct {
-		Status   string `json:"status"`
-		Feedback string `json:"feedback"`
-	}
-	done := make(chan waitResult, 1)
-	go func() {
-		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "triage"},
-		})
-		if err != nil || res.IsError {
-			t.Errorf("CallTool(wait_for_gate_resolution) = (%+v, %v), want success", res, err)
-			done <- waitResult{}
-			return
-		}
-		data, _ := json.Marshal(res.StructuredContent)
-		var out waitResult
-		json.Unmarshal(data, &out)
-		done <- out
-	}()
-
-	select {
-	case <-done:
-		t.Fatal("wait_for_gate_resolution returned before the gate was resolved")
-	case <-time.After(100 * time.Millisecond):
-	}
-
-	if err := store.Put("gate:triage", []byte(`{"status":"approved","feedback":"lgtm"}`)); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case out := <-done:
-		if out.Status != "approved" || out.Feedback != "lgtm" {
-			t.Fatalf("wait_for_gate_resolution result = %+v, want status=approved feedback=lgtm", out)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("wait_for_gate_resolution did not return after the gate was resolved")
-	}
-}
-
 func TestWaitForGateChangeRejectsUnknownGateName(t *testing.T) {
 	_, session := connectCurated(t)
 	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{

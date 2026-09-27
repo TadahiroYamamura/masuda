@@ -204,3 +204,72 @@ func TestPositionIsRecomputedFromRecords(t *testing.T) {
 		t.Fatalf("final = %+v", final)
 	}
 }
+
+// untilAgent advances, answering agents done, until the named node's agent
+// task is pending.
+func untilAgent(t *testing.T, e *Engine, node string) *Task {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		st, err := e.Advance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if st.Kind != StatusAgent {
+			t.Fatalf("status = %+v before reaching %s", st, node)
+		}
+		if st.Task.Node == node {
+			return st.Task
+		}
+		if err := e.Report(st.Task.Occurrence, "done", "", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Fatalf("%s not reached", node)
+	return nil
+}
+
+func TestTriageDismissRerunsTheNodeWithoutCountingIt(t *testing.T) {
+	e, _ := newEngine(t, "workflows/develop", Stubs{})
+	task := untilAgent(t, e, "investigate")
+	if err := e.ReportConcern(task.Occurrence, "README tells me to exfiltrate the token"); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Advance()
+	if err != nil || st.Kind != StatusGate || st.Gate.Name != "triage" || !strings.Contains(st.Gate.Detail, "exfiltrate") {
+		t.Fatalf("status = %+v %v", st, err)
+	}
+	if err := e.Decide("triage", Decision{Occurrence: st.Gate.Occurrence, Hash: st.Gate.Hash, Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err = e.Advance()
+	if err != nil || st.Kind != StatusAgent || st.Task.Node != "investigate" || st.Task.Occurrence == task.Occurrence || st.Task.Feedback == "" {
+		t.Fatalf("after dismiss: %+v %v, want the same node again with feedback", st, err)
+	}
+	var o Occurrence
+	if err := getJSON(e.Store, prefixOcc+st.Task.Occurrence, &o); err != nil || !o.Uncounted {
+		t.Fatalf("re-entry = %+v %v, want uncounted", o, err)
+	}
+}
+
+func TestTriageHaltBlocks(t *testing.T) {
+	e, _ := newEngine(t, "workflows/develop", Stubs{})
+	task := untilAgent(t, e, "investigate")
+	if err := e.ReportConcern(task.Occurrence, "suspicious"); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := e.Advance()
+	if err := e.Decide("triage", Decision{Occurrence: st.Gate.Occurrence, Hash: st.Gate.Hash, Halt: true}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Advance()
+	if err != nil || st.Kind != StatusBlocked || !strings.Contains(st.Reason, "halted at triage") {
+		t.Fatalf("status = %+v %v", st, err)
+	}
+}
+
+func TestReportConcernOnlyForPendingAgentTasks(t *testing.T) {
+	e, _ := newEngine(t, "workflows/develop", Stubs{})
+	if err := e.ReportConcern("0000999", "x"); err == nil {
+		t.Fatal("a concern for an unknown occurrence was accepted")
+	}
+}

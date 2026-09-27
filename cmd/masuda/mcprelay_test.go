@@ -83,6 +83,9 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 		}
 	}()
 
+	if err := store.Put("wf:gate-open/triage", []byte(`{"name":"triage","occurrence":"0000001","hash":"h"}`)); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	var status string
 	go func() {
@@ -114,7 +117,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	if err := store.Put("gate:triage", []byte(`{"status":"approved"}`)); err != nil {
+	if err := store.Put("wf:gate-decision/triage", []byte(`{"occurrence":"0000001","hash":"h","approved":true}`)); err != nil {
 		t.Fatal(err)
 	}
 

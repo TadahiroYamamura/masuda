@@ -15,9 +15,9 @@ import (
 const ClaudeAgentsDir = "claude-agents"
 
 // workflowTools are the curated MCP tools every agent needs to hand its
-// work back. They are added to a restricted tools list, or an agent that
+// work back, or to raise a security concern. They are added to a restricted tools list, or an agent that
 // may only read could not write its outputs or report (ADR-0073).
-var workflowTools = []string{"mcp__masuda-gate__write_output", "mcp__masuda-gate__report_result"}
+var workflowTools = []string{"mcp__masuda-gate__write_output", "mcp__masuda-gate__report_result", "mcp__masuda-gate__report_concern"}
 
 // WriteClaudeAgents renders each agent of the set as a Claude Code subagent
 // definition. The role's prompt stays in the instruction file of each

@@ -50,6 +50,9 @@ type Occurrence struct {
 	// Exhausted marks an entry beyond the node's max: the node does not
 	// run and the occurrence finishes as exhausted at once.
 	Exhausted bool `json:"exhausted,omitempty"`
+	// Uncounted marks a re-entry a human ordered (triage), which does not
+	// count toward the node's max.
+	Uncounted bool `json:"uncounted,omitempty"`
 	// Items is a foreach's item list, fixed when it is entered so that a
 	// recomputed position sees the same list.
 	Items      []Item `json:"items,omitempty"`
@@ -75,6 +78,8 @@ type Result struct {
 	// Invalid marks an agent report the engine refused (an undeclared
 	// outcome, a missing output). The node runs again (ADR-0065).
 	Invalid bool `json:"invalid,omitempty"`
+	// Retry marks a node sent back to work by a triage decision.
+	Retry bool `json:"retry,omitempty"`
 }
 
 // Frame is one running workflow file: the root, a called workflow, or one
