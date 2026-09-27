@@ -32,9 +32,30 @@ def _read_json(path):
         return {}
 
 
+# Written by the Notification hook masuda always installs (ADR-0076): the
+# host shows it as "waiting for input" until the next next_task call clears
+# it. The file only notifies; it approves nothing, so it may sit in the
+# guest-writable state directory.
+INPUT_WAIT_HOOK = {
+    "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input",
+    "hooks": [{
+        "type": "command",
+        "command": "mkdir -p /masuda-state/wf && cat > /masuda-state/wf/input-wait.json",
+    }],
+}
+
+
 def main():
     merged = _read_json(BAKED_SETTINGS_PATH)
-    merged.update(_read_json(REPO_SETTINGS_PATH).get("claudeSettings", {}))
+    user = _read_json(REPO_SETTINGS_PATH).get("claudeSettings", {})
+    hooks = {**merged.get("hooks", {})}
+    for event, entries in user.get("hooks", {}).items():
+        hooks[event] = hooks.get(event, []) + list(entries)
+    merged.update(user)
+    # hooks is merged per event rather than replaced, so a repository that
+    # declares its own hooks does not drop the one masuda relies on.
+    hooks["Notification"] = hooks.get("Notification", []) + [INPUT_WAIT_HOOK]
+    merged["hooks"] = hooks
     json.dump(merged, sys.stdout)
 
 

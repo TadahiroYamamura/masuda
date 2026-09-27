@@ -57,7 +57,6 @@ func metadataPath(id string) (string, error) {
 	return filepath.Join(dir, metadataFileName), nil
 }
 
-
 func xdgBase() (string, error) {
 	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
 		return v, nil
@@ -327,7 +326,33 @@ func Status(id string) string {
 	if err != nil {
 		return "(not started)"
 	}
-	return strings.TrimSpace(string(data))
+	status := strings.TrimSpace(string(data))
+	if wait := inputWait(id); wait != "" {
+		status += " — waiting for input (" + wait + ")"
+	}
+	return status
+}
+
+// inputWait reports what the sandbox's Notification hook says the session
+// is stuck on, if anything (ADR-0076). The file sits in the guest-writable
+// state directory; it only informs, so a forged one misleads the display
+// and nothing else.
+func inputWait(id string) string {
+	dir, err := StateDir(id)
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "wf", "input-wait.json"))
+	if err != nil {
+		return ""
+	}
+	var n struct {
+		Type string `json:"notification_type"`
+	}
+	if json.Unmarshal(data, &n) != nil || n.Type == "" {
+		return "unknown"
+	}
+	return n.Type
 }
 
 // EntryStatus adds live progress info to Info for `masuda workspace list`.

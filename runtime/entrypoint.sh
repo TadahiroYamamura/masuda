@@ -34,6 +34,22 @@ MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http:/
 MERGED_SETTINGS=/tmp/masuda-claude-settings.json
 python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
 
+# The workflow's agent definitions, rendered by the host from the run's
+# fixed definitions (ADR-0070), become this session's subagents.
+if [ -d /masuda-state/claude-agents ]; then
+    mkdir -p "$HOME/.claude/agents"
+    cp /masuda-state/claude-agents/*.md "$HOME/.claude/agents/" 2>/dev/null || true
+fi
+
+# Conversation logs go to the shared state directory so the host can take
+# them out when the workspace is removed, even if this VM is gone by then
+# (ADR-0075).
+mkdir -p /masuda-state/transcripts
+if [ ! -L "$HOME/.claude/projects" ]; then
+    rm -rf "$HOME/.claude/projects"
+    ln -s /masuda-state/transcripts "$HOME/.claude/projects"
+fi
+
 # VM boot path (Issue #31 M5-6): a `claude setup-token` OAuth token,
 # registered on the host via `masuda internal claude-token set` and shared
 # in read-only over virtiofs at /masuda-secrets (runtime/fstab.vm's

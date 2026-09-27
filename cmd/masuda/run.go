@@ -19,6 +19,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/defaults"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/host"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/snapshot"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
@@ -136,6 +137,9 @@ func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name 
 	if err := (&engine.Engine{Set: fixed, Store: store}).Start(paths); err != nil {
 		return err
 	}
+	if err := host.WriteClaudeAgents(fixed, stateDir); err != nil {
+		return err
+	}
 	if err := bootSandbox(cmd, root, info.ID, worktreeDir, stateDir, image); err != nil {
 		return err
 	}
@@ -162,6 +166,9 @@ func resumeRun(cmd *cobra.Command, root, workflowPath, id, image string) error {
 	}
 	if set.Root != workflowPath {
 		return fmt.Errorf("workspace %s is running %s, not %s", id, set.Root, workflowPath)
+	}
+	if err := host.WriteClaudeAgents(set, stateDir); err != nil {
+		return err
 	}
 	info, err := workspace.Load(id)
 	if err != nil {

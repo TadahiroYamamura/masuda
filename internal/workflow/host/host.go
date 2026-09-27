@@ -25,6 +25,9 @@ const (
 	GuestWorktreeDir = "/workspace"
 )
 
+// InputWaitFile is what the Notification hook writes under <state>/wf/.
+const InputWaitFile = "input-wait.json"
+
 // Host serializes access to one workspace's engine. Every call rebuilds
 // the position from the store, so a Host holds nothing that a daemon
 // restart could lose.
@@ -68,6 +71,9 @@ type Next struct {
 func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	// A new call means the session is moving again: whatever input wait
+	// the Notification hook reported is over (ADR-0076).
+	_ = os.Remove(filepath.Join(h.env.StateDir, "wf", InputWaitFile))
 	if previous != "" && agentID != "" {
 		if err := h.ledger().SetAgentID(previous, agentID); err != nil {
 			return Next{}, err

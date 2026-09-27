@@ -107,3 +107,20 @@ func TestLazyReportsNoRun(t *testing.T) {
 		t.Fatalf("Get = %v", err)
 	}
 }
+
+func TestWriteClaudeAgentsAddsWorkflowTools(t *testing.T) {
+	h, env := setup(t)
+	if err := WriteClaudeAgents(h.eng.Set, env.StateDir); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(env.StateDir, ClaudeAgentsDir, "reviewer.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(b)
+	for _, want := range []string{"name: reviewer", "tools: Read, Grep, Glob, mcp__masuda-gate__write_output, mcp__masuda-gate__report_result", "指示ファイルを読み"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("reviewer.md lacks %q:\n%s", want, s)
+		}
+	}
+}

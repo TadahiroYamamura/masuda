@@ -486,6 +486,8 @@ func workflowEnv(stateDir, repoRoot, worktreeDir string) *hostenv.Env {
 		BaseRef:      info.Base,
 		Branch:       info.Branch,
 		Perspectives: repoPerspectives(repoRoot),
+		// runtime/entrypoint.sh points the guest's ~/.claude/projects here.
+		TranscriptsDir: filepath.Join(stateDir, "transcripts"),
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		env.ExportDir = filepath.Join(home, ".masuda", "exports", id)
