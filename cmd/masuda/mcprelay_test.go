@@ -18,7 +18,7 @@ import (
 )
 
 // freeTCPPort asks the OS for an unused TCP port on 127.0.0.1, the same
-// TOCTOU-accepting pattern internal/sandbox.freePort uses for a
+// TOCTOU-accepting pattern internal/hostloop.freeTCPPort uses for a
 // per-invocation port that gets rebound almost immediately after.
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
@@ -53,7 +53,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 
 	port := freeTCPPort(t)
 	relayErr := make(chan error, 1)
-	go func() { relayErr <- runMCPRelay(ctx, socketPath, "127.0.0.1", port) }()
+	go func() { relayErr <- runMCPRelay(ctx, socketPath, "127.0.0.1", port, nil) }()
 
 	// Retried rather than probed-then-connected. A TCP probe cannot tell the
 	// relay's listener from freeTCPPort's own: the socket freeTCPPort just
@@ -168,7 +168,7 @@ func TestMCPRelayRespectsBindAddress(t *testing.T) {
 	const bind = "127.0.0.2"
 	port := freeTCPPort(t)
 	relayErr := make(chan error, 1)
-	go func() { relayErr <- runMCPRelay(ctx, socketPath, bind, port) }()
+	go func() { relayErr <- runMCPRelay(ctx, socketPath, bind, port, nil) }()
 
 	// Reaching here at all is the assertion: waitForTCPAccepting fails the
 	// test if nothing ever accepts on the non-default bind address.
@@ -205,4 +205,79 @@ func connectMCPOverTCP(t *testing.T, port int, relayErr, serveErr <-chan error) 
 	}
 	t.Fatalf("never opened an MCP session against %s while the relay and the curated socket both stayed up: %v", endpoint, lastErr)
 	return nil // unreachable: t.Fatalf ends the test goroutine
+}
+
+func TestLeaseMatches(t *testing.T) {
+	leaseFile := filepath.Join(t.TempDir(), "leases")
+	content := "1787000000 52:54:00:aa:bb:cc 192.168.200.42 guest *\n"
+	if err := os.WriteFile(leaseFile, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	from := func(ip string) net.Addr { return &net.TCPAddr{IP: net.ParseIP(ip), Port: 50000} }
+
+	if !leaseMatches(from("192.168.200.42"), "52:54:00:AA:BB:CC", leaseFile) {
+		t.Error("the leased client was refused")
+	}
+	if leaseMatches(from("192.168.200.43"), "52:54:00:aa:bb:cc", leaseFile) {
+		t.Error("a client with no lease was admitted")
+	}
+	if leaseMatches(from("192.168.200.42"), "52:54:00:00:00:01", leaseFile) {
+		t.Error("another VM's client was admitted")
+	}
+	if leaseMatches(from("192.168.200.42"), "52:54:00:aa:bb:cc", filepath.Join(t.TempDir(), "missing")) {
+		t.Error("a client was admitted with no readable lease file")
+	}
+}
+
+// TestMCPRelayRefusedClientNeverReachesSocket: refusing has to happen before
+// the relay dials the curated socket, not after -- a connection that reaches
+// the socket at all has already been served.
+func TestMCPRelayRefusedClientNeverReachesSocket(t *testing.T) {
+	sockDir, err := os.MkdirTemp("", "relay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(sockDir) })
+	socketPath := filepath.Join(sockDir, "daemon-curated.sock")
+	uds, err := net.Listen("unix", socketPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { uds.Close() })
+	reached := make(chan struct{}, 1)
+	go func() {
+		c, err := uds.Accept()
+		if err == nil {
+			c.Close()
+			reached <- struct{}{}
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	port := freeTCPPort(t)
+	relayErr := make(chan error, 1)
+	go func() {
+		relayErr <- runMCPRelay(ctx, socketPath, "127.0.0.1", port, func(net.Addr) bool { return false })
+	}()
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	if err := testutil.WaitForTCP(addr, relayErr); err != nil {
+		t.Fatal(err)
+	}
+
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	_, _ = conn.Write([]byte("x"))
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := conn.Read(make([]byte, 1)); err == nil {
+		t.Error("a refused client got data back")
+	}
+	select {
+	case <-reached:
+		t.Error("a refused client's connection reached the curated socket")
+	case <-time.After(200 * time.Millisecond):
+	}
 }

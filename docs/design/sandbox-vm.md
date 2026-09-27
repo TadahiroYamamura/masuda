@@ -27,7 +27,7 @@ VMの起動・停止は2層に分かれる。
 2. `WriteGitIdentity(stateDir, repoRoot)`でgit identityをstateDir直下に書き込む（後述）
 3. `resolveImageEntry(repoRoot, image)`で、渡されたイメージ**エントリ名**（ADR-0054）をローカルDockerタグとそのエントリのビルドパラメータへ解決する。エントリの`Dockerfile`が存在しなければ、`masuda init`か`masuda sandbox build`を促すエラーで止まる
 4. `ClaudeOAuthTokenPath()`にトークンファイルがあれば、VMの作業ディレクトリ内の`claude-secrets/token`へコピーし、`claude-secrets`タグの共有に加える。トークンが未登録なら共有自体をスキップし、これはエラー扱いにしない
-5. `freePort()`でmcp-relay用ポートを取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ...)`をホスト側プロセスとして起動する（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。`relayPort`はランダム割り当てのため`mcp-relay.port`に書き残す。VMより先に起動するのは、そのアドレスをゲストのカーネル引数`masuda.mcp_relay=`に載せるため
+5. `freeRelayPort()`でmcp-relay用ポートを予約範囲（39300〜39399）から取り、`StartMCPRelay(statedaemon.CuratedSocketPath(stateDir), vmBridgeGatewayIP, relayPort, ..., MACFor(id), vmDHCPLeaseFile)`をホスト側プロセスとして起動する。リレーはこのVMのMACを持つゲストの接続だけを受け付ける（mcp-relay自体の中身は`networking.md`/`state-daemon-mcp.md`参照）。選んだポートは`mcp-relay.port`に書き残す。VMより先に起動するのは、そのアドレスをゲストのカーネル引数`masuda.mcp_relay=`に載せるため
 6. `EnsureEgressProxy()`でホスト共有のegress-proxyプロセスが起動済みか確認し、無ければ起動する（`internal/sandbox/egressproxy.go`、冪等——2台目以降のVMは既に起動済みのものを見つけるだけ）。ゲスト側にこのプロキシのアドレスを渡す必要は無い——REDIRECTルールが自動的に443番宛のトラフィックをそこへ届けるため。仕組み自体は`docs/design/egress-filter.md`を参照
 
 そのうえで`Host.Start(spec)`（`internal/microvm/vm.go`）を呼ぶ。`spec`は、共有に`workspace`（worktreeDir）・`masuda-state`（stateDir）・[`claude-secrets`]、rootfsへの注入物に`~/.claude/CLAUDE.md`（`masuda.ClaudeMD`、`go:embed`されたループ仕様、ADR-0007）、カーネルモジュールに`VirtiofsModuleOnly`、カーネル引数に`masuda.mcp_relay=<relay.Addr>`を持つ。`Host.Start`の中身は次の順に並ぶ。

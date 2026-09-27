@@ -46,7 +46,7 @@ func WaitForUDS(socketPath string, serveErr <-chan error) error {
 // ends are compared.
 //
 // Note what this still cannot tell you. If the port came from the
-// bind-zero-then-close trick (see internal/sandbox.freePort and friends),
+// bind-zero-then-close trick (see internal/hostloop.freeTCPPort and friends),
 // that listener stays in LISTEN for a moment after Close() returns and will
 // answer this probe on behalf of a server that has not bound anything yet
 // -- confirmed in /proc/net/tcp, where the socket the probe reached carried

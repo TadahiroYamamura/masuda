@@ -28,8 +28,8 @@ const egressProxyBinary = "masuda-egress-proxy"
 
 // egressProxyBind/egressProxyPort: the shared egress proxy (Issue #11)
 // listens on a single, fixed address for the whole host -- unlike
-// mcp-relay/virtiofsd/etc, which are one-per-workspace with a randomly
-// chosen port (freePort()), this is intentionally one shared process for
+// mcp-relay/virtiofsd/etc, which are one-per-workspace (the relay on a
+// port picked from a range, freeRelayPort()), this is intentionally one shared process for
 // every VM regardless of workspace (see internal/egressproxy.Proxy's doc
 // comment for why: a per-workspace proxy would need netfilter rules added
 // and removed dynamically per VM, which can only be done via a

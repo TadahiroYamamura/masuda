@@ -50,6 +50,11 @@ DATA_HOME="${XDG_DATA_HOME:-${HOME:-}/.local/share}/masuda"
 NET_HELPER="${HOME:-}/.local/bin/masuda-net-helper"
 # Must match internal/sandbox.egressProxyPort (Issue #11).
 EGRESS_PROXY_PORT=39218
+# Must match internal/sandbox.relayPortMin/relayPortMax: the ports each
+# workspace's mcp-relay may listen on at $BRIDGE_ADDR.
+RELAY_PORT_MIN=39300
+RELAY_PORT_MAX=39399
+HOST_INPUT_CHAIN=MASUDA-BRIDGE-INPUT
 EGRESS_PROXY_MARK=0x1
 EGRESS_PROXY_RT_TABLE=100
 
@@ -265,6 +270,41 @@ step_egress_filtering() {
 	fi
 }
 
+# What a guest may reach on the host itself. step_egress_filtering governs
+# traffic *through* the host (FORWARD); this governs traffic *to* it
+# (INPUT), which is otherwise wide open: any service listening on
+# $BRIDGE_ADDR or 0.0.0.0 -- every other workspace's mcp-relay included --
+# would be one connect() away from every guest. Allowed: replies to
+# connections the host opened (SSH into the guest), DHCP and DNS to
+# dnsmasq, the egress proxy (REDIRECT has already rewritten 443 to its
+# port by the time INPUT sees it), and the mcp-relay port range. Which
+# workspace may use which relay port is the relay's own check, not this
+# rule's -- the port is picked at VM start, so no static rule can know it.
+#
+# A dedicated chain, rebuilt from scratch on every run, so editing the
+# rules here takes effect on the next run instead of piling up next to
+# the old ones; the jump into it goes first in INPUT so that no broader
+# ACCEPT elsewhere on the host gets a say for bridge traffic.
+step_host_input_filtering() {
+	if ! sudo iptables -L "$HOST_INPUT_CHAIN" >/dev/null 2>&1; then
+		sudo iptables -N "$HOST_INPUT_CHAIN"
+	fi
+	sudo iptables -F "$HOST_INPUT_CHAIN"
+	sudo iptables -A "$HOST_INPUT_CHAIN" -m state --state RELATED,ESTABLISHED -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -p udp --dport 67 -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -p udp --dport 53 -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -p tcp --dport 53 -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -p tcp --dport "$EGRESS_PROXY_PORT" -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -p tcp --dport "$RELAY_PORT_MIN:$RELAY_PORT_MAX" -j ACCEPT
+	sudo iptables -A "$HOST_INPUT_CHAIN" -j DROP
+	if sudo iptables -C INPUT -i "$BRIDGE" -j "$HOST_INPUT_CHAIN" 2>/dev/null; then
+		log "bridge INPUT filtering already hooked in; rules refreshed"
+	else
+		log "restricting what guests can reach on the host itself"
+		sudo iptables -I INPUT 1 -i "$BRIDGE" -j "$HOST_INPUT_CHAIN"
+	fi
+}
+
 # masuda-net-helper: build + setcap. CAP_NET_ADMIN goes on this small,
 # single-purpose binary -- never on masuda itself
 # (docs/adr/0048-vm-network-shared-bridge-dynamic-tap-privileged-helper.md).
@@ -396,6 +436,7 @@ UNIT
 if [ "$RUNTIME_ONLY" = 1 ]; then
 	step_network
 	step_egress_filtering
+	step_host_input_filtering
 	step_dnsmasq
 	log "runtime state re-applied."
 	exit 0
@@ -416,6 +457,7 @@ step_kernel
 step_dnsmasq_install
 step_network
 step_egress_filtering
+step_host_input_filtering
 step_net_helper
 step_egress_proxy
 step_dnsmasq

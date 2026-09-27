@@ -20,6 +20,7 @@
 
 - **nat/PREROUTING**: `-i br-masuda0 -p tcp --dport 443 -j REDIRECT --to-port $EGRESS_PROXY_PORT`（`setup-vm-host.sh:191-192`）。ブリッジから来たTCP 443宛のパケットの宛先アドレスを、受信インターフェース自身のアドレスへその場で書き換える。書き換え後のルーティング決定は「ローカル宛のパケット」という通常の経路をたどるため、FORWARDチェーンを経由せずINPUTチェーン側で配送される——REDIRECTを使う一番の理由がこれで、ゲスト側から見た宛先IPが何であっても、443番であれば必ずこのプロキシのリスニングソケットに届く
 - **filter/FORWARD**: `-i br-masuda0 -o $uplink -p udp --dport 53 -j ACCEPT`・同tcp版（`setup-vm-host.sh:208-209`）のみを追加する。REDIRECTされる443番はそもそもFORWARDチェーンを通らないため、ここにルールは無い。RELATED,ESTABLISHEDの戻りトラフィックは`step_network`が既に許可済み（`docs/design/networking.md`）
+- **INPUT**: REDIRECT後のパケットはINPUTチェーンを通る。`step_host_input_filtering`が作る`MASUDA-BRIDGE-INPUT`チェーンがこのポートへの到達を許可している（ゲストからホスト自身への通信全般の絞り込みは`docs/design/networking.md`）
 - **`$EGRESS_PROXY_PORT`（39218）はホスト全体で固定**: `internal/sandbox.egressProxyPort`（`internal/sandbox/egressproxy.go:40`）と`setup-vm-host.sh`冒頭の`EGRESS_PROXY_PORT`変数の両方に同じ値がハードコードされており、片方だけ変更すると壊れる。REDIRECTルール自体がホスト起動時に静的に設定される固定ルールのため、動的な検出は行わない
 - 再実行時、`step_egress_filtering`は旧TPROXY構成の残留物（mangleテーブルのDIVERTチェーン・TPROXYルール・`ip rule`のfwmarkエントリ）を検出して削除するクリーンアップも行う（`setup-vm-host.sh:167-187`）
 

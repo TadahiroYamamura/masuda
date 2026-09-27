@@ -206,8 +206,8 @@ func mcpConfigJSON(relayPort int) string {
 
 // freeTCPPort asks the OS for an unused TCP port on 127.0.0.1. There's an
 // inherent TOCTOU race between closing this listener and the relay binding
-// the port, but it's the same acceptable risk internal/sandbox.freePort
-// already takes for the ttyd port.
+// the port, but it's the same acceptable risk internal/sandbox.freeRelayPort
+// takes for the VM's relay.
 func freeTCPPort() (int, error) {
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

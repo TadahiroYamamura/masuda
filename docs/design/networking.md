@@ -55,15 +55,16 @@ Claude Codeの`--mcp-config`は`http://host:port`形式のURLしか受け付け�
 
 ### 中継本体
 
-- `masuda internal mcp-relay --socket <path> --bind <addr> --port <port>`（`cmd/masuda/mcprelay.go`、隠しサブコマンド）は`bind:port`でTCP待受し、接続を受けるたびに`socketPath`へダイヤルして双方向に`io.Copy`する単純なバイト中継（`runMCPRelay`/`relayConn`、`mcprelay.go:65-104`）。`--bind`のデフォルトは`127.0.0.1`。
-- `internal/sandbox.StartMCPRelay(socketPath, bind, port, logPath)`（`internal/sandbox/mcprelay.go:47-78`）は、現在のmasudaバイナリ自身を`masuda internal mcp-relay ...`として再exec（自己exec）する形でこれをバックグラウンド起動し、標準出力/標準エラーを`logPath`へ流す。起動後、`mcpRelayStartupTimeout`（5秒）以内にTCP待受が開始するのを確認してから返る。`MCPRelayProcess.Stop()`（`mcprelay.go:82-84`）はpidファイル経由でプロセスを終了する。
+- `masuda internal mcp-relay --socket <path> --bind <addr> --port <port> [--allow-mac <mac> --lease-file <path>]`（`cmd/masuda/mcprelay.go`、隠しサブコマンド）は`bind:port`でTCP待受し、接続を受けるたびに`socketPath`へダイヤルして双方向に`io.Copy`する単純なバイト中継（`runMCPRelay`/`relayConn`）。`--bind`のデフォルトは`127.0.0.1`。
+- `--allow-mac`と`--lease-file`を渡すと、接続元IPをdnsmasqのリースファイルでMACに引き、そのMACでない接続は`socketPath`へダイヤルする前に閉じる（`leaseMatches`）。リースは接続のたびに読み直す。VM側のリレーはブリッジ上の全ゲストから到達でき、リレー自身は認証を持たないため、この確認が無いと別ワークスペースのゲストがそのワークスペースのcurated MCP（ゲート・特権コマンド）を操作できる
+- `internal/sandbox.StartMCPRelay(socketPath, bind, port, logPath, pidFile, allowMAC, leaseFile)`（`internal/sandbox/mcprelay.go`）は、現在のmasudaバイナリ自身を`masuda internal mcp-relay ...`として再exec（自己exec）する形でこれをバックグラウンド起動し、標準出力/標準エラーを`logPath`へ流す。起動後、`mcpRelayStartupTimeout`（5秒）以内にTCP待受が開始するのを確認してから返る。`allowMAC`が空でなければ`--allow-mac`/`--lease-file`を付ける。`MCPRelayProcess.Stop()`はpidファイル経由でプロセスを終了する。
 
 ### 呼び出し元による違い
 
 MCPリレーは2箇所から起動され、bindアドレスとportの決め方が異なる。
 
 - **ホストループ側**（Discovery/Blueprint段階、`internal/hostloop.startMCPRelay`、`internal/hostloop/hostloop.go:238-263`）: `127.0.0.1`にbindし、`freeTCPPort()`（`hostloop.go:214-221`。`127.0.0.1:0`で一時的にリスンして空きポート番号だけを取得しすぐ閉じる）で毎回のStart呼び出しごとに新たに空きポートを選ぶ。同一ワークスペースの前回起動が残したリレーとの重複排除は行わない（`Start()`のIsRunningガードにより、生きているtmuxセッションが無い時しかこの経路は動かないため）。得られたポートは`mcpConfigJSON(relayPort)`（`hostloop.go:201-208`）が`--mcp-config`のJSONへ埋め込む。per-serverの`"timeout"`には`mcpToolTimeoutMillis`（7日、`hostloop.go:191-199`）を設定する。
-- **サンドボックスVM側**（Build/Review段階、`VMBackend.vmStart`、`internal/sandbox/vmbackend.go`）: リレーはゲスト内ではなく**ホスト側**で動く——virtiofsはUnix domain socketのスペシャルファイルをカーネルをまたいで共有できないため、ゲスト側にブリッジ元となるローカルソケットがそもそも存在しない。bindアドレスはループバックではなくブリッジのゲートウェイIP（`vmBridgeGatewayIP`＝`192.168.200.1`）、ポートは`freePort()`（`internal/sandbox/sandbox.go`）で都度選ぶ。選んだ`<ブリッジゲートウェイIP>:<port>`は`microvm.Spec.KernelArgs`に`masuda.mcp_relay=<addr>`として載せ、ゲストのカーネルコマンドラインへ渡す。ゲスト内の`runtime/entrypoint.sh`・`runtime/start_claude.sh`はこのカーネルコマンドライン引数を`/proc/cmdline`から`sed`で読み取り、その値をそのまま自分の`--mcp-config`に使う——ゲスト内でリレープロセスが動くことはない。
+- **サンドボックスVM側**（Build/Review段階、`VMBackend.vmStart`、`internal/sandbox/vmbackend.go`）: リレーはゲスト内ではなく**ホスト側**で動く——virtiofsはUnix domain socketのスペシャルファイルをカーネルをまたいで共有できないため、ゲスト側にブリッジ元となるローカルソケットがそもそも存在しない。bindアドレスはループバックではなくブリッジのゲートウェイIP（`vmBridgeGatewayIP`＝`192.168.200.1`）。ポートは`freeRelayPort()`（`internal/sandbox/sandbox.go`）が予約範囲`relayPortMin`〜`relayPortMax`（39300〜39399）からランダムな位置を起点に空きを探して選ぶ——後述の`step_host_input_filtering`がゲストに到達を許すのはこの範囲だけ。`--allow-mac`にはそのVMの`MACFor(id)`、`--lease-file`には`vmDHCPLeaseFile`を渡す。選んだ`<ブリッジゲートウェイIP>:<port>`は`microvm.Spec.KernelArgs`に`masuda.mcp_relay=<addr>`として載せ、ゲストのカーネルコマンドラインへ渡す。ゲスト内の`runtime/entrypoint.sh`・`runtime/start_claude.sh`はこのカーネルコマンドライン引数を`/proc/cmdline`から`sed`で読み取り、その値をそのまま自分の`--mcp-config`に使う——ゲスト内でリレープロセスが動くことはない。
 - **停止のための永続化**: VM側はリレーのPIDをVMの作業ディレクトリの`mcp-relay.pid`（`vmRelayPIDFile`）に書き、選んだポートも`mcp-relay.port`（`vmRelayPortFile`）に書き出す。`masuda sandbox stop`は起動時の`*MCPRelayProcess`を持たない別プロセスとして実行されるため、pidfileとcurated socketのパスを目印にkillする。ホストループ側には同等のファイルは無い——そのリレーはホストループプロセス自身の子プロセスとして存在し、明示的な永続化なしにホストループの終了と運命を共にする。
 
 ## VMホスト一次セットアップ
@@ -75,7 +76,7 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 | | 実行するステップ | いつ |
 |---|---|---|
 | フル（引数なし） | 全ステップ＋`step_boot_unit` | 初回、スクリプト変更後、`masuda-net-helper`再ビルド後（capabilityが失われるため） |
-| `--runtime-only` | `step_network`・`step_egress_filtering`・`step_dnsmasq` | boot時にunitが自動実行。`sudo systemctl restart masuda-vm-host`で手動再適用 |
+| `--runtime-only` | `step_network`・`step_egress_filtering`・`step_host_input_filtering`・`step_dnsmasq` | boot時にunitが自動実行。`sudo systemctl restart masuda-vm-host`で手動再適用 |
 
 この分割は、下の各ステップのうち**bridge・iptables・sysctlがカーネルのランタイム状態で再起動のたびに消える**のに対し、apt導入・vmlinuz複製・`go build`は消えないことに対応する。WSL2ではアイドル停止でも消えるため頻度が高い。
 
@@ -89,6 +90,7 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 - **`step_kernel`**（`:72-90`）: `/boot/vmlinuz-*-generic`の最新版を探し（無ければ`linux-image-generic`をaptでインストールしてから再取得）、`$XDG_DATA_HOME/masuda/vmlinuz-<version>`へmode 0644・実行ユーザー所有でコピーする。
 - **`step_network`**（`:96-129`）: bridge `br-masuda0`（`192.168.200.1/24`）が無ければ作成・起動し、`net.ipv4.ip_forward=1`を設定する。デフォルトルートのインターフェースを`ip route show default`から検出し、`192.168.200.0/24`向けのoutbound NAT（MASQUERADE）とFORWARDルールを`iptables`へ追加する（`iptables -t nat -C`での存在チェック込みの冪等）。
 - **`step_egress_filtering`**（`:156-212`）: ブリッジ発のTCP 443を`masuda-egress-proxy`へREDIRECTするiptablesルール、およびDNS（UDP/TCP 53）以外のブリッジegressを制限するFORWARDルールを設定する。仕組みの詳細・関連ADRは`docs/design/egress-filter.md`を参照
+- **`step_host_input_filtering`**: ゲストからホスト自身への通信（INPUT）を絞る。専用チェーン`MASUDA-BRIDGE-INPUT`を毎回空にして作り直し、ホストが開いた接続の戻り（RELATED,ESTABLISHED）・DHCP（UDP 67）・DNS（UDP/TCP 53）・egress-proxyのポート（REDIRECT後の宛先ポート）・mcp-relayのポート範囲（`RELAY_PORT_MIN`〜`RELAY_PORT_MAX`）だけを許可し、残りをDROPする。`INPUT`の先頭に`-i br-masuda0 -j MASUDA-BRIDGE-INPUT`を1本だけ差し込むため、ホスト側の他のACCEPTルールより先に評価される。ポート範囲はGo側の`relayPortMin`/`relayPortMax`と一致させる必要がある。範囲内のどのポートをどのゲストが使えるかはこのルールではなくリレー自身の`--allow-mac`が判定する
 - **`step_net_helper`**（`:219-225`）: `cmd/masuda-net-helper`を`~/.local/bin/masuda-net-helper`へ`go build`し、`sudo setcap cap_net_admin+ep`を無条件に毎回適用する。
 - **`step_egress_proxy`**（`:231-237`）: `cmd/masuda-egress-proxy`を`~/.local/bin/masuda-egress-proxy`へ`go build`する（setcap不要、詳細は`docs/design/egress-filter.md`）。
 - **`step_dnsmasq_install`**: `dnsmasq`が無ければaptでインストールする。`--runtime-only`から切り離してあるのは、boot経路がaptに触れないようにするため（パッケージ導入にはネットワークが要るが、それはこのスクリプトがこれから用意するもの）。
@@ -101,5 +103,7 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 ## 既知の問題
 
 未調査。修正時はここから消す。
+
+- **ゲストが自分のIPアドレスを偽ると、リースによる接続元の判定をだませる**: mcp-relayの`--allow-mac`とegress-proxyのワークスペース判定は、どちらも「接続元IP→dnsmasqのリース→MAC」で相手を決める。ゲストはroot権限で自分のIPを別のVMのリースと同じ値に設定でき、そのVMとの間でARPが競合している間はそのVMとして扱われうる。TAPデバイスごとの送信元の偽装防止（ebtables等）は特権を要するため入れていない
 
 - **`entrypoint.sh`・`start_claude.sh` に到達不能なDockerパス分岐が残っている**: `runtime/entrypoint.sh:17-29` と `runtime/start_claude.sh:20-23` は、`masuda.mcp_relay=` カーネルコマンドライン引数が見つからない場合に固定ポート39217でリレーを自前起動するフォールバックを持つ。しかし `VMBackend.vmStart`（`internal/sandbox/vmbackend.go:309-322`）は常にこの引数を設定するため、この分岐には到達しない。rootfsビルドが使う `docker create` は ENTRYPOINT を実行しないので、そちらからも到達しない。ADR-0044 でDocker実行基盤を削除した際の掃除漏れと見られる
