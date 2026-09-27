@@ -51,6 +51,7 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newVMSSHKeyCommand())
 	root.AddCommand(newUpdateCommand())
 	root.AddCommand(newWorkflowCommand())
+	root.AddCommand(newRunCommand())
 
 	planCmd := newGateCommand(gate.Plan)
 	planCmd.AddCommand(newPlanStartCommand())
