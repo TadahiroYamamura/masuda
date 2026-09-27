@@ -92,6 +92,8 @@
 - **[0053](0053-privileged-commands-declared-and-run-in-disposable-vm.md)** target repoが要求する特権操作は、宣言＋承認された使い捨てVMで実行し、メインサンドボックスVMには一切root/Docker権限を与えない
 - **[0054](0054-vm-images-declared-as-directories-under-masuda-images.md)** VMイメージは`.masuda/images/<name>/`のディレクトリ単位で宣言し、`settings.json`の`image`はそのエントリ名を指す
 - **[0056](0056-vm-host-network-persisted-by-oneshot-unit-rerunning-the-setup-script.md)** VMホストのネットワーク設定は、セットアップスクリプト自身を`--runtime-only`で再実行するsystemd oneshot unitで永続化する
+- **[0083](0083-keep-own-microvm-layer-split-into-masuda-agnostic-package.md)** サンドボックスのVM層は既存のmicroVMツールを採用せず自前で保守し、masudaに依存しない`internal/microvm`として分離する
+- **[0084](0084-claude-token-stays-on-host-guest-reaches-api-via-gateway.md)** Claudeのトークンはゲストに渡さず、ワークスペースごとのホスト側APIゲートウェイがプレースホルダーを差し替える
 
 ### 設定・配布・自己更新
 

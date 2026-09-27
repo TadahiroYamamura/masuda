@@ -6,7 +6,7 @@ masudaのサンドボックスはCloud Hypervisor microVM（`internal/sandbox.VM
 
 ## パッケージの分担
 
-VMの起動・停止は2層に分かれる。
+VMの起動・停止は2層に分かれる（ADR-0083）。
 
 - **`internal/microvm`**: masudaを知らない汎用層。Dockerイメージからrootfsを作ってCloud Hypervisor microVMを起動・停止し、virtiofsによるディレクトリ共有・TAPデバイス・SSH鍵・ゲストIP解決・pidfileによるプロセス管理を持つ。呼び出し側はVMを`microvm.Spec`（ID・イメージ・rootfsへの注入物・カーネルモジュールの範囲・共有ディレクトリ・カーネル引数）として記述し、ホスト側のセットアップ（データディレクトリ・bridge名・DHCPリースファイル・net-helperのバイナリ名・ゲストユーザー）を`microvm.Host`として渡す。依存してよいmasudaのパッケージは`internal/rootfs`だけで、`TestNoMasudaImports`（`internal/microvm/imports_test.go`）がこれを強制する
 - **`internal/sandbox`**: masuda固有の層。イメージエントリの解決、Claude OAuthトークンの共有、git identity、mcp-relay、egress-proxy、特権コマンドの承認と成果物回収を持ち、それらを`microvm.Spec`に詰めて`internal/microvm`を呼ぶ。`vmHost()`（`internal/sandbox/vmbackend.go`）がmasudaのホスト設定（`workspace.DataHome()`・`br-masuda0`・`/var/lib/misc/masuda-dnsmasq.leases`・`masuda-net-helper`・ゲストユーザー`ubuntu`（uid/gid 1000））を`microvm.Host`として組み立てる
@@ -102,7 +102,7 @@ mcp-relayは、`vmStart`が`StartMCPRelay`に渡したcurated socketのパスを
 
 ## 認証情報受け渡し
 
-git identityはrootfsへの焼き込みではなくvirtiofs共有経由でゲストへ渡す（rootfsが起動のたびに毎回作り直されるため、焼き込みだと登録・更新のたびに再ビルドが要る）。Claude OAuthトークンはゲストへ一切渡さない。
+git identityはrootfsへの焼き込みではなくvirtiofs共有経由でゲストへ渡す（rootfsが起動のたびに毎回作り直されるため、焼き込みだと登録・更新のたびに再ビルドが要る）。Claude OAuthトークンはゲストへ一切渡さない（ADR-0084）。
 
 - **git identity**（`internal/sandbox/gitidentity.go`）: `WriteGitIdentity(stateDir, repoRoot)`が`git -C <repoRoot> config --local --get user.name/user.email`を試し、値が無ければ`git config --global --get`にフォールバックして`stateDir/.masuda-git-identity`へ「1行目name・2行目email」の2行プレーンテキストとして書く。シェルソース可能な形式にしていないのは、値に空白・引用符が含まれてもエスケープ処理なしで安全に読めるようにするため（ゲスト側は`sed -n '1p'/'2p'`で読む）。この共有は新規のvirtiofsタグを増やさず、既存の`/masuda-state`共有に相乗りする
 - **Claude OAuthトークン**（`internal/sandbox/claudetoken.go`）: `masuda claude set-token`（`cmd/masuda/claude.go`、標準入力から読む）が`SetClaudeOAuthToken`で`workspace.DataHome()/claude-oauth-token`（mode 0600）へホスト全体で1つ保存する。`claude setup-token`が発行する長期（1年）OAuthトークン。ゲストのClaude Codeはプレースホルダーのトークンだけを持ち、`ANTHROPIC_BASE_URL`でワークスペースごとのAPIゲートウェイに向けられている。未登録でもVMは起動するが、ゲートウェイがAPI呼び出しを503で断る（`sandbox start`・`review start`は起動前に警告を出す——`docs/design/cli.md`）
