@@ -1,0 +1,12 @@
+version: 1
+inputs: [diff]
+start: perspectives
+nodes:
+  perspectives:
+    type: workflow
+    workflow: workflows/review/perspectives
+    next: cross-cutting
+  cross-cutting:
+    type: workflow
+    workflow: workflows/review/cross-cutting
+    next: end

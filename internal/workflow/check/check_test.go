@@ -263,7 +263,7 @@ func TestFlowImplementMustCommitBeforeEnd(t *testing.T) {
 `
 	impl := "version: 1\ninputs: [plan]\nstart: w\nnodes:\n  w:\n    type: agent\n    role: agents/writer\n    next: {done: end, stuck: end:stuck}\n"
 	set := load(t, "workflows/top", map[string]string{"workflows/top": wf("approve", top), "workflows/impl": impl})
-	expectError(t, Run(set, Options{}), "type: implement must commit before it ends")
+	expectError(t, Run(set, Options{}), "type: implement must commit what it changes before it ends")
 }
 
 func TestFlowImplementWithZeroStepsIsFine(t *testing.T) {
@@ -341,5 +341,48 @@ func TestFlowWithBindsStepDiff(t *testing.T) {
 	top := "version: 1\ninputs: [step]\nstart: f\nnodes:\n  f:\n    type: foreach\n    over: perspectives\n    body: workflows/pr\n    with: {diff: step-diff}\n    next: end\n"
 	pr := "version: 1\ninputs: [perspective, diff]\nstart: r\nnodes:\n  r:\n    type: agent\n    role: agents/reviewer\n    next: end\n"
 	set := load(t, "workflows/top", map[string]string{"workflows/top": top, "workflows/pr": pr})
+	expectNone(t, Run(set, Options{}))
+}
+
+func TestFlowImplementResumedWithCallersChangesIsFine(t *testing.T) {
+	// stuck leaves the step's changes uncommitted and goes back to the plan
+	// gate; approving resumes implement with those changes. The contract
+	// judges the content from a clean entry, so this is not a violation.
+	top := `  planner:
+    type: agent
+    role: agents/planner
+    next: approve
+  approve:
+    type: approval
+    gate: plan
+    target: plan
+    next: {approved: impl, rejected: planner}
+  impl:
+    type: implement
+    workflow: workflows/impl
+    next: {done: commit, stuck: approve}
+  commit:
+    type: commit
+    scope: plan
+    next: {done: publish, rejected: end}
+  publish:
+    type: publish
+    next: end
+`
+	impl := "version: 1\ninputs: [plan]\nstart: steps\nnodes:\n  steps:\n    type: foreach\n    over: steps\n    body: workflows/step\n    next: {done: end, stuck: end:stuck}\n"
+	step := `version: 1
+inputs: [step]
+start: w
+nodes:
+  w:
+    type: agent
+    role: agents/writer
+    next: {done: c, stuck: end:stuck}
+  c:
+    type: commit
+    scope: step
+    next: {done: end, rejected: w}
+`
+	set := load(t, "workflows/top", map[string]string{"workflows/top": wf("planner", top), "workflows/impl": impl, "workflows/step": step})
 	expectNone(t, Run(set, Options{}))
 }

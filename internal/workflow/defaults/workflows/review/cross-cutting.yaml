@@ -1,0 +1,14 @@
+version: 1
+inputs: [diff]
+start: explore
+nodes:
+  explore:
+    type: agent
+    role: agents/cross-cutting-explorer
+    next:
+      done: verify
+      none_found: end
+  verify:
+    type: agent
+    role: agents/cross-cutting-verifier
+    next: end

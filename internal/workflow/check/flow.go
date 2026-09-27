@@ -233,16 +233,22 @@ func (f *flow) step(n *def.Node, st state, violate func(string, ...any), s *summ
 		sub := f.summarize(n.Workflow, st)
 		f.inherit(n, sub, s)
 		for o, sts := range sub.exits {
-			if isStage && contract.RequiresPlan && o == def.OutcomeDone {
-				for x := range sts {
-					if x.dirty {
-						violate("%s can end with `end` while changes are uncommitted; type: %s must commit before it ends", n.Workflow, n.Type)
-						break
-					}
-				}
-			}
 			for x := range sts {
 				add(o, x)
+			}
+		}
+		if isStage && contract.RequiresPlan {
+			// The contract judges the content, so it is checked from the
+			// entry state the contract promises. Changes the caller brings
+			// in (e.g. a stuck step resumed after approval) are not the
+			// content's to commit; the caller's own commit-before-publish
+			// check covers them.
+			promised := f.summarize(n.Workflow, state{plan: true})
+			for x := range promised.exits[def.OutcomeDone] {
+				if x.dirty {
+					violate("%s can end with `end` while changes are uncommitted; type: %s must commit what it changes before it ends", n.Workflow, n.Type)
+					break
+				}
 			}
 		}
 	}

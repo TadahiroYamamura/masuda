@@ -1,0 +1,11 @@
+version: 1
+inputs: [plan]
+start: steps
+nodes:
+  steps:
+    type: foreach
+    over: steps
+    body: workflows/implement/build-step
+    next:
+      done: end
+      stuck: end:stuck
