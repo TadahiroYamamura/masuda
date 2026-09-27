@@ -57,6 +57,7 @@ Claude Codeの`--mcp-config`は`http://host:port`形式のURLしか受け付け�
 
 - `masuda internal mcp-relay --socket <path> --bind <addr> --port <port> [--allow-mac <mac> --lease-file <path>]`（`cmd/masuda/mcprelay.go`、隠しサブコマンド）は`bind:port`でTCP待受し、接続を受けるたびに`socketPath`へダイヤルして双方向に`io.Copy`する単純なバイト中継（`runMCPRelay`/`relayConn`）。`--bind`のデフォルトは`127.0.0.1`。
 - `--allow-mac`と`--lease-file`を渡すと、接続元IPをdnsmasqのリースファイルでMACに引き、そのMACでない接続は`socketPath`へダイヤルする前に閉じる（`leaseMatches`）。リースは接続のたびに読み直す。VM側のリレーはブリッジ上の全ゲストから到達でき、リレー自身は認証を持たないため、この確認が無いと別ワークスペースのゲストがそのワークスペースのcurated MCP（ゲート・特権コマンド）を操作できる
+- 同じ接続元チェックは、ワークスペースごとのAPIゲートウェイ（`masuda internal api-gateway`、`docs/design/sandbox-vm.md`の「認証情報受け渡し」）も使う。ゲートウェイのポートもリレーと同じ予約範囲から選ぶ
 - `internal/sandbox.StartMCPRelay(socketPath, bind, port, logPath, pidFile, allowMAC, leaseFile)`（`internal/sandbox/mcprelay.go`）は、現在のmasudaバイナリ自身を`masuda internal mcp-relay ...`として再exec（自己exec）する形でこれをバックグラウンド起動し、標準出力/標準エラーを`logPath`へ流す。起動後、`mcpRelayStartupTimeout`（5秒）以内にTCP待受が開始するのを確認してから返る。`allowMAC`が空でなければ`--allow-mac`/`--lease-file`を付ける。`MCPRelayProcess.Stop()`はpidファイル経由でプロセスを終了する。
 
 ### 呼び出し元による違い
@@ -104,6 +105,6 @@ MCPリレーは2箇所から起動され、bindアドレスとportの決め方�
 
 未調査。修正時はここから消す。
 
-- **ゲストが自分のIPアドレスを偽ると、リースによる接続元の判定をだませる**: mcp-relayの`--allow-mac`とegress-proxyのワークスペース判定は、どちらも「接続元IP→dnsmasqのリース→MAC」で相手を決める。ゲストはroot権限で自分のIPを別のVMのリースと同じ値に設定でき、そのVMとの間でARPが競合している間はそのVMとして扱われうる。TAPデバイスごとの送信元の偽装防止（ebtables等）は特権を要するため入れていない
+- **ゲストが自分のIPアドレスを偽ると、リースによる接続元の判定をだませる**: mcp-relayとAPIゲートウェイの`--allow-mac`、egress-proxyのワークスペース判定は、いずれも「接続元IP→dnsmasqのリース→MAC」で相手を決める。ゲストはroot権限で自分のIPを別のVMのリースと同じ値に設定でき、そのVMとの間でARPが競合している間はそのVMとして扱われうる。TAPデバイスごとの送信元の偽装防止（ebtables等）は特権を要するため入れていない
 
 - **`entrypoint.sh`・`start_claude.sh` に到達不能なDockerパス分岐が残っている**: `runtime/entrypoint.sh:17-29` と `runtime/start_claude.sh:20-23` は、`masuda.mcp_relay=` カーネルコマンドライン引数が見つからない場合に固定ポート39217でリレーを自前起動するフォールバックを持つ。しかし `VMBackend.vmStart`（`internal/sandbox/vmbackend.go:309-322`）は常にこの引数を設定するため、この分岐には到達しない。rootfsビルドが使う `docker create` は ENTRYPOINT を実行しないので、そちらからも到達しない。ADR-0044 でDocker実行基盤を削除した際の掃除漏れと見られる

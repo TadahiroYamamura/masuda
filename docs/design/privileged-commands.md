@@ -32,7 +32,7 @@
 
 `cloud-hypervisor`とカーネルの存在は、手順2で実行ディレクトリを作る前に`Host.Check`で確かめる。
 
-VMが受け取らないもの: `/masuda-secrets`（Claude OAuthトークン）、MCPリレー、SSH鍵。対話アタッチの経路も無く、コンソールは実行ディレクトリの`console.log`へ落ちる。
+VMが受け取らないもの: APIゲートウェイ（Claude OAuthトークンへの経路）、MCPリレー、SSH鍵。対話アタッチの経路も無く、コンソールは実行ディレクトリの`console.log`へ落ちる。
 
 ### ゲスト側
 

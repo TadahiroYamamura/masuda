@@ -36,13 +36,14 @@ func newClaudeSetTokenCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "set-token",
 		Short: "Save a `claude setup-token` OAuth token, read from stdin",
-		Long: "Saves the long-lived OAuth token `claude setup-token` prints, for masuda to hand\n" +
-			"sandbox VM guests as CLAUDE_CODE_OAUTH_TOKEN. Read from stdin so the token never\n" +
+		Long: "Saves the long-lived OAuth token `claude setup-token` prints. It stays on the host:\n" +
+			"sandbox VM guests hold only a placeholder, which a host-side gateway replaces with\n" +
+			"this token on their API requests. Read from stdin so the token never\n" +
 			"lands in shell history or `ps` output:\n\n" +
 			"  claude setup-token\n" +
 			"  echo \"<the token it printed>\" | masuda claude set-token\n\n" +
 			"One token per masuda installation, not per workspace. Without it a VM still boots,\n" +
-			"but the `claude` inside it has no credentials and exits immediately.",
+			"but every API call the `claude` inside it makes is refused until a token is set.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			data, err := io.ReadAll(cmd.InOrStdin())

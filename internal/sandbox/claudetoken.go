@@ -10,8 +10,10 @@ import (
 )
 
 // claudeOAuthTokenFileName is the fixed, host-level (not per-workspace)
-// location of the long-lived `claude setup-token` OAuth token VMBackend
-// hands guests (Issue #31 M5-6). One token per masuda installation, not per
+// location of the long-lived `claude setup-token` OAuth token guests' API
+// calls are made with (Issue #31 M5-6). It stays on the host: each VM's
+// `masuda internal api-gateway` reads it and puts it on the guest's
+// requests in place of a placeholder. One token per masuda installation, not per
 // workspace -- same reasoning as sshkey.go's VM SSH keypair: workspaces are
 // ephemeral, and the security boundary that matters is "does this host's
 // masuda installation have a token at all", not "which workspace".
@@ -24,8 +26,7 @@ import (
 // directory) isn't something virtiofs offers either. `claude setup-token`
 // exists specifically for this shape of problem (CI/headless environments
 // without interactive browser login): a single opaque, long-lived (1 year)
-// token string, handed to the guest as CLAUDE_CODE_OAUTH_TOKEN, with no
-// need to keep a file in sync afterward.
+// token string, with no need to keep a file in sync afterward.
 const claudeOAuthTokenFileName = "claude-oauth-token"
 
 // ClaudeOAuthTokenPath returns the path masuda stores the `claude

@@ -133,9 +133,9 @@ RUN claude install
 # talks to the Anthropic API). Plugin/marketplace state lands in
 # ~/.claude/settings.json and ~/.claude/plugins/, both of which stay exactly
 # as baked: nothing from the host reaches the guest's Claude configuration.
-# The only thing that crosses the boundary is the `claude setup-token` OAuth
-# token, handed over as CLAUDE_CODE_OAUTH_TOKEN via a separate read-only
-# share (internal/sandbox/claudetoken.go, runtime/entrypoint.sh).
+# Not even the `claude setup-token` OAuth token crosses the boundary: the
+# guest holds a placeholder, and a host-side gateway swaps in the real token
+# (cmd/masuda/apigateway.go, runtime/entrypoint.sh).
 #
 # This used to read "neither is one of the two files sandbox.Start
 # bind-mounts from the host (~/.claude.json, ~/.claude/.credentials.json)",

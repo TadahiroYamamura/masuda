@@ -34,20 +34,29 @@ MCP_CONFIG="{\"mcpServers\":{\"masuda-gate\":{\"type\":\"http\",\"url\":\"http:/
 MERGED_SETTINGS=/tmp/masuda-claude-settings.json
 python3 /opt/masuda/runtime/merge_claude_settings.py > "$MERGED_SETTINGS"
 
-# VM boot path (Issue #31 M5-6): a `claude setup-token` OAuth token,
-# registered on the host via `masuda internal claude-token set` and shared
-# in read-only over virtiofs at /masuda-secrets (runtime/fstab.vm's
-# claude-secrets tag, only present when a token was actually registered --
-# see internal/sandbox/claudetoken.go for why the Docker path's
-# ~/.claude file bind mounts don't translate to a VM guest). export'd here
-# (not inlined into the tmux command string below, unlike
-# CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT) so the token doesn't show up in `ps`
-# output -- tmux's new-session inherits the server's environment, which is
-# this script's environment at the point the server first starts.
-if [ -r /masuda-secrets/token ]; then
-    export CLAUDE_CODE_OAUTH_TOKEN
-    CLAUDE_CODE_OAUTH_TOKEN=$(cat /masuda-secrets/token)
+# The real Claude token never enters the guest. Claude Code here holds a
+# placeholder and talks to the API only through the host-side gateway
+# VMBackend.Start runs for this VM (`masuda internal api-gateway`, address
+# via masuda.api_gateway=), which swaps the placeholder for the real token.
+# The placeholder must match cmd/masuda/apigateway.go's
+# guestPlaceholderToken. Missing is fatal for the same reason as the relay
+# above: Claude could not reach the API at all.
+#
+# CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: the calls Claude Code still makes
+# straight to api.anthropic.com (telemetry, bootstrap, the MCP registry)
+# bypass the gateway, carry only the placeholder, and are refused by the
+# egress proxy anyway -- turning them off keeps them from failing on every
+# start. export'd rather than inlined into the tmux command string: tmux's
+# new-session inherits the server's environment, which is this script's
+# environment at the point the server first starts.
+API_GATEWAY_ADDR=$(sed -n 's/.*masuda\.api_gateway=\([^ ]*\).*/\1/p' /proc/cmdline)
+if [ -z "$API_GATEWAY_ADDR" ]; then
+    echo "[entrypoint] masuda.api_gateway= missing from /proc/cmdline -- no way to reach the Anthropic API" >&2
+    exit 1
 fi
+export ANTHROPIC_BASE_URL="http://$API_GATEWAY_ADDR"
+export CLAUDE_CODE_OAUTH_TOKEN=masuda-sandbox-placeholder-token
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 
 # VM boot path: git identity for the Build stage's per-step commits inside
 # the guest (see internal/sandbox/gitidentity.go's WriteGitIdentity) --

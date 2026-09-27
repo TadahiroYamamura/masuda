@@ -139,22 +139,13 @@ func resolveImageEntry(repoRoot, entry string) (string, config.ImageConfig, erro
 	return tag, cfg, nil
 }
 
-// vmClaudeSecretsDir/vmClaudeSecretsSocketPath stage the `claude
-// setup-token` OAuth token (see internal/sandbox/claudetoken.go) for
-// sharing into the guest at /masuda-secrets (runtime/fstab.vm's
-// claude-secrets tag) -- a separate share from /masuda-state so this
-// credential never ends up inside a target repository's workspace state,
-// and separate from the rootfs image so a token registered or rotated
-// after a workspace's rootfs was built still takes effect on the next
-// Start without a rebuild.
-func vmClaudeSecretsDir(workDir string) string { return filepath.Join(workDir, "claude-secrets") }
+func vmAPIGatewayPIDFile(workDir string) string { return filepath.Join(workDir, "api-gateway.pid") }
 
 // vmStart boots workspace id's VM. Idempotent: if it is already running,
 // it returns immediately without rebuilding anything.
 //
-// The MCP relay and the Claude token staging happen before the VM is
-// booted, not after: the relay's address has to be on the guest's kernel
-// command line, and the token has to be in place for its share.
+// The MCP relay and the API gateway start before the VM is booted, not
+// after: their addresses have to be on the guest's kernel command line.
 func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) {
 	h, err := vmHost()
 	if err != nil {
@@ -187,25 +178,6 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	shares := []microvm.Share{
 		{Tag: "workspace", HostDir: worktreeDir},
 		{Tag: "masuda-state", HostDir: stateDir},
-	}
-	// claude-secrets: only shared when a token has actually been registered
-	// (`masuda internal claude-token set`) -- see claudetoken.go's doc
-	// comment for why the Docker path's ~/.claude file bind mounts don't
-	// translate to a VM guest. Not finding one is not an error here: the
-	// guest just boots without it (and Claude Code inside prints its own
-	// "not logged in" message), the same as a fresh masuda install that
-	// hasn't been set up for the VM path at all yet.
-	if tokenPath, err := ClaudeOAuthTokenPath(); err == nil {
-		if token, err := os.ReadFile(tokenPath); err == nil {
-			secretsDir := vmClaudeSecretsDir(workDir)
-			if err := os.MkdirAll(secretsDir, 0o700); err != nil {
-				return Handle{}, fmt.Errorf("creating claude secrets staging directory: %w", err)
-			}
-			if err := os.WriteFile(filepath.Join(secretsDir, "token"), token, 0o600); err != nil {
-				return Handle{}, fmt.Errorf("staging claude oauth token: %w", err)
-			}
-			shares = append(shares, microvm.Share{Tag: "claude-secrets", HostDir: secretsDir})
-		}
 	}
 
 	relayPort, err := freeRelayPort()
@@ -240,6 +212,23 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		return Handle{}, fmt.Errorf("ensuring egress-proxy is running: %w", err)
 	}
 
+	// The guest's only way to the Anthropic API: it holds a placeholder
+	// token, and the gateway swaps in the real one (see `masuda internal
+	// api-gateway`). Started even when no token is registered yet, so a
+	// token set later takes effect without restarting the VM.
+	gatewayPort, err := freeRelayPort()
+	if err != nil {
+		_ = relay.Stop()
+		return Handle{}, fmt.Errorf("allocating api-gateway port: %w", err)
+	}
+	gateway, err := StartAPIGateway(vmBridgeGatewayIP, gatewayPort,
+		filepath.Join(workDir, "api-gateway.log"), vmAPIGatewayPIDFile(workDir),
+		microvm.MACFor(id), vmDHCPLeaseFile)
+	if err != nil {
+		_ = relay.Stop()
+		return Handle{}, fmt.Errorf("starting api-gateway: %w", err)
+	}
+
 	err = h.Start(microvm.Spec{
 		ID:    id,
 		Image: imageTag,
@@ -255,9 +244,10 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		},
 		Modules:    microvm.VirtiofsModuleOnly,
 		Shares:     shares,
-		KernelArgs: []string{"masuda.mcp_relay=" + relay.Addr},
+		KernelArgs: []string{"masuda.mcp_relay=" + relay.Addr, "masuda.api_gateway=" + gateway.Addr},
 	})
 	if err != nil {
+		_ = gateway.Stop()
 		_ = relay.Stop()
 		return Handle{}, err
 	}
@@ -267,9 +257,10 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 // vmStop shuts workspace id's VM down and releases everything vmStart
 // allocated. Not an error if it's already gone.
 //
-// The relay is stopped between microvm's Shutdown and Remove because its
-// pid file lives in the VM's working directory, which Remove deletes. Its
-// identity is the curated socket it was pointed at, the same value vmStart
+// The relay and the API gateway are stopped between microvm's Shutdown and
+// Remove because their pid files live in the VM's working directory, which
+// Remove deletes. The gateway is identified by the MAC it serves; the
+// relay's identity is the curated socket it was pointed at, the same value vmStart
 // passed to StartMCPRelay; an unresolvable state directory leaves the
 // marker empty, which makes KillStalePID do nothing rather than signal an
 // unidentified PID. vmRelayPortFile stays only because a VM started before
@@ -291,6 +282,8 @@ func vmStop(id string) error {
 	}
 	microvm.KillStalePID(vmRelayPIDFile(workDir), relayMarker)
 	_ = os.Remove(vmRelayPIDFile(workDir))
+	microvm.KillStalePID(vmAPIGatewayPIDFile(workDir), microvm.MACFor(id))
+	_ = os.Remove(vmAPIGatewayPIDFile(workDir))
 	// egress-proxy is deliberately NOT stopped here -- see
 	// EnsureEgressProxy's doc comment: it's a shared, host-wide process,
 	// not scoped to this workspace.
