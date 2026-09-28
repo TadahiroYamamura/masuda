@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/TadahiroYamamura/masuda/internal/workflow/hostenv"
 )
 
 func TestParseInputs(t *testing.T) {
@@ -33,7 +35,7 @@ func TestParseInputs(t *testing.T) {
 
 func TestWriteInputsStoresFiles(t *testing.T) {
 	dir := t.TempDir()
-	paths, err := writeInputs(dir, map[string]string{"instructions": "x"})
+	paths, err := writeInputs(&hostenv.Env{StateDir: dir, TrustedDir: t.TempDir()}, map[string]string{"instructions": "x"})
 	if err != nil {
 		t.Fatal(err)
 	}

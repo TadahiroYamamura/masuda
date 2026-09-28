@@ -1,10 +1,10 @@
 package sandbox
 
 import (
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
+
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 )
 
 // gitIdentityFileName is where WriteGitIdentity writes the host's git
@@ -46,5 +46,5 @@ func WriteGitIdentity(stateDir, repoRoot string) error {
 	name := gitConfigValue(repoRoot, "user.name")
 	email := gitConfigValue(repoRoot, "user.email")
 	content := name + "\n" + email + "\n"
-	return os.WriteFile(filepath.Join(stateDir, gitIdentityFileName), []byte(content), 0o644)
+	return sharedfs.WriteFile(stateDir, gitIdentityFileName, []byte(content))
 }

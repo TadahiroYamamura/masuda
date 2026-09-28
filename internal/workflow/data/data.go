@@ -15,17 +15,19 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 )
 
 // Store is the output area of one workspace: <dir>/out/<occurrence>/<name>.
 // Dir holds the values the engine reads and must be out of the sandbox's
-// reach. Mirror, when set, gets a copy of each value at the same relative
-// path for agents to read: the sandbox can write there, so nothing is ever
-// read back from it.
+// reach. When MirrorRoot is set, each value is copied to
+// <MirrorRoot>/<MirrorRel>/out/... for agents to read: the sandbox can
+// write there, so nothing is ever read back from it.
 type Store struct {
-	Dir    string
-	Mirror string
+	Dir        string
+	MirrorRoot string
+	MirrorRel  string
 }
 
 // fileName maps a data name to the file it is stored in. Engine-read data
@@ -68,14 +70,22 @@ func (s Store) Write(occurrence, name string, content []byte) (string, error) {
 // Mirrored maps a path under Dir to its copy under Mirror, the path to
 // hand to an agent. Without a Mirror, p itself is returned.
 func (s Store) Mirrored(p string) string {
-	if s.Mirror == "" {
+	rel, ok := s.mirrorRel(p)
+	if !ok {
 		return p
+	}
+	return filepath.Join(s.MirrorRoot, rel)
+}
+
+func (s Store) mirrorRel(p string) (string, bool) {
+	if s.MirrorRoot == "" {
+		return "", false
 	}
 	rel, err := filepath.Rel(s.Dir, p)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return p
+		return "", false
 	}
-	return filepath.Join(s.Mirror, rel)
+	return filepath.Join(s.MirrorRel, rel), true
 }
 
 // WriteBeside stores a file the engine derives from an output (the plan's
@@ -89,36 +99,11 @@ func (s Store) WriteBeside(output, file string, content []byte) error {
 }
 
 func (s Store) mirror(p string, content []byte) error {
-	if s.Mirror == "" {
+	rel, ok := s.mirrorRel(p)
+	if !ok {
 		return nil
 	}
-	return writeCopy(s.Mirrored(p), content)
-}
-
-// writeCopy replaces the file at p rather than writing through it, so a
-// symlink the sandbox left there cannot redirect the host's write.
-func writeCopy(p string, content []byte) error {
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(p), ".copy-*")
-	if err != nil {
-		return err
-	}
-	if _, err := tmp.Write(content); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	return os.Rename(tmp.Name(), p)
+	return sharedfs.WriteFile(s.MirrorRoot, rel, content)
 }
 
 // Has reports whether an occurrence wrote a non-empty value for name.

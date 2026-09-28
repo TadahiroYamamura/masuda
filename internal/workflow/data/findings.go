@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 )
 
 // Finding is one review finding as an agent writes it: ADR-0020's location
@@ -81,11 +83,21 @@ func ParseFindings(b []byte) ([]Finding, error) {
 
 // Ledger is the workspace's findings.json: every finding from every review,
 // interim and final, in one place (ADR-0082).
-// File is the ledger the engine reads, out of the sandbox's reach; Mirror,
-// when set, is a copy agents read (see Store).
+// File is the ledger the engine reads, out of the sandbox's reach. When
+// MirrorRoot is set, a copy agents read is kept at <MirrorRoot>/<MirrorName>
+// (see Store).
 type Ledger struct {
-	File   string
-	Mirror string
+	File       string
+	MirrorRoot string
+	MirrorName string
+}
+
+// MirrorPath is where agents read the ledger.
+func (l Ledger) MirrorPath() string {
+	if l.MirrorRoot == "" {
+		return l.File
+	}
+	return filepath.Join(l.MirrorRoot, l.MirrorName)
 }
 
 func (l Ledger) Load() ([]Record, error) {
@@ -123,10 +135,10 @@ func (l Ledger) save(rs []Record) error {
 	if err := os.Rename(tmp, l.File); err != nil {
 		return err
 	}
-	if l.Mirror == "" {
+	if l.MirrorRoot == "" {
 		return nil
 	}
-	return writeCopy(l.Mirror, b)
+	return sharedfs.WriteFile(l.MirrorRoot, l.MirrorName, b)
 }
 
 // Import adds the findings one occurrence wrote, first dropping those an

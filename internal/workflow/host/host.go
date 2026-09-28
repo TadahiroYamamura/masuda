@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/data"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
@@ -73,13 +74,13 @@ func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	defer h.mu.Unlock()
 	// A new call means the session is moving again: whatever input wait
 	// the Notification hook reported is over (ADR-0076).
-	_ = os.Remove(filepath.Join(h.env.StateDir, "wf", InputWaitFile))
+	_ = sharedfs.Remove(h.env.StateDir, filepath.Join("wf", InputWaitFile))
 	if previous != "" && agentID != "" {
 		if err := h.ledger().SetAgentID(previous, agentID); err != nil {
 			return Next{}, err
 		}
 	}
-	st, err := h.eng.Advance()
+	st, err := h.advance()
 	if err != nil {
 		h.writeStatus("error: " + err.Error())
 		return Next{}, err
@@ -99,6 +100,26 @@ func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	default:
 		return Next{Kind: "blocked", Reason: st.Reason}, nil
 	}
+}
+
+// advance moves the engine, and before handing out an agent task, checks
+// the files agents read against the engine's own. A difference means some
+// earlier agent rewrote what the next one was about to read; the engine's
+// version is put back, and the task waits at triage so a human hears of it.
+func (h *Host) advance() (engine.Status, error) {
+	st, err := h.eng.Advance()
+	if err != nil || st.Kind != engine.StatusAgent {
+		return st, err
+	}
+	changed, err := h.env.VerifyCopies()
+	if err != nil || len(changed) == 0 {
+		return st, err
+	}
+	desc := "エンジンが検出: エージェントに渡すために状態ディレクトリへ置いたファイルが、エンジンの書いた内容から書き換えられていた（または消されていた）。このタスクより前に動いたエージェントのいずれかが書き換えた可能性がある。エンジンの内容で置き直してある。\n\n- " + strings.Join(changed, "\n- ")
+	if err := h.eng.ReportConcern(st.Task.Occurrence, desc); err != nil {
+		return st, err
+	}
+	return h.eng.Advance()
 }
 
 func summary(st engine.Status) string {
@@ -214,11 +235,7 @@ func (h *Host) writeInstructions(t *engine.Task) (string, error) {
 	for _, o := range a.OutcomeOrder {
 		fmt.Fprintf(&b, "- %s: %s\n", o, a.Outcomes[o])
 	}
-	p := filepath.Join(h.env.StateDir, "wf", "tasks", t.Occurrence+".md")
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		return "", err
-	}
-	return p, os.WriteFile(p, []byte(b.String()), 0o644)
+	return h.env.Put(filepath.Join("tasks", t.Occurrence+".md"), []byte(b.String()))
 }
 
 func outputHint(name string) string {

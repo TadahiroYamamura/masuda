@@ -240,3 +240,34 @@ func TestSnapshotRewrittenInTheSandboxDoesNotHideChanges(t *testing.T) {
 		t.Fatalf("changed = %v %v, want README.md", files, err)
 	}
 }
+
+func TestVerifyCopiesPutsBackWhatTheSandboxChanged(t *testing.T) {
+	e := newEnv(t)
+	if _, err := e.Put(filepath.Join("feedback", "0000003.md"), []byte("差し戻し")); err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := e.VerifyCopies(); err != nil || len(changed) != 0 {
+		t.Fatalf("untouched copies reported %v %v", changed, err)
+	}
+	outside := filepath.Join(t.TempDir(), "elsewhere.md")
+	write(t, outside, "差し戻し")
+	feedback := filepath.Join(e.StateDir, "wf", "feedback", "0000003.md")
+	if err := os.Remove(feedback); err != nil {
+		t.Fatal(err)
+	}
+	// Same content, but through a symlink the sandbox could repoint later.
+	if err := os.Symlink(outside, feedback); err != nil {
+		t.Fatal(err)
+	}
+	write(t, e.Outputs().Mirrored(e.Outputs().Path("0000002", "plan")), "{}")
+	changed, err := e.VerifyCopies()
+	if err != nil || strings.Join(changed, ",") != "feedback/0000003.md,out/0000002/plan.json" {
+		t.Fatalf("changed = %v %v", changed, err)
+	}
+	if st, err := os.Lstat(feedback); err != nil || !st.Mode().IsRegular() {
+		t.Fatalf("feedback copy = %v %v, want a regular file again", st, err)
+	}
+	if changed, _ := e.VerifyCopies(); len(changed) != 0 {
+		t.Fatalf("after putting back, still changed: %v", changed)
+	}
+}

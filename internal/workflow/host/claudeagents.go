@@ -2,10 +2,10 @@ package host
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 )
 
@@ -23,11 +23,7 @@ var workflowTools = []string{"mcp__masuda-gate__write_output", "mcp__masuda-gate
 // definition. The role's prompt stays in the instruction file of each
 // task, so the subagent itself only knows to read and follow it.
 func WriteClaudeAgents(set *def.Set, stateDir string) error {
-	dir := filepath.Join(stateDir, ClaudeAgentsDir)
-	if err := os.RemoveAll(dir); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := sharedfs.RemoveAll(stateDir, ClaudeAgentsDir); err != nil {
 		return err
 	}
 	for _, a := range set.Agents {
@@ -45,7 +41,7 @@ func WriteClaudeAgents(set *def.Set, stateDir string) error {
 		}
 		b.WriteString("---\n")
 		b.WriteString("渡された指示ファイルを読み、その指示に従え。指示ファイルに書かれていないことはしない。\n")
-		if err := os.WriteFile(filepath.Join(dir, name+".md"), []byte(b.String()), 0o644); err != nil {
+		if err := sharedfs.WriteFile(stateDir, filepath.Join(ClaudeAgentsDir, name+".md"), []byte(b.String())); err != nil {
 			return err
 		}
 	}

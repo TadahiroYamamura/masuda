@@ -21,12 +21,12 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -167,8 +167,7 @@ func (a *Aggregator) startChild(ctx context.Context, name string, rs resolvedSer
 	ctx, cancel := context.WithTimeout(ctx, childStartTimeout)
 	defer cancel()
 
-	logFile, err := os.OpenFile(filepath.Join(logDir, "mcp-"+name+".log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := sharedfs.OpenAppend(logDir, "mcp-"+name+".log")
 	if err != nil {
 		log.Printf("mcp aggregator: opening log for %q: %v", name, err)
 		return

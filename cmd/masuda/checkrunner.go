@@ -14,6 +14,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/snapshot"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // checkFeedbackBytes bounds how much of a failing check's log is handed to
@@ -46,7 +47,13 @@ func checkRunner(id, repoRoot, worktreeDir, stateDir string, store engine.Store)
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		logPath := filepath.Join(stateDir, "wf", "checks", fmt.Sprintf("%s-%d.log", name, time.Now().UnixNano()))
+		// The full log is for humans and stays on the host-only side; the
+		// agent gets its tail as feedback.
+		trusted, err := workspace.TrustedDir(id)
+		if err != nil {
+			return false, "", err
+		}
+		logPath := filepath.Join(trusted, "wf", "checks", fmt.Sprintf("%s-%d.log", name, time.Now().UnixNano()))
 		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
 			return false, "", err
 		}

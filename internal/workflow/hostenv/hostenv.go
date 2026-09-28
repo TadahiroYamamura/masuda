@@ -4,12 +4,14 @@
 package hostenv
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/data"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
@@ -76,12 +79,69 @@ func (e *Env) trusted(parts ...string) string {
 // Outputs is where agents' outputs are kept: read from the trusted side,
 // with a copy in the state directory for agents.
 func (e *Env) Outputs() data.Store {
-	return data.Store{Dir: e.trusted(), Mirror: e.wf()}
+	return data.Store{Dir: e.trusted(), MirrorRoot: e.StateDir, MirrorRel: "wf"}
 }
 
 // Ledger is the findings ledger, kept the same way as Outputs.
 func (e *Env) Ledger() data.Ledger {
-	return data.Ledger{File: e.trusted("findings.json"), Mirror: e.wf("findings.json")}
+	return data.Ledger{File: e.trusted("findings.json"), MirrorRoot: e.StateDir, MirrorName: filepath.Join("wf", "findings.json")}
+}
+
+// Put writes a file the engine hands to agents: first the copy the engine
+// keeps, then the one agents read under the state directory, whose path is
+// returned. rel is relative to the workflow's directory on both sides.
+func (e *Env) Put(rel string, b []byte) (string, error) {
+	if err := writeFile(e.trusted(rel), b); err != nil {
+		return "", err
+	}
+	if err := sharedfs.WriteFile(e.StateDir, filepath.Join("wf", rel), b); err != nil {
+		return "", err
+	}
+	return e.wf(rel), nil
+}
+
+// trustedOnly are the files under the trusted side that agents never get a
+// copy of.
+var trustedOnly = map[string]bool{"snapshots": true, "checks": true, "execution-log.jsonl": true}
+
+// VerifyCopies compares every copy handed to agents with the engine's own
+// and puts the engine's back where they differ, returning the paths
+// (relative to the workflow directory) that had been changed or removed.
+// Run before each task, it keeps what one agent did to the shared files
+// from reaching the next, and says that it happened.
+func (e *Env) VerifyCopies() ([]string, error) {
+	var changed []string
+	err := filepath.WalkDir(e.trusted(), func(p string, d os.DirEntry, err error) error {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(e.trusted(), p)
+		top, _, _ := strings.Cut(filepath.ToSlash(rel), "/")
+		if trustedOnly[top] {
+			if d.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
+			return nil
+		}
+		want, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		shared := filepath.Join("wf", rel)
+		if got, err := sharedfs.ReadRegular(e.StateDir, shared); err == nil && bytes.Equal(got, want) {
+			return nil
+		}
+		changed = append(changed, rel)
+		return sharedfs.WriteFile(e.StateDir, shared, want)
+	})
+	sort.Strings(changed)
+	return changed, err
 }
 
 func (e *Env) data() data.Store    { return e.Outputs() }
@@ -99,7 +159,7 @@ func (e *Env) Data(name string) (string, bool, error) {
 		return "", ok, err
 	}
 	if name == def.DataFindings {
-		return e.ledger().Mirror, true, nil
+		return e.ledger().MirrorPath(), true, nil
 	}
 	return e.data().Mirrored(p), true, nil
 }
@@ -138,8 +198,8 @@ func (e *Env) writeDiff(name, rev string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
-	p := e.wf("diffs", fmt.Sprintf("%s-%d.diff", name, time.Now().UnixNano()))
-	return p, true, writeFile(p, []byte(d))
+	p, err := e.Put(filepath.Join("diffs", fmt.Sprintf("%s-%d.diff", name, time.Now().UnixNano())), []byte(d))
+	return p, err == nil, err
 }
 
 func (e *Env) plan() (*data.Plan, string, error) {
@@ -171,8 +231,8 @@ func stepIndex(keyOrPath string) (int, error) {
 func (e *Env) Items(over, from, since string) ([]engine.Item, error) {
 	var items []engine.Item
 	add := func(key string, content []byte) error {
-		p := e.wf("items", key+itemExt(over))
-		if err := writeFile(p, content); err != nil {
+		p, err := e.Put(filepath.Join("items", key+itemExt(over)), content)
+		if err != nil {
 			return err
 		}
 		items = append(items, engine.Item{Key: key, Path: p})
@@ -573,8 +633,7 @@ func (e *Env) OutputsDone(ctx engine.OutputContext, outputs []string) error {
 }
 
 func (e *Env) WriteFeedback(occurrence, text string) (string, error) {
-	p := e.wf("feedback", occurrence+".md")
-	return p, writeFile(p, []byte(text))
+	return e.Put(filepath.Join("feedback", occurrence+".md"), []byte(text))
 }
 
 func (e *Env) Log(ev engine.Event) {

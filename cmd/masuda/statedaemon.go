@@ -20,6 +20,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
@@ -249,7 +250,7 @@ func startDaemon(id string) error {
 	if err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(filepath.Join(stateDir, daemonLogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := sharedfs.OpenAppend(stateDir, daemonLogName)
 	if err != nil {
 		return err
 	}
@@ -271,7 +272,7 @@ func startDaemon(id string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
+	if err := sharedfs.WriteFile(stateDir, daemonPIDName, []byte(strconv.Itoa(cmd.Process.Pid))); err != nil {
 		return err
 	}
 	return waitForDaemon(stateDir)

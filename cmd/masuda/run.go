@@ -20,6 +20,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workflow/defaults"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/host"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/hostenv"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/snapshot"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
@@ -145,7 +146,11 @@ func startRun(cmd *cobra.Command, root, workflowPath, branch, base, image, name 
 	if err != nil {
 		return err
 	}
-	paths, err := writeInputs(stateDir, values)
+	trustedDir, err := workspace.TrustedDir(info.ID)
+	if err != nil {
+		return err
+	}
+	paths, err := writeInputs(&hostenv.Env{StateDir: stateDir, TrustedDir: trustedDir}, values)
 	if err != nil {
 		return err
 	}
@@ -259,16 +264,13 @@ func parseInputs(raw []string, declared []string) (map[string]string, error) {
 	return values, nil
 }
 
-// writeInputs stores each input as a file in the shared state directory:
-// agents receive inputs as paths, never inlined (ADR-0077).
-func writeInputs(stateDir string, values map[string]string) (map[string]string, error) {
+// writeInputs stores each input as a file agents are handed by path, never
+// inlined (ADR-0077).
+func writeInputs(env *hostenv.Env, values map[string]string) (map[string]string, error) {
 	paths := map[string]string{}
 	for k, v := range values {
-		p := filepath.Join(stateDir, "wf", "inputs", k+".md")
-		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(p, []byte(v), 0o644); err != nil {
+		p, err := env.Put(filepath.Join("inputs", k+".md"), []byte(v))
+		if err != nil {
 			return nil, err
 		}
 		paths[k] = p

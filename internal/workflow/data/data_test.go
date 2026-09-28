@@ -104,24 +104,24 @@ func TestLedgerImportReplacesSameSourceAndListsToFix(t *testing.T) {
 }
 
 func TestTheCopyForAgentsDoesNotChangeWhatIsRead(t *testing.T) {
-	s := Store{Dir: t.TempDir(), Mirror: t.TempDir()}
+	s := Store{Dir: t.TempDir(), MirrorRoot: t.TempDir(), MirrorRel: "wf"}
 	p, err := s.Write("0000004", "plan", []byte(validPlan))
 	if err != nil {
 		t.Fatal(err)
 	}
 	copyPath := s.Mirrored(p)
-	if copyPath == p || !strings.HasPrefix(copyPath, s.Mirror) {
-		t.Fatalf("Mirrored = %q, want a path under %s", copyPath, s.Mirror)
+	if copyPath == p || !strings.HasPrefix(copyPath, filepath.Join(s.MirrorRoot, "wf")) {
+		t.Fatalf("Mirrored = %q, want a path under %s", copyPath, s.MirrorRoot)
 	}
 	// The copy is where agents read and write; neither editing it nor
 	// adding a later-looking one may change the value the engine reads.
 	if err := os.WriteFile(copyPath, []byte(`{"summary":"x","steps":[]}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(s.Mirror, "out", "9999999"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(s.MirrorRoot, "wf", "out", "9999999"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(s.Mirror, "out", "9999999", "plan.json"), []byte(validPlan), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.MirrorRoot, "wf", "out", "9999999", "plan.json"), []byte(validPlan), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	got, ok, err := s.Latest("plan")
@@ -132,15 +132,18 @@ func TestTheCopyForAgentsDoesNotChangeWhatIsRead(t *testing.T) {
 
 func TestLedgerKeepsACopyForAgents(t *testing.T) {
 	dir := t.TempDir()
-	l := Ledger{File: filepath.Join(dir, "trusted", "findings.json"), Mirror: filepath.Join(dir, "shared", "findings.json")}
+	l := Ledger{File: filepath.Join(dir, "trusted", "findings.json"), MirrorRoot: filepath.Join(dir, "shared"), MirrorName: "wf/findings.json"}
+	if err := os.MkdirAll(l.MirrorRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := l.Import(Record{Occurrence: "0000002", Source: "f/review"}, []Finding{{File: "a.go", StartLine: 1, EndLine: 1, Severity: "高", Description: "p", Suggestion: "s", Autofix: true}}); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(l.Mirror)
+	b, err := os.ReadFile(l.MirrorPath())
 	if err != nil || !strings.Contains(string(b), "a.go") {
 		t.Fatalf("copy = %q %v", b, err)
 	}
-	if err := os.WriteFile(l.Mirror, []byte("[]"), 0o644); err != nil {
+	if err := os.WriteFile(l.MirrorPath(), []byte("[]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	rs, err := l.Load()
