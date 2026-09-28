@@ -35,13 +35,6 @@
 `triage`は、ホストの`masuda triage dismiss|redo|halt`で人間が判断する。懸念の対象となっている
 エージェント自身がこれを閉じることはできない。
 
-## サブエージェントの再開
-
-指示ファイルに「このエージェントIDのサブエージェントに`SendMessage`で伝えよ」と書かれている
-場合は、`SendMessage`ツールでそのサブエージェントを再開する。`SendMessage`は遅延読み込みの
-ツールなので、使う前に`ToolSearch`で`select:SendMessage`を読み込むこと。再開できなかった場合は、
-指示ファイルに書かれた代わりのサブエージェントを新しく起動する。
-
 ## rootやDockerを要する処理
 
 このVMには**root権限もDockerデーモンも無い**。`sudo`は`systemctl poweroff`以外では通らず、
