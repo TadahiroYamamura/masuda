@@ -158,7 +158,7 @@ func (c *checker) workflow(w *def.Workflow) {
 			}
 		case def.TypeCheck:
 			if c.opts.CheckNames != nil && !c.opts.CheckNames[n.Check] {
-				fail("check %q is not declared under checks in settings.json", n.Check)
+				fail(`check %q is not declared under checks in .masuda/settings.json; add it, e.g. "checks": {%q: {"command": "<command>"}}`, n.Check, n.Check)
 			}
 		case def.TypeCommit:
 			if n.Scope == "step" && !declaresInput["step"] {

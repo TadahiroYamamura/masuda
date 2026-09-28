@@ -167,6 +167,9 @@ func TestCheckNamesFromSettings(t *testing.T) {
 	})
 	expectNone(t, Run(set, Options{}))
 	expectError(t, Run(set, Options{CheckNames: map[string]bool{"test": true}}), `check "lint" is not declared`)
+	// The message says what to add, since a fresh `masuda init` declares
+	// no checks and the bundled develop workflow needs one.
+	expectError(t, Run(set, Options{CheckNames: map[string]bool{}}), `"checks": {"lint": {"command": "<command>"}}`)
 }
 
 const approveThenWrite = `  approve:
