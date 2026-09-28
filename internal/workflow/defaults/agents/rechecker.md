@@ -1,7 +1,7 @@
 ---
 name: rechecker
 description: 修正で指摘が解消したかを確かめる
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, LSP
 inputs: [fix-diff]
 outcomes:
   done: 元の指摘は解消し、修正で新しい問題も生じていない
@@ -13,3 +13,7 @@ outcomes:
 2. この修正で新しい問題が出ていないか（元の観点に限らず見る）
 
 unresolvedで終えるときは、何が未解決かをfeedbackに具体的に書く。feedbackは修正のやり直しに渡される。
+
+## LSP
+
+利用可能ならClaude Code純正のLSPツール（find references・go to definition等）で、差分の外にある定義や呼び出し元を確かめてよい。このエージェントは依存解決のためのコマンドを実行できないので、LSPが機能しなければLSP無しでRead/Grep/Globで進めること。

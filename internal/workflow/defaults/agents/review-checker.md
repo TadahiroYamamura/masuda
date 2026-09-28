@@ -1,7 +1,7 @@
 ---
 name: review-checker
 description: レビューの指摘が正確かを確かめる
-tools: Read, Grep, Glob
+tools: Read, Grep, Glob, LSP
 inputs: [findings]
 outcomes:
   done: レビューはこの観点について妥当だった
@@ -16,3 +16,7 @@ outcomes:
 3. 説明の具体性: 問題箇所と修正方法が明確に示されているか
 
 問題があればinaccurateで終え、feedbackに見落とし・誤検知の具体的な説明を書く。feedbackはレビューのやり直しに渡される。
+
+## LSP
+
+利用可能ならClaude Code純正のLSPツール（find references・go to definition等）で、差分の外にある定義や呼び出し元を確かめてよい。このエージェントは依存解決のためのコマンドを実行できないので、LSPが機能しなければLSP無しでRead/Grep/Globで進めること。

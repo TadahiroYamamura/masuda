@@ -119,7 +119,7 @@ func TestWriteClaudeAgentsAddsWorkflowTools(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(b)
-	for _, want := range []string{"name: reviewer", "tools: Read, Grep, Glob, mcp__masuda-gate__write_output, mcp__masuda-gate__report_result, mcp__masuda-gate__report_concern", "指示ファイルを読み"} {
+	for _, want := range []string{"name: reviewer", "tools: Read, Grep, Glob, LSP, mcp__masuda-gate__write_output, mcp__masuda-gate__report_result, mcp__masuda-gate__report_concern", "指示ファイルを読み"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("reviewer.md lacks %q:\n%s", want, s)
 		}
