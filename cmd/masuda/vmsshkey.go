@@ -9,8 +9,8 @@ import (
 )
 
 // newVMSSHKeyCommand groups the VM guest SSH key management masuda's VM
-// backend needs -- `masuda chat` has no `docker exec` equivalent for a VM,
-// so it SSHes in instead, authenticating with a keypair masuda itself owns
+// backend needs -- `masuda chat`, check nodes and VM shutdown all SSH into
+// the guest, authenticating with a keypair masuda itself owns
 // (internal/microvm.Host.EnsureSSHKeypair), not a per-workspace secret.
 //
 // Top-level and visible for the same reason `masuda claude` is: rotation is

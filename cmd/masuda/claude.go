@@ -11,19 +11,13 @@ import (
 )
 
 // newClaudeCommand groups what a human has to set up so the Claude Code
-// session inside a sandbox VM can authenticate at all -- currently just the
-// `claude setup-token` OAuth token masuda hands guests in place of the
-// Docker path's ~/.claude credential file bind mounts (see
-// internal/sandbox/claudetoken.go for why a VM needs a different
-// mechanism).
+// session inside a sandbox VM can authenticate at all -- currently the
+// `claude setup-token` OAuth tokens the host-side API gateway puts in place
+// of the guest's placeholder (ADR-0084, internal/sandbox/claudetoken.go).
 //
 // Top-level and visible, not under `internal`: this is a step in
 // docs/INSTALLATION.md that the user runs by hand, and `internal` means
-// "masuda's own plumbing, called by masuda". It used to be
-// `masuda internal claude-token set`, hidden on the grounds that the VM
-// backend was not part of the public CLI surface yet -- which stopped being
-// true when ADR-0044 made VMBackend the only backend, leaving a documented
-// human step that `--help` denied the existence of.
+// "masuda's own plumbing, called by masuda".
 func newClaudeCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "claude",

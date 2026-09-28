@@ -24,24 +24,17 @@ import (
 // listens on a Unix domain socket.
 //
 // A dedicated relay subcommand rather than reaching for socat: masuda is
-// already a single self-contained Go binary in both places this needs to
-// run (baked into the Docker image, always present on the host) -- socat
-// would be a new OS package dependency in both, for something this small.
-// The same relay works unchanged whether the UDS socket is local (the
-// phase 1-2 host loop, internal/hostloop.Start) or bind-mounted from a
-// container's /masuda-state (phase 4-5's entrypoint.sh/start_claude.sh) --
-// it has no idea which.
+// already a single self-contained Go binary on the host, and socat would
+// be a new OS package dependency for something this small.
 //
-// --bind (Issue #31 M5-4): defaults to 127.0.0.1, matching every caller
-// above -- the relay and Claude Code always share a network namespace
-// there (same container, or the host loop's own machine), so loopback is
-// correct and this is not a behavior change for them. A VM has no shared
-// UDS at all (confirmed live: virtiofs can't share a socket file across
-// kernels, a bind-mounted socket special file just doesn't connect()), so
-// for that case this same relay runs on the *host*, bound to the
-// TAP/bridge-facing address (e.g. the bridge gateway IP) instead of
-// loopback, and the guest's Claude Code points --mcp-config straight at
-// that address -- no relay process runs inside the guest at all.
+// --bind (Issue #31 M5-4): a VM has no shared UDS at all (confirmed live:
+// virtiofs can't share a socket file across kernels, a shared socket
+// special file just doesn't connect()), so this relay runs on the *host*,
+// bound to the TAP/bridge-facing address (the bridge gateway IP,
+// internal/sandbox.StartMCPRelay) instead of loopback, and the guest's
+// Claude Code points --mcp-config straight at that address -- no relay
+// process runs inside the guest at all. The 127.0.0.1 default serves the
+// tests.
 //
 // --allow-mac/--lease-file: a relay bound to the bridge gateway is reachable
 // from every guest on the bridge, and it forwards into one workspace's

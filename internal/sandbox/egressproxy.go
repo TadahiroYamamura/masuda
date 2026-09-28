@@ -39,7 +39,7 @@ const egressProxyBinary = "masuda-egress-proxy"
 // nothing needs to discover it at runtime.
 const (
 	egressProxyBind = vmBridgeGatewayIP
-	egressProxyPort = 39218 // arbitrary, fixed; adjacent to mcp-relay's 39217 (runtime/entrypoint.sh)
+	egressProxyPort = 39218 // arbitrary, fixed; outside the relay range (relayPortMin..relayPortMax)
 )
 
 func egressProxyPIDPath() (string, error) {

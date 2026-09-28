@@ -40,7 +40,7 @@ const (
 
 // freeRelayPort finds an unused port in the relay range by binding each
 // candidate on the bridge gateway. The scan starts at a random offset so
-// two `masuda sandbox start` runs at once do not both race for the lowest
+// two VMs started at once (two `masuda run`s) do not both race for the lowest
 // free port. Like any bind-then-close allocation there's a TOCTOU window
 // before the relay binds it; an acceptable risk for a per-invocation port.
 func freeRelayPort() (int, error) {

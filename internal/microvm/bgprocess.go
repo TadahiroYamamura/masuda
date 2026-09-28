@@ -25,8 +25,8 @@ import (
 // The process is started in a session of its own (Setsid), detached from
 // the terminal of whichever CLI invocation happened to start it. These
 // processes outlive that invocation by design, and without this a Ctrl-C
-// typed while `masuda sandbox start` is still building the rootfs or waiting
-// for a DHCP lease reaches every one of them already started -- the
+// typed while a VM start is still building the rootfs or waiting for a
+// DHCP lease reaches every one of them already started -- the
 // virtiofsd and VMM die mid-boot, and the host-wide egress proxy dies along
 // with whichever invocation first launched it. Any SysProcAttr the caller
 // set is overwritten.
@@ -106,8 +106,9 @@ func processCmdlineContains(pid int, marker string) bool {
 // The identity check is not optional here. A pid file outlives the process
 // it names, and a host reboot resets the PID space, so "whatever holds this
 // number now" is a different question from "the virtiofsd we started last
-// time". This runs on every `masuda sandbox start` across six pid files
-// (three virtiofsd, mcp-relay, egress-proxy, cloud-hypervisor), and unlike
+// time". This runs for every background process a VM start launches
+// (virtiofsd, cloud-hypervisor, and the caller's own, such as masuda's
+// mcp-relay and egress-proxy), and unlike
 // a mistaken liveness check it does not merely misjudge -- it delivers a
 // SIGTERM to whoever is on the other end (ADR-0061).
 //
