@@ -27,7 +27,7 @@ func TestStartAPIGatewayAndStop(t *testing.T) {
 	pidFile := filepath.Join(workDir, "api-gateway.pid")
 	mac := microvm.MACFor("gwtest")
 
-	gw, err := StartAPIGateway("127.0.0.3", port, filepath.Join(workDir, "gw.log"), pidFile, mac, filepath.Join(workDir, "leases"))
+	gw, err := StartAPIGateway("127.0.0.3", port, filepath.Join(workDir, "token"), filepath.Join(workDir, "gw.log"), pidFile, mac, filepath.Join(workDir, "leases"))
 	if err != nil {
 		t.Fatalf("StartAPIGateway() error = %v", err)
 	}

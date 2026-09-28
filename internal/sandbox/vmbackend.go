@@ -174,6 +174,12 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	if err != nil {
 		return Handle{}, err
 	}
+	// Resolved before anything is started, so a repository pointing at an
+	// unregistered token fails here rather than after a boot.
+	_, tokenFile, err := ResolveRepoClaudeToken(repoRoot)
+	if err != nil {
+		return Handle{}, err
+	}
 
 	shares := []microvm.Share{
 		{Tag: "workspace", HostDir: worktreeDir},
@@ -221,7 +227,7 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 		_ = relay.Stop()
 		return Handle{}, fmt.Errorf("allocating api-gateway port: %w", err)
 	}
-	gateway, err := StartAPIGateway(vmBridgeGatewayIP, gatewayPort,
+	gateway, err := StartAPIGateway(vmBridgeGatewayIP, gatewayPort, tokenFile,
 		filepath.Join(workDir, "api-gateway.log"), vmAPIGatewayPIDFile(workDir),
 		microvm.MACFor(id), vmDHCPLeaseFile)
 	if err != nil {

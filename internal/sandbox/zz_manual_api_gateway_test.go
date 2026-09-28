@@ -24,7 +24,7 @@ func TestManualGuestReachesAPIWithoutHoldingToken(t *testing.T) {
 	if os.Getenv("MASUDA_MANUAL_VM_TEST") == "" {
 		t.Skip("set MASUDA_MANUAL_VM_TEST=1 to run this real-machine VM test")
 	}
-	tokenPath, err := ClaudeOAuthTokenPath()
+	tokenPath, err := ClaudeTokenPath(DefaultClaudeToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,21 @@ func TestManualGuestReachesAPIWithoutHoldingToken(t *testing.T) {
 	t.Cleanup(func() { resolveMasudaExe = originalResolve })
 
 	repoRoot := t.TempDir()
+	// Through a named token rather than the default, so the per-repository
+	// choice (settings.local.json's claudeToken) is what gets exercised.
+	// The copy under a test-only name is removed again afterwards.
+	const testTokenName = "manual-test-gateway"
+	if err := SetClaudeToken(testTokenName, string(token)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if p, err := ClaudeTokenPath(testTokenName); err == nil {
+			_ = os.Remove(p)
+		}
+	})
+	if err := config.SaveLocal(repoRoot, config.LocalSettings{ClaudeToken: testTokenName}); err != nil {
+		t.Fatal(err)
+	}
 	writeImageEntry(t, repoRoot, config.DefaultImageEntry,
 		"FROM masuda-loop:latest\nUSER root\nRUN rm -f /etc/systemd/system/multi-user.target.wants/masuda-loop.service\n")
 	buildImageEntry(t, repoRoot, config.DefaultImageEntry)
