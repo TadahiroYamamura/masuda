@@ -2,17 +2,19 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
+	"io"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpclient"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/data"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/def"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
@@ -65,11 +67,18 @@ func newGateShowCommand() *cobra.Command {
 		Args:              cobra.ExactArgs(2),
 		ValidArgsFunction: completeWorkspaceIDs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			req, c, stateDir, err := openGateRequest(cmd, args[0], args[1])
+			req, c, _, err := openGateRequest(cmd, args[0], args[1])
 			if err != nil {
 				return err
 			}
 			defer c.Close()
+			trusted, err := workspace.TrustedDir(args[0])
+			if err != nil {
+				return err
+			}
+			// What is shown comes from the host-only copies, the same ones
+			// the gate's hash is taken over.
+			outputs := data.Store{Dir: filepath.Join(trusted, "wf")}
 			out := cmd.OutOrStdout()
 			fmt.Fprintf(out, "gate: %s\noccurrence: %s\ntarget: %s\n\n", req.Name, req.Occurrence, req.Target)
 			switch {
@@ -79,15 +88,19 @@ func newGateShowCommand() *cobra.Command {
 					fmt.Fprintf(out, "  %s\n", f)
 				}
 			case req.Target == "plan":
-				summary, err := latestFile(filepath.Join(stateDir, "wf", "out"), "summary.md")
+				p, ok, err := outputs.Latest(def.DataPlan)
 				if err != nil {
 					return err
 				}
-				b, err := os.ReadFile(summary)
+				if !ok {
+					return errors.New("no plan has been written")
+				}
+				plan, _, err := data.ReadPlan(p)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "%s\n\n(full plan: %s)\n", b, filepath.Join(filepath.Dir(summary), "plan.json"))
+				printPlan(out, plan)
+				fmt.Fprintf(out, "\n(full plan: %s)\n", p)
 			case req.Target == "diff":
 				info, err := workspace.Load(args[0])
 				if err != nil {
@@ -103,7 +116,7 @@ func newGateShowCommand() *cobra.Command {
 					return fmt.Errorf("git diff --stat: %w\n%s", err, stat)
 				}
 				fmt.Fprintf(out, "%s", stat)
-				if report, err := latestFile(filepath.Join(stateDir, "wf", "out"), "report.md"); err == nil {
+				if report, ok, err := outputs.Latest(def.DataReport); err == nil && ok {
 					fmt.Fprintf(out, "\nreview report: %s\n", report)
 				}
 			}
@@ -153,16 +166,18 @@ func newGateDecideCommand(approve bool) *cobra.Command {
 	}
 }
 
-// latestFile finds the newest copy of name under the per-occurrence output
-// directories.
-func latestFile(outDir, name string) (string, error) {
-	matches, err := filepath.Glob(filepath.Join(outDir, "*", name))
-	if err != nil {
-		return "", err
+// printPlan shows what approving a plan commits to: besides the summary,
+// the steps and the files each may change, which is what later commits are
+// checked against.
+func printPlan(w io.Writer, plan *data.Plan) {
+	fmt.Fprintf(w, "%s\n\nsteps:\n", strings.TrimSpace(plan.Summary))
+	for i, st := range plan.Steps {
+		fmt.Fprintf(w, "  %d. %s\n", i+1, st.Description)
+		for _, f := range st.Files {
+			fmt.Fprintf(w, "       %s\n", f.Path)
+		}
 	}
-	if len(matches) == 0 {
-		return "", fmt.Errorf("no %s has been written", strings.TrimSuffix(name, filepath.Ext(name)))
+	if len(plan.ExpectedByproducts) > 0 {
+		fmt.Fprintf(w, "\nexpected byproducts (left uncommitted, not counted as changes outside the plan): %s\n", strings.Join(plan.ExpectedByproducts, ", "))
 	}
-	sort.Strings(matches)
-	return matches[len(matches)-1], nil
 }

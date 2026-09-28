@@ -1,6 +1,7 @@
 package data
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -99,5 +100,51 @@ func TestLedgerImportReplacesSameSourceAndListsToFix(t *testing.T) {
 	}
 	if len(todo) != 1 || todo[0].Description != "new" {
 		t.Fatalf("ToFix = %+v, want only the open auto-fixable one", todo)
+	}
+}
+
+func TestTheCopyForAgentsDoesNotChangeWhatIsRead(t *testing.T) {
+	s := Store{Dir: t.TempDir(), Mirror: t.TempDir()}
+	p, err := s.Write("0000004", "plan", []byte(validPlan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	copyPath := s.Mirrored(p)
+	if copyPath == p || !strings.HasPrefix(copyPath, s.Mirror) {
+		t.Fatalf("Mirrored = %q, want a path under %s", copyPath, s.Mirror)
+	}
+	// The copy is where agents read and write; neither editing it nor
+	// adding a later-looking one may change the value the engine reads.
+	if err := os.WriteFile(copyPath, []byte(`{"summary":"x","steps":[]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(s.Mirror, "out", "9999999"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.Mirror, "out", "9999999", "plan.json"), []byte(validPlan), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, ok, err := s.Latest("plan")
+	if err != nil || !ok || got != p {
+		t.Fatalf("Latest = %q %v %v, want %s", got, ok, err, p)
+	}
+}
+
+func TestLedgerKeepsACopyForAgents(t *testing.T) {
+	dir := t.TempDir()
+	l := Ledger{File: filepath.Join(dir, "trusted", "findings.json"), Mirror: filepath.Join(dir, "shared", "findings.json")}
+	if err := l.Import(Record{Occurrence: "0000002", Source: "f/review"}, []Finding{{File: "a.go", StartLine: 1, EndLine: 1, Severity: "高", Description: "p", Suggestion: "s", Autofix: true}}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(l.Mirror)
+	if err != nil || !strings.Contains(string(b), "a.go") {
+		t.Fatalf("copy = %q %v", b, err)
+	}
+	if err := os.WriteFile(l.Mirror, []byte("[]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rs, err := l.Load()
+	if err != nil || len(rs) != 1 {
+		t.Fatalf("Load = %v %v, want the one finding despite the edited copy", rs, err)
 	}
 }

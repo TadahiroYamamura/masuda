@@ -10,6 +10,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/internal/workflow/data"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
+	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -41,7 +42,7 @@ func newEnv(t *testing.T) *Env {
 	git(t, repo, "add", ".")
 	git(t, repo, "commit", "-q", "-m", "init")
 	e := &Env{
-		WorkspaceID: "ws1", RepoRoot: repo, Worktree: repo, StateDir: t.TempDir(),
+		WorkspaceID: "ws1", RepoRoot: repo, Worktree: repo, StateDir: t.TempDir(), TrustedDir: t.TempDir(),
 		BaseRef: "main", Branch: "main", Store: engine.NewMemStore(), ExportDir: filepath.Join(t.TempDir(), "exports"),
 	}
 	plan := `{"summary": "方針", "steps": [
@@ -204,5 +205,38 @@ func TestTargetHashTracksContent(t *testing.T) {
 	}
 	if p, err := e.TargetHash("plan"); err != nil || len(p) != 64 {
 		t.Fatalf("plan hash = %q %v", p, err)
+	}
+}
+
+func TestPlanRewrittenInTheSandboxDoesNotWidenTheCommit(t *testing.T) {
+	e := newEnv(t)
+	items, _ := e.Items("steps", "", "")
+	// Everything under the state directory can be rewritten from the
+	// sandbox: the agents' copy of the plan, and a later-looking output.
+	widened := `{"summary": "x", "steps": [
+	  {"description": "first step", "files": [{"path": "a.go", "description": ""}, {"path": "evil.go", "description": ""}]}
+	]}`
+	write(t, e.Outputs().Mirrored(e.Outputs().Path("0000002", "plan")), widened)
+	write(t, filepath.Join(e.StateDir, "wf", "out", "9999999", "plan.json"), widened)
+	write(t, filepath.Join(e.Worktree, "a.go"), "package a\n")
+	write(t, filepath.Join(e.Worktree, "evil.go"), "package a\n")
+	dev, _, err := e.Deviations("step", items[0].Path)
+	if err != nil || strings.Join(dev, ",") != "evil.go" {
+		t.Fatalf("deviations = %v %v, want evil.go outside the approved plan", dev, err)
+	}
+}
+
+func TestSnapshotRewrittenInTheSandboxDoesNotHideChanges(t *testing.T) {
+	e := newEnv(t)
+	snap, err := e.Snapshot()
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, filepath.Join(e.Worktree, "README.md"), "edited by a read-only agent\n")
+	now, _ := worktree.Digests(e.Worktree)
+	b, _ := json.Marshal(now)
+	write(t, filepath.Join(e.StateDir, "wf", "snapshots", snap+".json"), string(b))
+	if files, _, err := e.ChangedSince(snap); err != nil || strings.Join(files, ",") != "README.md" {
+		t.Fatalf("changed = %v %v, want README.md", files, err)
 	}
 }

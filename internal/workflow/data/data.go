@@ -19,8 +19,13 @@ import (
 )
 
 // Store is the output area of one workspace: <dir>/out/<occurrence>/<name>.
+// Dir holds the values the engine reads and must be out of the sandbox's
+// reach. Mirror, when set, gets a copy of each value at the same relative
+// path for agents to read: the sandbox can write there, so nothing is ever
+// read back from it.
 type Store struct {
-	Dir string
+	Dir    string
+	Mirror string
 }
 
 // fileName maps a data name to the file it is stored in. Engine-read data
@@ -54,7 +59,66 @@ func (s Store) Write(occurrence, name string, content []byte) (string, error) {
 	if err := os.WriteFile(p, content, 0o644); err != nil {
 		return "", err
 	}
+	if err := s.mirror(p, content); err != nil {
+		return "", err
+	}
 	return p, nil
+}
+
+// Mirrored maps a path under Dir to its copy under Mirror, the path to
+// hand to an agent. Without a Mirror, p itself is returned.
+func (s Store) Mirrored(p string) string {
+	if s.Mirror == "" {
+		return p
+	}
+	rel, err := filepath.Rel(s.Dir, p)
+	if err != nil || strings.HasPrefix(rel, "..") {
+		return p
+	}
+	return filepath.Join(s.Mirror, rel)
+}
+
+// WriteBeside stores a file the engine derives from an output (the plan's
+// summary, say) next to it, copied for agents like the output itself.
+func (s Store) WriteBeside(output, file string, content []byte) error {
+	p := filepath.Join(filepath.Dir(output), file)
+	if err := os.WriteFile(p, content, 0o644); err != nil {
+		return err
+	}
+	return s.mirror(p, content)
+}
+
+func (s Store) mirror(p string, content []byte) error {
+	if s.Mirror == "" {
+		return nil
+	}
+	return writeCopy(s.Mirrored(p), content)
+}
+
+// writeCopy replaces the file at p rather than writing through it, so a
+// symlink the sandbox left there cannot redirect the host's write.
+func writeCopy(p string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".copy-*")
+	if err != nil {
+		return err
+	}
+	if _, err := tmp.Write(content); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := os.Chmod(tmp.Name(), 0o644); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	return os.Rename(tmp.Name(), p)
 }
 
 // Has reports whether an occurrence wrote a non-empty value for name.

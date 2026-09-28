@@ -81,8 +81,11 @@ func ParseFindings(b []byte) ([]Finding, error) {
 
 // Ledger is the workspace's findings.json: every finding from every review,
 // interim and final, in one place (ADR-0082).
+// File is the ledger the engine reads, out of the sandbox's reach; Mirror,
+// when set, is a copy agents read (see Store).
 type Ledger struct {
-	File string
+	File   string
+	Mirror string
 }
 
 func (l Ledger) Load() ([]Record, error) {
@@ -117,7 +120,13 @@ func (l Ledger) save(rs []Record) error {
 	if err := os.WriteFile(tmp, b, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, l.File)
+	if err := os.Rename(tmp, l.File); err != nil {
+		return err
+	}
+	if l.Mirror == "" {
+		return nil
+	}
+	return writeCopy(l.Mirror, b)
 }
 
 // Import adds the findings one occurrence wrote, first dropping those an

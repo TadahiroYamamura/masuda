@@ -36,9 +36,15 @@ type Env struct {
 	WorkspaceID string
 	RepoRoot    string
 	Worktree    string
-	StateDir    string
-	BaseRef     string
-	Branch      string
+	// StateDir is shared into the sandbox: files there are for agents to
+	// read, and anything the sandbox could have rewritten is never read
+	// back. TrustedDir is the host-only counterpart holding what the
+	// engine decides by: outputs, the findings ledger, snapshots and the
+	// execution log.
+	StateDir   string
+	TrustedDir string
+	BaseRef    string
+	Branch     string
 	// Store is the daemon's KV store, for the few facts the environment
 	// keeps itself (approved deviations, used commit messages).
 	Store engine.Store
@@ -63,13 +69,54 @@ func (e *Env) wf(parts ...string) string {
 	return filepath.Join(append([]string{e.StateDir, "wf"}, parts...)...)
 }
 
-func (e *Env) data() data.Store    { return data.Store{Dir: e.wf()} }
-func (e *Env) ledger() data.Ledger { return data.Ledger{File: e.wf("findings.json")} }
-func (e *Env) logFile() string     { return e.wf("execution-log.jsonl") }
+func (e *Env) trusted(parts ...string) string {
+	return filepath.Join(append([]string{e.TrustedDir, "wf"}, parts...)...)
+}
 
-// Data resolves a data name to a file: the diffs are computed now, the
-// rest are the latest outputs.
+// Outputs is where agents' outputs are kept: read from the trusted side,
+// with a copy in the state directory for agents.
+func (e *Env) Outputs() data.Store {
+	return data.Store{Dir: e.trusted(), Mirror: e.wf()}
+}
+
+// Ledger is the findings ledger, kept the same way as Outputs.
+func (e *Env) Ledger() data.Ledger {
+	return data.Ledger{File: e.trusted("findings.json"), Mirror: e.wf("findings.json")}
+}
+
+func (e *Env) data() data.Store    { return e.Outputs() }
+func (e *Env) ledger() data.Ledger { return e.Ledger() }
+func (e *Env) logFile() string     { return e.trusted("execution-log.jsonl") }
+
+// Data resolves a data name to the file an agent is given: the diffs are
+// computed now, the rest are the copies of the latest outputs.
 func (e *Env) Data(name string) (string, bool, error) {
+	if def.EngineComputed[name] {
+		return e.computed(name)
+	}
+	p, ok, err := e.source(name)
+	if err != nil || !ok {
+		return "", ok, err
+	}
+	if name == def.DataFindings {
+		return e.ledger().Mirror, true, nil
+	}
+	return e.data().Mirrored(p), true, nil
+}
+
+// source is the trusted file behind a data name that agents write.
+func (e *Env) source(name string) (string, bool, error) {
+	if name == def.DataFindings {
+		f := e.ledger().File
+		if _, err := os.Stat(f); err != nil {
+			return "", false, nil
+		}
+		return f, true, nil
+	}
+	return e.data().Latest(name)
+}
+
+func (e *Env) computed(name string) (string, bool, error) {
 	switch name {
 	case def.DataDiff:
 		fork, err := worktree.ForkPoint(e.Worktree, e.BaseRef)
@@ -82,14 +129,8 @@ func (e *Env) Data(name string) (string, bool, error) {
 		// what differs from HEAD: this equals the diff from the last step
 		// tag (or from the plan approval's HEAD for the first step).
 		return e.writeDiff(name, "HEAD")
-	case def.DataFindings:
-		f := e.ledger().File
-		if _, err := os.Stat(f); err != nil {
-			return "", false, nil
-		}
-		return f, true, nil
 	}
-	return e.data().Latest(name)
+	return "", false, fmt.Errorf("%q is not computed by the engine", name)
 }
 
 func (e *Env) writeDiff(name, rev string) (string, bool, error) {
@@ -390,7 +431,10 @@ func (e *Env) Export(names []string) error {
 		return err
 	}
 	for _, name := range names {
-		p, ok, err := e.Data(name)
+		p, ok, err := e.source(name)
+		if def.EngineComputed[name] {
+			p, ok, err = e.computed(name)
+		}
 		if err != nil {
 			return err
 		}
@@ -445,12 +489,12 @@ func (e *Env) Snapshot() (string, error) {
 	}
 	b, _ := json.Marshal(d)
 	name := fmt.Sprintf("snap-%d", time.Now().UnixNano())
-	return name, writeFile(e.wf("snapshots", name+".json"), b)
+	return name, writeFile(e.trusted("snapshots", name+".json"), b)
 }
 
 func (e *Env) ChangedSince(snapshot string) ([]string, string, error) {
 	var before map[string]string
-	b, err := os.ReadFile(e.wf("snapshots", snapshot+".json"))
+	b, err := os.ReadFile(e.trusted("snapshots", snapshot+".json"))
 	if err != nil {
 		return nil, "", err
 	}
@@ -515,11 +559,12 @@ func (e *Env) OutputsDone(ctx engine.OutputContext, outputs []string) error {
 		case def.DataPlan:
 			// The summary is for humans reading the plan gate; keep it next
 			// to the plan as its own file.
-			plan, _, err := data.ReadPlan(e.data().Path(ctx.Occurrence, def.DataPlan))
+			p := e.data().Path(ctx.Occurrence, def.DataPlan)
+			plan, _, err := data.ReadPlan(p)
 			if err != nil {
 				return err
 			}
-			if err := writeFile(filepath.Join(filepath.Dir(e.data().Path(ctx.Occurrence, def.DataPlan)), "summary.md"), []byte(plan.Summary)); err != nil {
+			if err := e.data().WriteBeside(p, "summary.md", []byte(plan.Summary)); err != nil {
 				return err
 			}
 		}

@@ -31,7 +31,7 @@ func setup(t *testing.T) (*Host, *hostenv.Env) {
 	instructions := filepath.Join(state, "wf", "inputs", "instructions.md")
 	_ = os.MkdirAll(filepath.Dir(instructions), 0o755)
 	_ = os.WriteFile(instructions, []byte("READMEを直す"), 0o644)
-	env := &hostenv.Env{WorkspaceID: "ws", RepoRoot: repo, Worktree: repo, StateDir: state, BaseRef: "main", Branch: "main"}
+	env := &hostenv.Env{WorkspaceID: "ws", RepoRoot: repo, Worktree: repo, StateDir: state, TrustedDir: t.TempDir(), BaseRef: "main", Branch: "main"}
 	h, err := New(store, env)
 	if err != nil || h == nil {
 		t.Fatalf("New = %v %v", h, err)

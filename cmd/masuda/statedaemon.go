@@ -78,16 +78,16 @@ func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeD
 	}
 	var curated *mcp.Server
 	if repoRoot != "" && worktreeDir != "" {
-		env := workflowEnv(stateDir, repoRoot, worktreeDir)
+		env, err := workflowEnv(stateDir, repoRoot, worktreeDir)
+		if err != nil {
+			return err
+		}
 		env.RunCheckFn = checkRunner(env.WorkspaceID, repoRoot, worktreeDir, stateDir, store)
 		env.Teardown = func() error {
 			go teardownWorkspace(env.WorkspaceID, repoRoot, env.Branch, cancel)
 			return nil
 		}
-		statusFile := ""
-		if trusted, err := workspace.TrustedDir(env.WorkspaceID); err == nil {
-			statusFile = filepath.Join(trusted, workspace.StatusFileName)
-		}
+		statusFile := filepath.Join(env.TrustedDir, workspace.StatusFileName)
 		curated = mcpserver.NewCurated(store, runPrivileged, &host.Lazy{Store: store, Env: env, StatusFile: statusFile})
 	} else {
 		curated = mcpserver.NewCurated(store, runPrivileged)
@@ -476,14 +476,19 @@ func stopDaemon(id string) error {
 
 // workflowEnv builds the engine's environment for the workspace whose
 // state directory is stateDir.
-func workflowEnv(stateDir, repoRoot, worktreeDir string) *hostenv.Env {
+func workflowEnv(stateDir, repoRoot, worktreeDir string) (*hostenv.Env, error) {
 	id := filepath.Base(stateDir)
 	info, _ := workspace.Load(id)
+	trusted, err := workspace.TrustedDir(id)
+	if err != nil {
+		return nil, err
+	}
 	env := &hostenv.Env{
 		WorkspaceID:  id,
 		RepoRoot:     repoRoot,
 		Worktree:     worktreeDir,
 		StateDir:     stateDir,
+		TrustedDir:   trusted,
 		BaseRef:      info.Base,
 		Branch:       info.Branch,
 		Perspectives: repoPerspectives(repoRoot),
@@ -493,7 +498,7 @@ func workflowEnv(stateDir, repoRoot, worktreeDir string) *hostenv.Env {
 	if home, err := os.UserHomeDir(); err == nil {
 		env.ExportDir = filepath.Join(home, ".masuda", "exports", id)
 	}
-	return env
+	return env, nil
 }
 
 // repoPerspectives reads review perspectives from the host repository's

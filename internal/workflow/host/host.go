@@ -141,11 +141,12 @@ func (h *Host) WriteOutput(occurrence, name, content string) (string, error) {
 	if !a.DeclaresOutput(name) {
 		return "", fmt.Errorf("%s does not declare the output %q (declared: %s)", a.Path, name, strings.Join(a.Outputs, ", "))
 	}
-	p, err := data.Store{Dir: filepath.Join(h.env.StateDir, "wf")}.Write(occurrence, name, []byte(content))
+	out := h.env.Outputs()
+	p, err := out.Write(occurrence, name, []byte(content))
 	if err != nil {
 		return "", err
 	}
-	return h.guest(p), nil
+	return h.guest(out.Mirrored(p)), nil
 }
 
 // ReportConcern records a security concern an agent raised (ADR-0029).
@@ -162,9 +163,7 @@ func (h *Host) OpenGate(name string) (engine.GateRequest, bool) {
 	return h.eng.OpenGate(name)
 }
 
-func (h *Host) ledger() data.Ledger {
-	return data.Ledger{File: filepath.Join(h.env.StateDir, "wf", "findings.json")}
-}
+func (h *Host) ledger() data.Ledger { return h.env.Ledger() }
 
 // guest maps a host path under the shared directories to the path the
 // guest sees.
