@@ -1,4 +1,4 @@
-package sandbox
+package microvm
 
 import (
 	"crypto/ed25519"
@@ -9,48 +9,39 @@ import (
 	"path/filepath"
 
 	"golang.org/x/crypto/ssh"
-
-	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// sshKeyFileName/sshPubKeyFileName are the fixed, host-level (not
-// per-workspace) location of the keypair masuda uses to SSH into VM guests
-// for `masuda chat` (Issue #31 M5-5, the VM path's equivalent of Docker's
-// `docker exec -it ... tmux attach`). One keypair per masuda installation,
-// not per workspace: workspaces are ephemeral and short-lived, so a
-// per-workspace key would mean generating and injecting a fresh one into
-// every rootfs build for no real isolation benefit -- the security boundary
-// that actually matters is "can reach the private bridge network at all",
-// not "which workspace".
+// sshKeyFileName/sshPubKeyFileName are the fixed, host-level (not per-VM)
+// location of the keypair used to SSH into VM guests (Issue #31 M5-5). One
+// keypair per host, not per VM: VMs are ephemeral and short-lived, so a
+// per-VM key would mean generating and injecting a fresh one into every
+// rootfs build for no real isolation benefit -- the security boundary that
+// actually matters is "can reach the private bridge network at all", not
+// "which VM".
 const (
 	sshKeyFileName    = "vm-ssh-key"
 	sshPubKeyFileName = "vm-ssh-key.pub"
 )
 
-// SSHKeyPaths returns the private and public key file paths, under
-// masuda's own XDG data directory (workspace.DataHome) -- the same base
-// directory vmlinuz and workspace state already live under.
-func SSHKeyPaths() (privatePath, publicPath string, err error) {
-	dir, err := workspace.DataHome()
-	if err != nil {
-		return "", "", err
-	}
-	return filepath.Join(dir, sshKeyFileName), filepath.Join(dir, sshPubKeyFileName), nil
+// SSHKeyPaths returns the private and public key file paths under
+// h.DataDir, next to the guest kernel.
+func (h Host) SSHKeyPaths() (privatePath, publicPath string, err error) {
+	return filepath.Join(h.DataDir, sshKeyFileName), filepath.Join(h.DataDir, sshPubKeyFileName), nil
 }
 
 // EnsureSSHKeypair returns the existing keypair's paths, generating one
 // first via GenerateSSHKeypair if neither file exists yet. Safe to call on
 // every VM start -- after the first call anywhere on this host, every
 // later call just finds the files already there.
-func EnsureSSHKeypair() (privatePath, publicPath string, err error) {
-	privatePath, publicPath, err = SSHKeyPaths()
+func (h Host) EnsureSSHKeypair() (privatePath, publicPath string, err error) {
+	privatePath, publicPath, err = h.SSHKeyPaths()
 	if err != nil {
 		return "", "", err
 	}
 	if _, statErr := os.Stat(privatePath); statErr == nil {
 		return privatePath, publicPath, nil
 	}
-	if err := GenerateSSHKeypair(); err != nil {
+	if err := h.GenerateSSHKeypair(); err != nil {
 		return "", "", err
 	}
 	return privatePath, publicPath, nil
@@ -73,8 +64,8 @@ func EnsureSSHKeypair() (privatePath, publicPath string, err error) {
 // until rebuilt/restarted. Accepted limitation (masuda workspaces are
 // ephemeral, so stale trust cycles out on its own as workspaces are
 // replaced) -- not a gap this function tries to close.
-func GenerateSSHKeypair() error {
-	privatePath, publicPath, err := SSHKeyPaths()
+func (h Host) GenerateSSHKeypair() error {
+	privatePath, publicPath, err := h.SSHKeyPaths()
 	if err != nil {
 		return err
 	}
@@ -87,7 +78,7 @@ func GenerateSSHKeypair() error {
 		return fmt.Errorf("generating keypair: %w", err)
 	}
 
-	block, err := ssh.MarshalPrivateKey(priv, "masuda-vm")
+	block, err := ssh.MarshalPrivateKey(priv, h.SSHKeyComment)
 	if err != nil {
 		return fmt.Errorf("marshaling private key: %w", err)
 	}

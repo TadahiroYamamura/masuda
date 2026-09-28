@@ -8,9 +8,12 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/spf13/cobra"
+
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 )
 
 // newInternalMCPRelayCommand builds `masuda internal mcp-relay`, a plain
@@ -39,8 +42,15 @@ import (
 // TAP/bridge-facing address (e.g. the bridge gateway IP) instead of
 // loopback, and the guest's Claude Code points --mcp-config straight at
 // that address -- no relay process runs inside the guest at all.
+//
+// --allow-mac/--lease-file: a relay bound to the bridge gateway is reachable
+// from every guest on the bridge, and it forwards into one workspace's
+// curated socket with no authentication of its own. With these set it
+// serves only the guest whose DHCP lease maps the connecting IP to that
+// MAC, so one workspace's VM cannot drive another workspace's gates or
+// privileged commands through its relay.
 func newInternalMCPRelayCommand() *cobra.Command {
-	var socketPath, bind string
+	var socketPath, bind, allowMAC, leaseFile string
 	var port int
 	cmd := &cobra.Command{
 		Use:    "mcp-relay",
@@ -51,30 +61,55 @@ func newInternalMCPRelayCommand() *cobra.Command {
 			if socketPath == "" {
 				return fmt.Errorf("--socket is required")
 			}
+			if (allowMAC == "") != (leaseFile == "") {
+				return fmt.Errorf("--allow-mac and --lease-file go together")
+			}
+			var allow func(net.Addr) bool
+			if allowMAC != "" {
+				allow = func(remote net.Addr) bool { return leaseMatches(remote, allowMAC, leaseFile) }
+			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			return runMCPRelay(ctx, socketPath, bind, port)
+			return runMCPRelay(ctx, socketPath, bind, port, allow)
 		},
 	}
 	cmd.Flags().StringVar(&socketPath, "socket", "", "Unix domain socket to relay to (required)")
 	cmd.Flags().StringVar(&bind, "bind", "127.0.0.1", "address to listen on")
 	cmd.Flags().IntVar(&port, "port", 0, "TCP port to listen on (required, non-zero)")
+	cmd.Flags().StringVar(&allowMAC, "allow-mac", "", "serve only the client whose DHCP lease has this MAC (requires --lease-file)")
+	cmd.Flags().StringVar(&leaseFile, "lease-file", "", "dnsmasq lease file --allow-mac is checked against")
 	return cmd
 }
 
-// runMCPRelay listens on bind:port and, for every accepted connection,
-// dials socketPath and pipes bytes bidirectionally until either side closes.
-// Blocks until ctx is cancelled.
+// leaseMatches reports whether remote's IP is currently leased to mac.
+// Read on every connection rather than once at startup: the guest's lease
+// can be renewed onto a different address while the relay runs.
+func leaseMatches(remote net.Addr, mac, leaseFile string) bool {
+	tcpAddr, ok := remote.(*net.TCPAddr)
+	if !ok {
+		return false
+	}
+	leased, err := microvm.FindLeaseMAC(tcpAddr.IP.String(), leaseFile)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(leased, mac)
+}
+
+// runMCPRelay listens on bind:port and, for every accepted connection that
+// allow admits (all of them when allow is nil), dials socketPath and pipes
+// bytes bidirectionally until either side closes. Blocks until ctx is
+// cancelled.
 //
 // The port is chosen by the caller, which every caller does by binding a
-// port and closing that listener (freeTCPPort in the tests,
+// candidate port and closing that listener (freeTCPPort in the tests,
 // internal/sandbox.freeRelayPort). Besides the obvious TOCTOU those all
 // accept, that leftover listener stays in LISTEN for a moment after Close()
 // returns -- long enough to answer a readiness probe on behalf of a relay
 // that has not bound anything yet, which is what Issue #42's "connection
 // refused" turned out to be. A test waiting on this relay should retry the
 // thing it actually wants rather than probe the port.
-func runMCPRelay(ctx context.Context, socketPath, bind string, port int) error {
+func runMCPRelay(ctx context.Context, socketPath, bind string, port int, allow func(net.Addr) bool) error {
 	var lc net.ListenConfig
 	l, err := lc.Listen(ctx, "tcp", net.JoinHostPort(bind, strconv.Itoa(port)))
 	if err != nil {
@@ -92,6 +127,10 @@ func runMCPRelay(ctx context.Context, socketPath, bind string, port int) error {
 				return nil
 			}
 			return err
+		}
+		if allow != nil && !allow(conn.RemoteAddr()) {
+			conn.Close()
+			continue
 		}
 		go relayConn(socketPath, conn)
 	}

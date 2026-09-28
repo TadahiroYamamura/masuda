@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -59,7 +60,7 @@ func egressProxyLogPath() (string, error) {
 
 // EnsureEgressProxy starts masuda's shared egress proxy (Issue #11) if it
 // isn't already running, and does nothing if it is -- the same
-// idempotent, "make sure the shared thing exists" shape as EnsureTap, not
+// idempotent, "make sure the shared thing exists" shape as microvm's TAP allocation, not
 // StartMCPRelay's per-workspace one-shot start. Safe to call on every
 // VMBackend.Start: most calls after the first on a given host just find
 // the existing process already listening.
@@ -106,12 +107,12 @@ func EnsureEgressProxy() error {
 	// only ever one (see this function's doc comment), so the binary name is
 	// a sufficient identity -- there is no second egress proxy it could be
 	// confused with.
-	if err := startBackgroundProcess(cmd, pidPathVal, egressProxyBinary); err != nil {
+	if err := microvm.StartBackgroundProcess(cmd, pidPathVal, egressProxyBinary); err != nil {
 		return fmt.Errorf("starting egress-proxy: %w", err)
 	}
 
 	if err := waitForTCP(addr, egressProxyStartupTimeout); err != nil {
-		_ = stopBackgroundProcess(cmd.Process, pidPathVal)
+		_ = microvm.StopBackgroundProcess(cmd.Process, pidPathVal)
 		return fmt.Errorf("egress-proxy did not start listening in time: %w", err)
 	}
 	return nil
@@ -131,7 +132,7 @@ func EnsureEgressProxy() error {
 // vmDHCPLeaseFile constant, purely so tests can point it at a throwaway
 // file instead of the real host's dnsmasq lease file.
 func ResolveWorkspaceByIP(clientIP net.IP, leaseFilePath string) (id, repoRoot string, ok bool, err error) {
-	mac, err := findLeaseMAC(clientIP.String(), leaseFilePath)
+	mac, err := microvm.FindLeaseMAC(clientIP.String(), leaseFilePath)
 	if err != nil {
 		return "", "", false, nil
 	}
@@ -140,7 +141,7 @@ func ResolveWorkspaceByIP(clientIP net.IP, leaseFilePath string) (id, repoRoot s
 		return "", "", false, err
 	}
 	for _, info := range infos {
-		if strings.EqualFold(MACFor(info.ID), mac) {
+		if strings.EqualFold(microvm.MACFor(info.ID), mac) {
 			return info.ID, info.RepoRoot, true, nil
 		}
 	}
@@ -191,7 +192,7 @@ func privilegedVMRegistryPath(mac string) (string, error) {
 // another guest could then take for itself to borrow an allowlist that was
 // never meant for it. Pairing the record with a pid makes the staleness
 // detectable instead (see lookupPrivilegedVM), the same way
-// startBackgroundProcess treats a leftover pid file.
+// microvm.StartBackgroundProcess treats a leftover pid file.
 func registerPrivilegedVM(mac, repoRoot string) error {
 	path, err := privilegedVMRegistryPath(mac)
 	if err != nil {

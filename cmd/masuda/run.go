@@ -221,7 +221,7 @@ func bootSandbox(cmd *cobra.Command, root, id, worktreeDir, stateDir, image stri
 	if err != nil {
 		return err
 	}
-	warnIfNoClaudeToken(cmd)
+	warnIfNoClaudeToken(cmd, root)
 	_, err = sandboxBackend.Start(id, worktreeDir, stateDir, root, resolvedImage)
 	return err
 }

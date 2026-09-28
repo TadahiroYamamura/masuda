@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strconv"
 	"time"
+
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 )
 
 // mcpRelayStartupTimeout bounds how long StartMCPRelay waits for the relay
@@ -44,14 +46,18 @@ type MCPRelayProcess struct {
 // the same self-exec pattern internal/statedaemon's detached daemon uses),
 // logging its stdout/stderr to logPath. Safe to call again for the same
 // bind:port a crashed previous run left behind -- see
-// startBackgroundProcess.
+// microvm.StartBackgroundProcess.
+//
+// allowMAC and leaseFile, when set, restrict the relay to the one guest
+// holding a DHCP lease for that MAC (see `masuda internal mcp-relay
+// --allow-mac`); empty serves anyone who can reach bind:port.
 //
 // pidFile is passed in rather than derived from the listen address the way
 // virtiofsd's is derived from its socket path. A socket path is absolute, so
 // pidPath lands the file next to it; a bind:port is not, so the same
 // derivation dropped "192.168.200.1:44907.pid" into whatever directory the
 // CLI happened to run from -- the target repository's root, in practice.
-func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (*MCPRelayProcess, error) {
+func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile, allowMAC, leaseFile string) (*MCPRelayProcess, error) {
 	exe, err := resolveMasudaExe()
 	if err != nil {
 		return nil, fmt.Errorf("locating masuda binary: %w", err)
@@ -65,19 +71,23 @@ func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (
 	}
 	defer logFile.Close()
 
-	cmd := exec.Command(exe, "internal", "mcp-relay",
+	args := []string{"internal", "mcp-relay",
 		"--socket", socketPath,
 		"--bind", bind,
 		"--port", strconv.Itoa(port),
-	)
+	}
+	if allowMAC != "" {
+		args = append(args, "--allow-mac", allowMAC, "--lease-file", leaseFile)
+	}
+	cmd := exec.Command(exe, args...)
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
-	if err := startBackgroundProcess(cmd, pidFile, socketPath); err != nil {
+	if err := microvm.StartBackgroundProcess(cmd, pidFile, socketPath); err != nil {
 		return nil, fmt.Errorf("starting mcp-relay on %s: %w", addr, err)
 	}
 
 	if err := waitForTCP(addr, mcpRelayStartupTimeout); err != nil {
-		_ = stopBackgroundProcess(cmd.Process, pidFile)
+		_ = microvm.StopBackgroundProcess(cmd.Process, pidFile)
 		return nil, fmt.Errorf("mcp-relay on %s did not start listening in time: %w", addr, err)
 	}
 
@@ -87,7 +97,7 @@ func StartMCPRelay(socketPath, bind string, port int, logPath, pidFile string) (
 // Stop terminates the mcp-relay process and removes its pid file. Not an
 // error if it's already exited on its own.
 func (m *MCPRelayProcess) Stop() error {
-	return stopBackgroundProcess(m.cmd.Process, m.pidFile)
+	return microvm.StopBackgroundProcess(m.cmd.Process, m.pidFile)
 }
 
 func waitForTCP(addr string, timeout time.Duration) error {

@@ -14,8 +14,8 @@ masudaが**現在**どう動いているかを記述する。「なぜそうな�
 | `internal/gate/`、`cmd/masuda/gate.go`、`cmd/masuda/triage.go`、`runtime/CLAUDE.md` | [gates.md](gates.md) |
 | `internal/workspace/`、`internal/worktree/`、`cmd/masuda/workspace.go` | [workspace.md](workspace.md) |
 | `internal/config/`、`runtime/merge_claude_settings.py` | [config.md](config.md) |
-| `internal/sandbox/` のVM起動・virtiofs・SSH鍵・認証、`runtime/entrypoint.sh` | [sandbox-vm.md](sandbox-vm.md) |
-| `internal/sandbox/vmnet.go`、`cmd/masuda-net-helper/`、`scripts/setup-vm-host.sh` | [networking.md](networking.md) |
+| `internal/microvm/`、`internal/sandbox/` のVM起動・virtiofs・SSH鍵・認証、`runtime/entrypoint.sh` | [sandbox-vm.md](sandbox-vm.md) |
+| `internal/microvm/tap.go`・`ssh.go`、`cmd/masuda-net-helper/`、`scripts/setup-vm-host.sh` | [networking.md](networking.md) |
 | `internal/egressproxy/`、`cmd/masuda-egress-proxy/`、`internal/sandbox/egressproxy.go`、`cmd/masuda/egress.go` | [egress-filter.md](egress-filter.md) |
 | `Dockerfile`、`templates/`、`internal/rootfs/`、`cmd/masuda/image.go` | [images-and-rootfs.md](images-and-rootfs.md) |
 | `internal/sandbox/disposablevm.go`、`cmd/masuda/privilegedcommand.go`、`runtime/masuda-run.*` | [privileged-commands.md](privileged-commands.md) |

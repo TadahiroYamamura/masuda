@@ -5,7 +5,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -43,25 +42,31 @@ func TestManualEgressFiltering(t *testing.T) {
 	t.Cleanup(func() { _ = workspace.Remove(id) })
 
 	worktreeDir := t.TempDir()
-	stateDir := t.TempDir()
+	// The workspace's own state directory, not a temp one: Stop finds the
+	// mcp-relay to kill by the curated socket under workspace.StateDir(id),
+	// so a different directory here leaves the relay running after the test.
+	stateDir, err := workspace.StateDir(id)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var backend Backend = VMBackend{}
 	t.Cleanup(func() { _ = backend.Stop(id) })
 
-	if _, err := backend.Start(id, worktreeDir, stateDir, repoRoot, "masuda-loop:latest"); err != nil {
+	writeImageEntry(t, repoRoot, config.DefaultImageEntry, "FROM masuda-loop:latest\n")
+	buildImageEntry(t, repoRoot, config.DefaultImageEntry)
+	if _, err := backend.Start(id, worktreeDir, stateDir, repoRoot, config.DefaultImageEntry); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 
-	time.Sleep(3 * time.Second)
-	guestIP, err := LookupGuestIP(MACFor(id), vmDHCPLeaseFile, 5*time.Second)
+	h, err := vmHost()
 	if err != nil {
-		t.Fatalf("LookupGuestIP: %v", err)
-	}
-	privKeyPath, _, err := SSHKeyPaths()
-	if err != nil {
-		t.Fatalf("SSHKeyPaths: %v", err)
+		t.Fatal(err)
 	}
 	run := func(remoteCmd string) (string, error) {
-		args := append(sshBaseArgs(guestIP, privKeyPath), remoteCmd)
+		args, err := h.AttachArgs(id, remoteCmd)
+		if err != nil {
+			return "", err
+		}
 		out, err := exec.Command(args[0], args[1:]...).CombinedOutput()
 		return string(out), err
 	}

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/microvm"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -16,6 +17,15 @@ import (
 // PATH. Skipping (not failing) keeps `go test ./...` usable on a machine
 // that hasn't run scripts/setup-vm-host.sh -- same reasoning as
 // requireNetHelper (masuda has no CI job that runs `go test`).
+// requireVMBridge skips unless the host's VM bridge exists (see
+// docs/INSTALLATION.md's VM network setup).
+func requireVMBridge(t *testing.T) {
+	t.Helper()
+	if err := exec.Command("ip", "link", "show", vmBridge).Run(); err != nil {
+		t.Skipf("bridge %s not found (see docs/INSTALLATION.md's VM network setup)", vmBridge)
+	}
+}
+
 func requireEgressProxyBinary(t *testing.T) {
 	t.Helper()
 	if _, err := exec.LookPath(egressProxyBinary); err != nil {
@@ -36,7 +46,7 @@ func TestResolveWorkspaceByIP(t *testing.T) {
 	}
 
 	leasePath := filepath.Join(t.TempDir(), "dnsmasq.leases")
-	content := "1787000000 " + MACFor(info.ID) + " 192.168.200.42 guest-abc123 *\n"
+	content := "1787000000 " + microvm.MACFor(info.ID) + " 192.168.200.42 guest-abc123 *\n"
 	if err := os.WriteFile(leasePath, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +93,7 @@ func TestResolveWorkspaceByIPUnknown(t *testing.T) {
 // the first call starts it, a second call finds it already running rather
 // than erroring or starting a duplicate.
 func TestEnsureEgressProxyIsIdempotent(t *testing.T) {
-	requireTestBridge(t, testBridge) // egressProxyBind is the bridge gateway IP
+	requireVMBridge(t) // egressProxyBind is the bridge gateway IP
 	requireEgressProxyBinary(t)
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 
@@ -93,7 +103,7 @@ func TestEnsureEgressProxyIsIdempotent(t *testing.T) {
 	t.Cleanup(func() {
 		pidPathVal, err := egressProxyPIDPath()
 		if err == nil {
-			killStalePID(pidPathVal, egressProxyBinary)
+			microvm.KillStalePID(pidPathVal, egressProxyBinary)
 			_ = os.Remove(pidPathVal)
 		}
 	})

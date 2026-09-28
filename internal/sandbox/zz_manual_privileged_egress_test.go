@@ -100,7 +100,7 @@ func TestManualPrivilegedCommandEgressAlongsideMainVM(t *testing.T) {
 	}
 
 	result, err := RunPrivilegedCommand(PrivilegedRunRequest{
-		Name: "pull", Decl: decl, RepoRoot: repoRoot, WorktreeDir: worktreeDir, StateDir: stateDir,
+		Name: "pull", Decl: decl, RepoRoot: repoRoot, WorktreeDir: worktreeDir, TrustedDir: t.TempDir(), StateDir: stateDir,
 	})
 	if err != nil {
 		t.Fatalf("RunPrivilegedCommand: %v", err)

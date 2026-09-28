@@ -1,4 +1,4 @@
-package sandbox
+package microvm
 
 import (
 	"errors"
@@ -11,7 +11,7 @@ import (
 	"syscall"
 )
 
-// startBackgroundProcess starts cmd, first killing (best effort) whatever
+// StartBackgroundProcess starts cmd, first killing (best effort) whatever
 // process a previous run recorded at pidFilePath, then recording cmd's own
 // PID there once it's actually running. Shared by StartVirtiofs and
 // StartMCPRelay (Issue #31 M5-3/M5-4): both need the exact same shape --
@@ -19,10 +19,20 @@ import (
 // last time without a clean Stop, the next Start for the same identity
 // (socket path, listen address, ...) must clean up the orphan rather than
 // leaving it running forever or colliding with the new one. This is the
-// same "clear any stale leftover, then create" pattern EnsureTap uses for
+// same "clear any stale leftover, then create" pattern ensureTap uses for
 // TAP devices, translated to processes instead of network interfaces.
-func startBackgroundProcess(cmd *exec.Cmd, pidFilePath, marker string) error {
-	killStalePID(pidFilePath, marker)
+//
+// The process is started in a session of its own (Setsid), detached from
+// the terminal of whichever CLI invocation happened to start it. These
+// processes outlive that invocation by design, and without this a Ctrl-C
+// typed while `masuda sandbox start` is still building the rootfs or waiting
+// for a DHCP lease reaches every one of them already started -- the
+// virtiofsd and VMM die mid-boot, and the host-wide egress proxy dies along
+// with whichever invocation first launched it. Any SysProcAttr the caller
+// set is overwritten.
+func StartBackgroundProcess(cmd *exec.Cmd, pidFilePath, marker string) error {
+	KillStalePID(pidFilePath, marker)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
 		return err
 	}
@@ -34,10 +44,10 @@ func startBackgroundProcess(cmd *exec.Cmd, pidFilePath, marker string) error {
 	return nil
 }
 
-// stopBackgroundProcess terminates proc (started via startBackgroundProcess)
+// StopBackgroundProcess terminates proc (started via StartBackgroundProcess)
 // and removes its pid file. Not an error if the process has already exited
 // on its own.
-func stopBackgroundProcess(proc *os.Process, pidFilePath string) error {
+func StopBackgroundProcess(proc *os.Process, pidFilePath string) error {
 	if proc != nil {
 		if err := proc.Signal(syscall.SIGTERM); err != nil && !errors.Is(err, os.ErrProcessDone) {
 			return fmt.Errorf("stopping process: %w", err)
@@ -86,7 +96,7 @@ func processCmdlineContains(pid int, marker string) bool {
 	return false
 }
 
-// killStalePID kills the process recorded at pidFilePath by a previous
+// KillStalePID kills the process recorded at pidFilePath by a previous
 // start, if that PID still belongs to it -- marker identifies it in
 // /proc, see processCmdlineContains. Best effort: any error here (missing
 // pid file, already-dead process, permission issue) is silently ignored --
@@ -105,7 +115,7 @@ func processCmdlineContains(pid int, marker string) bool {
 // masuda run (masuda itself may have crashed and restarted), not a child of
 // the current process, and Wait only works for actual children -- it would
 // just fail with ECHILD.
-func killStalePID(pidFilePath, marker string) {
+func KillStalePID(pidFilePath, marker string) {
 	data, err := os.ReadFile(pidFilePath)
 	if err != nil {
 		return
