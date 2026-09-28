@@ -233,9 +233,10 @@ func TestValidateChecks(t *testing.T) {
 		"none": {},
 		"both": {Command: "x", PrivilegedCommand: "y"},
 		"ref":  {PrivilegedCommand: "missing"},
+		"slow": {PrivilegedCommand: "missing", TimeoutSeconds: 60},
 	}}
 	err := bad.ValidateChecks()
-	for _, want := range []string{"checks.none sets neither", "checks.both sets both", `names privilegedCommand "missing"`} {
+	for _, want := range []string{"checks.none sets neither", "checks.both sets both", `names privilegedCommand "missing"`, "checks.slow sets timeoutSeconds"} {
 		if err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("ValidateChecks() = %v, want it to mention %q", err, want)
 		}

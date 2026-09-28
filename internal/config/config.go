@@ -132,11 +132,16 @@ type CheckDecl struct {
 	// PrivilegedCommand names a privilegedCommands entry, run in a
 	// disposable VM under that declaration's approval.
 	PrivilegedCommand string `json:"privilegedCommand,omitempty"`
-	TimeoutSeconds    int    `json:"timeoutSeconds,omitempty"`
+	// TimeoutSeconds bounds a Command check only. A PrivilegedCommand check
+	// runs for as long as the approved declaration allows, so the bound on
+	// what runs in the disposable VM lives in one place, the one a human
+	// approved; ValidateChecks rejects setting it here.
+	TimeoutSeconds int `json:"timeoutSeconds,omitempty"`
 }
 
 // ValidateChecks reports declarations that set neither or both of
-// Command and PrivilegedCommand, or name an undeclared privileged command.
+// Command and PrivilegedCommand, name an undeclared privileged command, or
+// set a timeout on a privileged one.
 func (c Config) ValidateChecks() error {
 	var problems []string
 	for name, d := range c.Checks {
@@ -148,6 +153,9 @@ func (c Config) ValidateChecks() error {
 		case d.PrivilegedCommand != "":
 			if _, ok := c.PrivilegedCommands[d.PrivilegedCommand]; !ok {
 				problems = append(problems, fmt.Sprintf("checks.%s names privilegedCommand %q, which is not declared", name, d.PrivilegedCommand))
+			}
+			if d.TimeoutSeconds != 0 {
+				problems = append(problems, fmt.Sprintf("checks.%s sets timeoutSeconds, which a privilegedCommand check does not use; set it on privilegedCommands.%s instead", name, d.PrivilegedCommand))
 			}
 		}
 	}
