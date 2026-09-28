@@ -434,6 +434,22 @@ func (e *Engine) Report(occurrence, outcome, feedback, agentID string) error {
 
 const prefixReport = "wf:report/"
 
+// AttachAgent records which Claude Code agent carried out an occurrence.
+// The main session learns the ID only when the subagent returns, after
+// the subagent already reported; a report still waiting to be taken gets
+// the ID so the result it becomes carries it (ADR-0074).
+func (e *Engine) AttachAgent(occurrence, agentID string) error {
+	var claim pendingReport
+	if err := getJSON(e.Store, prefixReport+occurrence, &claim); err != nil {
+		return nil
+	}
+	if claim.AgentID != "" {
+		return nil
+	}
+	claim.AgentID = agentID
+	return putJSON(e.Store, prefixReport+occurrence, claim)
+}
+
 type pendingReport struct {
 	Outcome  string `json:"outcome"`
 	Feedback string `json:"feedback,omitempty"`

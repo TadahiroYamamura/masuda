@@ -356,3 +356,23 @@ func TestApprovalCommentAfterStuckReachesTheResumedStep(t *testing.T) {
 		t.Fatalf("implementer feedback = %q, want the approval comment", st.Task.Feedback)
 	}
 }
+
+func TestAgentIDGivenAfterTheReportReachesTheAcceptedResult(t *testing.T) {
+	// The main session learns the Claude Code agent ID only when the
+	// subagent returns, after the subagent itself reported through
+	// report_result.
+	e, env := newEngine(t, "workflows/develop", Stubs{})
+	task := untilAgent(t, e, "investigate")
+	if err := e.Report(task.Occurrence, "done", "", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.AttachAgent(task.Occurrence, "agent-1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.Advance(); err != nil {
+		t.Fatal(err)
+	}
+	if len(env.Accepted) == 0 || env.Accepted[len(env.Accepted)-1].AgentID != "agent-1" {
+		t.Fatalf("accepted = %+v, want agent-1 on the investigator's result", env.Accepted)
+	}
+}

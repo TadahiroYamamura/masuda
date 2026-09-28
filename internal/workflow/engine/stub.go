@@ -80,7 +80,9 @@ type StubEnv struct {
 	// snapshot, to exercise the check on agents without Write/Edit.
 	Changes []string
 	// Feedback maps each path WriteFeedback returned to its text.
-	Feedback  map[string]string
+	Feedback map[string]string
+	// Accepted lists the context of every agent result taken, in order.
+	Accepted  []OutputContext
 	snapshots int
 }
 
@@ -142,8 +144,11 @@ func (s *StubEnv) ChangedSince(snapshot string) ([]string, string, error) {
 func (s *StubEnv) TreeSnapshot() (string, error)         { return "stub-tree", nil }
 func (s *StubEnv) DiffSince(tree string) (string, error) { return "stub://fix-diff", nil }
 
-func (s *StubEnv) HasOutput(name, occurrence string) bool       { return true }
-func (s *StubEnv) OutputsDone(OutputContext, []string) error    { return nil }
+func (s *StubEnv) HasOutput(name, occurrence string) bool { return true }
+func (s *StubEnv) OutputsDone(ctx OutputContext, _ []string) error {
+	s.Accepted = append(s.Accepted, ctx)
+	return nil
+}
 func (s *StubEnv) ItemFinished(over, key, outcome string) error { return nil }
 func (s *StubEnv) WriteFeedback(occ, text string) (string, error) {
 	p := "stub://feedback/" + occ

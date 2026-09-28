@@ -76,6 +76,11 @@ func (h *Host) NextTask(previous, agentID string) (Next, error) {
 	// the Notification hook reported is over (ADR-0076).
 	_ = sharedfs.Remove(h.env.StateDir, filepath.Join("wf", InputWaitFile))
 	if previous != "" && agentID != "" {
+		// A report still waiting to be taken gets the ID here; findings
+		// already in the ledger get it directly.
+		if err := h.eng.AttachAgent(previous, agentID); err != nil {
+			return Next{}, err
+		}
 		if err := h.ledger().SetAgentID(previous, agentID); err != nil {
 			return Next{}, err
 		}
