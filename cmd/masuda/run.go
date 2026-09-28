@@ -61,6 +61,9 @@ gate decisions, check results and foreach item counts come from --stubs
 				return err
 			}
 			if workspace.Exists(args[1]) {
+				if err := rejectStartOnlyFlags(cmd, args[1]); err != nil {
+					return err
+				}
 				return resumeRun(cmd, root, args[0], args[1], image)
 			}
 			return startRun(cmd, root, args[0], args[1], base, image, name, inputs)
@@ -73,6 +76,23 @@ gate decisions, check results and foreach item counts come from --stubs
 	cmd.Flags().StringVar(&image, "image", config.DefaultImageEntry, "name of the .masuda/images/ entry to build the VM rootfs from")
 	cmd.Flags().StringVar(&name, "name", "", "optional human-readable label for the workspace")
 	return cmd
+}
+
+// rejectStartOnlyFlags refuses flags that only shape a new workspace. A
+// resumed run keeps the base, name and inputs it started with -- its inputs
+// were placed when it started and nothing reads these flags on resume -- so
+// accepting them here would mean silently ignoring them.
+func rejectStartOnlyFlags(cmd *cobra.Command, id string) error {
+	var given []string
+	for _, f := range []string{"base", "name", "input"} {
+		if cmd.Flags().Changed(f) {
+			given = append(given, "--"+f)
+		}
+	}
+	if len(given) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s cannot be used when resuming workspace %s: they only apply to a new workspace (rename one with `masuda workspace rename`)", strings.Join(given, ", "), id)
 }
 
 // workflowSourceFor reads definitions from root's .masuda/, falling back to

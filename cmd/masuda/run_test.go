@@ -56,3 +56,23 @@ func TestCheckLogIsGivenToTheAgentAsAGuestPath(t *testing.T) {
 		t.Fatalf("guest path = %q", got)
 	}
 }
+
+// TestResumeRejectsStartOnlyFlags: resuming ignores --base, --name and
+// --input, so passing them must fail instead of looking accepted.
+func TestResumeRejectsStartOnlyFlags(t *testing.T) {
+	id := newTestWorkspace(t)
+	for _, flags := range [][]string{
+		{"--base", "main"},
+		{"--name", "x"},
+		{"--input", "instructions=do it"},
+	} {
+		cmd := newRunCommand()
+		cmd.SetArgs(append([]string{"workflows/develop", id}, flags...))
+		cmd.SilenceUsage = true
+		cmd.SilenceErrors = true
+		err := cmd.Execute()
+		if err == nil || !strings.Contains(err.Error(), flags[0]) {
+			t.Errorf("run %v on an existing workspace: error = %v, want one naming %s", flags, err, flags[0])
+		}
+	}
+}
