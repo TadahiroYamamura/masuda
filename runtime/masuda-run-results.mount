@@ -1,0 +1,13 @@
+[Unit]
+Description=masuda privileged-command results share (disposable VM)
+# Injected by masuda into the disposable VM's rootfs as
+# /etc/systemd/system/masuda\x2dresults.mount, next to masuda-run.service,
+# so the runner's way back to the host does not depend on the image's own
+# /etc/fstab: an image entry built FROM masuda-loop carries only the main
+# VM's fstab lines. The tag is the one internal/sandbox shares the run's
+# results directory under.
+
+[Mount]
+What=masuda-results
+Where=/masuda-results
+Type=virtiofs

@@ -26,7 +26,7 @@
 3. そのディレクトリへ実行指示を書く（`command`・`timeout-seconds`・`max-log-bytes`）
 4. worktreeを`cp -a`でスナップショットする（VMが見るのはこのコピーで、ライブのworktreeではない）
 5. MACとリポジトリの対応をegressレジストリへ記録し（後述）、egress-proxyが起動済みであることを確かめる
-6. `microvm.Host.Run`でVMを起動し、VMが自分でpoweroffするまで待つ。`Run`はrootfsのビルド（runnerスクリプト・そのunit・`multi-user.target.wants`リンクと、`WholeModuleTree`によるゲストカーネルのモジュールツリー全体を注入）、TAPの確保、virtiofsd 2つ（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）の起動を順に行う。宣言のタイムアウト＋余裕を過ぎたらVMを落とし、`microvm.ErrTimeout`を返す（`hostTimeout`）
+6. `microvm.Host.Run`でVMを起動し、VMが自分でpoweroffするまで待つ。`Run`はrootfsのビルド（runnerスクリプト・そのunit・`multi-user.target.wants`リンク・2つの共有をマウントするunit・`masuda-state.mount`のマスクと、`WholeModuleTree`によるゲストカーネルのモジュールツリー全体を注入）、TAPの確保、virtiofsd 2つ（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）の起動を順に行う。宣言のタイムアウト＋余裕を過ぎたらVMを落とし、`microvm.ErrTimeout`を返す（`hostTimeout`）
 7. 実行ディレクトリから`exit-code`と`log`を読み、`outputs`を回収する。読むときはシンボリックリンクをたどらない（`sharedfs.ReadRegular`）——実行ディレクトリはrootで動く使い捨てVMが書いた場所で、ログの代わりにホスト上のファイルへのリンクを置かれうるため。`Run`はVMの作業ディレクトリを消さないため、スナップショットはこの時点でまだ残っている
 8. ログ・`exit-code`・`console.log`と回収した成果物の**写し**を、状態ディレクトリの`privilegedCommands/<name>/<run-id>/`へ置く（`publishRun`）。書き込みは`sharedfs.WriteFile`経由で、メインVMが置いたシンボリックリンクの先へは書かない。実行指示（`command`）は写さない。写せなかったものは`OutputsError`に載せ、実行自体は失敗にしない
 9. TAP・virtiofsdは`Run`が、レジストリとVMの作業ディレクトリ（スナップショット・rootfsイメージ）は`RunPrivilegedCommand`が片付ける
@@ -39,7 +39,7 @@ VMが受け取らないもの: APIゲートウェイ（Claude OAuthトークン�
 
 ### ゲスト側
 
-`runtime/masuda-run.sh`と`runtime/masuda-run.service`。イメージのDockerfileには含まれず、masudaがrootfsへ注入する。
+`runtime/masuda-run.sh`と`runtime/masuda-run.service`。イメージのDockerfileには含まれず、masudaがrootfsへ注入する。2つの共有も、イメージの`/etc/fstab`に頼らず、masudaが注入するunitでマウントする: `runtime/masuda-run-results.mount`（`/etc/systemd/system/masuda\x2dresults.mount`）と`runtime/masuda-run-workspace.mount`（`/etc/systemd/system/workspace.mount`、fstabから生成されるunitより優先される）。`FROM masuda-loop`で作ったイメージには、メインVM用のfstabの行しか無いため。そのメインVM用の`masuda-state.mount`は`/dev/null`へのリンクでマスクし、起動のたびにマウント失敗が出ないようにする。
 
 - `/masuda-results/command`を読み、`/workspace`をカレントディレクトリにして実行する
 - 宣言にタイムアウトがあれば`timeout`コマンドで囲む
@@ -47,7 +47,7 @@ VMが受け取らないもの: APIゲートウェイ（Claude OAuthトークン�
 - exit codeを`/masuda-results/exit-code`へ書く。masuda自身の配線が失敗した場合（コマンドが配置されていない、`/workspace`が無い）は125を書く
 - 最後に`systemctl poweroff`
 
-unitは`After=multi-user.target`のみで、`docker.service`への依存を持たない——イメージにDockerが入っているとは限らないため。Dockerが在る場合、`docker.service`は`Type=notify`なので`multi-user.target`の到達がデーモン起動後であることを意味する。
+unitは2つのマウントunitを`Requires=`・`After=`で必須にする。結果の共有が無ければ報告先が無いため。それ以外は`After=multi-user.target`のみで、`docker.service`への依存を持たない——イメージにDockerが入っているとは限らないため。Dockerが在る場合、`docker.service`は`Type=notify`なので`multi-user.target`の到達がデーモン起動後であることを意味する。
 
 有効化は`[Install]`ではなく、masudaが`etc/systemd/system/multi-user.target.wants/masuda-run.service`のシンボリックリンクを注入して行う（`systemctl enable`が書くものと同じ）。
 

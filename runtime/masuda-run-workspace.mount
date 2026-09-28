@@ -1,0 +1,11 @@
+[Unit]
+Description=masuda privileged-command workspace snapshot (disposable VM)
+# Injected by masuda as /etc/systemd/system/workspace.mount, for the same
+# reason as masuda-run-results.mount. It replaces any unit the image's
+# /etc/fstab would generate for /workspace: /etc/systemd/system takes
+# precedence over the fstab generator's output.
+
+[Mount]
+What=workspace
+Where=/workspace
+Type=virtiofs

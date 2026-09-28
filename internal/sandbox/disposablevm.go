@@ -479,6 +479,8 @@ func bootPrivilegedVM(h microvm.Host, vmID, repoRoot, imageTag string, minSizeMi
 			ExtraFiles: []rootfs.ExtraFile{
 				{GuestPath: "usr/local/bin/masuda-run", Content: masuda.PrivilegedRunner, Mode: 0o755, UID: 0, GID: 0},
 				{GuestPath: "etc/systemd/system/masuda-run.service", Content: masuda.PrivilegedRunnerUnit, Mode: 0o644, UID: 0, GID: 0},
+				{GuestPath: `etc/systemd/system/masuda\x2dresults.mount`, Content: masuda.PrivilegedResultsMount, Mode: 0o644, UID: 0, GID: 0},
+				{GuestPath: "etc/systemd/system/workspace.mount", Content: masuda.PrivilegedWorkspaceMount, Mode: 0o644, UID: 0, GID: 0},
 			},
 			// What `systemctl enable` would have written, had there been a
 			// running systemd at image build time to run it. Not
@@ -487,10 +489,16 @@ func bootPrivilegedVM(h microvm.Host, vmID, repoRoot, imageTag string, minSizeMi
 			// carries /.dockerenv along) and a systemd that believes it is
 			// containerized ignores systemd.* options entirely -- see
 			// rootfs.ExtraSymlink.
-			ExtraSymlinks: []rootfs.ExtraSymlink{{
-				GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
-				Target:    "/etc/systemd/system/masuda-run.service",
-			}},
+			ExtraSymlinks: []rootfs.ExtraSymlink{
+				{
+					GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
+					Target:    "/etc/systemd/system/masuda-run.service",
+				},
+				// Masked: an image built FROM masuda-loop has an fstab line
+				// for the main VM's state share, which this VM never gets,
+				// and every boot would log a failed mount for it.
+				{GuestPath: `etc/systemd/system/masuda\x2dstate.mount`, Target: "/dev/null"},
+			},
 			MinSizeMiB: minSizeMiB,
 		},
 		Modules: microvm.WholeModuleTree,
