@@ -32,8 +32,15 @@ func (e *Engine) foreach(r *records, cur *Occurrence, n *def.Node, fr Frame) (St
 	}
 	body := e.Set.Workflows[n.Body]
 	var incomplete []string
+	// Only the first iteration this entry starts gets the feedback sent to
+	// the loop: after a stuck step and its approval, that is the step
+	// being resumed, and the later ones have nothing to act on in it.
+	feedback := cur.Feedback
 	for i, item := range cur.Items {
 		frameID := iterFrame(cur.ID, i)
+		if _, started := e.Store.Get(prefixFrame + frameID); started {
+			feedback = ""
+		}
 		if out, ended := e.frameEnd(frameID); ended {
 			if !e.itemRecorded(frameID) {
 				if err := e.Env.ItemFinished(n.Over, item.Key, out); err != nil {
@@ -68,7 +75,7 @@ func (e *Engine) foreach(r *records, cur *Occurrence, n *def.Node, fr Frame) (St
 			if err != nil {
 				return Status{}, false, err
 			}
-			frame := Frame{ID: frameID, Workflow: body.Path, Inputs: inputs}
+			frame := Frame{ID: frameID, Workflow: body.Path, Inputs: inputs, Feedback: feedback}
 			if n.Over == def.OverFindings {
 				if frame.Tree, err = e.Env.TreeSnapshot(); err != nil {
 					return Status{}, false, err

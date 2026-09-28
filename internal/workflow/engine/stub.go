@@ -78,12 +78,14 @@ type StubEnv struct {
 	checkRuns map[string]int
 	// Changes, when set, is what the worktree shows changed since the first
 	// snapshot, to exercise the check on agents without Write/Edit.
-	Changes   []string
+	Changes []string
+	// Feedback maps each path WriteFeedback returned to its text.
+	Feedback  map[string]string
 	snapshots int
 }
 
 func NewStubEnv(s Stubs) *StubEnv {
-	return &StubEnv{Stubs: s, committed: map[string]bool{}, checkRuns: map[string]int{}}
+	return &StubEnv{Stubs: s, committed: map[string]bool{}, checkRuns: map[string]int{}, Feedback: map[string]string{}}
 }
 
 func (s *StubEnv) Data(name string) (string, bool, error) { return "stub://" + name, true, nil }
@@ -144,7 +146,9 @@ func (s *StubEnv) HasOutput(name, occurrence string) bool       { return true }
 func (s *StubEnv) OutputsDone(OutputContext, []string) error    { return nil }
 func (s *StubEnv) ItemFinished(over, key, outcome string) error { return nil }
 func (s *StubEnv) WriteFeedback(occ, text string) (string, error) {
-	return "stub://feedback/" + occ, nil
+	p := "stub://feedback/" + occ
+	s.Feedback[p] = text
+	return p, nil
 }
 func (s *StubEnv) Log(e Event) { s.Events = append(s.Events, e) }
 

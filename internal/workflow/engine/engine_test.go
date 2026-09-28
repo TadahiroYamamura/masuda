@@ -273,3 +273,69 @@ func TestReportConcernOnlyForPendingAgentTasks(t *testing.T) {
 		t.Fatal("a concern for an unknown occurrence was accepted")
 	}
 }
+
+// untilGate advances, answering agents with outcomes[node] (done when
+// unlisted), until the named gate is open.
+func untilGate(t *testing.T, e *Engine, gate string, outcomes map[string]string) *GateRequest {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		st, err := e.Advance()
+		if err != nil {
+			t.Fatal(err)
+		}
+		switch st.Kind {
+		case StatusGate:
+			if st.Gate.Name == gate {
+				return st.Gate
+			}
+			t.Fatalf("gate %s opened before %s", st.Gate.Name, gate)
+		case StatusAgent:
+			out := outcomes[st.Task.Node]
+			if out == "" {
+				out = "done"
+			}
+			if err := e.Report(st.Task.Occurrence, out, "", ""); err != nil {
+				t.Fatal(err)
+			}
+		default:
+			t.Fatalf("status = %+v before gate %s", st, gate)
+		}
+	}
+	t.Fatalf("gate %s not reached", gate)
+	return nil
+}
+
+func TestRejectCommentReachesTheAgentInsideTheStage(t *testing.T) {
+	e, env := newEngine(t, "workflows/develop", Stubs{})
+	g := untilGate(t, e, "plan", nil)
+	if err := e.Decide("plan", Decision{Occurrence: g.Occurrence, Hash: g.Hash, Comment: "cover Pow(0, 0)"}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Advance()
+	if err != nil || st.Kind != StatusAgent || st.Task.Node != "plan" {
+		t.Fatalf("after reject: %+v %v, want the planner", st, err)
+	}
+	if !strings.Contains(env.Feedback[st.Task.Feedback], "cover Pow(0, 0)") {
+		t.Fatalf("planner feedback = %q, want the reject comment", st.Task.Feedback)
+	}
+}
+
+func TestApprovalCommentAfterStuckReachesTheResumedStep(t *testing.T) {
+	stubs := Stubs{Items: map[string]int{"steps": 2}}
+	e, env := newEngine(t, "workflows/develop", stubs)
+	g := untilGate(t, e, "plan", nil)
+	if err := e.Decide("plan", Decision{Occurrence: g.Occurrence, Hash: g.Hash, Approved: true}); err != nil {
+		t.Fatal(err)
+	}
+	g = untilGate(t, e, "plan", map[string]string{"implement": "stuck"})
+	if err := e.Decide("plan", Decision{Occurrence: g.Occurrence, Hash: g.Hash, Approved: true, Comment: "use a loop"}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := e.Advance()
+	if err != nil || st.Kind != StatusAgent || st.Task.Node != "implement" {
+		t.Fatalf("after approve: %+v %v, want the implementer", st, err)
+	}
+	if !strings.Contains(env.Feedback[st.Task.Feedback], "use a loop") {
+		t.Fatalf("implementer feedback = %q, want the approval comment", st.Task.Feedback)
+	}
+}

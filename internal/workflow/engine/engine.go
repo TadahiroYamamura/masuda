@@ -200,7 +200,7 @@ func (e *Engine) stepFrame(r *records, frameID string) (Status, bool, error) {
 	}
 	cur := r.last(frameID)
 	if cur == nil {
-		return Status{}, true, e.enter(r, fr, w, w.Start, "")
+		return Status{}, true, e.enter(r, fr, w, w.Start, fr.Feedback)
 	}
 	n := w.Nodes[cur.Node]
 	if res, done := r.results[cur.ID]; done {
@@ -248,7 +248,7 @@ func (e *Engine) stepFrame(r *records, frameID string) (Status, bool, error) {
 			if err != nil {
 				return Status{}, false, err
 			}
-			if err := putJSON(e.Store, prefixFrame+child, Frame{ID: child, Workflow: callee.Path, Inputs: inputs}); err != nil {
+			if err := putJSON(e.Store, prefixFrame+child, Frame{ID: child, Workflow: callee.Path, Inputs: inputs, Feedback: cur.Feedback}); err != nil {
 				return Status{}, false, err
 			}
 			return Status{}, true, nil

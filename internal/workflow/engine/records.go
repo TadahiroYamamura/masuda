@@ -91,6 +91,10 @@ type Frame struct {
 	// Tree is the worktree as it was when a foreach-over-findings iteration
 	// started, so fix-diff can show just that iteration's change.
 	Tree string `json:"tree,omitempty"`
+	// Feedback is what was sent back to the calling node (a reject
+	// comment, say). Its first node gets it, since the calling node itself
+	// is not an agent that could read it.
+	Feedback string `json:"feedback,omitempty"`
 }
 
 // records is everything the store holds about a run, loaded once per
