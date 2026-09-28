@@ -163,9 +163,8 @@ func vmStart(id, worktreeDir, stateDir, repoRoot, image string) (Handle, error) 
 	}
 
 	// Shared into the guest for free via the existing /masuda-state
-	// virtiofs mount -- no separate share needed, unlike the claude-secrets
-	// one, since this isn't sensitive and stateDir is already
-	// workspace-scoped.
+	// virtiofs mount -- it isn't sensitive and stateDir is already
+	// workspace-scoped, so it needs no share of its own.
 	if err := WriteGitIdentity(stateDir, repoRoot); err != nil {
 		return Handle{}, fmt.Errorf("writing git identity for guest: %w", err)
 	}

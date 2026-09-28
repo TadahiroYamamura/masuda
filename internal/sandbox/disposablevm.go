@@ -20,6 +20,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/microvm"
 	"github.com/TadahiroYamamura/masuda/internal/rootfs"
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -74,17 +75,25 @@ type PrivilegedRunRequest struct {
 	// shared: the AI session in the main VM keeps working in it while this
 	// runs, and a privileged command must not be able to write into it.
 	WorktreeDir string
-	// StateDir is the workspace's state directory, where the run's results
-	// are filed so the main VM can read them over its existing share.
+	// TrustedDir is the workspace's host-only directory
+	// (workspace.TrustedDir). The run itself -- the staged command, and the
+	// exit code and log the disposable VM reports -- lives there, because
+	// the main VM can write anywhere in its state directory: a command file
+	// kept there could be rewritten between approval and boot, and an exit
+	// code could be rewritten before the host reads it.
+	TrustedDir string
+	// StateDir is the workspace's state directory, where copies of the log
+	// and collected outputs are published afterwards so the main VM can
+	// read them over its existing share. Nothing is read back from there.
 	StateDir string
 }
 
 // PrivilegedRunResult is what the host learns about a finished run.
 type PrivilegedRunResult struct {
 	RunID string
-	// Dir is the run's results directory on the host; GuestDir is the same
-	// directory as the *main* VM sees it, which is the path worth handing
-	// to the AI session.
+	// Dir is the run's own directory, host-only; GuestDir is where the main
+	// VM sees the published copies, which is the path worth handing to the
+	// AI session.
 	Dir      string
 	GuestDir string
 	ExitCode int
@@ -143,6 +152,9 @@ func ResolveApprovedPrivilegedCommand(repoRoot, name string) (config.PrivilegedC
 // RunPrivilegedCommand builds, boots, waits for, and tears down one
 // disposable VM. It blocks for the length of the run.
 func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error) {
+	if req.TrustedDir == "" {
+		return PrivilegedRunResult{}, fmt.Errorf("privileged command %q: no host-only directory to run it from", req.Name)
+	}
 	if err := config.ValidateImageEntry(req.Decl.Image); err != nil {
 		return PrivilegedRunResult{}, err
 	}
@@ -160,7 +172,7 @@ func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error)
 		return PrivilegedRunResult{}, err
 	}
 
-	runID, runDir, err := newPrivilegedRunDir(req.StateDir, req.Name)
+	runID, runDir, err := newPrivilegedRunDir(req.TrustedDir, req.Name)
 	if err != nil {
 		return PrivilegedRunResult{}, err
 	}
@@ -192,11 +204,55 @@ func RunPrivilegedCommand(req PrivilegedRunRequest) (PrivilegedRunResult, error)
 		result := readRunResult(runDir, runID, req)
 		result.TimedOut = true
 		collectInto(&result, snapshotDir, runDir, req.Decl.Outputs)
+		publishRun(&result, runDir, req)
 		return result, nil
 	}
 	result := readRunResult(runDir, runID, req)
 	collectInto(&result, snapshotDir, runDir, req.Decl.Outputs)
+	publishRun(&result, runDir, req)
 	return result, nil
+}
+
+// publishedRunFiles are what the main VM gets a copy of, besides the
+// collected outputs. The staged command is not among them: the session
+// already knows what it asked to run.
+var publishedRunFiles = []string{"log", "exit-code", "console.log"}
+
+// publishRun copies the run's log, exit code, console and collected outputs
+// to the state directory, where the main VM reads them. Every read from the
+// run directory refuses symlinks (the disposable VM wrote it, as root), and
+// every write into the state directory goes through sharedfs (the main VM
+// can have planted a symlink at any path there). A copy that fails is
+// reported alongside the result rather than failing the run: the host
+// already has the exit code and log it acts on.
+func publishRun(result *PrivilegedRunResult, runDir string, req PrivilegedRunRequest) {
+	dest := filepath.Join(PrivilegedRunsDirName, req.Name, result.RunID)
+	var failed []string
+	copyOne := func(rel string) {
+		data, err := sharedfs.ReadRegular(runDir, rel)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				failed = append(failed, rel)
+			}
+			return
+		}
+		if err := sharedfs.WriteFile(req.StateDir, filepath.Join(dest, rel), data); err != nil {
+			failed = append(failed, rel)
+		}
+	}
+	for _, rel := range publishedRunFiles {
+		copyOne(rel)
+	}
+	for _, rel := range result.Outputs {
+		copyOne(filepath.Join(outputsDirName, rel))
+	}
+	if len(failed) > 0 {
+		msg := "not copied to the state directory: " + strings.Join(failed, ", ")
+		if result.OutputsError != "" {
+			msg = result.OutputsError + "; " + msg
+		}
+		result.OutputsError = msg
+	}
 }
 
 // collectInto runs the declared collection and records its outcome on the
@@ -330,12 +386,13 @@ func hostTimeout(decl config.PrivilegedCommandDecl) time.Duration {
 	return defaultPrivilegedTimeout + privilegedBootSlack
 }
 
-// newPrivilegedRunDir allocates this run's results directory. Runs are never
-// overwritten or auto-deleted (ADR-0053): two runs of the same command must
-// both remain readable, so the directory name is a fresh random id rather
-// than anything derived from the command or its inputs.
-func newPrivilegedRunDir(stateDir, name string) (string, string, error) {
-	parent := filepath.Join(stateDir, PrivilegedRunsDirName, name)
+// newPrivilegedRunDir allocates this run's directory under base (the
+// workspace's host-only directory). Runs are never overwritten or
+// auto-deleted (ADR-0053): two runs of the same command must both remain
+// readable, so the directory name is a fresh random id rather than anything
+// derived from the command or its inputs.
+func newPrivilegedRunDir(base, name string) (string, string, error) {
+	parent := filepath.Join(base, PrivilegedRunsDirName, name)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", "", err
 	}
@@ -422,6 +479,8 @@ func bootPrivilegedVM(h microvm.Host, vmID, repoRoot, imageTag string, minSizeMi
 			ExtraFiles: []rootfs.ExtraFile{
 				{GuestPath: "usr/local/bin/masuda-run", Content: masuda.PrivilegedRunner, Mode: 0o755, UID: 0, GID: 0},
 				{GuestPath: "etc/systemd/system/masuda-run.service", Content: masuda.PrivilegedRunnerUnit, Mode: 0o644, UID: 0, GID: 0},
+				{GuestPath: `etc/systemd/system/masuda\x2dresults.mount`, Content: masuda.PrivilegedResultsMount, Mode: 0o644, UID: 0, GID: 0},
+				{GuestPath: "etc/systemd/system/workspace.mount", Content: masuda.PrivilegedWorkspaceMount, Mode: 0o644, UID: 0, GID: 0},
 			},
 			// What `systemctl enable` would have written, had there been a
 			// running systemd at image build time to run it. Not
@@ -430,10 +489,16 @@ func bootPrivilegedVM(h microvm.Host, vmID, repoRoot, imageTag string, minSizeMi
 			// carries /.dockerenv along) and a systemd that believes it is
 			// containerized ignores systemd.* options entirely -- see
 			// rootfs.ExtraSymlink.
-			ExtraSymlinks: []rootfs.ExtraSymlink{{
-				GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
-				Target:    "/etc/systemd/system/masuda-run.service",
-			}},
+			ExtraSymlinks: []rootfs.ExtraSymlink{
+				{
+					GuestPath: "etc/systemd/system/multi-user.target.wants/masuda-run.service",
+					Target:    "/etc/systemd/system/masuda-run.service",
+				},
+				// Masked: an image built FROM masuda-loop has an fstab line
+				// for the main VM's state share, which this VM never gets,
+				// and every boot would log a failed mount for it.
+				{GuestPath: `etc/systemd/system/masuda\x2dstate.mount`, Target: "/dev/null"},
+			},
 			MinSizeMiB: minSizeMiB,
 		},
 		Modules: microvm.WholeModuleTree,
@@ -463,12 +528,15 @@ func readRunResult(runDir, runID string, req PrivilegedRunRequest) PrivilegedRun
 		GuestDir: filepath.Join(GuestStateDir, PrivilegedRunsDirName, req.Name, runID),
 		ExitCode: -1,
 	}
-	if raw, err := os.ReadFile(filepath.Join(runDir, "exit-code")); err == nil {
+	// sharedfs.ReadRegular, not os.ReadFile: the disposable VM wrote these as
+	// root, and a symlink planted in place of the log would otherwise have
+	// the host read one of its own files into the result.
+	if raw, err := sharedfs.ReadRegular(runDir, "exit-code"); err == nil {
 		if code, err := strconv.Atoi(strings.TrimSpace(string(raw))); err == nil {
 			result.ExitCode = code
 		}
 	}
-	if log, err := os.ReadFile(filepath.Join(runDir, "log")); err == nil {
+	if log, err := sharedfs.ReadRegular(runDir, "log"); err == nil {
 		result.Log = string(log)
 	}
 	return result

@@ -13,6 +13,13 @@ Description=Run this VM's one masuda privileged command, then power off
 # (internal/rootfs.ExtraSymlink), which is exactly what enabling would
 # have produced.
 After=multi-user.target
+# The two shares the runner reads and writes, mounted by units masuda
+# injects alongside this one (runtime/masuda-run-*.mount) rather than by
+# the image's /etc/fstab, which a user's image entry may not carry. Without
+# the results share the runner would have nowhere to report to, so it must
+# not start.
+Requires=masuda\x2dresults.mount workspace.mount
+After=masuda\x2dresults.mount workspace.mount
 
 [Service]
 Type=oneshot

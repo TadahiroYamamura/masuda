@@ -66,6 +66,7 @@ func TestManualPrivilegedCommand(t *testing.T) {
 		stateDir = keep
 	}
 	t.Logf("state directory: %s", stateDir)
+	trustedDir := t.TempDir()
 
 	result, err := RunPrivilegedCommand(PrivilegedRunRequest{
 		Name: "e2e",
@@ -81,10 +82,25 @@ func TestManualPrivilegedCommand(t *testing.T) {
 		},
 		RepoRoot:    repoRoot,
 		WorktreeDir: worktreeDir,
+		TrustedDir:  trustedDir,
 		StateDir:    stateDir,
 	})
 	if err != nil {
 		t.Fatalf("RunPrivilegedCommand: %v", err)
+	}
+	// The run itself lives in the host-only directory; the state directory
+	// the main VM can write only gets copies, and never the staged command.
+	if !strings.HasPrefix(result.Dir, trustedDir) {
+		t.Errorf("run directory %s is not under the host-only directory %s", result.Dir, trustedDir)
+	}
+	published := filepath.Join(stateDir, PrivilegedRunsDirName, "e2e", result.RunID)
+	for _, rel := range []string{"log", "exit-code", "outputs/report.txt"} {
+		if _, err := os.Stat(filepath.Join(published, rel)); err != nil {
+			t.Errorf("%s was not published for the main VM: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(published, "command")); err == nil {
+		t.Error("the staged command is in the state directory the main VM can write")
 	}
 	t.Logf("run %s -> exit %d, timed out: %v\n%s", result.RunID, result.ExitCode, result.TimedOut, result.Log)
 

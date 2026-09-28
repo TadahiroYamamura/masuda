@@ -22,21 +22,24 @@
 `internal/sandbox.RunPrivilegedCommand`（`internal/sandbox/disposablevm.go`）が1回の実行を最初から最後まで担う。呼び出し元は状態デーモンのcuratedツール（後述）。
 
 1. `ResolveApprovedPrivilegedCommand`が宣言を引き、承認とハッシュ一致を確認する。ここで弾かれた要求はVMを起動しない
-2. 実行ごとのディレクトリを作る: `<stateDir>/privilegedCommands/<name>/<run-id>/`。`run-id`はワークスペースIDと同じ形式の乱数（`workspace.NewRandomID`）。既存の実行を上書きしない
+2. 実行ごとのディレクトリを、ワークスペースのホスト専用ディレクトリに作る: `<trustedDir>/privilegedCommands/<name>/<run-id>/`（`workspace.TrustedDir`、`PrivilegedRunRequest.TrustedDir`）。`run-id`はワークスペースIDと同じ形式の乱数（`workspace.NewRandomID`）。既存の実行を上書きしない。メインVMと共有する状態ディレクトリには置かない——メインVMのエージェントはそこを書き換えられるため、置いた実行指示は起動前に、`exit-code`はホストが読む前に差し替えられる。`TrustedDir`が空の要求は実行しない
 3. そのディレクトリへ実行指示を書く（`command`・`timeout-seconds`・`max-log-bytes`）
 4. worktreeを`cp -a`でスナップショットする（VMが見るのはこのコピーで、ライブのworktreeではない）
 5. MACとリポジトリの対応をegressレジストリへ記録し（後述）、egress-proxyが起動済みであることを確かめる
-6. `microvm.Host.Run`でVMを起動し、VMが自分でpoweroffするまで待つ。`Run`はrootfsのビルド（runnerスクリプト・そのunit・`multi-user.target.wants`リンクと、`WholeModuleTree`によるゲストカーネルのモジュールツリー全体を注入）、TAPの確保、virtiofsd 2つ（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）の起動を順に行う。宣言のタイムアウト＋余裕を過ぎたらVMを落とし、`microvm.ErrTimeout`を返す（`hostTimeout`）
-7. 実行ディレクトリから`exit-code`と`log`を読み、`outputs`を回収する。`Run`はVMの作業ディレクトリを消さないため、スナップショットはこの時点でまだ残っている
-8. TAP・virtiofsdは`Run`が、レジストリとVMの作業ディレクトリ（スナップショット・rootfsイメージ）は`RunPrivilegedCommand`が片付ける
+6. `microvm.Host.Run`でVMを起動し、VMが自分でpoweroffするまで待つ。`Run`はrootfsのビルド（runnerスクリプト・そのunit・`multi-user.target.wants`リンク・2つの共有をマウントするunit・`masuda-state.mount`のマスクと、`WholeModuleTree`によるゲストカーネルのモジュールツリー全体を注入）、TAPの確保、virtiofsd 2つ（`workspace`=スナップショット、`masuda-results`=実行ディレクトリ）の起動を順に行う。宣言のタイムアウト＋余裕を過ぎたらVMを落とし、`microvm.ErrTimeout`を返す（`hostTimeout`）
+7. 実行ディレクトリから`exit-code`と`log`を読み、`outputs`を回収する。読むときはシンボリックリンクをたどらない（`sharedfs.ReadRegular`）——実行ディレクトリはrootで動く使い捨てVMが書いた場所で、ログの代わりにホスト上のファイルへのリンクを置かれうるため。`Run`はVMの作業ディレクトリを消さないため、スナップショットはこの時点でまだ残っている
+8. ログ・`exit-code`・`console.log`と回収した成果物の**写し**を、状態ディレクトリの`privilegedCommands/<name>/<run-id>/`へ置く（`publishRun`）。書き込みは`sharedfs.WriteFile`経由で、メインVMが置いたシンボリックリンクの先へは書かない。実行指示（`command`）は写さない。写せなかったものは`OutputsError`に載せ、実行自体は失敗にしない
+9. TAP・virtiofsdは`Run`が、レジストリとVMの作業ディレクトリ（スナップショット・rootfsイメージ）は`RunPrivilegedCommand`が片付ける
 
 `cloud-hypervisor`とカーネルの存在は、手順2で実行ディレクトリを作る前に`Host.Check`で確かめる。
+
+ホストが結果として使う`exit-code`と`log`は、ホスト専用の実行ディレクトリから読んだものだけで、状態ディレクトリの写しは一切読み戻さない。
 
 VMが受け取らないもの: APIゲートウェイ（Claude OAuthトークンへの経路）、MCPリレー、SSH鍵。対話アタッチの経路も無く、コンソールは実行ディレクトリの`console.log`へ落ちる。
 
 ### ゲスト側
 
-`runtime/masuda-run.sh`と`runtime/masuda-run.service`。イメージのDockerfileには含まれず、masudaがrootfsへ注入する。
+`runtime/masuda-run.sh`と`runtime/masuda-run.service`。イメージのDockerfileには含まれず、masudaがrootfsへ注入する。2つの共有も、イメージの`/etc/fstab`に頼らず、masudaが注入するunitでマウントする: `runtime/masuda-run-results.mount`（`/etc/systemd/system/masuda\x2dresults.mount`）と`runtime/masuda-run-workspace.mount`（`/etc/systemd/system/workspace.mount`、fstabから生成されるunitより優先される）。`FROM masuda-loop`で作ったイメージには、メインVM用のfstabの行しか無いため。そのメインVM用の`masuda-state.mount`は`/dev/null`へのリンクでマスクし、起動のたびにマウント失敗が出ないようにする。
 
 - `/masuda-results/command`を読み、`/workspace`をカレントディレクトリにして実行する
 - 宣言にタイムアウトがあれば`timeout`コマンドで囲む
@@ -44,7 +47,7 @@ VMが受け取らないもの: APIゲートウェイ（Claude OAuthトークン�
 - exit codeを`/masuda-results/exit-code`へ書く。masuda自身の配線が失敗した場合（コマンドが配置されていない、`/workspace`が無い）は125を書く
 - 最後に`systemctl poweroff`
 
-unitは`After=multi-user.target`のみで、`docker.service`への依存を持たない——イメージにDockerが入っているとは限らないため。Dockerが在る場合、`docker.service`は`Type=notify`なので`multi-user.target`の到達がデーモン起動後であることを意味する。
+unitは2つのマウントunitを`Requires=`・`After=`で必須にする。結果の共有が無ければ報告先が無いため。それ以外は`After=multi-user.target`のみで、`docker.service`への依存を持たない——イメージにDockerが入っているとは限らないため。Dockerが在る場合、`docker.service`は`Type=notify`なので`multi-user.target`の到達がデーモン起動後であることを意味する。
 
 有効化は`[Install]`ではなく、masudaが`etc/systemd/system/multi-user.target.wants/masuda-run.service`のシンボリックリンクを注入して行う（`systemctl enable`が書くものと同じ）。
 
@@ -52,17 +55,17 @@ unitは`After=multi-user.target`のみで、`docker.service`への依存を持�
 
 戻るのはexit codeとログ、そして宣言された成果物。
 
-ログの上限は2段。ゲスト側の`awk`フィルタが実行ディレクトリのファイルを`maxPrivilegedLogBytes`（8MiB）で打ち切り、curatedツールが応答へ載せるのは末尾`maxToolLogBytes`（200KiB）まで。切れた続きはセッションが実行ディレクトリのファイルとして読める。
+ログの上限は2段。ゲスト側の`awk`フィルタが実行ディレクトリのファイルを`maxPrivilegedLogBytes`（8MiB）で打ち切り、curatedツールが応答へ載せるのは末尾`maxToolLogBytes`（200KiB）まで。切れた続きはセッションが状態ディレクトリの写しとして読める。
 
 `outputs`の回収（`collectOutputs`）はVMが消えた後にホストが行う。
 
-- 回収先は実行ディレクトリの`outputs/`。ライブのworktreeへは決して書かない
+- 回収先は実行ディレクトリの`outputs/`。ライブのworktreeへは決して書かない。メインVMが読むのは、手順8で状態ディレクトリに置いた写し
 - **symlinkは辿らない。** 通常ファイルとディレクトリ以外はスキップし、スキップした事実を結果に載せる
 - 合計`maxCollectedOutputBytes`（64MiB）・`maxCollectedOutputFiles`（1000件）を超えるとエラーにする。打ち切らない
 - 回収先ディレクトリは作り直す（ゲストが同じ名前のディレクトリを自分で作れるため）
 - タイムアウトした実行でも回収する
 
-実行ディレクトリは自動削除されない。ワークスペースの状態ディレクトリごと、ワークスペース削除時に消える。
+実行ディレクトリも写しも自動削除されない。どちらもワークスペース削除時に、ホスト専用ディレクトリ・状態ディレクトリごと消える。
 
 ## AIセッションからの呼び出し口
 
@@ -70,7 +73,7 @@ curated MCPツール`run_privileged_command(name)`（`internal/statedaemon/mcpse
 
 状態デーモンは`--repo-root`と`--worktree-dir`の両方を渡された場合にのみこのツールを登録する（`runStatedaemon`）。実行の実体は`cmd/masuda/statedaemon.go`の`privilegedRunner`が注入する。
 
-戻り値は`exitCode`・`log`（切り詰め済み）・`truncated`・`resultsDir`（**メインVMから見たパス**、`/masuda-state/privilegedCommands/<name>/<run-id>`）・`outputs`・`outputsError`・`timedOut`。
+戻り値は`exitCode`・`log`（切り詰め済み）・`truncated`・`resultsDir`（**メインVMから見た写しのパス**、`/masuda-state/privilegedCommands/<name>/<run-id>`）・`outputs`・`outputsError`・`timedOut`。
 
 ## ループ側からの見え方
 

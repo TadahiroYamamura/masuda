@@ -23,6 +23,15 @@ var PrivilegedRunner []byte
 //go:embed runtime/masuda-run.service
 var PrivilegedRunnerUnit []byte
 
+// PrivilegedResultsMount and PrivilegedWorkspaceMount mount the disposable
+// VM's two shares for the runner, injected alongside it for the same reason.
+//
+//go:embed runtime/masuda-run-results.mount
+var PrivilegedResultsMount []byte
+
+//go:embed runtime/masuda-run-workspace.mount
+var PrivilegedWorkspaceMount []byte
+
 // DockerTemplate is the starting content of an image entry whose VM runs a
 // Docker daemon (.masuda/images/<entry>/Dockerfile, ADR-0053/0054). It
 // lives under templates/ rather than docker/ to keep the distinction

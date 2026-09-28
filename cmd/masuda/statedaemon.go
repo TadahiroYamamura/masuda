@@ -190,11 +190,18 @@ func privilegedRunner(repoRoot, worktreeDir, stateDir string) mcpserver.Privileg
 		if err != nil {
 			return mcpserver.PrivilegedRunResult{}, err
 		}
+		// Same derivation as workflowEnv: the state directory is named
+		// after the workspace ID.
+		trusted, err := workspace.TrustedDir(filepath.Base(stateDir))
+		if err != nil {
+			return mcpserver.PrivilegedRunResult{}, err
+		}
 		result, err := sandbox.RunPrivilegedCommand(sandbox.PrivilegedRunRequest{
 			Name:        name,
 			Decl:        decl,
 			RepoRoot:    repoRoot,
 			WorktreeDir: worktreeDir,
+			TrustedDir:  trusted,
 			StateDir:    stateDir,
 		})
 		if err != nil {

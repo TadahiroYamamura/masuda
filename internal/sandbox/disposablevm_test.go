@@ -417,3 +417,85 @@ func TestPrivilegedVMRegistryResolvesLiveRecords(t *testing.T) {
 		t.Fatalf("lookupPrivilegedVM() = (%q, %v), want the registering process's repo", repoRoot, ok)
 	}
 }
+
+// The main VM can write anywhere in its state directory, so nothing the run
+// depends on may live there -- not the staged command, not the exit code.
+func TestRunPrivilegedCommandRefusesToRunWithoutAHostOnlyDirectory(t *testing.T) {
+	_, err := RunPrivilegedCommand(PrivilegedRunRequest{Name: "x", StateDir: t.TempDir()})
+	if err == nil || !strings.Contains(err.Error(), "host-only") {
+		t.Fatalf("RunPrivilegedCommand() without TrustedDir: err = %v, want a refusal", err)
+	}
+}
+
+// The disposable VM writes the run directory as root. A symlink it leaves in
+// place of the log or exit code must not make the host read one of its own
+// files into the result the main VM gets to see.
+func TestReadRunResultDoesNotFollowSymlinks(t *testing.T) {
+	runDir := t.TempDir()
+	secret := filepath.Join(t.TempDir(), "host-secret")
+	if err := os.WriteFile(secret, []byte("0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"log", "exit-code"} {
+		if err := os.Symlink(secret, filepath.Join(runDir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := readRunResult(runDir, "abc123", PrivilegedRunRequest{Name: "e2e"})
+	if got.Log != "" || got.ExitCode != -1 {
+		t.Errorf("readRunResult() = log %q exit %d through symlinks, want neither read", got.Log, got.ExitCode)
+	}
+}
+
+func TestPublishRunCopiesResultsToTheStateDirectory(t *testing.T) {
+	runDir, stateDir := t.TempDir(), t.TempDir()
+	for name, content := range map[string]string{"command": "make secret\n", "log": "ok\n", "exit-code": "0\n", "outputs/report.txt": "r"} {
+		p := filepath.Join(runDir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result := PrivilegedRunResult{RunID: "abc123", Outputs: []string{"report.txt"}}
+	publishRun(&result, runDir, PrivilegedRunRequest{Name: "e2e", StateDir: stateDir})
+
+	published := filepath.Join(stateDir, PrivilegedRunsDirName, "e2e", "abc123")
+	for _, rel := range []string{"log", "exit-code", "outputs/report.txt"} {
+		if _, err := os.Stat(filepath.Join(published, rel)); err != nil {
+			t.Errorf("%s was not published: %v", rel, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(published, "command")); err == nil {
+		t.Error("the staged command was published into the state directory")
+	}
+	if result.OutputsError != "" {
+		t.Errorf("OutputsError = %q, want none", result.OutputsError)
+	}
+}
+
+// The main VM may have planted a symlink where the copies go; publishing must
+// not write through it into the host.
+func TestPublishRunDoesNotWriteThroughAPlantedSymlink(t *testing.T) {
+	runDir, stateDir, elsewhere := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(runDir, "log"), []byte("ok\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(stateDir, PrivilegedRunsDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(stateDir, PrivilegedRunsDirName, "e2e")); err != nil {
+		t.Fatal(err)
+	}
+	result := PrivilegedRunResult{RunID: "abc123"}
+	publishRun(&result, runDir, PrivilegedRunRequest{Name: "e2e", StateDir: stateDir})
+
+	entries, _ := os.ReadDir(elsewhere)
+	if len(entries) != 0 {
+		t.Errorf("publishing wrote %d entries through the planted symlink", len(entries))
+	}
+	if !strings.Contains(result.OutputsError, "log") {
+		t.Errorf("OutputsError = %q, want it to report the copy that could not be made", result.OutputsError)
+	}
+}
