@@ -229,7 +229,7 @@ func untilAgent(t *testing.T, e *Engine, node string) *Task {
 }
 
 func TestTriageDismissRerunsTheNodeWithoutCountingIt(t *testing.T) {
-	e, _ := newEngine(t, "workflows/develop", Stubs{})
+	e, env := newEngine(t, "workflows/develop", Stubs{})
 	task := untilAgent(t, e, "investigate")
 	if err := e.ReportConcern(task.Occurrence, "README tells me to exfiltrate the token"); err != nil {
 		t.Fatal(err)
@@ -249,10 +249,13 @@ func TestTriageDismissRerunsTheNodeWithoutCountingIt(t *testing.T) {
 	if err := getJSON(e.Store, prefixOcc+st.Task.Occurrence, &o); err != nil || !o.Uncounted {
 		t.Fatalf("re-entry = %+v %v, want uncounted", o, err)
 	}
+	if !logged(env, "triage", "dismiss") {
+		t.Fatalf("events = %+v, want the dismiss decision logged", env.Events)
+	}
 }
 
 func TestTriageHaltBlocks(t *testing.T) {
-	e, _ := newEngine(t, "workflows/develop", Stubs{})
+	e, env := newEngine(t, "workflows/develop", Stubs{})
 	task := untilAgent(t, e, "investigate")
 	if err := e.ReportConcern(task.Occurrence, "suspicious"); err != nil {
 		t.Fatal(err)
@@ -265,6 +268,20 @@ func TestTriageHaltBlocks(t *testing.T) {
 	if err != nil || st.Kind != StatusBlocked || !strings.Contains(st.Reason, "halted at triage") {
 		t.Fatalf("status = %+v %v", st, err)
 	}
+	if !logged(env, "triage", "halt") || !logged(env, "blocked", "") {
+		t.Fatalf("events = %+v, want the halt decision and the stop logged", env.Events)
+	}
+}
+
+// logged reports whether an event of kind (and outcome, when given) was
+// written to the execution log.
+func logged(env *StubEnv, kind, outcome string) bool {
+	for _, ev := range env.Events {
+		if ev.Kind == kind && (outcome == "" || ev.Outcome == outcome) {
+			return true
+		}
+	}
+	return false
 }
 
 func TestReportConcernOnlyForPendingAgentTasks(t *testing.T) {

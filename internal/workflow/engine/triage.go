@@ -60,11 +60,23 @@ func (e *Engine) triage(r *records) (Status, bool, error) {
 	// The agent stopped when it reported; whatever it claimed afterwards
 	// no longer stands.
 	_ = e.Store.Delete(prefixReport + occID)
+	o := r.byID[occID]
+	// Triage is not a node, so nothing else puts the human's decision in
+	// the execution log.
+	choice := "redo"
+	switch {
+	case dec.Halt:
+		choice = "halt"
+	case dec.Approved:
+		choice = "dismiss"
+	}
+	e.Env.Log(Event{Kind: "triage", Occurrence: occID, Workflow: o.Workflow, Node: o.Node, Outcome: choice, Detail: dec.Comment})
 	if dec.Halt {
 		reason := fmt.Sprintf("halted at triage: %s", c.Description)
 		if dec.Comment != "" {
 			reason += " — " + dec.Comment
 		}
+		e.Env.Log(Event{Kind: "blocked", Occurrence: occID, Workflow: o.Workflow, Node: o.Node, Detail: reason})
 		return Status{}, true, e.Store.Put(keyBlocked, []byte(reason))
 	}
 	if _, finished := r.results[occID]; finished {
@@ -78,7 +90,6 @@ func (e *Engine) triage(r *records) (Status, bool, error) {
 	if err != nil {
 		return Status{}, false, err
 	}
-	o := r.byID[occID]
 	e.Env.Log(Event{Kind: "finish", Occurrence: occID, Workflow: o.Workflow, Node: o.Node, Outcome: "triage-retry"})
 	return Status{}, true, putJSON(e.Store, prefixResult+occID, Result{Feedback: p, Retry: true})
 }
