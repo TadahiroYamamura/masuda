@@ -47,11 +47,13 @@
 
 `internal/config.LocalSettings`（`internal/config/local.go:26-105`）がオンディスク形式。`settings.json`が対象リポジトリの委託する宣言であるのに対し、こちらはその宣言に対する**ユーザー本人の承認と、承認に紐づく実際の秘密情報**を持つ、gitignore対象の別ファイル。
 
-フィールドは3つ、`mcpServers`・`egressAllowlist`・`privilegedCommands`。いずれも`settings.json`側の対応する宣言に対するこのユーザーの承認を持つが、値の構造は異なる。
+承認のフィールドは3つ、`mcpServers`・`egressAllowlist`・`privilegedCommands`。いずれも`settings.json`側の対応する宣言に対するこのユーザーの承認を持つが、値の構造は異なる。
 
 - **`mcpServers`**（`map[string]MCPServerApproval`）: `MCPServerApproval{Approved bool, DeclHash string, Env map[string]string}`を持つ。`DeclHash`は承認対象の宣言（`config.DeclHash`が計算するsha256）への紐付け、`Env`は`settings.json`側の`MCPServerDecl.Env`が名前だけ列挙する環境変数の実値——masudaの設定ファイル群の中で唯一、実際の秘密情報を保持する場所になる。承認の判定ロジック・状態デーモンへの取り込みは`docs/design/mcp-child-servers.md`を参照
 - **`privilegedCommands`**（`map[string]PrivilegedCommandApproval`）: `PrivilegedCommandApproval{Approved bool, DeclHash string}`を持つ。`MCPServerApproval`と違い`Env`が無い——使い捨てVMはセッションの長期的な資産を一切受け取らないため、承認が運ぶ秘密が存在しない。`DeclHash`が固定するのは宣言だけでなくイメージエントリの内容も含む（`config.PrivilegedCommandHash`、`docs/design/privileged-commands.md`）
 - **`egressAllowlist`**（`[]string`）: `settings.json`側`EgressAllowlist`の承認済み部分集合を並べた単純なリスト。ホスト名がサンドボックスVMから到達可能になるのは、宣言側・承認側の両方のリストに同じホスト名が含まれる場合のみ（`internal/sandbox`の`resolveEgressAllowlist`）。`mcpServers`と異なり`DeclHash`に相当するフィールドを持たない——ホスト名エントリ自体には`MCPServerDecl`の`Command`/`Args`/`Env`のような別途変化しうるペイロードがなく、宣言側が改変されればホスト名そのものが変わる（＝それは単に別の未承認エントリになる）ため、承認をどの版の宣言に対するものか紐付ける対象がそもそも無い。仕組みの詳細は`docs/design/egress-filter.md`を参照
+
+承認とは別に、**`claudeToken`**（`string`）を持つ。このリポジトリのサンドボックスVMが使うClaudeトークンの名前（`masuda claude set-token --name`で登録したもの）で、空なら`default`。`masuda claude use`が書き、VMの起動時に`internal/sandbox.ResolveRepoClaudeToken`が読む。登録されていない名前を指していると、VMの起動がエラーで止まる（`default`に黙って切り替えると、ユーザーが選んでいないアカウントでこのリポジトリの作業が行われるため）。`settings.json`ではなくこちらに置くのは、トークンの名前がこのユーザーのマシンの中でしか意味を持たず、どのアカウントで作業するかをリポジトリにコミットするものでもないから
 
 `config.LoadLocal`は`settings.json`同様、ファイル不在をエラーにせずゼロ値（「何も承認されていない」）を返す。書き込みは`config.SaveLocal`が担う。
 

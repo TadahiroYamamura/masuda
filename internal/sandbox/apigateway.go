@@ -24,20 +24,16 @@ type APIGatewayProcess struct {
 // StartAPIGateway launches `masuda internal api-gateway` for the VM holding
 // allowMAC's DHCP lease, re-execing the current binary the same way
 // StartMCPRelay does. The token itself is never passed on the command line
-// -- only the path to ClaudeOAuthTokenPath, which the gateway reads per
-// request -- so it does not show up in `ps`.
+// -- only tokenFile, which the gateway reads per request -- so it does not
+// show up in `ps`.
 //
 // allowMAC doubles as the process's identity for KillStalePID: it is the
 // one argument unique to this workspace, where the token file path is
 // shared by every workspace's gateway.
-func StartAPIGateway(bind string, port int, logPath, pidFile, allowMAC, leaseFile string) (*APIGatewayProcess, error) {
+func StartAPIGateway(bind string, port int, tokenFile, logPath, pidFile, allowMAC, leaseFile string) (*APIGatewayProcess, error) {
 	exe, err := resolveMasudaExe()
 	if err != nil {
 		return nil, fmt.Errorf("locating masuda binary: %w", err)
-	}
-	tokenFile, err := ClaudeOAuthTokenPath()
-	if err != nil {
-		return nil, err
 	}
 	addr := net.JoinHostPort(bind, strconv.Itoa(port))
 

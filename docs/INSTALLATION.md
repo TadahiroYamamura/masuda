@@ -95,14 +95,22 @@ masuda vm-ssh-key rotate
 
 ### VMゲストのClaude認証（必須）
 
-VMゲストは別カーネルのため、ホストの`~/.claude/.credentials.json`・`~/.claude.json`をそのまま共有する方式が使えない。代わりに、CI/ヘッドレス環境向けに用意されている長期OAuthトークン（`claude setup-token`、サブスクリプション連携・有効期限1年）を使う。**これを登録しないと、VMゲスト内の`claude`は「ログインしていません」と表示するだけで動かない。**
+VMゲストは別カーネルのため、ホストの`~/.claude/.credentials.json`・`~/.claude.json`をそのまま共有する方式が使えない。代わりに、CI/ヘッドレス環境向けに用意されている長期OAuthトークン（`claude setup-token`、サブスクリプション連携・有効期限1年）を使う。**これを登録しないと、VMゲスト内の`claude`のAPI呼び出しはすべて拒否されて動かない。**
 
 ```bash
 claude setup-token   # 出力されたトークン文字列をコピー
 echo "<コピーしたトークン>" | masuda claude set-token
 ```
 
-保存先は`~/.local/share/masuda/claude-oauth-token`（mode 0600）。`VMBackend.Start`はこのファイルが存在する場合のみ、専用のvirtiofs共有でゲストへ渡す。
+保存先は`~/.local/share/masuda/claude-oauth-token`（mode 0600）。トークンはゲストには渡らず、VMごとにホスト側で動くゲートウェイがゲストのAPI呼び出しに付ける。
+
+アカウントを複数使い分ける場合（例: 会社用と個人用）は、名前を付けて登録し、リポジトリごとに選ぶ。選ばなかったリポジトリは`default`を使う。
+
+```bash
+echo "<個人用のトークン>" | masuda claude set-token --name personal
+cd <個人用のリポジトリ> && masuda claude use personal
+masuda claude list-tokens   # このリポジトリが使うものに * が付く
+```
 
 ## 4. 対象リポジトリ側の設定（任意）
 

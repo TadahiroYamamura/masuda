@@ -45,6 +45,14 @@ type LocalSettings struct {
 	// (ADR-0053). A name absent here, or present with Approved: false,
 	// means no disposable VM is ever started for it.
 	PrivilegedCommands map[string]PrivilegedCommandApproval `json:"privilegedCommands,omitempty"`
+
+	// ClaudeToken names which of this host's registered Claude tokens
+	// (`masuda claude set-token --name`) this repository's sandbox VMs use;
+	// empty means the default one. Here rather than in settings.json
+	// because a token name only means something on this user's machine,
+	// and which account works on a repository is not something to commit
+	// into it.
+	ClaudeToken string `json:"claudeToken,omitempty"`
 }
 
 // MCPServerApproval is one user's decision about one declared MCP server.

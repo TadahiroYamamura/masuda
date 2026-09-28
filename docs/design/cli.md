@@ -93,9 +93,11 @@ masuda自身のCLIバイナリ置換→対象プロジェクトの`.masuda/image
 
 ### `masuda claude`
 
-`set-token`のみ。標準入力から`claude setup-token`のOAuthトークンを読み、`internal/sandbox.SetClaudeOAuthToken`でホスト全体に1つ保存する（VMゲストへの渡し方は`docs/design/sandbox-vm.md`）。標準入力から読むのは、トークンがシェル履歴や`ps`の出力に残らないようにするため。
+- **`set-token [--name <名前>]`**: 標準入力から`claude setup-token`のOAuthトークンを読み、`internal/sandbox.SetClaudeToken`でホストに名前付きで保存する（省略時の名前は`default`）。アカウントごとに別の名前で複数持てる。標準入力から読むのは、トークンがシェル履歴や`ps`の出力に残らないようにするため。VMゲストがトークンをどう使うかは`docs/design/sandbox-vm.md`の「認証情報受け渡し」
+- **`list-tokens`**: 登録済みのトークンの名前を並べる。値は表示しない。リポジトリの中で実行すると、そのリポジトリが使うトークンに`*`を付ける
+- **`use <名前>`**: 今いるリポジトリがどのトークンを使うかを`.masuda/settings.local.json`の`claudeToken`に書く。未登録の名前は受け付けない。起動中のVMには反映されず、次の起動から効く
 
-未登録のままVMを起動すると、ゲストの`claude`が認証できずに即終了し、`masuda-loop.service`が「loop complete」を報告する——実際にループが1周した場合と区別が付かない。このため`sandbox start`・`review start`は起動前に`warnIfNoClaudeToken`（`cmd/masuda/claude.go`）で警告を出す。**エラーにはしない**: トークンが無くてもVM自体は起動し、SSHでの調査や特権コマンドの実行には使えるため。
+リポジトリが使うトークン（既定は`default`）が未登録のままVMを起動すると、ゲストの`claude`のAPI呼び出しがすべて拒否されて終了し、`masuda-loop.service`が「loop complete」を報告する——実際にループが1周した場合と区別が付かない。このため`sandbox start`・`review start`は起動前に`warnIfNoClaudeToken`（`cmd/masuda/claude.go`）で警告を出す。**エラーにはしない**: トークンが無くてもVM自体は起動し、SSHでの調査や特権コマンドの実行には使えるため。
 
 ### `masuda vm-ssh-key`
 
