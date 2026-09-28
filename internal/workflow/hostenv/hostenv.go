@@ -102,7 +102,7 @@ func (e *Env) Put(rel string, b []byte) (string, error) {
 
 // trustedOnly are the files under the trusted side that agents never get a
 // copy of.
-var trustedOnly = map[string]bool{"snapshots": true, "checks": true, "execution-log.jsonl": true}
+var trustedOnly = map[string]bool{"snapshots": true, "execution-log.jsonl": true}
 
 // VerifyCopies compares every copy handed to agents with the engine's own
 // and puts the engine's back where they differ, returning the paths

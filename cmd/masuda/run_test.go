@@ -44,3 +44,15 @@ func TestWriteInputsStoresFiles(t *testing.T) {
 		t.Fatalf("paths = %v, content %q, %v", paths, b, err)
 	}
 }
+
+func TestCheckLogIsGivenToTheAgentAsAGuestPath(t *testing.T) {
+	state := t.TempDir()
+	env := &hostenv.Env{StateDir: state, TrustedDir: t.TempDir()}
+	p, err := env.Put(filepath.Join("checks", "test-1.log"), []byte("FAIL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := guestStatePath(state, p); got != "/masuda-state/wf/checks/test-1.log" {
+		t.Fatalf("guest path = %q", got)
+	}
+}

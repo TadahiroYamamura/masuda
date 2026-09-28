@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,6 +13,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/engine"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/hostenv"
 	"github.com/TadahiroYamamura/masuda/internal/workflow/snapshot"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -47,16 +48,11 @@ func checkRunner(id, repoRoot, worktreeDir, stateDir string, store engine.Store)
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 
-		// The full log is for humans and stays on the host-only side; the
-		// agent gets its tail as feedback.
 		trusted, err := workspace.TrustedDir(id)
 		if err != nil {
 			return false, "", err
 		}
-		logPath := filepath.Join(trusted, "wf", "checks", fmt.Sprintf("%s-%d.log", name, time.Now().UnixNano()))
-		if err := os.MkdirAll(filepath.Dir(logPath), 0o755); err != nil {
-			return false, "", err
-		}
+		env := &hostenv.Env{StateDir: stateDir, TrustedDir: trusted}
 		var exitCode int
 		var log []byte
 		if decl.PrivilegedCommand != "" {
@@ -85,7 +81,8 @@ func checkRunner(id, repoRoot, worktreeDir, stateDir string, store engine.Store)
 				log = append(log, []byte(fmt.Sprintf("\n(timed out after %s)\n", timeout))...)
 			}
 		}
-		if err := os.WriteFile(logPath, log, 0o644); err != nil {
+		logPath, err := env.Put(filepath.Join("checks", fmt.Sprintf("%s-%d.log", name, time.Now().UnixNano())), log)
+		if err != nil {
 			return false, "", err
 		}
 		if exitCode == 0 {
@@ -95,9 +92,18 @@ func checkRunner(id, repoRoot, worktreeDir, stateDir string, store engine.Store)
 		if len(tail) > checkFeedbackBytes {
 			tail = tail[len(tail)-checkFeedbackBytes:]
 		}
-		guestLog := "/masuda-state/" + strings.TrimPrefix(logPath, stateDir+"/")
-		return false, fmt.Sprintf("check %s が失敗した（終了コード %d）。全文のログ: %s\n\nログの末尾:\n```\n%s\n```\n", name, exitCode, guestLog, tail), nil
+		return false, checkFeedback(name, exitCode, guestStatePath(stateDir, logPath), tail), nil
 	}
+}
+
+func checkFeedback(name string, exitCode int, guestLog string, tail []byte) string {
+	return fmt.Sprintf("check %s が失敗した（終了コード %d）。全文のログ: %s\n\nログの末尾:\n```\n%s\n```\n", name, exitCode, guestLog, tail)
+}
+
+// guestStatePath is where the guest sees p, a path under the state
+// directory.
+func guestStatePath(stateDir, p string) string {
+	return path.Join(sandbox.GuestStateDir, filepath.ToSlash(strings.TrimPrefix(p, stateDir+"/")))
 }
 
 func shellQuote(s string) string {
