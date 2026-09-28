@@ -1,0 +1,17 @@
+version: 1
+inputs: [finding]
+start: fix
+nodes:
+  fix:
+    type: agent
+    role: agents/fixer
+    max: 3
+    next:
+      done: recheck
+      exhausted: end:unresolved
+  recheck:
+    type: agent
+    role: agents/rechecker
+    next:
+      done: end
+      unresolved: fix

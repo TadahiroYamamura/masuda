@@ -102,8 +102,8 @@ func leaseMatches(remote net.Addr, mac, leaseFile string) bool {
 // cancelled.
 //
 // The port is chosen by the caller, which every caller does by binding a
-// candidate port and closing that listener (freeTCPPort here,
-// internal/sandbox.freeRelayPort, internal/hostloop.freeTCPPort). Besides the obvious TOCTOU those all
+// candidate port and closing that listener (freeTCPPort in the tests,
+// internal/sandbox.freeRelayPort). Besides the obvious TOCTOU those all
 // accept, that leftover listener stays in LISTEN for a moment after Close()
 // returns -- long enough to answer a readiness probe on behalf of a relay
 // that has not bound anything yet, which is what Issue #42's "connection

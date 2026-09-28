@@ -15,13 +15,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
-	"github.com/TadahiroYamamura/masuda/internal/hostloop"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
+	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpaggregator"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon/mcpserver"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/host"
+	"github.com/TadahiroYamamura/masuda/internal/workflow/hostenv"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 	"github.com/TadahiroYamamura/masuda/internal/worktree"
 )
@@ -38,10 +42,6 @@ const (
 	daemonStoreDirName = "store"
 )
 
-// orchestratorTaskFileName is the file implement_review_graph.py writes its
-// rendered task into, relative to the state directory (TASK_MD there).
-const orchestratorTaskFileName = "TASK.md"
-
 // runStatedaemon opens the store under stateDir and serves both its trusted
 // (full) and curated (Claude-facing) tool sets, each over its own UDS
 // socket, until ctx is cancelled. Extracted from the cobra RunE so it's
@@ -54,8 +54,11 @@ const orchestratorTaskFileName = "TASK.md"
 // pytest-fixture use of this command (see newInternalStatedaemonCommand's
 // --state-dir doc comment) has no associated repository to read either
 // file from.
-func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string) error {
-	store, err := statedaemon.Open(filepath.Join(stateDir, daemonStoreDirName))
+func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeDir string) error {
+	if storeDir == "" {
+		storeDir = filepath.Join(stateDir, daemonStoreDirName)
+	}
+	store, err := statedaemon.Open(storeDir)
 	if err != nil {
 		return err
 	}
@@ -74,17 +77,22 @@ func runStatedaemon(ctx context.Context, stateDir, repoRoot, worktreeDir string)
 	if repoRoot != "" && worktreeDir != "" {
 		runPrivileged = privilegedRunner(repoRoot, worktreeDir, stateDir)
 	}
-	// The Build/Review orchestrator runs here, on the host, not in the
-	// guest: it is masuda's own control code (the state machine, the
-	// budget, the step commits), and the only reason it ever lived inside
-	// the sandbox was that the phase 4-5 session invoked it directly.
-	// Needs the worktree to run git against; the state directory it reads
-	// and writes through is this daemon's own.
-	var runOrchestrator mcpserver.OrchestratorRunner
-	if worktreeDir != "" {
-		runOrchestrator = orchestratorRunner(worktreeDir, stateDir)
+	var curated *mcp.Server
+	if repoRoot != "" && worktreeDir != "" {
+		env, err := workflowEnv(stateDir, repoRoot, worktreeDir)
+		if err != nil {
+			return err
+		}
+		env.RunCheckFn = checkRunner(env.WorkspaceID, repoRoot, worktreeDir, stateDir, store)
+		env.Teardown = func() error {
+			go teardownWorkspace(env.WorkspaceID, repoRoot, env.Branch, cancel)
+			return nil
+		}
+		statusFile := filepath.Join(env.TrustedDir, workspace.StatusFileName)
+		curated = mcpserver.NewCurated(store, runPrivileged, &host.Lazy{Store: store, Env: env, StatusFile: statusFile})
+	} else {
+		curated = mcpserver.NewCurated(store, runPrivileged)
 	}
-	curated := mcpserver.NewCurated(store, runPrivileged, runOrchestrator)
 
 	errCh := make(chan error, 2)
 	go func() { errCh <- mcpserver.ServeUDS(ctx, store, statedaemon.SocketPath(stateDir)) }()
@@ -124,7 +132,6 @@ func newInternalCommand() *cobra.Command {
 		Short:  "Internal plumbing commands, not part of the public CLI surface",
 	}
 	cmd.AddCommand(newInternalStatedaemonCommand())
-	cmd.AddCommand(newInternalStateCommand())
 	cmd.AddCommand(newInternalMCPRelayCommand())
 	cmd.AddCommand(newInternalAPIGatewayCommand())
 	cmd.AddCommand(newInternalRootfsCommand())
@@ -132,7 +139,7 @@ func newInternalCommand() *cobra.Command {
 }
 
 func newInternalStatedaemonCommand() *cobra.Command {
-	var stateDir, repoRoot, worktreeDir string
+	var stateDir, storeDir, repoRoot, worktreeDir string
 	cmd := &cobra.Command{
 		Use:    "statedaemon",
 		Hidden: true,
@@ -144,7 +151,7 @@ func newInternalStatedaemonCommand() *cobra.Command {
 			}
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
-			err := runStatedaemon(ctx, stateDir, repoRoot, worktreeDir)
+			err := runStatedaemon(ctx, stateDir, storeDir, repoRoot, worktreeDir)
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
@@ -157,6 +164,8 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	// workspace.Create involved) as well as the real per-workspace process
 	// startDaemon spawns.
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "directory to persist state under and serve (required)")
+	cmd.Flags().StringVar(&storeDir, "store-dir", "",
+		"where the key/value store lives; a real workspace passes its host-only trusted directory (default: <state-dir>/store)")
 	// Optional: omitting it (the pytest-fixture case above) disables the
 	// child-MCP-server aggregator rather than erroring, since those
 	// fixtures have no real target repository to read
@@ -202,56 +211,6 @@ func privilegedRunner(repoRoot, worktreeDir, stateDir string) mcpserver.Privileg
 	}
 }
 
-// orchestratorRunner builds the OrchestratorRunner the curated next_task
-// tool calls: one turn of implement_review_graph.py against worktreeDir,
-// then the TASK.md it wrote.
-func orchestratorRunner(worktreeDir, stateDir string) mcpserver.OrchestratorRunner {
-	return func(ctx context.Context) (string, error) {
-		python, script, err := hostloop.EnsureImplementReviewOrchestrator()
-		if err != nil {
-			return "", fmt.Errorf("preparing masuda's own host-side python runtime: %w", err)
-		}
-		return runOrchestratorTurn(ctx, python, script, worktreeDir, stateDir)
-	}
-}
-
-// runOrchestratorTurn runs one detect_phase -> write_task_md turn and
-// returns the task text it produced.
-//
-// cwd is worktreeDir because every git command in implement_review_graph.py
-// is relative to it, and MASUDA_STATE_DIR is where that script resolves all
-// of masuda's own control files from -- the same two inputs it got inside
-// the sandbox, just pointing at the host's side of the same virtiofs share.
-//
-// Split out from orchestratorRunner so it can be tested against a stub
-// interpreter, without a venv.
-func runOrchestratorTurn(ctx context.Context, python, script, worktreeDir, stateDir string) (string, error) {
-	cmd := exec.CommandContext(ctx, python, script)
-	cmd.Dir = worktreeDir
-	cmd.Env = append(os.Environ(),
-		"MASUDA_STATE_DIR="+stateDir,
-		// The orchestrator opens files at the host path above, but the
-		// paths it writes into prompts have to be the ones the guest
-		// session it instructs can open -- the same directory, reached
-		// through that VM's virtiofs mount.
-		"MASUDA_GUEST_STATE_DIR="+sandbox.GuestStateDir,
-	)
-	// Combined, and only used to explain a failure: the orchestrator's own
-	// chatter is not something the calling session needs on success.
-	var output strings.Builder
-	cmd.Stdout = &output
-	cmd.Stderr = &output
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("running %s: %w\n%s", script, err, output.String())
-	}
-
-	task, err := os.ReadFile(filepath.Join(stateDir, orchestratorTaskFileName))
-	if err != nil {
-		return "", fmt.Errorf("reading the %s the orchestrator should have written: %w", orchestratorTaskFileName, err)
-	}
-	return string(task), nil
-}
-
 // startDaemon spawns workspace id's state daemon as a detached background
 // process (Setsid, stdout/stderr to daemon.log inside the workspace's state
 // directory) and records its PID so stopDaemon can find it later. The
@@ -292,14 +251,19 @@ func startDaemon(id string) error {
 	if err != nil {
 		return err
 	}
-	logFile, err := os.OpenFile(filepath.Join(stateDir, daemonLogName), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	logFile, err := sharedfs.OpenAppend(stateDir, daemonLogName)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
 
+	trusted, err := workspace.TrustedDir(id)
+	if err != nil {
+		return err
+	}
 	cmd := exec.Command(exe, "internal", "statedaemon",
 		"--state-dir", stateDir,
+		"--store-dir", filepath.Join(trusted, daemonStoreDirName),
 		"--repo-root", info.RepoRoot,
 		"--worktree-dir", worktree.Dir(info.RepoRoot, id),
 	)
@@ -309,7 +273,7 @@ func startDaemon(id string) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(stateDir, daemonPIDName), []byte(strconv.Itoa(cmd.Process.Pid)), 0o644); err != nil {
+	if err := sharedfs.WriteFile(stateDir, daemonPIDName, []byte(strconv.Itoa(cmd.Process.Pid))); err != nil {
 		return err
 	}
 	return waitForDaemon(stateDir)
@@ -510,4 +474,73 @@ func stopDaemon(id string) error {
 		return err
 	}
 	return nil
+}
+
+// workflowEnv builds the engine's environment for the workspace whose
+// state directory is stateDir.
+func workflowEnv(stateDir, repoRoot, worktreeDir string) (*hostenv.Env, error) {
+	id := filepath.Base(stateDir)
+	info, _ := workspace.Load(id)
+	trusted, err := workspace.TrustedDir(id)
+	if err != nil {
+		return nil, err
+	}
+	env := &hostenv.Env{
+		WorkspaceID:  id,
+		RepoRoot:     repoRoot,
+		Worktree:     worktreeDir,
+		StateDir:     stateDir,
+		TrustedDir:   trusted,
+		BaseRef:      info.Base,
+		Branch:       info.Branch,
+		Perspectives: repoPerspectives(repoRoot),
+		// runtime/entrypoint.sh points the guest's ~/.claude/projects here.
+		TranscriptsDir: filepath.Join(stateDir, "transcripts"),
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		env.ExportDir = filepath.Join(home, ".masuda", "exports", id)
+	}
+	return env, nil
+}
+
+// repoPerspectives reads review perspectives from the host repository's
+// .masuda/reviews/. How perspectives are held is undecided (ADR-0082) and
+// the old mechanism is not carried over; this stopgap only lets the
+// bundled review workflows run until that is designed.
+func repoPerspectives(repoRoot string) func() ([]hostenv.Perspective, error) {
+	return func() ([]hostenv.Perspective, error) {
+		files, err := filepath.Glob(filepath.Join(repoRoot, config.DirName, "reviews", "*.md"))
+		if err != nil {
+			return nil, err
+		}
+		var out []hostenv.Perspective
+		for _, f := range files {
+			b, err := os.ReadFile(f)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, hostenv.Perspective{Name: strings.TrimSuffix(filepath.Base(f), ".md"), Content: string(b)})
+		}
+		return out, nil
+	}
+}
+
+// teardownWorkspace removes a workspace after its workflow published or
+// discarded it, then stops this daemon. It waits a moment first so the
+// engine can record the node's result before the store's directory goes
+// away; removing it mid-write would leave a half-recreated directory.
+func teardownWorkspace(id, repoRoot, branch string, stop context.CancelFunc) {
+	time.Sleep(2 * time.Second)
+	if sandboxBackend.IsRunning(id) {
+		if err := sandboxBackend.Stop(id); err != nil {
+			fmt.Fprintf(os.Stderr, "teardown: stopping the sandbox: %v\n", err)
+		}
+	}
+	if err := worktree.Remove(repoRoot, id, branch, false); err != nil {
+		fmt.Fprintf(os.Stderr, "teardown: removing the clone: %v\n", err)
+	}
+	if err := workspace.Remove(id); err != nil {
+		fmt.Fprintf(os.Stderr, "teardown: removing the workspace: %v\n", err)
+	}
+	stop()
 }

@@ -5,7 +5,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/TadahiroYamamura/masuda/internal/hostloop"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -29,9 +28,6 @@ func newChatCommand() *cobra.Command {
 			if !workspace.Exists(id) {
 				return fmt.Errorf("no workspace %q", id)
 			}
-			if hostloop.IsRunning(id) {
-				return attach(hostloop.AttachArgs(id))
-			}
 			if sandboxBackend.IsRunning(id) {
 				attachArgs, err := sandboxBackend.AttachArgs(id)
 				if err != nil {
@@ -39,7 +35,7 @@ func newChatCommand() *cobra.Command {
 				}
 				return attach(attachArgs)
 			}
-			return fmt.Errorf("no session running for %q — run `masuda plan start %s` or `masuda sandbox start %s` first", id, id, id)
+			return fmt.Errorf("no session running for %q — start it with `masuda run <workflow-path> %s`", id, id)
 		},
 	}
 }

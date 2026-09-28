@@ -1,0 +1,80 @@
+version: 1
+inputs: [instructions]
+start: investigate
+nodes:
+  investigate:
+    type: investigate
+    workflow: workflows/investigate/default
+    next: plan
+  plan:
+    type: plan
+    workflow: workflows/plan/default
+    max: 4
+    next:
+      done: approve-plan
+      needs_more_investigation: investigate
+      out_of_scope: end:out_of_scope
+  approve-plan:
+    type: approval
+    gate: plan
+    target: plan
+    next:
+      approved: implement
+      rejected: plan
+  implement:
+    type: implement
+    workflow: workflows/implement/default
+    next:
+      done: review
+      stuck: approve-plan
+  review:
+    type: review
+    workflow: workflows/review/default
+    next: fix
+  fix:
+    type: foreach
+    over: findings
+    on_incomplete: continue
+    body: workflows/fix-finding
+    next:
+      done: review-commit
+      incomplete: review-commit
+  review-commit:
+    type: commit
+    scope: plan
+    next:
+      done: report
+      rejected: rework
+  report:
+    type: agent
+    role: agents/synthesizer
+    next: approve-review
+  approve-review:
+    type: approval
+    gate: review
+    target: diff
+    next:
+      approved: publish
+      rejected: rework
+  rework:
+    type: agent
+    role: agents/implementer
+    next:
+      done: rework-test
+      stuck: end:stuck
+  rework-test:
+    type: check
+    check: test
+    next:
+      done: rework-commit
+      failed: rework
+  rework-commit:
+    type: commit
+    scope: plan
+    next:
+      done: review
+      rejected: rework
+  publish:
+    type: publish
+    export: [report]
+    next: end

@@ -1,0 +1,12 @@
+version: 1
+inputs: [diff]
+start: each
+nodes:
+  each:
+    type: foreach
+    over: perspectives
+    on_incomplete: continue
+    body: workflows/review/perspective-review
+    next:
+      done: end
+      incomplete: end

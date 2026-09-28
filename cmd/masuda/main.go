@@ -1,7 +1,6 @@
 // Command masuda is the host-side CLI for the AI-collaborative development
 // sandbox: workspace lifecycle management, sandbox VM startup, and gate
-// operations, driving the Provision/Discovery/Blueprint/Scaffold/Build/Review
-// pipeline (orchestrator/investigate_plan_graph.py, implement_review_graph.py).
+// operations, driving workflows defined in YAML (internal/workflow).
 // See docs/design/pipeline.md for the full picture and docs/design/cli.md for
 // this package.
 package main
@@ -15,7 +14,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
-	"github.com/TadahiroYamamura/masuda/internal/gate"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -50,14 +48,9 @@ func newRootCommand() *cobra.Command {
 	root.AddCommand(newClaudeCommand())
 	root.AddCommand(newVMSSHKeyCommand())
 	root.AddCommand(newUpdateCommand())
-
-	planCmd := newGateCommand(gate.Plan)
-	planCmd.AddCommand(newPlanStartCommand())
-	root.AddCommand(planCmd)
-
-	reviewCmd := newGateCommand(gate.Review)
-	reviewCmd.AddCommand(newReviewStartCommand())
-	root.AddCommand(reviewCmd)
+	root.AddCommand(newWorkflowCommand())
+	root.AddCommand(newRunCommand())
+	root.AddCommand(newGateCommand())
 
 	root.AddCommand(newTriageCommand())
 	root.AddCommand(newMCPCommand())

@@ -318,6 +318,16 @@ func vmAttachArgs(id string) ([]string, error) {
 	return h.AttachArgs(id, "tmux", "attach", "-t", tmuxSession)
 }
 
+// VMExecArgs returns the argv that runs command in workspace id's VM over
+// SSH, for the workflow engine's check nodes (ADR-0071).
+func VMExecArgs(id, command string) ([]string, error) {
+	h, err := vmHost()
+	if err != nil {
+		return nil, err
+	}
+	return h.AttachArgs(id, command)
+}
+
 // SSHKeyPaths and GenerateSSHKeypair expose the host's VM SSH keypair to
 // `masuda internal vm-ssh-key`.
 func SSHKeyPaths() (privatePath, publicPath string, err error) {

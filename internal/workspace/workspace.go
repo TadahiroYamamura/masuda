@@ -45,21 +45,17 @@ type Info struct {
 
 const metadataFileName = "workspace.json"
 
-// BaseRefFileName is the plain-text file (just the base ref name, no JSON)
-// written alongside workspace.json — orchestrator/*.py reads this one
-// directly rather than parsing the richer Go-side metadata, keeping the
-// Python side's dependency on this package minimal.
-const BaseRefFileName = ".masuda-base-ref"
-
-// CommitMessageFileName is the plain-text commit message orchestrator/*.py's
-// synthesize phase writes (ADR-0023's follow-up fix): masuda's phase 4/5
-// never runs `git commit` itself (review diffs are computed from staged,
-// uncommitted changes throughout), so without this the only record of a
-// workspace's work is its clone's uncommitted working tree — which
-// `review approve` then deletes. The synthesize subagent, which already has
-// full context on what changed, writes the message here; `finalizeReviewApproval`
-// reads it and commits in the clone right before pulling it into repoRoot.
-const CommitMessageFileName = ".masuda-commit-message"
+// metadataPath is where a workspace's metadata lives: in the host-only
+// directory, not the state directory the guest can write. RepoRoot is
+// where publish lands the work and Base is what diffs and reviews are
+// measured from, so neither may be changeable from the sandbox.
+func metadataPath(id string) (string, error) {
+	dir, err := TrustedDir(id)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, metadataFileName), nil
+}
 
 func xdgBase() (string, error) {
 	if v := os.Getenv("XDG_DATA_HOME"); v != "" {
@@ -162,14 +158,18 @@ func Create(repoRoot, id, branch, base, name string) (Info, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return Info{}, err
 	}
+	meta, err := metadataPath(id)
+	if err != nil {
+		return Info{}, err
+	}
+	if err := os.MkdirAll(filepath.Dir(meta), 0o700); err != nil {
+		return Info{}, err
+	}
 	data, err := json.MarshalIndent(info, "", "  ")
 	if err != nil {
 		return Info{}, err
 	}
-	if err := os.WriteFile(filepath.Join(dir, metadataFileName), data, 0o644); err != nil {
-		return Info{}, err
-	}
-	if err := os.WriteFile(filepath.Join(dir, BaseRefFileName), []byte(base), 0o644); err != nil {
+	if err := os.WriteFile(meta, data, 0o644); err != nil {
 		return Info{}, err
 	}
 	return info, nil
@@ -177,11 +177,11 @@ func Create(repoRoot, id, branch, base, name string) (Info, error) {
 
 // Load reads back a previously created workspace's metadata.
 func Load(id string) (Info, error) {
-	dir, err := StateDir(id)
+	meta, err := metadataPath(id)
 	if err != nil {
 		return Info{}, err
 	}
-	data, err := os.ReadFile(filepath.Join(dir, metadataFileName))
+	data, err := os.ReadFile(meta)
 	if err != nil {
 		return Info{}, fmt.Errorf("workspace %q not found: %w", id, err)
 	}
@@ -201,7 +201,7 @@ func Rename(id, name string) error {
 		return err
 	}
 	info.Name = name
-	dir, err := StateDir(id)
+	meta, err := metadataPath(id)
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func Rename(id, name string) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, metadataFileName), data, 0o644)
+	return os.WriteFile(meta, data, 0o644)
 }
 
 // Exists reports whether id refers to an already-created workspace — used
@@ -285,28 +285,74 @@ func Remove(id string) error {
 	if err != nil {
 		return err
 	}
+	trusted, err := TrustedDir(id)
+	if err != nil {
+		return err
+	}
+	if err := os.RemoveAll(trusted); err != nil {
+		return err
+	}
 	return os.RemoveAll(dir)
 }
 
-// Status derives a short, human-readable progress summary for workspace id
-// straight from its TASK.md -- the same file masuda's orchestrators
-// (re)write on every loop iteration to instruct the self-looping Claude
-// session what to do next. This is already the single authoritative
-// "what's happening right now" statement (investigate/plan/gate-wait/
-// implement/review perspective N of TOTAL/done/blocked), so reading it here
-// avoids re-implementing orchestrator/*.py's phase-detection logic a second
-// time in Go, which could drift out of sync as those orchestrators evolve.
+// TrustedDir returns the host-only directory of workspace id: what must
+// never be writable from the sandbox. The state directory (StateDir) is
+// shared into the guest as /masuda-state, so the state daemon's store —
+// gate decisions, the workflow engine's records, the snapshot of the
+// workflow definitions (ADR-0070) — lives here instead. A guest that
+// wrote files under /masuda-state would otherwise have them loaded the
+// next time the daemon starts.
+func TrustedDir(id string) (string, error) {
+	dh, err := DataHome()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dh, "trusted", id), nil
+}
+
+// StatusFileName is the one-line summary of where a workspace's workflow
+// stands, which the state daemon rewrites after every move of the engine.
+// It lives in the host-only directory, so what `workspace list` shows is
+// what the engine wrote, not something the sandbox could forge.
+const StatusFileName = "status"
+
+// Status returns that summary.
 func Status(id string) string {
-	dir, err := StateDir(id)
+	dir, err := TrustedDir(id)
 	if err != nil {
 		return "(unknown)"
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "TASK.md"))
+	data, err := os.ReadFile(filepath.Join(dir, StatusFileName))
 	if err != nil {
 		return "(not started)"
 	}
-	line, _, _ := strings.Cut(string(data), "\n")
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "#"))
+	status := strings.TrimSpace(string(data))
+	if wait := inputWait(id); wait != "" {
+		status += " — waiting for input (" + wait + ")"
+	}
+	return status
+}
+
+// inputWait reports what the sandbox's Notification hook says the session
+// is stuck on, if anything (ADR-0076). The file sits in the guest-writable
+// state directory; it only informs, so a forged one misleads the display
+// and nothing else.
+func inputWait(id string) string {
+	dir, err := StateDir(id)
+	if err != nil {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "wf", "input-wait.json"))
+	if err != nil {
+		return ""
+	}
+	var n struct {
+		Type string `json:"notification_type"`
+	}
+	if json.Unmarshal(data, &n) != nil || n.Type == "" {
+		return "unknown"
+	}
+	return n.Type
 }
 
 // EntryStatus adds live progress info to Info for `masuda workspace list`.

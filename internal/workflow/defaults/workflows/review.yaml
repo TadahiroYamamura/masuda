@@ -1,0 +1,15 @@
+version: 1
+start: review
+nodes:
+  review:
+    type: review
+    workflow: workflows/review/default
+    next: report
+  report:
+    type: agent
+    role: agents/synthesizer
+    next: cleanup
+  cleanup:
+    type: discard
+    export: [report, findings]
+    next: end

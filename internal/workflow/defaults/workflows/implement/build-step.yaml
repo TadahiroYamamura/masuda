@@ -1,0 +1,53 @@
+version: 1
+inputs: [step]
+start: implement
+nodes:
+  implement:
+    type: agent
+    role: agents/implementer
+    max: 3
+    next:
+      done: test
+      stuck: end:stuck
+      exhausted: end:stuck
+  test:
+    type: check
+    check: test
+    next:
+      done: pick-perspectives
+      failed: implement
+  pick-perspectives:
+    type: agent
+    role: agents/trigger-matcher
+    next: interim-find
+  interim-find:
+    type: foreach
+    over: perspectives(from=pick-perspectives)
+    on_incomplete: continue
+    body: workflows/review/perspective-review
+    with:
+      diff: step-diff
+    next:
+      done: interim-fix
+      incomplete: approve-interim
+  interim-fix:
+    type: foreach
+    over: findings
+    on_incomplete: continue
+    body: workflows/fix-finding
+    next:
+      done: commit
+      incomplete: approve-interim
+  approve-interim:
+    type: approval
+    gate: interim
+    target: diff
+    next:
+      approved: commit
+      rejected: implement
+  commit:
+    type: commit
+    scope: step
+    next:
+      done: end
+      rejected: implement

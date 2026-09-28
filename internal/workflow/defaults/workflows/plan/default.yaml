@@ -1,0 +1,11 @@
+version: 1
+inputs: [instructions, investigation]
+start: plan
+nodes:
+  plan:
+    type: agent
+    role: agents/planner
+    next:
+      done: end
+      needs_more_investigation: end:needs_more_investigation
+      out_of_scope: end:out_of_scope

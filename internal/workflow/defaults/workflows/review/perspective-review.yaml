@@ -1,0 +1,17 @@
+version: 1
+inputs: [perspective, diff]
+start: review
+nodes:
+  review:
+    type: agent
+    role: agents/reviewer
+    max: 3
+    next:
+      done: check-review
+      exhausted: end:unresolved
+  check-review:
+    type: agent
+    role: agents/review-checker
+    next:
+      done: end
+      inaccurate: review

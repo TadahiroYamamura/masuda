@@ -1,0 +1,8 @@
+version: 1
+inputs: [instructions]
+start: investigate
+nodes:
+  investigate:
+    type: agent
+    role: agents/investigator
+    next: end

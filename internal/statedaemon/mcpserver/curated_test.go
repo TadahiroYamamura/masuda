@@ -21,7 +21,7 @@ func connectCurated(t *testing.T) (*statedaemon.Store, *mcp.ClientSession) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewCurated(store, nil, nil)
+	server := NewCurated(store, nil)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
@@ -48,7 +48,7 @@ func TestCuratedExposesExactlyTheHumanApprovalFlowTools(t *testing.T) {
 	for i, tool := range res.Tools {
 		names[i] = tool.Name
 	}
-	want := map[string]bool{"wait_for_gate_resolution": true, "resolve_gate_from_chat": true}
+	want := map[string]bool{"wait_for_gate_resolution": true}
 	if len(names) != len(want) {
 		t.Fatalf("curated tool list = %v, want exactly %v", names, want)
 	}
@@ -56,50 +56,6 @@ func TestCuratedExposesExactlyTheHumanApprovalFlowTools(t *testing.T) {
 		if !want[name] {
 			t.Fatalf("curated tool list = %v, want exactly %v", names, want)
 		}
-	}
-}
-
-func TestWaitForGateChangeReturnsResolvedMarker(t *testing.T) {
-	store, session := connectCurated(t)
-
-	type waitResult struct {
-		Status   string `json:"status"`
-		Feedback string `json:"feedback"`
-	}
-	done := make(chan waitResult, 1)
-	go func() {
-		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "plan"},
-		})
-		if err != nil || res.IsError {
-			t.Errorf("CallTool(wait_for_gate_resolution) = (%+v, %v), want success", res, err)
-			done <- waitResult{}
-			return
-		}
-		data, _ := json.Marshal(res.StructuredContent)
-		var out waitResult
-		json.Unmarshal(data, &out)
-		done <- out
-	}()
-
-	select {
-	case <-done:
-		t.Fatal("wait_for_gate_resolution returned before the gate was resolved")
-	case <-time.After(100 * time.Millisecond):
-	}
-
-	if err := store.Put("gate:plan", []byte(`{"status":"approved","feedback":"lgtm"}`)); err != nil {
-		t.Fatal(err)
-	}
-
-	select {
-	case out := <-done:
-		if out.Status != "approved" || out.Feedback != "lgtm" {
-			t.Fatalf("wait_for_gate_resolution result = %+v, want status=approved feedback=lgtm", out)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("wait_for_gate_resolution did not return after the gate was resolved")
 	}
 }
 
@@ -117,97 +73,43 @@ func TestWaitForGateChangeRejectsUnknownGateName(t *testing.T) {
 	}
 }
 
-func TestResolveGateFromChatWritesMarkerWaitForGateChangeSees(t *testing.T) {
+// A workflow gate is waited on through the decision `masuda gate` writes;
+// the decision stays in place for the engine to validate and take.
+func TestWaitForWorkflowGateReturnsDecision(t *testing.T) {
 	store, session := connectCurated(t)
-
-	type waitResult struct {
-		Status   string `json:"status"`
-		Feedback string `json:"feedback"`
+	if err := store.Put("wf:gate-open/plan", []byte(`{"name":"plan","occurrence":"0000003","hash":"h"}`)); err != nil {
+		t.Fatal(err)
 	}
-	done := make(chan waitResult, 1)
+	done := make(chan *mcp.CallToolResult, 1)
 	go func() {
-		value, err := store.WaitForPresence(context.Background(), "gate:plan")
+		res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+			Name:      "wait_for_gate_resolution",
+			Arguments: map[string]any{"name": "plan"},
+		})
 		if err != nil {
-			t.Errorf("WaitForPresence error = %v, want nil", err)
-			done <- waitResult{}
-			return
+			t.Error(err)
 		}
-		var out waitResult
-		json.Unmarshal([]byte(value), &out)
-		done <- out
+		done <- res
 	}()
-	time.Sleep(50 * time.Millisecond)
-
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "resolve_gate_from_chat",
-		Arguments: map[string]any{"name": "plan", "status": "approved", "feedback": "対話で承認"},
-	})
-	if err != nil || res.IsError {
-		t.Fatalf("CallTool(resolve_gate_from_chat) = (%+v, %v), want success", res, err)
-	}
-
 	select {
-	case out := <-done:
-		if out.Status != "approved" || out.Feedback != "対話で承認" {
-			t.Fatalf("marker written by resolve_gate_from_chat = %+v, want status=approved feedback=対話で承認", out)
+	case <-done:
+		t.Fatal("returned before a decision")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if err := store.Put("wf:gate-decision/plan", []byte(`{"occurrence":"0000003","hash":"h","approved":false,"comment":"fix it"}`)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case res := <-done:
+		data, _ := json.Marshal(res.StructuredContent)
+		if res.IsError || !strings.Contains(string(data), `"status":"rejected"`) || !strings.Contains(string(data), "fix it") {
+			t.Fatalf("result = %s (error %v)", data, res.IsError)
 		}
 	case <-time.After(2 * time.Second):
-		t.Fatal("WaitForPresence did not see resolve_gate_from_chat's write")
+		t.Fatal("did not return after the decision")
 	}
-}
-
-func TestResolveGateFromChatRejectsTriage(t *testing.T) {
-	store, session := connectCurated(t)
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "resolve_gate_from_chat",
-		Arguments: map[string]any{"name": "triage", "status": "approved"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
-	}
-	if !res.IsError {
-		t.Fatal("resolve_gate_from_chat on the triage gate: IsError = false, want true -- ADR-0029 must block this")
-	}
-	if _, found := store.Get("gate:triage"); found {
-		t.Fatal("resolve_gate_from_chat must not have written gate:triage despite the error")
-	}
-}
-
-// Approving the review gate lands the branch in the user's real repository
-// and tears the workspace down (finalizeReviewApproval), which is a human's
-// call to make from the host -- not something a session inside the sandbox
-// can trigger by relaying what someone said in chat (ADR-0060, Issue #24).
-func TestResolveGateFromChatRejectsReview(t *testing.T) {
-	store, session := connectCurated(t)
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "resolve_gate_from_chat",
-		Arguments: map[string]any{"name": "review", "status": "approved", "feedback": "対話で承認"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
-	}
-	if !res.IsError {
-		t.Fatal("resolve_gate_from_chat on the review gate: IsError = false, want true")
-	}
-	if !strings.Contains(toolErrorText(t, res), "masuda review approve") {
-		t.Fatalf("the error must name the command a human runs instead: %+v", res.Content)
-	}
-	if _, found := store.Get("gate:review"); found {
-		t.Fatal("resolve_gate_from_chat must not have written gate:review despite the error")
-	}
-}
-
-func TestResolveGateFromChatRejectsInvalidStatus(t *testing.T) {
-	_, session := connectCurated(t)
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{
-		Name:      "resolve_gate_from_chat",
-		Arguments: map[string]any{"name": "plan", "status": "halted"},
-	})
-	if err != nil {
-		t.Fatalf("CallTool error = %v, want a tool-level error instead", err)
-	}
-	if !res.IsError {
-		t.Fatal("resolve_gate_from_chat with status=halted: IsError = false, want true (only approved/rejected allowed)")
+	if _, ok := store.Get("wf:gate-decision/plan"); !ok {
+		t.Fatal("the wait consumed the decision; the engine must take it")
 	}
 }
 
@@ -220,7 +122,7 @@ func connectCuratedWithRunner(t *testing.T, run PrivilegedRunner) *mcp.ClientSes
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := NewCurated(store, run, nil)
+	server := NewCurated(store, run)
 
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
@@ -337,47 +239,6 @@ func TestTruncateLogKeepsTheEnd(t *testing.T) {
 	}
 }
 
-// connectCuratedWithOrchestrator is connectCurated with next_task registered
-// against a stub runner, so the tool surface can be exercised without a venv
-// or a worktree.
-func connectCuratedWithOrchestrator(t *testing.T, run OrchestratorRunner) *mcp.ClientSession {
-	t.Helper()
-	store, err := statedaemon.Open(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	server := NewCurated(store, nil, run)
-
-	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	ctx := context.Background()
-	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
-		t.Fatal(err)
-	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "0.0.0"}, nil)
-	session, err := client.Connect(ctx, clientTransport, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { session.Close() })
-	return session
-}
-
-// Same rule run_privileged_command follows: a daemon with no worktree to run
-// an orchestrator against must not advertise the tool at all.
-func TestCuratedOffersNextTaskOnlyWithARunner(t *testing.T) {
-	_, withoutRunner := connectCurated(t)
-	if toolNamed(t, withoutRunner, "next_task") {
-		t.Fatal("next_task offered even though no orchestrator runner was supplied")
-	}
-
-	withRunner := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
-		return "", nil
-	})
-	if !toolNamed(t, withRunner, "next_task") {
-		t.Fatal("next_task not offered even though a runner was supplied")
-	}
-}
-
 func toolNamed(t *testing.T, session *mcp.ClientSession, name string) bool {
 	t.Helper()
 	res, err := session.ListTools(context.Background(), &mcp.ListToolsParams{})
@@ -390,59 +251,6 @@ func toolNamed(t *testing.T, session *mcp.ClientSession, name string) bool {
 		}
 	}
 	return false
-}
-
-// The task text comes back in the tool result, not just via TASK.md: the
-// guest's view of that file lags the host's write by up to a second across
-// virtiofs (see OrchestratorRunner's doc comment).
-func TestNextTaskReturnsTheOrchestratorsTaskText(t *testing.T) {
-	var calls int
-	session := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
-		calls++
-		return "GATE:review\n\n手順...", nil
-	})
-
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "next_task"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.IsError {
-		t.Fatalf("next_task returned an error result: %+v", res.Content)
-	}
-	var out struct {
-		Task string `json:"task"`
-	}
-	data, err := json.Marshal(res.StructuredContent)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(data, &out); err != nil {
-		t.Fatal(err)
-	}
-	if out.Task != "GATE:review\n\n手順..." {
-		t.Fatalf("task = %q, want the runner's text", out.Task)
-	}
-	if calls != 1 {
-		t.Fatalf("runner called %d times, want 1", calls)
-	}
-}
-
-// A failing orchestrator has to reach the session as a tool error: silently
-// handing back an empty task would look like "nothing to do".
-func TestNextTaskSurfacesOrchestratorFailure(t *testing.T) {
-	session := connectCuratedWithOrchestrator(t, func(context.Context) (string, error) {
-		return "", errors.New("iteration budget exceeded")
-	})
-	res, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "next_task"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !res.IsError {
-		t.Fatal("next_task reported success even though the orchestrator failed")
-	}
-	if !strings.Contains(toolErrorText(t, res), "iteration budget exceeded") {
-		t.Fatalf("tool error did not carry the orchestrator's reason: %+v", res.Content)
-	}
 }
 
 func toolErrorText(t *testing.T, res *mcp.CallToolResult) string {

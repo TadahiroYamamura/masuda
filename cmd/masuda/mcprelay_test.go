@@ -18,7 +18,7 @@ import (
 )
 
 // freeTCPPort asks the OS for an unused TCP port on 127.0.0.1, the same
-// TOCTOU-accepting pattern internal/hostloop.freeTCPPort uses for a
+// TOCTOU-accepting pattern internal/sandbox.freeRelayPort uses for a
 // per-invocation port that gets rebound almost immediately after.
 func freeTCPPort(t *testing.T) int {
 	t.Helper()
@@ -83,13 +83,16 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 		}
 	}()
 
+	if err := store.Put("wf:gate-open/triage", []byte(`{"name":"triage","occurrence":"0000001","hash":"h"}`)); err != nil {
+		t.Fatal(err)
+	}
 	done := make(chan struct{})
 	var status string
 	go func() {
 		defer close(waitReturned)
 		res, err := session.CallTool(waitCtx, &mcp.CallToolParams{
 			Name:      "wait_for_gate_resolution",
-			Arguments: map[string]any{"name": "plan"},
+			Arguments: map[string]any{"name": "triage"},
 		})
 		if waitCtx.Err() != nil {
 			return // cancelled by the deferred cleanup; the real failure is already recorded
@@ -114,7 +117,7 @@ func TestMCPRelayProxiesCallsToCuratedSocket(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	if err := store.Put("gate:plan", []byte(`{"status":"approved"}`)); err != nil {
+	if err := store.Put("wf:gate-decision/triage", []byte(`{"occurrence":"0000001","hash":"h","approved":true}`)); err != nil {
 		t.Fatal(err)
 	}
 
