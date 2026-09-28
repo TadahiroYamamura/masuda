@@ -14,7 +14,11 @@
 package perspectives
 
 import (
+	"bytes"
+	"fmt"
 	"path/filepath"
+
+	"go.yaml.in/yaml/v3"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
 )
@@ -27,4 +31,27 @@ const ReviewsDirName = "reviews"
 // (<repoRoot>/.masuda/reviews).
 func ReviewsDir(repoRoot string) string {
 	return filepath.Join(repoRoot, config.DirName, ReviewsDirName)
+}
+
+// Enabled reports whether perspective file src is switched on: its
+// frontmatter's enable, true when absent (ADR-0033). A file without
+// frontmatter counts as enabled; frontmatter that does not parse is an
+// error, since guessing either way would silently run or skip a review.
+func Enabled(src []byte) (bool, error) {
+	src = bytes.TrimPrefix(src, []byte{0xEF, 0xBB, 0xBF})
+	if !bytes.HasPrefix(src, []byte("---\n")) {
+		return true, nil
+	}
+	rest := src[len("---\n"):]
+	end := bytes.Index(rest, []byte("\n---"))
+	if end < 0 {
+		return false, fmt.Errorf("frontmatter is not closed with ---")
+	}
+	var front struct {
+		Enable *bool `yaml:"enable"`
+	}
+	if err := yaml.Unmarshal(rest[:end], &front); err != nil {
+		return false, fmt.Errorf("parsing frontmatter: %w", err)
+	}
+	return front.Enable == nil || *front.Enable, nil
 }

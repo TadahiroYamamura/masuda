@@ -18,7 +18,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/spf13/cobra"
 
-	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/sandbox"
 	"github.com/TadahiroYamamura/masuda/internal/sharedfs"
 	"github.com/TadahiroYamamura/masuda/internal/statedaemon"
@@ -511,7 +511,7 @@ func workflowEnv(stateDir, repoRoot, worktreeDir string) (*hostenv.Env, error) {
 // bundled review workflows run until that is designed.
 func repoPerspectives(repoRoot string) func() ([]hostenv.Perspective, error) {
 	return func() ([]hostenv.Perspective, error) {
-		files, err := filepath.Glob(filepath.Join(repoRoot, config.DirName, "reviews", "*.md"))
+		files, err := filepath.Glob(filepath.Join(perspectives.ReviewsDir(repoRoot), "*.md"))
 		if err != nil {
 			return nil, err
 		}
@@ -520,6 +520,13 @@ func repoPerspectives(repoRoot string) func() ([]hostenv.Perspective, error) {
 			b, err := os.ReadFile(f)
 			if err != nil {
 				return nil, err
+			}
+			enabled, err := perspectives.Enabled(b)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", f, err)
+			}
+			if !enabled {
+				continue
 			}
 			out = append(out, hostenv.Perspective{Name: strings.TrimSuffix(filepath.Base(f), ".md"), Content: string(b)})
 		}

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -560,5 +561,33 @@ func TestStopDaemonStopsOurOwnDaemon(t *testing.T) {
 	}
 	if isDaemonProcess(c.Process.Pid, stateDir) {
 		t.Error("the recorded daemon is still running after stopDaemon()")
+	}
+}
+
+func TestRepoPerspectivesSkipsDisabled(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".masuda", "reviews")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, src := range map[string]string{
+		"on.md":      "---\nenable: true\n---\nlook\n",
+		"off.md":     "---\nenable: false\n---\nskip\n",
+		"default.md": "---\nname: x\n---\nlook\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ps, err := repoPerspectives(root)()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, p := range ps {
+		names = append(names, p.Name)
+	}
+	if got := strings.Join(names, ","); got != "default,on" {
+		t.Errorf("perspectives = %v, want [default on]", names)
 	}
 }
