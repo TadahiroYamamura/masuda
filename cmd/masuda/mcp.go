@@ -17,8 +17,8 @@ import (
 // config.Config.MCPServers (repoRoot's committed .masuda/settings.json)
 // only *declares* servers -- these commands manage this user's *approval*
 // of them, recorded in the gitignored .masuda/settings.local.json
-// (config.LocalSettings). Unlike the plan/review/triage gate commands
-// (cmd/masuda/gate.go), these operate on the repository directly, not a
+// (config.LocalSettings). Unlike the gate/triage commands
+// (cmd/masuda/gatecmd.go, triage.go), these operate on the repository directly, not a
 // workspace -- there is one settings.local.json per repository, read
 // straight from repoRoot by every workspace's daemon, not per-workspace
 // state.

@@ -37,11 +37,9 @@ func chdir(t *testing.T, dir string) {
 }
 
 // TestGateCommandStartsTheDaemon pins Issue #52: every gate command reaches
-// its marker through the workspace's state daemon, so resolving a workspace
-// for a gate has to make sure that daemon is running. Before this, the only
-// callers of startDaemon were workspace creation and `plan start`'s resume,
-// which left a workspace waiting at G2 across a host reboot unanswerable --
-// approve and reject both failed with "connect: connection refused".
+// the gate through the workspace's state daemon, so resolving a workspace
+// for a gate has to make sure that daemon is running -- otherwise a
+// workspace left waiting at a gate across a host reboot is unanswerable.
 func TestGateCommandStartsTheDaemon(t *testing.T) {
 	called := stubEnsureDaemon(t)
 	id := newWorkspaceForRepo(t, t.TempDir())

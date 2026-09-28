@@ -14,9 +14,9 @@ const maxToolNameLen = 128
 
 // registerProxy registers a transparent proxy for child tool t onto
 // curated, namespaced as "<serverName>__<t.Name>" to avoid collisions
-// between child servers (and with curated's own built-in
-// wait_for_gate_resolution/resolve_gate_from_chat, which no server name can
-// equal since "__" never appears in a bare tool call). Uses the low-level,
+// between child servers (and with curated's own built-in tools such as
+// next_task, which no prefixed name can equal since none of them contains
+// "__"). Uses the low-level,
 // non-generic (*mcp.Server).AddTool -- t's schema is only known at
 // runtime (it comes from ListTools against an external process, not a
 // compile-time Go type), so the generic mcp.AddTool[In, Out] used

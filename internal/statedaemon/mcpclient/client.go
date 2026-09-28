@@ -4,10 +4,7 @@
 // socket.
 //
 // This is the one place that speaks the MCP wire protocol on the client
-// side, used both in-process by cmd/masuda's Go commands and, via the
-// `masuda internal state` CLI wrapper, out-of-process by
-// orchestrator/*.py (which shells out rather than embedding its own MCP
-// client -- see Issue #35's design notes).
+// side, used by cmd/masuda's Go commands.
 package mcpclient
 
 import (

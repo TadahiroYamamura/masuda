@@ -50,8 +50,8 @@ const (
 // repoRoot lets the curated server aggregate child MCP servers declared in
 // repoRoot's .masuda/settings.json and approved in
 // .masuda/settings.local.json (internal/statedaemon/mcpaggregator, Issue
-// #35). repoRoot == "" disables the aggregator entirely -- the standalone/
-// pytest-fixture use of this command (see newInternalStatedaemonCommand's
+// #35). repoRoot == "" disables the aggregator entirely -- the standalone
+// use of this command in tests (see newInternalStatedaemonCommand's
 // --state-dir doc comment) has no associated repository to read either
 // file from.
 func runStatedaemon(ctx context.Context, stateDir, storeDir, repoRoot, worktreeDir string) error {
@@ -159,15 +159,15 @@ func newInternalStatedaemonCommand() *cobra.Command {
 	}
 	// A directory, not a workspace ID: internal/workspace's registry plays
 	// no part here, so this same command doubles as a standalone daemon for
-	// orchestrator/tests' pytest fixtures (an arbitrary tmp_path, no
-	// workspace.Create involved) as well as the real per-workspace process
-	// startDaemon spawns.
+	// tests (an arbitrary temporary directory, no workspace.Create
+	// involved) as well as the real per-workspace process startDaemon
+	// spawns.
 	cmd.Flags().StringVar(&stateDir, "state-dir", "", "directory to persist state under and serve (required)")
 	cmd.Flags().StringVar(&storeDir, "store-dir", "",
 		"where the key/value store lives; a real workspace passes its host-only trusted directory (default: <state-dir>/store)")
-	// Optional: omitting it (the pytest-fixture case above) disables the
-	// child-MCP-server aggregator rather than erroring, since those
-	// fixtures have no real target repository to read
+	// Optional: omitting it (the standalone case above) disables the
+	// child-MCP-server aggregator rather than erroring, since such a
+	// daemon has no real target repository to read
 	// settings(.local).json from.
 	cmd.Flags().StringVar(&repoRoot, "repo-root", "",
 		"target repository root to read .masuda/settings.json + settings.local.json's child MCP server declarations from (optional; omit to disable the aggregator)")
@@ -214,13 +214,12 @@ func privilegedRunner(repoRoot, worktreeDir, stateDir string) mcpserver.Privileg
 // process (Setsid, stdout/stderr to daemon.log inside the workspace's state
 // directory) and records its PID so stopDaemon can find it later. The
 // process must outlive this CLI invocation -- it has to keep running across
-// the many short-lived `masuda plan/review approve` etc. invocations that
-// follow, the same "fire and forget" shape internal/sandbox.Start uses for
-// the sandbox container itself.
+// the many short-lived `masuda gate`/`triage` etc. invocations that follow,
+// and serve the workflow engine to the VM for the whole run.
 //
 // Idempotent: a no-op if a daemon for id is already alive (daemonAlive), so
 // every entrypoint that needs the daemon running (new workspace creation,
-// but also a `masuda plan start <workspace-id>` resume where the daemon may
+// but also a `masuda run <workflow> <workspace-id>` resume where the daemon may
 // have died since -- host reboot, manual kill, a crash) can call this
 // unconditionally instead of tracking "did I already start this" itself.
 // ensureDaemon is startDaemon behind a variable so tests that exercise a
@@ -289,11 +288,10 @@ var daemonStartupTimeout = 10 * time.Second
 // trusted socket.
 //
 // Without this, startDaemon returns as soon as the process is forked, and
-// the very next thing every caller does -- WriteTaskBrief, WriteInstructions'
-// neighbours, a gate read -- dials that socket. Losing that race is not
-// theoretical: `masuda plan start <branch> --file ...` failed with
-// "connect: no such file or directory" against a daemon that was up
-// milliseconds later.
+// the very next thing every caller does -- placing the run's inputs, a gate
+// read -- dials that socket. Losing that race is not theoretical: starting
+// a new workspace failed with "connect: no such file or directory" against
+// a daemon that was up milliseconds later.
 //
 // A plain dial is enough of a readiness signal: net.Listen on a Unix socket
 // binds and listens in one step, so once a connection is accepted by the
@@ -371,7 +369,7 @@ func daemonPID(stateDir string) (int, bool) {
 // Without this check both of the places that act on daemon.pid are unsafe
 // once a PID has been recycled -- and a host reboot recycles every PID at
 // once. reclaimStaleDaemon would SIGTERM a stranger's process; stopDaemon
-// would do the same on every `review approve` and `workspace remove`. Signal
+// would do the same on every `workspace remove`. Signal
 // 0 cannot tell the difference, since it only answers "does some process
 // hold this number".
 //
@@ -457,11 +455,8 @@ func stopDaemon(id string) error {
 	if !ok {
 		return nil
 	}
-	// Same PID-reuse hazard reclaimStaleDaemon guards against, and now on a
-	// path that runs every time a workspace ends: `review approve` tears the
-	// workspace down (ADR-0005) and stops its daemon on the way, so a
-	// recorded PID that has been recycled would take an unrelated process
-	// with it.
+	// Same PID-reuse hazard reclaimStaleDaemon guards against: a recorded
+	// PID that has been recycled would take an unrelated process with it.
 	if !isDaemonProcess(pid, stateDir) {
 		return nil
 	}

@@ -36,9 +36,8 @@ func newWorkspaceCommand() *cobra.Command {
 }
 
 // newWorkspace mints a fresh workspace ID for branch, persists its metadata,
-// and creates the git worktree keyed by that ID (roadmap step 7) — the
-// shared "start something new" sequence every entrypoint (workspace create,
-// plan start, review start) that isn't resuming an existing workspace uses.
+// and creates the git worktree keyed by that ID — the shared "start
+// something new" sequence of `workspace create` and a fresh `masuda run`.
 // name is an optional display label (see workspace.Create) and may be empty.
 func newWorkspace(root, branch, base, name string) (workspace.Info, string, error) {
 	id, err := workspace.NewID()
@@ -186,8 +185,8 @@ func newWorkspaceInfoCommand() *cobra.Command {
 }
 
 // newWorkspaceRenameCommand builds `masuda workspace rename`, the only way
-// to set or change a workspace's display name after creation (`create`/`plan
-// start`/`review start`'s --name only covers creation time). Name is purely
+// to set or change a workspace's display name after creation (`workspace
+// create`/`run`'s --name only covers creation time). Name is purely
 // a label (workspace.Rename) — it plays no part in resolving a workspace, so
 // renaming has no effect beyond `workspace list`/`info` output.
 func newWorkspaceRenameCommand() *cobra.Command {
@@ -203,12 +202,12 @@ func newWorkspaceRenameCommand() *cobra.Command {
 }
 
 // newWorkspaceRebaseCommand builds `masuda workspace rebase`, a manual,
-// explicitly-invoked counterpart to `review approve`'s automatic Pull: when
+// explicitly-invoked counterpart to a publish node's automatic Pull: when
 // repoRoot's branch has moved on since this workspace's clone was created
 // (e.g. another workspace targeting the same branch already landed first)
-// and `review approve` refuses the resulting non-fast-forward, this replays
-// the clone's commits on top of repoRoot's current tip so approve can retry
-// as a clean fast-forward. Never wired into approve itself (ADR-0023): a
+// and publish refuses the resulting non-fast-forward, this replays the
+// clone's commits on top of repoRoot's current tip so publish can retry
+// as a clean fast-forward. Never wired into publish itself (ADR-0023): a
 // real divergence needs a human to judge whether the two histories are
 // still compatible, not an automatic rebase.
 func newWorkspaceRebaseCommand() *cobra.Command {

@@ -194,7 +194,7 @@ func newInitCommand() *cobra.Command {
 			// label on a directory init itself creates from one fixed
 			// template, so choosing a different one here would only rename
 			// what init just wrote -- the same edit the user can make
-			// afterwards. (`sandbox start --image` still selects among
+			// afterwards. (`run --image` still selects among
 			// entries that already exist, which is a different question.)
 			cfg := config.Config{
 				Image:           config.DefaultImageEntry,

@@ -168,8 +168,8 @@ func TestCreateIdempotentDoesNotResync(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	// A local edit made directly inside the clone, as masuda's own
-	// orchestrator or a human might do mid-workflow.
+	// A local edit made directly inside the clone, as an agent or a human
+	// might do mid-workflow.
 	writeFile(t, config.SettingsPath(dir), `{"image": "edited-in-clone"}`)
 
 	// repoRoot moves on too, but a second Create for the same id must hit

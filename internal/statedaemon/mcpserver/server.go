@@ -1,9 +1,8 @@
 // Package mcpserver wraps a statedaemon.Store as an MCP server exposing the
 // full trusted tool set (state_get/state_put/state_list/state_delete/
-// state_apply). This is the "trusted" side of Issue #35's design
-// (host CLI, orchestrator/*.py) -- the curated, Claude-facing tool set
-// (e.g. wait_for_gate_resolution) is a separate, narrower server built on the
-// same Store, added in a later step.
+// state_apply). This is the "trusted" side of Issue #35's design, reached
+// only from the host CLI -- the curated, Claude-facing tool set (NewCurated)
+// is a separate, narrower server built on the same Store.
 package mcpserver
 
 import (

@@ -1,19 +1,14 @@
 // Package workspace assigns each masuda run its own unique identity — a
 // workspace ID — decoupled from the git branch it targets, and owns the
 // per-workspace state directory (outside any git worktree) that all of
-// masuda's own control files live in (roadmap step 7).
+// masuda's own control files live in.
 //
-// This exists because the worktree path and sandbox container name used to
-// be keyed by branch name alone: two workspaces targeting the same branch
-// (a full pipeline run and a `masuda review start` of the same branch, or
-// two parallel attempts at the same task) would fight over the same
-// worktree directory and container. Workspace IDs make every masuda
-// invocation independent, and moving masuda's control files (TASK.md,
-// plan/, gate markers, review results, ...) into a directory the target
-// repository's git never sees also fixes a real bug found along the way:
-// `git add -A` inside the worktree was picking up masuda's own scratch
-// files and showing them to review subagents as if they were part of the
-// change under review.
+// Keying by workspace ID rather than branch lets two workspaces target the
+// same branch (a workflows/develop run and a workflows/review run of it, or
+// two parallel attempts at the same task) without fighting over the same
+// clone directory or VM. Keeping masuda's control files (inputs, outputs,
+// gate state, ...) in a directory the target repository's git never sees
+// keeps them out of the change under review and out of commits.
 package workspace
 
 import (
@@ -70,9 +65,9 @@ func xdgBase() (string, error) {
 
 // DataHome returns masuda's own XDG-based data directory
 // (<XDG_DATA_HOME or ~/.local/share>/masuda) — the single place that knows
-// masuda's data-dir name, shared by this package's workspaces/ subdirectory
-// and internal/hostloop's runtime/ subdirectory (host-side venv + extracted
-// orchestrator script), so neither depends on the target repository's root.
+// masuda's data-dir name, shared by this package's workspaces/ and trusted/
+// subdirectories and internal/sandbox's own ones, so none of them depends
+// on the target repository's root.
 func DataHome() (string, error) {
 	base, err := xdgBase()
 	if err != nil {
@@ -144,9 +139,8 @@ func NewRandomID() (string, error) {
 }
 
 // Create persists a new workspace's metadata and returns it. Call once per
-// masuda invocation that starts a genuinely new piece of work — `masuda
-// worktree create`, `masuda plan start <branch> <task>`, `masuda review
-// start <branch-or-ref>`. name is an optional human-readable label (display
+// `masuda run` that starts a genuinely new piece of work rather than
+// resuming one. name is an optional human-readable label (display
 // only — it plays no part in resolving a workspace, unlike id) and may be
 // empty.
 func Create(repoRoot, id, branch, base, name string) (Info, error) {
@@ -213,7 +207,7 @@ func Rename(id, name string) error {
 }
 
 // Exists reports whether id refers to an already-created workspace — used
-// to disambiguate `masuda plan/review start <arg>`: an existing workspace ID
+// to disambiguate `masuda run <workflow> <arg>`: an existing workspace ID
 // means resume, anything else means arg is a branch name to start fresh
 // against.
 func Exists(id string) bool {
@@ -278,8 +272,7 @@ func List(repoRoot string) ([]Info, error) {
 
 // Remove deletes a workspace's state directory. It's the caller's
 // responsibility to also remove the corresponding git worktree
-// (internal/worktree.Remove) and stop any running sandbox/host-loop session
-// first.
+// (internal/worktree.Remove) and stop its VM and state daemon first.
 func Remove(id string) error {
 	dir, err := StateDir(id)
 	if err != nil {
@@ -357,9 +350,8 @@ func inputWait(id string) string {
 
 // EntryStatus adds live progress info to Info for `masuda workspace list`.
 // Running is computed by the caller (cmd/masuda), not this package: it
-// requires internal/hostloop and internal/sandbox, and internal/hostloop
-// already imports this package (DataHome), so importing either back here
-// would cycle.
+// requires internal/sandbox, which already imports this package (DataHome),
+// so importing it back here would cycle.
 type EntryStatus struct {
 	Info
 	TaskStatus string

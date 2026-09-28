@@ -22,7 +22,7 @@ var sandboxBackend sandbox.Backend = sandbox.VMBackend{}
 func newSandboxCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "sandbox",
-		Short: "Start, stop, or (re)build the sandbox VM's source image for a workspace/project",
+		Short: "Stop a workspace's sandbox VM, or (re)build the project's sandbox images",
 	}
 	cmd.AddCommand(newSandboxStopCommand())
 	cmd.AddCommand(newSandboxBuildCommand())

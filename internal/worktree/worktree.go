@@ -7,18 +7,18 @@
 // worktree's .git file points at an absolute host path
 // (repoRoot/.git/worktrees/<name>), and that directory's own gitdir file
 // points *back* at the worktree's absolute host path — bidirectional
-// coupling that breaks the moment the checkout is bind-mounted into a Docker
-// container at a different path (/workspace). A --local clone is a fully
+// coupling that breaks the moment the checkout is shared into the VM at a
+// different path (/workspace). A --local clone is a fully
 // self-contained repository with no such dependency, at the cost of Merge
 // needing an explicit fetch to pull the clone's branch back into repoRoot
 // (a linked worktree shares repoRoot's object store and refs directly; a
 // clone does not).
 //
 // Checkouts are keyed by workspace ID (see internal/workspace), not by
-// branch name directly: roadmap step 7 introduced workspace IDs so that two
-// workspaces targeting the same git branch (a full pipeline run and a
-// `masuda review start` of that branch, or two parallel attempts at the same
-// task) get independent checkout directories and never collide. The branch
+// branch name directly, so that two workspaces targeting the same git branch
+// (a workflows/develop run and a workflows/review run of that branch, or two
+// parallel attempts at the same task) get independent checkout directories
+// and never collide. The branch
 // name a workspace targets is still an ordinary git branch and is what
 // Merge/Remove operate on in repoRoot; only the on-disk clone path is keyed
 // on id.
@@ -60,9 +60,7 @@ func branchExists(repoRoot, branch string) bool {
 }
 
 // BranchExists reports whether branch is an existing local branch in
-// repoRoot. Exported for `masuda review start`, which — unlike `masuda plan
-// start` — must target an existing branch (there's nothing to review on one
-// Create would silently create fresh from base).
+// repoRoot.
 func BranchExists(repoRoot, branch string) bool {
 	return branchExists(repoRoot, branch)
 }
@@ -116,10 +114,10 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 // team), and those should still reach every new workspace.
 //
 // Copying .masuda/.gitignore (when repoRoot has one) matters beyond mere
-// consistency: masuda's own Commit runs `git add -A` inside the clone for
-// phase 4/5 step commits, so without it, the settings.json/reviews/ files
-// this function just wrote would show up as ordinary untracked files in the
-// clone and get swept into the workspace's own branch history. A repoRoot
+// consistency: without it, the settings.json/reviews/ files this function
+// just wrote would show up as ordinary untracked files in the clone, which
+// the workflow engine's change measurements (ChangedFiles) count as changes
+// made outside the plan and put in front of a human as a deviation. A repoRoot
 // that already commits .masuda/ typically keeps .masuda/.gitignore itself
 // committed too, so `git clone` reproduces it there without help; this only
 // matters for the same not-yet-committed .masuda/ case as settings.json.
@@ -132,9 +130,9 @@ func Create(repoRoot, id, branch, base string) (string, error) {
 //
 // .masuda/settings.local.json (config.SettingsLocalPath) is deliberately
 // never synced here either, unlike settings.json -- it routinely carries
-// real secret values (config.MCPServerApproval.Env), and this clone is
-// exactly what phase 4/5's `git add -A` step commits sweep up; copying it
-// in would leak those secrets into the workspace's own branch history. The
+// real secret values (config.MCPServerApproval.Env), and a file sitting in
+// the clone is one approval of a deviation away from being committed into
+// the workspace's own branch history. The
 // per-workspace state daemon reads settings.local.json directly from
 // repoRoot (via workspace.Info.RepoRoot) instead, so no clone-side copy is
 // needed for it to work.
@@ -243,31 +241,6 @@ func hasStagedChanges(dir string) (bool, error) {
 	return false, err
 }
 
-// Commit stages and commits everything currently sitting in workspace id's
-// clone, if anything has changed. masuda's phase 4/5 (orchestrator/*.py's
-// _compute_diff) deliberately never commits on its own — it diffs staged,
-// uncommitted changes throughout implementation and review — so without
-// this, the only record of the work is the clone's uncommitted working
-// tree, which Remove deletes right after Pull runs. Called from
-// finalizeReviewApproval before Pull, so the work becomes part of the
-// branch's history before it's brought home.
-func Commit(repoRoot, id, message string) error {
-	dir := Dir(repoRoot, id)
-	if _, err := runGit(dir, "add", "-A"); err != nil {
-		return err
-	}
-	dirty, err := hasStagedChanges(dir)
-	if err != nil {
-		return err
-	}
-	if !dirty {
-		return nil
-	}
-	args := append(identityOverride(repoRoot), "commit", "-m", message)
-	_, err = runGit(dir, args...)
-	return err
-}
-
 // identityOverride returns `-c user.name=... -c user.email=...` git global
 // options for any of repoRoot's *local* (not global) user.name/user.email
 // config -- `git clone` never copies the source's local config, so a commit
@@ -294,7 +267,7 @@ func localConfig(repoRoot, key string) string {
 }
 
 // Pull fast-forwards repoRoot's own branch ref to match its clone's tip —
-// the ADR-0023 replacement for Merge in the automatic `review approve` flow.
+// what the workflow engine's publish node does (ADR-0023).
 // Unlike Merge, it never merges into a separate integration branch (that's a
 // PR's job in a real GitHub workflow, not masuda's); it just brings the
 // clone's commits back into repoRoot, creating branch there if it doesn't
@@ -342,13 +315,13 @@ func Remove(repoRoot, id, branch string, deleteBranch bool) error {
 }
 
 // removeLeakedStepTags deletes any masuda-step-<id>-* tags (the
-// per-step boundary markers, orchestrator/implement_review_graph.py) that
+// per-step boundary markers the commit node places, internal/workflow/hostenv) that
 // ended up in repoRoot. These normally only ever exist inside the clone's
 // own .git (wiped by the os.RemoveAll above), but Merge/Pull's `git fetch`
 // auto-follows tags reachable from newly-fetched commits (neither passes
 // --no-tags), so a workspace that was merged/pulled before removal -- the
-// normal path through `masuda review approve`, which calls Pull then this
-// function -- can leave its step-boundary tags behind in repoRoot. Since
+// normal path through a publish node, which calls Pull and then removes the
+// workspace -- can leave its step-boundary tags behind in repoRoot. Since
 // tags are scoped by workspace id, this is best-effort cleanup rather than a
 // correctness requirement: no matches is not an error.
 func removeLeakedStepTags(repoRoot, id string) error {
@@ -368,8 +341,8 @@ func removeLeakedStepTags(repoRoot, id string) error {
 // branch — the inverse direction of Pull, for the case Pull's fast-forward
 // rejects: repoRoot moved on (e.g. another workspace already landed) while
 // this one was still in flight, so their histories diverged. This is always
-// a human-invoked, separate step (never run automatically from `review
-// approve`, per ADR-0023's explicit rejection of that) since resolving a
+// a human-invoked, separate step (never run automatically from a publish
+// node, per ADR-0023's explicit rejection of that) since resolving a
 // real divergence -- as opposed to fast-forwarding a clean history -- means
 // judging whether two independent changes are still compatible together,
 // which isn't masuda's call to make silently.

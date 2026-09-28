@@ -1,16 +1,15 @@
 // Package statedaemon implements the generic key-value store that backs
 // masuda's per-workspace RPC daemon (Issue #35): a workspace's masuda-owned
-// state (gate markers, plan artifacts, orchestrator bookkeeping -- the full
-// /masuda-state surface, see Issue #29's inventory) as key/value pairs,
-// persisted to disk and observable via a blocking WaitForPresence.
+// state (the workflow engine's records, gate requests and decisions) as
+// key/value pairs, persisted to disk and observable via a blocking
+// WaitForPresence.
 //
-// Keys are namespaced strings that mirror today's file layout, e.g.
-// "gate:plan" or "artifact:plan/summary.md" -- the namespace before the
-// colon is one of gate/artifact/internal (Issue #35's category split) and
-// becomes a top-level subdirectory on disk.
+// Keys are namespaced strings, e.g. "wf:gate-open/plan" -- the namespace
+// before the colon becomes a top-level subdirectory on disk and the rest a
+// relative path under it.
 //
-// This package is transport-agnostic on purpose: no MCP, no vsock, no CLI
-// wiring lives here yet (future work under the same issue). One Store
+// This package is transport-agnostic on purpose: the MCP servers live in
+// internal/statedaemon/mcpserver. One Store
 // instance is meant to back one per-workspace daemon process, so there is no
 // workspace ID dimension in the API.
 package statedaemon

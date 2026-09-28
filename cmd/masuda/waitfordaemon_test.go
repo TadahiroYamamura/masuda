@@ -12,8 +12,8 @@ import (
 )
 
 // shortStateDir returns a state directory under /tmp rather than t.TempDir():
-// the daemon socket path is appended to it, and pytest's own conftest hit
-// AF_UNIX's ~108 byte sun_path limit going the other way.
+// the daemon socket path is appended to it, and a long temporary directory
+// can push that past AF_UNIX's ~108 byte sun_path limit.
 func shortStateDir(t *testing.T) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", "msd")

@@ -28,7 +28,7 @@ func ServeUDS(ctx context.Context, store *statedaemon.Store, socketPath string) 
 // (NewCurated) over a Unix domain socket at socketPath, blocking until ctx
 // is cancelled or the listener fails. ServeUDS's caveat about the socket
 // file appearing before the server accepts applies here too. Neither the
-// privileged-command nor the orchestrator runner is supplied, so those
+// privileged-command runner nor the workflow engine is supplied, so those
 // tools are not offered -- the real daemon builds the server itself and
 // passes them (see ServeCuratedServerUDS and runStatedaemon).
 func ServeCuratedUDS(ctx context.Context, store *statedaemon.Store, socketPath string) error {

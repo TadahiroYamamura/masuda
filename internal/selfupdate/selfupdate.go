@@ -271,12 +271,10 @@ func SyncReviews(url, reviewsDir string, verify func(data []byte) error) ([]stri
 // BlockingWorkspaces returns the subset of infos isRunning reports as still
 // running — `masuda update` refuses to proceed while any exist (ADR-0032):
 // the CLI binary is a single executable shared machine-wide, so replacing it
-// while another workspace's host loop or sandbox container is mid-flight,
-// regardless of which repository that workspace targets, is unsafe.
-// isRunning is injected so callers can compose it from
-// internal/hostloop.IsRunning / internal/sandbox.IsRunning without this
-// package importing either (and so tests can stub it without real
-// tmux/docker state).
+// while another workspace's sandbox VM is mid-flight, regardless of which
+// repository that workspace targets, is unsafe. isRunning is injected so
+// callers can pass internal/sandbox's IsRunning without this package
+// importing it (and so tests can stub it without a real VM).
 func BlockingWorkspaces(infos []workspace.Info, isRunning func(id string) bool) []workspace.Info {
 	var blocking []workspace.Info
 	for _, info := range infos {

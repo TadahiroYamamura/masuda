@@ -9,23 +9,16 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// ensureGateWorkspace resolves a workspace ID to its state directory (where
-// gate markers and the artifacts they judge live, per roadmap step 7 — never
-// the worktree itself) and makes sure its state daemon is running. The
-// workspace ID is the only input: state directories are global (see
-// internal/workspace), so this deliberately never consults the cwd, and gate
-// commands work from anywhere — including outside a git repository (Issue
-// #25).
+// ensureGateWorkspace resolves a workspace ID to its state directory and
+// makes sure its state daemon is running. The workspace ID is the only
+// input: state directories are global (see internal/workspace), so this
+// deliberately never consults the cwd, and gate commands work from anywhere
+// — including outside a git repository (Issue #25).
 //
-// Every gate command reaches its marker through the daemon
-// (internal/gate.Approve/Reject/Halt, and Show for the plan gate's reopen
-// reason), so a workspace whose daemon has died since creation could not be
-// answered at all: `masuda review approve` failed with "connect: connection
-// refused" against a workspace left waiting at G2 across a host reboot
-// (Issue #52). startDaemon is idempotent, so this is the same "make sure the
-// thing exists" shape `plan start`'s resume path already used — it just had
-// no counterpart on the gate side, which is where a long-lived workspace
-// actually spends its time.
+// Every gate command reads the open request and writes its decision through
+// the daemon, so a workspace whose daemon has died since creation — e.g. one
+// left waiting at a gate across a host reboot (Issue #52) — could not be
+// answered at all without this.
 func ensureGateWorkspace(id string) (string, error) {
 	if !workspace.Exists(id) {
 		return "", fmt.Errorf("no workspace %q", id)
@@ -36,9 +29,9 @@ func ensureGateWorkspace(id string) (string, error) {
 	return workspace.StateDir(id)
 }
 
-// attach replaces the current process with an interactive docker exec, so the
+// attach replaces the current process with an interactive ssh, so the
 // user's terminal (stdin/stdout/stderr, raw mode) is wired straight to tmux
-// attach inside the container.
+// attach inside the VM.
 func attach(argv []string) error {
 	path, err := exec.LookPath(argv[0])
 	if err != nil {

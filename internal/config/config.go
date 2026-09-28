@@ -49,9 +49,8 @@ func GitignorePath(repoRoot string) string {
 // optional — an absent file, or an absent field within one, means "use
 // masuda's built-in default."
 type Config struct {
-	// Image is the name of the .masuda/images/ entry `masuda sandbox
-	// start` / `masuda review start` build their VM rootfs from when
-	// --image isn't passed explicitly (ADR-0054). Not a Docker tag: the
+	// Image is the name of the .masuda/images/ entry `masuda run` builds
+	// the VM rootfs from when --image isn't passed explicitly (ADR-0054). Not a Docker tag: the
 	// local tag is derived from the entry name (see ImageTag), so nothing
 	// here has to be kept in sync with what `masuda update` built.
 	Image string `json:"image,omitempty"`
@@ -61,8 +60,7 @@ type Config struct {
 	// always the same branch in practice.
 	Base string `json:"base,omitempty"`
 	// ClaudeSettings is passed verbatim to the `claude` CLI's --settings
-	// flag for every session masuda launches (phase 1-2 on the host, phase
-	// 3-5 in the sandbox). Unlike Image/Base, this has no masuda-side
+	// flag for every session masuda launches in the sandbox. Unlike Image/Base, this has no masuda-side
 	// built-in default: masuda itself must not carry implicit Claude Code
 	// settings, so an absent field means no --settings flag is added at
 	// all, not "fall back to some default." `masuda init` populates it

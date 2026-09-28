@@ -355,7 +355,7 @@ func writeConfigJSON(t *testing.T, path string, v any) {
 
 // stubEnsureDaemon makes ensureDaemon a no-op for one test and records the
 // workspace IDs it was asked to start. Tests that drive a command which now
-// ensures the daemon (ensureGateWorkspace, `sandbox start`) need this: the
+// ensures the daemon (ensureGateWorkspace) need this: the
 // real startDaemon re-execs os.Executable(), which under `go test` is the
 // test binary itself.
 func stubEnsureDaemon(t *testing.T) *[]string {
@@ -519,9 +519,8 @@ func TestReclaimStaleDaemonLeavesARecycledPIDAlone(t *testing.T) {
 	}
 }
 
-// TestStopDaemonLeavesARecycledPIDAlone pins the same guard on the teardown
-// path, which now runs on every `review approve` (ADR-0005) as well as
-// `workspace remove`.
+// TestStopDaemonLeavesARecycledPIDAlone pins the same guard on the
+// `workspace remove` path.
 func TestStopDaemonLeavesARecycledPIDAlone(t *testing.T) {
 	id := newTestWorkspace(t)
 	stateDir, err := workspace.StateDir(id)
