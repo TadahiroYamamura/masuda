@@ -21,6 +21,17 @@ const BaseRef = "refs/masuda/base"
 // WIPRef はノード境界のWIPスナップショットのref名を返す。
 func WIPRef(occurrence string) string { return "refs/masuda/wip/" + occurrence }
 
+// LatestWIP は最も新しいWIPスナップショット（`refs/masuda/wip/*`のうちコミットの日時が最新のもの）の
+// refを返す。無ければ空。同じ秒のものは出現IDの大きい方を新しいとみなす（出現IDは桁を揃えた連番）。
+func (r *Repo) LatestWIP(ctx context.Context) (string, error) {
+	out, err := r.git(ctx, "for-each-ref", "--count=1", "--sort=-refname", "--sort=-committerdate",
+		"--format=%(refname)", "refs/masuda/wip/")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(out), nil
+}
+
 // BranchRef はワークスペースのブランチのref名を返す。
 func BranchRef(branch string) string { return "refs/heads/" + branch }
 

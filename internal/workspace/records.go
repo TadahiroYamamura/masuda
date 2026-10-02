@@ -53,6 +53,10 @@ type QuestionRecord struct {
 	OpenedAt   time.Time         `json:"openedAt"`
 	Answers    map[string]string `json:"answers,omitempty"`
 	AnsweredAt *time.Time        `json:"answeredAt,omitempty"`
+	// DiscardedAt・DiscardReason は答えを待たずに閉じた質問（ask_humanで聞いている間に止めて
+	// 再開した等）。閉じた質問には答えられない。
+	DiscardedAt   *time.Time `json:"discardedAt,omitempty"`
+	DiscardReason string     `json:"discardReason,omitempty"`
 }
 
 // occPattern はengineの出現ID（"0003"、foreachのフレーム"0003.1"等）の形。
@@ -197,7 +201,7 @@ func (w *Workspace) questionsLocked() ([]*QuestionRecord, error) {
 	return out, nil
 }
 
-// OpenQuestions は答えがまだ無い質問を返す。
+// OpenQuestions は答えがまだ無く、閉じてもいない質問を返す。
 func (w *Workspace) OpenQuestions() ([]*QuestionRecord, error) {
 	qs, err := w.Questions()
 	if err != nil {
@@ -205,7 +209,7 @@ func (w *Workspace) OpenQuestions() ([]*QuestionRecord, error) {
 	}
 	var out []*QuestionRecord
 	for _, q := range qs {
-		if q.Answers == nil {
+		if q.Answers == nil && q.DiscardedAt == nil {
 			out = append(out, q)
 		}
 	}

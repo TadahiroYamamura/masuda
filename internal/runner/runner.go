@@ -463,6 +463,52 @@ func (r *Runner) Snapshot(ctx context.Context, _ engine.RunID, occ string) (engi
 	return engine.SnapshotRef(c), nil
 }
 
+// RestoreWIP は最新のWIPスナップショットのtreeを、再cloneしたゲストの作業ツリーへ展開し、
+// そのrefを返す（無ければ何もせず空を返す）。再開でVMを作り直すと、コミットしていない作業は
+// 失われ、engineの基準点（スナップショット）と作業ツリーがずれるため。
+//
+// HEADはcloneしたブランチのまま動かさず、`git read-tree -m -u HEAD <wip>`でindexと作業ツリーだけを
+// WIPのtreeにする（WIPはcommitで知らせる前のHEADを親に持つことがあるので、checkoutや
+// resetで親子関係を持ち込まない）。WIPは取り込むときに`git add -A`したtreeなので、未コミットの
+// 変更はindexに載った状態で戻る（取り込む前と同じ）。
+func (r *Runner) RestoreWIP(ctx context.Context) (string, error) {
+	ref, err := r.repo.LatestWIP(ctx)
+	if err != nil || ref == "" {
+		return "", err
+	}
+	r.guestMu.Lock()
+	defer r.guestMu.Unlock()
+	tmp, err := os.CreateTemp(r.ws.Dir, ".restore-*.bundle")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	defer os.Remove(tmp.Name())
+	// git bundle createは既存のファイルがあると失敗するので、名前だけ確保して消しておく。
+	os.Remove(tmp.Name())
+	// cloneしたブランチの先頭から辿れるものは載せない。WIPの親（いずれかの時点のHEAD）は
+	// ブランチの祖先なので、bundleの前提はゲストのcloneで満たされる。
+	if err := r.repo.CreateBundle(ctx, tmp.Name(), ref, "^"+staging.BranchRef(r.ws.Branch)); err != nil {
+		return "", fmt.Errorf("restoring %s: %w", ref, err)
+	}
+	f, err := os.Open(tmp.Name())
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	const guestBundle = "/masuda/restore.bundle"
+	if err := guest.WriteFile(ctx, r.o.Sandbox, r.o.SandboxID, guestBundle, f, 0o644); err != nil {
+		return "", err
+	}
+	rel := "../" + strings.TrimPrefix(guestBundle, "/")
+	script := "git fetch --quiet --no-tags " + rel + " " + shellQuote(ref) +
+		" && git read-tree -m -u HEAD FETCH_HEAD && rm -f " + rel
+	if _, err := r.shell(ctx, guestWorkspace, script); err != nil {
+		return "", fmt.Errorf("restoring %s: %w", ref, err)
+	}
+	return ref, nil
+}
+
 // Staging はワークスペースのstaging。
 func (r *Runner) Staging() *staging.Repo { return r.repo }
 

@@ -229,6 +229,11 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 	if err := b.prepareGuest(ctx, w, c, sb.Placeholders); err != nil {
 		return err
 	}
+	if resume {
+		if _, err := c.runner.RestoreWIP(ctx); err != nil {
+			return err
+		}
+	}
 	if b.fake {
 		return nil
 	}

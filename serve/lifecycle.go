@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"connectrpc.com/connect"
+
+	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
@@ -63,7 +66,7 @@ func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.St
 	return connect.NewResponse(b.toProto(w)), nil
 }
 
-func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.ResumeRequest]) (*connect.Response[apiv1.Workspace], error) {
+func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv1.ResumeRequest]) (*connect.Response[apiv1.Workspace], error) {
 	b := s.backend
 	b.lifeMu.Lock()
 	defer b.lifeMu.Unlock()
@@ -97,6 +100,12 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	}
 	c, err := b.newRunCtl(w, set, plan)
 	if err != nil {
+		w.State, w.Reason = prevState, prevReason
+		_ = w.Save()
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	if err := c.discardAskedQuestions(ctx); err != nil {
+		b.removeRun(w.ID)
 		w.State, w.Reason = prevState, prevReason
 		_ = w.Save()
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -144,6 +153,39 @@ func (s *workspaceService) AttachInfo(ctx context.Context, req *connect.Request[
 	}
 	argv := append(append([]string(nil), acc.Msg.SshArgv...), "-t", "tmux attach -t "+guest.TmuxSession)
 	return connect.NewResponse(&apiv1.AttachInfoResponse{SshArgv: argv}), nil
+}
+
+// questionDiscardReason は再開で閉じたask_humanの質問の記録に残す理由。
+const questionDiscardReason = "再開で破棄"
+
+// discardAskedQuestions は再開の前に開いていたask_humanの質問を、記録に理由を書いて閉じる。
+// 聞いていたサブエージェントは前のVMと共に無くなっており、再開後はengineが同じ出現の
+// タスクを渡し直すので、新しいエージェントが改めて聞く。前の質問に答えても受け取る者がいない。
+// 固定の質問（questionsを書いたquestionノード）はengine自身が待っているので閉じない。
+func (c *runCtl) discardAskedQuestions(ctx context.Context) error {
+	st, err := c.status(ctx)
+	if err != nil {
+		return err
+	}
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		return err
+	}
+	qs, err := w.OpenQuestions()
+	if err != nil {
+		return err
+	}
+	for _, q := range qs {
+		if st.Kind == engine.StatusQuestion && st.Occurrence == q.Occurrence {
+			continue
+		}
+		now := time.Now().UTC()
+		q.DiscardedAt, q.DiscardReason = &now, questionDiscardReason
+		if err := w.SaveQuestion(q); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // recoverInterrupted はserveの起動時に、前のプロセスで動いていたワークスペースをSTOPPEDにする。
