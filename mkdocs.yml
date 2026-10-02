@@ -74,6 +74,8 @@ nav:
       - 導入: user/install.md
       - はじめての1周: user/quickstart.md
       - 概念: user/concepts.md
+      - CLIリファレンス: user/cli.md
+      - 設定ファイル: user/settings.md
       - ワークフロー定義の仕様: user/reference/workflow-schema.md
   - 統合開発者向け:
       - api/index.md
