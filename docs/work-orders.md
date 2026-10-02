@@ -80,6 +80,39 @@ M8の実機1周で見つかったもの（優先）:
 - **Resumeで未コミットの作業ツリーを復元する**: 再cloneのあと、最新の`refs/masuda/wip/<occ>`のtreeを作業ツリーに展開する（`git read-tree -m -u <wip>` 相当。HEADはブランチのまま、WIPは未コミットの変更として戻す）。engineの基準点と作業ツリーがずれないため。再開前に開いていた`ask_human`の質問は閉じて（記録に「再開で破棄」）、再開後のエージェントに聞き直させる
 - `masuda chat`（`AttachInfo`→ssh）、`WorkflowService`、exports、`masuda workspace list`の表示、ディスク使用量の監視、CLIからのtriage判断（dismiss/halt/redo）、無活動しきい値のsettings.jsonへの統合、`docs/design/`への反映（Watchの初回status・活動の優先順）
 
+## M11. ドキュメント整備
+
+読者は3系統。利用者（CLIでmasudaを使う）、統合開発者（GUIや他ツールからAPIを使う）、開発者（masuda自体を直す）。置き場所は`docs/user/`・`docs/api/`・`docs/design/`。MkDocs Material + Mermaidで`docs/`をそのままソースにし、GitHub Pagesで公開する。正は1つに保つ: APIリファレンスは`masuda.proto`から生成、ワークフロー定義の仕様は`../masuda-engine/docs/workflow-schema.md`から取り込む。3セッションに分ける。
+
+### M11a. サイトの土台とdesignの反映
+
+- `mkdocs.yml`（Material、日本語、検索、Mermaid、ナビは`user/`・`api/`・`design/`の3セクション）。`requirements-docs.txt`（mkdocs-material・mike）。`docs/index.md`（3系統への入口）
+- 取り込み: ビルド前スクリプト`scripts/docs-prepare.sh`が、`buf generate`のドキュメントプラグイン（`protoc-gen-doc`のMarkdown出力）で`docs/api/reference.md`を作り、`../masuda-engine/docs/workflow-schema.md`を`docs/user/reference/workflow-schema.md`へ写す（CIでは`actions/checkout`でengineを隣に取る）。生成物はコミットしない（`.gitignore`）
+- GitHub Actions `.github/workflows/docs.yml`: トリガーは`main`・`develop`へのpush、タグ`v*`のpush、`workflow_dispatch`（手動。現在の作業ブランチ`redesign`から試すため）。`mike deploy --push --update-aliases`で、タグ`vX.Y.Z`→バージョン`X.Y`+エイリアス`latest`、`main`→`main`、`develop`→`dev`、手動→`dev`。既定バージョンは`latest`（`mike set-default`）。`permissions: contents: write`。Pagesの有効化（Source: `gh-pages`）はユーザーが行う
+- `docs/design/`の反映: M4〜M10のHANDOFFに溜まった事項をoverview.mdに現在形で書く（exportsの場所と中身、活動判定の優先順と打ち切り、Watchの初回status、ServeNotice、settings.local.jsonの項目一覧（`stallAfter`・`diskWarnBytes`・`vars`・`claudeToken`・各承認）、観点のスナップショットと`/masuda/reviews/`、`images.<entry>.diskMiB`、BLOCKEDからの再開、WIP復元と質問の破棄、特権コマンドの記録の構成と`outputs_error`、AttachInfoの鍵の置き場所、`records/`の構成）。`docs/design/README.md`の「触る対象から引く」表を新しいパッケージ構成（`serve/`・`internal/{staging,workspace,runner,mcp,guest,fakesandbox,privileged,config,secrets,perspectives}`・`cmd/masuda`）で書き直す
+- 完了の判定: `mkdocs build --strict`が通り、`workflow_dispatch`で`dev`が公開される（Pagesの有効化後）。契約テストは触らない
+
+### M11b. 利用者向け（`docs/user/`）
+
+- 導入: 前提（QEMU・Node 22.19以上・Docker・git、Linux x86_64/WSL2とmacOS arm64の手順）、`masuda-sandbox serve`と`masuda serve`の起動、`masuda init`、Claudeトークンの登録（`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`）、最初の1周（`masuda run workflows/develop`→`watch`→`gate approve`）
+- 概念: ワークスペース・staging・VM・ゲート（plan/review/interim/deviation/triage）・質問・publishとdiscard、何がホストに触れるか（commit/publishだけ）、秘密がゲストに入らないこと
+- リファレンス: CLI全サブコマンド、`settings.json`と`settings.local.json`の全項目、ワークフロー定義（取り込んだ`workflow-schema.md`）、エージェント定義、レビュー観点（`.masuda/reviews/*.md`のfrontmatter）、スキーマ、同梱ワークフロー（`develop`・`review`）の図（`masuda workflow show`のMermaidを貼る）
+- 運用: 秘密とegressと特権コマンドの宣言と承認、`.env`の生成、再開（`resume`）とWIP、`chat`、exportsの読み方、トラブルシューティング（VMが起動しない・ディスク不足・`No space left`・MITMのCA・`stalled`の意味）
+- 正しさの確認: 書いた手順を実際に打って確かめる（liveテストの環境がある）
+
+### M11c. 統合開発者向け（`docs/api/`）
+
+- 接続: UDS/ループバック、Connect（gRPC・HTTP+JSON）の呼び方（ブラウザからの`fetch`例、Go/TSのクライアント生成）、認証が無くローカル前提であること
+- リファレンス: `reference.md`（生成）。RPCごとのエラーコードの約束（`NotFound`・`FailedPrecondition`・`InvalidArgument`・`Unimplemented`）を実装から洗い出し、HANDOFFの「契約への提案」として一覧を出す（protoのコメントへの反映は監督が行う）
+- 流れのガイド: ワークスペースの起動と`Watch`（`seq`・`after_seq`・初回status・`ServeNotice`）、ゲートの表示と判断（`target_hash`・`StagingCommit`・deviationの`approved_files`・triage）、stagingの差分とコメントで差分ビューを組む、質問への回答、`Activity`の各状態の表示指針、`Resume`/`Stop`
+- TSクライアント: `masuda.proto`から生成したTypeScriptクライアントを`clients/ts/`に置き、`npm pack`できる形にする（公開はしない）
+
+### M12. 設定の整理（M10の提案）
+
+- サーバー全体の設定`$XDG_CONFIG_HOME/masuda/config.json`（`diskWarnBytes`・`stallAfter`の既定・`sandboxSocket`）を設け、`settings.local.json`の`stallAfter`はリポジトリごとの上書きに、`diskWarnBytes`は`config.json`だけにする
+- `ServeNotice`（契約に追加済み）で`disk-warning`を流す。`EngineEvent`の流用をやめる
+- `--stall-after`の既定`0`（設定に従う）はそのまま
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
