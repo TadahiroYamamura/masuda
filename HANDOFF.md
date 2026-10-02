@@ -1,66 +1,50 @@
 # HANDOFF
 ## 作業項目
-M4（Runnerとゲスト起動）。masuda側の実装は済んでいるが、C-M4はengineの振る舞い1点（下の「契約への提案」）で赤のまま止めた。コミット: `e3f7104`（実装一式）、このHANDOFFの更新
-- `internal/runner`: `engine.Runner`の実装（`runner.New(Options{Workspace, Sandbox, SandboxID, Author, Reviews, AlwaysHosts, AlwaysSecrets})`）と`FileStore`（`engine.Store`、`records/engine.json`）
-  - `SetPolicy`: sandboxの`SetPolicy`。`AlwaysHosts`（`api.anthropic.com`）と`AlwaysSecrets`（`CLAUDE_CODE_OAUTH_TOKEN`）を常に足す
-  - `PutData`/`GetData`: `data/<occ>/<name>`、実行開始時の入力（Occurrence ""）は`data/_run/<name>`
-  - `ReadOutput`: ゲストの`/masuda/out/<occ>/<name>`をReadFile。無ければok=false
-  - `RunCommand`: 入力を`/masuda/in/<occ>/`へ、cwd `/`で`mkdir -p masuda/out/<occ>`、argvをcwd `/workspace`でExec（env `MASUDA_IN`・`MASUDA_OUT`・`MASUDA_OCCURRENCE`）、宣言した出力をReadFile、LogTailは末尾8KiB
-  - `Snapshot`: ゲストのcwd `/workspace`で`git add -A`→`write-tree`→`commit-tree -p HEAD`→`refs/masuda/snapshot`→`git bundle create ../masuda/snapshots/<label>.bundle refs/masuda/snapshot ^HEAD`→ReadFile→`staging.FetchBundle`で`refs/masuda/wip/<occ>`。**戻り値はコミットハッシュ**（refではない。engineは同じ出現で進入時と終了時に2回取るのでrefは上書きされる）
-  - `ChangedSince`/`Diff`/`Commit`: どれも直前に今の作業ツリーを取り込み直して（`refs/masuda/worktree`）それと比べる。engineは書き込めないエージェントの終了時にSnapshotより**先に**ChangedSinceを呼ぶので、境界のスナップショットを使うと変更を見落とす。`ChangedSince`のハッシュは`staging.Changes`（`diff-tree --raw`のsha256。blobを含むので同じファイルの再変更も別ハッシュ）
-  - `Commit`: `staging.Commit`。Deviationsなら`Changes(head, 今)`のハッシュを添えて返す。新しい先頭ができたらbundle（`refs/heads/<b> ^old`）を`/masuda/sync.bundle`へ置き、ゲストで`git fetch`+`reset --soft FETCH_HEAD`。`scope: step`なら`records/committed-steps.json`に記録し、`Items(steps)`の`Done`に使う
-  - `Items`: `steps`（planのsteps、Input `step`、Keyは`number`）、`findings`（`autofix: true`だけ、Input `finding`）、`perspectives`（同梱＋`.masuda/reviews/*.md`、Input `perspective`）、`perspectives(from=...)`（selected-perspectivesのid順）、`<data>[]`（JSON配列、文字列要素は引用符を外す、Inputはengineに任せる）
-  - `OpenGate`/`OpenQuestion`: `records/gates/<occ>-<seq>.json`・`records/questions/<occ>-<seq>.json`（`internal/workspace/records.go`）。target=diffのゲートには開いた時点の`refs/heads/<branch>`を`StagingCommit`に入れる
-  - `Publish`: `PublishLocal`（承認ハッシュとstagingの先頭の一致確認込み）/`remote`はoriginへ`PushRemote`→exports→sandbox破棄。`Discard`はexports→破棄
-  - exports: `exports/<name>`（exportに書かれたデータの最新値）と`exports/execution-log.jsonl`。完了・blockedになったときにserveがログを写し直す
-  - `Log`: `records/execution-log.jsonl`へ追記
-  - `MaterializeTask`（入力と`/masuda/in/<occ>/task.md`を書く）・`WriteOutput`・`Validate`（engineの`validateData`と同じ規則、問題を行で返す）も公開している
-- `internal/mcp`: `mcp.Start(host)`で127.0.0.1の空きポート。`/mcp`はgo-sdk v1.7.0のStreamable HTTP（`Stateless`・`JSONResponse`・`DisableLocalhostProtection`）、ツールは生のAddToolで引数を自分で読む（`arguments: null`を通すため）。`/hooks`はPOSTのbodyを`Host.Hook`へ渡すだけ
-- `serve`
-  - `serve/run.go`の`runCtl`: 1ワークスペースの実行（engine・Runner・MCPサーバー）。`mcp.Host`の実装。engineの呼び出しは`mu`で直列。`advance()`はbackendのctxで進めて状態を`workspace.json`に写す（agent→RUNNING、gate→WAITING_GATE、question→WAITING_QUESTION、done→DONE+Outcome、blocked→BLOCKED+Reason、Advanceのエラー→BLOCKED `engine: ...`）
-  - `next_task`: Advance→agentならMaterializeTaskして`{kind:task, occurrence, role(=Agent.Name), task_path}`、gate/questionなら`changed`チャネルで起こされるまで待つ（7日）
-  - `write_output`: 待っている出現か・宣言した出力名かを見て、`runner.Validate(set.Schemas)`、通ればゲストへWriteFile
-  - `report_result`: 待っている出現でなければ`{accepted:false}`。done報告で未出力があればengineに渡さず拒否。engineのエラー（宣言外outcome等）も`{accepted:false, reason}`。受け付けたら次の待ちまで同期でAdvance
-  - `report_concern`: `engine.ReportConcern`を呼ぶだけ（E6が入るまでErrNotImplemented→ツールエラー）
-  - `ask_human`: questionノードのタスクだけ。`records/questions/`に書いてWAITING_QUESTIONにし、記録に答えが入るまで待つ（答えを入れるのはM5のQuestionService.Answer。engine.Answerを呼んでから記録を書いて`notify()`すること）
-  - `run_privileged_command`: ツールエラー（M7）
-  - `/hooks`: `records/hooks.jsonl`へ`{time, input}`で追記
-  - `serve/gates.go`: `GateService.ListOpen/Get/Decide`。Decideは記録のTargetHashと比べて不一致ならFailedPrecondition、engineの拒否もFailedPrecondition、ErrNotImplementedはUnimplemented。受け付けたら記録に判断を書き、次の待ちまで同期でAdvanceしてから返す
-  - `serve/boot.go`: Runは同期で定義を読み込み検査（`engine.Load(<repo>/.masuda, Bundled)`→ワークフローの存在→`Set.Check`→入力の過不足、どれもInvalidArgument）。バックグラウンドで: FileStore・Runner・engine・MCP起動→`CreateSandbox`（`secrets`に`CLAUDE_CODE_OAUTH_TOKEN`、初期policyでAPIへの経路、`tcp_maps` `masuda.internal:7000`→MCP）→フェイクなら`<DataDir>/fake/<id>/mcp.port`→`guest.Prepare`→入力を`PutData`→`engine.Start`→実VMだけ`guest.Launch`（tmux）→RUNNING
-  - `Workspace.open_gates`を記録から埋める
-- `internal/guest`: `ReadFile`/`IsNotFound`、`AgentFile(*engine.Agent)`（name・description・toolsと本文。サブエージェントは`Set.Reachable(root)`のエージェントだけ）、`~/.claude.json`（`mcpServers.masuda`をhttpで、`hasCompletedOnboarding`）、`Launch`（tmux、環境変数はguest-protocol.mdのとおり＋`MCP_TOOL_TIMEOUT=604800000`）
-- `internal/staging`: `FetchBundle`（任意のrefへ取り込み。`ImportBundle`はこれを使う）、`Changes`（変更パスとダイジェスト）
-- テスト: `internal/runner/runner_test.go`（FileStore・Validate）。`serve`の既存テストは同梱`workflows/smoke`で走るよう変え、起動失敗のテストはCreateSandboxが失敗するクライアントで起こすようにした（エージェント定義をstagingからコピーしなくなったので`.hidden.md`では失敗しない）
+M5（公開API: ワークスペース・ゲート・質問・活動、CLI）。完了。コミット: `3f33a90`（serve側一式）、`f05d1d5`（CLI）、このHANDOFFの更新
+- `serve/events.go`: `eventBus`（全ワークスペースで1本のseq、直近1万件をメモリに保持）と`WorkspaceService.Watch`
+  - `after_seq=0`でも最初に今の状態を`status`で1つ送る（seqは今の最新。新しい番号は振らない）。購読開始と状態変化が前後したときの取りこぼし対策。`after_seq>0`ならバッファから再送してから続きを流す
+  - `status`は状態・活動の種類/待ち/detail・位置・開いたゲート/質問が変わったときだけ流す（`updated_at`・`last_activity`だけの違いでは流さない）。発行は`backend.statusChanged(id)`。workspace.jsonや記録を書き換えたら呼ぶこと（`runCtl.update`は自動で呼ぶ）
+  - `engine`: `runner.Options.OnLog`（`Runner.Log`が1行書くたび）から。`guest_hook`: `/hooks`から。`http`: sandboxの`WatchEvents`から
+- `serve/activity.go`: 活動の合成。メモリだけに持つ（`activities`）
+  - 優先順: 状態（DONE/STOPPED/BLOCKED→IDLE、WAITING_GATE/QUESTION→同名）→`dead`→進行中のHTTP→フックの`input_wait`→無活動がしきい値超え（`STALLED`）→`WORKING`
+  - フック: `Notification`の`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`PostToolUse`・HTTP・MCPツールの呼び出しは活動（`input_wait`を消す）。`Stop`/`SubagentStop`は時刻だけ更新。`SessionEnd`→DEAD
+  - sandboxの`StateChanged`がSTOPPED/FAILEDで、こちらが止めたのでなければDEAD
+  - `patrol`: しきい値/4（1秒〜30秒）ごとにstatusを再評価。実VMだけ30秒ごとに`/usr/bin/tmux has-session -t claude-work`をExecし、失敗ならDEAD（Exec自体の失敗は生存扱い）。しきい値は`serve.Options.StallAfter`／`masuda serve --stall-after`（既定10分）
+- `serve/lifecycle.go`
+  - `Stop`: runCtlのctxを取り消し、bootの戻りを待ち、MCPを閉じてsandboxを破棄→STOPPED。DONEはFailedPrecondition、STOPPEDはそのまま返す。BLOCKEDもSTOPPEDにする（Reasonは残す）
+  - `Resume`: STOPPEDだけ。`records/definitions/`から定義を読み直し、`records/engine.json`でengineを組み直す（`Start`は呼ばない）→新しいMCP→前のsandboxを念のため破棄→作成→stagingのブランチを再clone→（実VMならtmux起動）→`advance()`で今の位置をstateに写す
+  - `Remove`: 動いている状態（STARTING/RUNNING/WAITING_*）はforce無しならFailedPrecondition。止めてから`Store.RemoveKeepExports`（`exports/`以外を消す。workspace.jsonを最初に消すので一覧から消える）
+  - `AttachInfo`: sandboxの`EnableSsh`の`ssh_argv`に`-t "tmux attach -t claude-work"`を足す。sandboxのエラーコードをそのまま返す（フェイクはUnimplemented）
+  - `recoverInterrupted`: serve起動時に動いている状態のワークスペースをSTOPPEDにし、残っているsandboxを裏で破棄。自動再開はしない
+- `serve/questions.go`: `QuestionService.ListOpen/Answer`。Answerは記録の質問と答えの過不足・選択肢を先に見てInvalidArgument、動いていなければFailedPrecondition、`runCtl.answer`（`engine.Answer`→記録に`Answers`/`AnsweredAt`→`notify()`→`advance()`）。engineの拒否はFailedPrecondition
+- `Run`の変更: 定義（`.masuda/`）を一時ディレクトリへ写してから読み込み・検査し、ワークスペースを作ったら`records/definitions/`へ移す。MCPの起動とフェイクの`mcp.port`書き出し・入力の`PutData`・`engine.Start`を**Runの中で同期に**行う（C-M5はRunの直後にmcp.portを読んで`/hooks`へPOSTする）。sandboxの作成以降だけがバックグラウンド（`backend.boot`）
+- `runCtl`: 実行ごとの`ctx`（Stop・Remove・serve停止で取り消し）。`advance`・`Decide`・`ReportResult`等のengine呼び出しはこのctx。`update(f)`がworkspace.jsonの書き換えとstatus発行をまとめる。`reflect`は`Workspace.Position`（"agent smoke-planner (occ 0000001)"等）も書く
+- `Workspace`のproto: `activity`・`position`・`open_questions`（未回答の質問の出現ID）を埋める
+- `internal/workspace`: `Meta.Position`、`DefinitionsDir()`、`OpenQuestions()`、`Store.RemoveKeepExports`
+- 起動用bundleは毎回`<ws>/.bootstrap-*/`に作って消す（Stopで殺されたgitの`.lock`が残り、Resumeが失敗したため）
+- CLI（`cmd/masuda/client.go`）: `run`・`resume`・`list`・`watch`・`gate list/show/approve/reject`・`question list/answer`・`stop`・`remove`。`--socket`は全サブコマンド共通。`gate approve`は`--hash`省略時に今のゲートのtarget_hashを使う、`--file`でApprovedFiles
+- テスト: `serve/lifecycle_test.go`（serve再起動でSTOPPED→Resume、Removeでexportsが残る、活動の種類の判定）
 ## 完了した契約テスト
-C-M1・C-M2・C-M3は緑。**C-M4は赤**（`contract_test.go:430`、commitに`notes.txt`が入る）。原因はengineの振る舞いで、下の「契約への提案」の修正をengineの写し（スクラッチ）に当てて走らせるとC-M1〜C-M4すべて緑になることを確かめた（masuda側は無変更で）。`go build ./...`・`go vet ./...`は通る。C-M5〜C-M7は想定どおり赤
+C-M1〜C-M5すべて緑（`go test -count=1 ./contract/ -run 'TestCM1|TestCM2|TestCM3|TestCM4|TestCM5'`、`-race -count=5`でも緑）。`go build ./...`・`go vet ./...`は通る。C-M6・C-M7は想定どおり赤（ConfigServiceがUnimplemented）。M4のHANDOFFにあったC-M4の赤はengine側（E8）で解消済み
 ## 未完と理由
-- C-M4の緑化: engine側の修正待ち（「契約への提案」）。指示どおりengineは触っていない
-- 定義の`Set`はメモリにだけ持つ（ワークスペースへのスナップショット保存をしていない）。serveを再起動すると`runCtl`が無く、Decideは`FailedPrecondition: workspace is not running`になる。再開（`Resume`）はM5以降の項目
-- `.env`生成（envFiles）・対象リポジトリの`claudeSettings`の合成: 設定の項目（M6）で入れる
-- 会話ログのexport: 未実装（ゲストの`~/.claude/projects`をどう回収するか未定）
-- `publish target: remote`の送り先は`origin`固定（設定はM6）
-- 観点の`enable`（frontmatter）は`Items(perspectives)`で見ていない
-- `Workspace.position`・`open_questions`・活動は未設定（M5）
-- `CreateSandbox`の`build_id`は空のまま（イメージのビルド・解決が入る項目で埋める）。実VMではこのままでは起動できないはず
-- トークンは`<DataDir>/claude-oauth-token`から読む（DataDirの既定が`~/.local/share/masuda`なので指示の場所と同じ。M6で秘密ストアに統合するまでの暫定）。プレースホルダの形は`PlaceholderPrefix: "sk-ant-oat01-"`だけ指定した（Claude Codeがトークンの形を見るかは実機で未確認）
+- Resumeはstagingのブランチから再cloneするので、ゲストの未コミットの作業ツリー（直前の出現の途中の変更、deviationで残したbyproducts）は失われる。WIPスナップショット（`refs/masuda/wip/<occ>`）からの復元はしていない。engineの`ChangedSince`の基準とずれる可能性がある（下の注意点）
+- 再開前に`ask_human`で開いていた質問の記録は未回答のまま残る。再開後のエージェントが同じ質問をし直すと二重に並ぶ
+- Watchの再送バッファはメモリだけで、serveの再起動をまたがない
+- 実VMでのAttachInfo・tmuxの生存確認・HTTPイベントの写しは未確認（M8）
+- CLIからdismiss・halt・redoは出せない（APIでは送れる）
+- `docs/design/`への反映はしていない（Watchの初回status、活動の優先順など。今の記述と矛盾はしない）
+- M4から持ち越し: `.env`生成・`claudeSettings`の合成（M6）、会話ログのexport、`publish target: remote`の送り先、観点の`enable`、`CreateSandbox`の`build_id`、トークンの暫定置き場
 ## 次の一手
-1. 監督がengine側の扱い（「契約への提案」）を決め、engineが直ったら`go test -count=1 ./contract/ -run 'TestCM1|TestCM2|TestCM3|TestCM4'`を流し直す（masuda側の変更は要らない見込み）
-2. M5（公開API: ワークスペース・ゲート・質問・活動）
+1. M6（設定と秘密）。C-M6はConfigServiceの`ListEgress`から
+2. 実機（M8）の前に、Resume時のWIP復元を入れるか決める（下の注意点）
 ## 注意点
-- ゲストで動かすコマンドは引き続き「cwdを決めて相対パス」（フェイクは絶対パスを写さない）。Runnerはこれに従っている（`../masuda/...`、`masuda/out/...`）
-- engineの呼び出しは必ず`runCtl.mu`の中で。`Advance`を呼ぶのは`runCtl.advance()`だけにして、状態の写しを漏らさない
-- `notify()`はブロック中のnext_task・ask_humanを起こす。人間の判断・答えを記録に入れたら必ず呼ぶ。`advance()`自身はnotifyしない（next_taskが自分の起こしたAdvanceで起きて空回りしないため）
-- report_result・Decideは次の待ちまで同期でAdvanceしてから返す。publishやexecを含むとその分戻りが遅くなる（MCPのタイムアウトは7日なので問題ない想定）
-- `engine.Status`はreport直後などに`StatusPending`を返すことがある。`waitingAgent`はそれを「待っていない」として拒否する。ReportResult・Decideの後は同期でAdvanceするので通常は出ない
-- ゲートの記録は`records/gates/`が正（ListOpenはここを読む）。engineの状態と食い違わないよう、判断はengineが受け付けた後に記録へ書いている
-- 実リポジトリに`user.name`が無いと`git config --get`はグローバル設定を拾う（stagingのコミットの作者になる）。無ければ`masuda`
-- M5でQuestionService.Answerを作るとき: role付きquestionは`ask_human`が待っている記録（`records/questions/<occ>-<seq>.json`）に`Answers`を入れて`notify()`、固定質問は`OpenQuestion`の記録。どちらも`engine.Answer`を先に呼ぶ（E6でengine側が実装中）
-- `go.mod`にgo-sdk v1.7.0・jsonschema v6を足した（engineと同じ検証をwrite_outputで先に行うため）
+- engineの呼び出しは引き続き`runCtl.mu`の中で。`Advance`を呼ぶのは`runCtl.advance()`だけ
+- workspace.jsonを書き換えるときは`runCtl.update`（またはStop/Resumeのように`lifeMu`の中で保存して`statusChanged`）を使う。直接`w.Save()`するとWatchにstatusが流れない
+- Run・Resume・Stop・Removeは`backend.lifeMu`で直列。Stopは`lifeMu`を持ったまま`bootDone`を待つので、bootの中から`lifeMu`を取らないこと
+- `runCtl.ctx`はbackendのctxの子。Stopで取り消すと進行中のcommit・publishも止まる（engineは記録から再計算するので再開できる想定）
+- フェイクの`mcp.port`は`newRunCtl`で書く。Resumeのたびに新しいポートへ書き換わる
+- ゲストの未コミットの変更を復元するなら: Runner.Snapshotの最後の戻り値を記録に残し、再clone後に`git reset --hard <wip>`→`git reset <branch-head>`（mixed）で作業ツリーだけ戻すのが素直。WIPコミットは`<branch-head>`を親にしているので、commitを挟んでいなければ一致する
+- `Activity.last_activity`は実行開始・再開の時刻で初期化する。serveの再起動後（STOPPED）は観測が無いので空
+- フェイクではHTTPイベントが出ないので、フェイクで`STALLED`を見たいときは`--stall-after`を短くする
 ## 契約への提案
-**deviationゲートで`approved`かつ`approved_files`が空のときの意味が、engineとmasudaの契約テストで食い違っている。**
-
-- 契約テスト C-M4（`contract/contract_test.go`の手順3）: deviationゲート（Subjectは`notes.txt`）を`Outcome: approved, ApprovedFiles: []`で承認し、コメントは「notes.txtは並べないことで却下する→未コミットのまま残る」。その後のコミットは`b.go`だけで、review gateへ進むことを期待している
-- engine（E5、`engine/commit.go`の`records.approvedFiles`）: 「ファイルを並べない承認はゲートのファイル全部を承認したとみなす」。そのため`CommitRequest.Allowed`に`notes.txt`が入り、ホストは`b.go`と`notes.txt`をコミットする（実際の失敗: `files:"b.go" files:"notes.txt"`）
-- 公開API（proto3の`repeated string approved_files`）では空と未指定を区別できないので、masuda側で「空＝なし」と「空＝全部」を書き分けることはできない
-- さらに、engineの空=全部を外すだけでは足りない。`Allowed`から`notes.txt`が外れると、ホストの`Runner.Commit`は`notes.txt`を計画外として`Deviations`で返し、engineが同じ内容のdeviationゲートを開き直す（スクラッチで確認: 「want review gate, got deviation notes.txt」）。契約テストの意図（承認したが並べなかったファイルは、コミットにも逸脱にも数えず作業ツリーに残す）を満たすには、**承認済みのdeviationゲートのファイルのうち`ApprovedFiles`に無いものを`CommitRequest.Byproducts`に入れる**必要がある
-- 提案（engine側の変更）: (1) `approvedFiles`の「空なら全部」をやめ、並べたファイルだけを`Allowed`に足す。(2) 承認されたdeviationゲートのファイルで`ApprovedFiles`に無いものは`Byproducts`に足す。この2点をengineの写し（`engine/commit.go`のみ）に当てると、masudaは無変更でC-M1〜C-M4が緑になった。engineの契約テストC-E5は`ApprovedFiles: []string{"c.go"}`と明示しており「空の承認＝全部」には依存していない（`masuda-engine/contract/contract_test.go:769`）。逆に「空＝全部」を正とするなら、C-M4の手順3のassertion（またはApprovedFilesの渡し方）を監督が直す必要がある
+なし
