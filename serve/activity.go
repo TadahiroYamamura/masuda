@@ -18,13 +18,30 @@ import (
 // DefaultStallAfter は無活動がこれだけ続いたらSTALLEDとみなす既定のしきい値。
 const DefaultStallAfter = 10 * time.Minute
 
+// inflightStale は進行中とみなすHTTPリクエストの寿命。sandboxはレスポンスのヘッダーを受けた時点で
+// http_finishedを出す（ストリーミングの本文の長さは含まない）ので、M8の実機では最長でも約20秒だった。
+// 一方、クライアントが応答前に切ったリクエストにはhttp_finishedが来ず、進行中のまま残って
+// 活動をWORKINGに張り付かせた（人間への問いかけで止まっていてもinput_waitが見えなかった）。
+// それより十分長く、無活動のしきい値より短い値で打ち切る。
+const inflightStale = 2 * time.Minute
+
+// idlePromptAfter はClaude Codeが入力待ちを続けてからNotification（idle_prompt）を出すまでの時間。
+// idle_promptが来た時点で、これより前に始まって終わっていないリクエストは切られたものとみなせる。
+const idlePromptAfter = 60 * time.Second
+
+// inflightReq はsandboxが観測した進行中のHTTPリクエスト1つ。
+type inflightReq struct {
+	http    *apiv1.HttpActivity
+	started time.Time
+}
+
 // activity は1ワークスペースの活動の観測（docs/design/overview.md「活動の観測と停止の検知」）。
 // メモリにだけ持つ。serveを再起動したワークスペースはSTOPPED（活動はIDLE）になり、
 // Resumeで観測をやり直すので、持ち越す意味が無い。
 type activity struct {
 	last time.Time
 	// inflight はsandboxが観測した進行中のHTTPリクエスト（request_id → 要約）。
-	inflight map[uint64]*apiv1.HttpActivity
+	inflight map[uint64]*inflightReq
 	// inputWait はゲストのNotificationフックが言う待ち（"idle"・"permission"・"question"）。
 	// その後に活動（HTTP・ツール・MCP）があれば消す。
 	inputWait string
@@ -45,7 +62,7 @@ func newActivities() *activities { return &activities{m: map[string]*activity{}}
 func (a *activities) reset(id string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.m[id] = &activity{last: time.Now().UTC(), inflight: map[uint64]*apiv1.HttpActivity{}}
+	a.m[id] = &activity{last: time.Now().UTC(), inflight: map[uint64]*inflightReq{}}
 }
 
 func (a *activities) drop(id string) {
@@ -62,6 +79,15 @@ func (a *activities) update(id string, f func(*activity)) {
 		return
 	}
 	f(act)
+}
+
+// dropInflightBefore はt以前に始まった進行中のリクエストを捨てる（終わりの来ないものの掃除）。
+func (act *activity) dropInflightBefore(t time.Time) {
+	for id, r := range act.inflight {
+		if !r.started.After(t) {
+			delete(act.inflight, id)
+		}
+	}
 }
 
 // touch は活動があったことを記録する。待ちの表示は活動で上書きされる。
@@ -84,6 +110,7 @@ func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, n
 	inflight := 0
 	if act != nil {
 		cp = *act
+		act.dropInflightBefore(now.Add(-inflightStale))
 		inflight = len(act.inflight)
 	}
 	a.mu.Unlock()
@@ -157,6 +184,9 @@ func (b *backend) observeHook(id string, body []byte) {
 			if wait != "" {
 				act.inputWait = wait
 			}
+			if in.NotificationType == "idle_prompt" {
+				act.dropInflightBefore(time.Now().UTC().Add(-idlePromptAfter))
+			}
 			if in.Message != "" {
 				act.detail = in.Message
 			}
@@ -201,14 +231,14 @@ func (b *backend) watchSandbox(ctx context.Context, id string) {
 		case *sandboxv1.SandboxEvent_HttpStarted:
 			http = &apiv1.HttpActivity{Method: e.HttpStarted.Method, Host: e.HttpStarted.Host, Path: e.HttpStarted.Path}
 			b.acts.update(id, func(act *activity) {
-				act.inflight[e.HttpStarted.RequestId] = http
+				act.inflight[e.HttpStarted.RequestId] = &inflightReq{http: http, started: time.Now().UTC()}
 				act.touch("")
 			})
 		case *sandboxv1.SandboxEvent_HttpFinished:
 			http = &apiv1.HttpActivity{Status: e.HttpFinished.Status, DurationMs: e.HttpFinished.DurationMs}
 			b.acts.update(id, func(act *activity) {
 				if started := act.inflight[e.HttpFinished.RequestId]; started != nil {
-					http.Method, http.Host, http.Path = started.Method, started.Host, started.Path
+					http.Method, http.Host, http.Path = started.http.Method, started.http.Host, started.http.Path
 				}
 				delete(act.inflight, e.HttpFinished.RequestId)
 				act.touch("")

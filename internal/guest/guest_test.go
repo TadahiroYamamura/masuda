@@ -24,3 +24,13 @@ func TestAgentFileWithoutToolsLeavesToolsUnrestricted(t *testing.T) {
 		t.Fatalf("an agent without tools must inherit every tool:\n%s", got)
 	}
 }
+
+// ループ規約は、人間への問いかけをask_humanに限り、会話で問いかけて待たないことを明記する（M8で
+// 会話の問いかけのまま止まった）。
+func TestLoopRulesForbidAskingInConversation(t *testing.T) {
+	for _, want := range []string{"ask_human", "会話で人間に問いかけて返事を待たない", "返ってくるまで他のことをしない"} {
+		if !strings.Contains(string(loopRules), want) {
+			t.Errorf("loop rules lack %q", want)
+		}
+	}
+}

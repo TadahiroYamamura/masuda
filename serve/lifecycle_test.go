@@ -142,11 +142,19 @@ func TestActivityKinds(t *testing.T) {
 	if k := kind(now); k != apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT {
 		t.Fatalf("idle prompt: %v", k)
 	}
-	a.update("w", func(act *activity) { act.inflight[1] = &apiv1.HttpActivity{}; act.touch("") })
-	if k := kind(now.Add(time.Hour)); k != apiv1.ActivityKind_ACTIVITY_KIND_WORKING {
-		t.Fatalf("request in flight is working even when long: %v", k)
+	a.update("w", func(act *activity) {
+		act.inflight[1] = &inflightReq{http: &apiv1.HttpActivity{}, started: now}
+		act.touch("")
+	})
+	if k := kind(now.Add(time.Minute)); k != apiv1.ActivityKind_ACTIVITY_KIND_WORKING {
+		t.Fatalf("request in flight: %v", k)
 	}
-	a.update("w", func(act *activity) { delete(act.inflight, 1) })
+	// 終わりの来ないリクエスト（応答前にクライアントが切ったもの）は進行中に数えない。
+	a.update("w", func(act *activity) { act.inputWait = "idle" })
+	if k := kind(now.Add(inflightStale + time.Second)); k != apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT {
+		t.Fatalf("a request without its finish must not hide the input wait: %v", k)
+	}
+	a.update("w", func(act *activity) { act.inputWait = "" })
 	if k := kind(time.Now().Add(11 * time.Minute)); k != apiv1.ActivityKind_ACTIVITY_KIND_STALLED {
 		t.Fatalf("silent past the threshold: %v", k)
 	}
