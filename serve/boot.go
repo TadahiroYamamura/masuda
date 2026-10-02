@@ -241,6 +241,7 @@ func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcp
 		Id:          w.ID,
 		BuildId:     buildID,
 		DefaultUser: guest.User,
+		DiskMib:     plan.diskMiB,
 		Env:         plan.plaintext,
 		Secrets:     plan.secrets,
 		Policy:      &sandboxv1.Policy{AllowedHosts: []string{claudeAPIHost}, EnabledSecrets: []string{guest.TokenEnv}},

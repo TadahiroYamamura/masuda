@@ -25,6 +25,8 @@ import (
 type bootPlan struct {
 	// image はイメージのエントリ。ビルドの文脈は定義の写しの`images/<entry>/`。
 	image string
+	// diskMiB はVMのルートディスクの最小容量（settings.jsonの`images.<entry>.diskMiB`）。
+	diskMiB uint32
 	// egress はノードが選んでよいホストの上限（宣言∩承認）。
 	egress []string
 	// secrets はsandboxへ宣言する秘密（Claude APIのトークンを含む）。値は秘密ストアから読んだもの。
@@ -69,6 +71,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 	if p.image == "" {
 		p.image = cfg.ImageEntry()
 	}
+	p.diskMiB = cfg.DiskMiB(p.image)
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 

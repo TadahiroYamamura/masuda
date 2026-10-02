@@ -101,6 +101,7 @@ func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, er
 		SandboxID:   c.id + "-p" + runID,
 		RunID:       runID,
 		BuildID:     buildID,
+		DiskMiB:     cfg.DiskMiB(decl.Image),
 		Egress:      config.AllowedEgress(cfg, local),
 		Decl:        decl,
 		Staging:     c.runner.Staging(),

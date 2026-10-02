@@ -470,7 +470,11 @@ type CreateSandboxRequest struct {
 	TcpMaps []*TcpMap `protobuf:"bytes,9,rep,name=tcp_maps,json=tcpMaps,proto3" json:"tcp_maps,omitempty"`
 	// Optional outbound SSH egress (git over ssh). Proxied by the host; the
 	// guest never holds the key.
-	SshEgress     *SshEgress `protobuf:"bytes,10,opt,name=ssh_egress,json=sshEgress,proto3" json:"ssh_egress,omitempty"`
+	SshEgress *SshEgress `protobuf:"bytes,10,opt,name=ssh_egress,json=sshEgress,proto3" json:"ssh_egress,omitempty"`
+	// Minimum size of the writable root disk. 0 = the image's own size plus
+	// the service default headroom (which is only a few hundred MiB: build
+	// caches and test artifacts need more). The image must contain resize2fs.
+	DiskMib       uint32 `protobuf:"varint,11,opt,name=disk_mib,json=diskMib,proto3" json:"disk_mib,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -573,6 +577,13 @@ func (x *CreateSandboxRequest) GetSshEgress() *SshEgress {
 		return x.SshEgress
 	}
 	return nil
+}
+
+func (x *CreateSandboxRequest) GetDiskMib() uint32 {
+	if x != nil {
+		return x.DiskMib
+	}
+	return 0
 }
 
 type SecretDecl struct {
@@ -2538,7 +2549,7 @@ const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"oci_digest\x18\x05 \x01(\tR\tociDigest\"\x13\n" +
 	"\x11ListImagesRequest\"F\n" +
 	"\x12ListImagesResponse\x120\n" +
-	"\x06images\x18\x01 \x03(\v2\x18.masuda.sandbox.v1.ImageR\x06images\"\xf2\x03\n" +
+	"\x06images\x18\x01 \x03(\v2\x18.masuda.sandbox.v1.ImageR\x06images\"\x8d\x04\n" +
 	"\x14CreateSandboxRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bbuild_id\x18\x02 \x01(\tR\abuildId\x12\x1d\n" +
@@ -2552,7 +2563,8 @@ const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\btcp_maps\x18\t \x03(\v2\x19.masuda.sandbox.v1.TcpMapR\atcpMaps\x12;\n" +
 	"\n" +
 	"ssh_egress\x18\n" +
-	" \x01(\v2\x1c.masuda.sandbox.v1.SshEgressR\tsshEgress\x1a6\n" +
+	" \x01(\v2\x1c.masuda.sandbox.v1.SshEgressR\tsshEgress\x12\x19\n" +
+	"\bdisk_mib\x18\v \x01(\rR\adiskMib\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xf0\x01\n" +

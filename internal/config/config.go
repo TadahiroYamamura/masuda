@@ -60,6 +60,20 @@ type Settings struct {
 	Checks map[string]string `json:"checks,omitempty"`
 	// ClaudeSettings はゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaが優先）。
 	ClaudeSettings json.RawMessage `json:"claudeSettings,omitempty"`
+	// Images はイメージのエントリ（`.masuda/images/<entry>/`）ごとのVMの設定。書かなかった
+	// エントリは既定値で動く。
+	Images map[string]ImageDecl `json:"images,omitempty"`
+}
+
+// DefaultDiskMiB はImageDecl.DiskMiBを省略したときのVMのルートディスクの最小容量。
+// sandboxの既定（イメージの中身に数百MiBを足すだけ）では、Goのビルドキャッシュや
+// テストの生成物で`No space left on device`になった（M8）ため、masuda側で大きめに決める。
+const DefaultDiskMiB = 4096
+
+// ImageDecl はイメージのエントリ1つのVMの設定。
+type ImageDecl struct {
+	// DiskMiB はVMの書き込めるルートディスクの最小容量（MiB）。0なら既定（DefaultDiskMiB）。
+	DiskMiB uint32 `json:"diskMiB,omitempty"`
 }
 
 // SecretDecl は秘密1つの宣言。値は宣言に書かず、秘密ストア（internal/secrets）に置く。
@@ -243,6 +257,11 @@ func (s Settings) Validate() error {
 			add("privilegedCommands: name %q must match %s", name, checkNameRe)
 		}
 	}
+	for name := range s.Images {
+		if !ValidCheckName(name) {
+			add("images: entry %q must match %s", name, checkNameRe)
+		}
+	}
 	if len(s.ClaudeSettings) > 0 {
 		var obj map[string]json.RawMessage
 		if err := json.Unmarshal(s.ClaudeSettings, &obj); err != nil || obj == nil {
@@ -280,6 +299,14 @@ func (s Settings) ImageEntry() string {
 		return DefaultImage
 	}
 	return s.Image
+}
+
+// DiskMiB はイメージのエントリentryで作るVMのルートディスクの最小容量（MiB）を返す。
+func (s Settings) DiskMiB(entry string) uint32 {
+	if d := s.Images[entry].DiskMiB; d > 0 {
+		return d
+	}
+	return DefaultDiskMiB
 }
 
 // Secret はnameの宣言を返す。

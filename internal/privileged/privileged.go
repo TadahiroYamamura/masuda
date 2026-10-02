@@ -87,6 +87,8 @@ type Options struct {
 	SandboxID string
 	RunID     string
 	BuildID   string
+	// DiskMiB は特権sandboxのルートディスクの最小容量（宣言のイメージのエントリの設定）。
+	DiskMiB uint32
 	// Egress は特権sandboxに許すホスト（宣言と承認の積）。
 	Egress []string
 	Decl   config.PrivilegedCommandDecl
@@ -124,6 +126,7 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		Id:          o.SandboxID,
 		BuildId:     o.BuildID,
 		DefaultUser: User,
+		DiskMib:     o.DiskMiB,
 		// 秘密・tcp_maps・MCPは渡さない。特権VMはAPIトークンもmasudaへの経路も持たない。
 		Policy: &sandboxv1.Policy{AllowedHosts: o.Egress},
 	})); err != nil {

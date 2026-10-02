@@ -27,7 +27,8 @@ func TestLoadReadsFullSchema(t *testing.T) {
 		"envFiles": [{"path": ".env", "vars": ["LINEAR_API_KEY", "PUBLIC_URL"]}],
 		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60}},
 		"checks": {"test": "go test ./..."},
-		"claudeSettings": {"theme": "dark"}
+		"claudeSettings": {"theme": "dark"},
+		"images": {"go": {"diskMiB": 8192}}
 	}`)
 	cfg, err := Load(dir)
 	if err != nil {
@@ -47,6 +48,9 @@ func TestLoadReadsFullSchema(t *testing.T) {
 	if cfg.PrivilegedCommands["itest"].Inputs[0] != "build/**" {
 		t.Fatalf("privilegedCommands = %+v", cfg.PrivilegedCommands)
 	}
+	if cfg.DiskMiB("go") != 8192 || cfg.DiskMiB("default") != DefaultDiskMiB {
+		t.Fatalf("DiskMiB(go) = %d, DiskMiB(default) = %d", cfg.DiskMiB("go"), cfg.DiskMiB("default"))
+	}
 }
 
 func TestLoadRejectsInvalidDeclarations(t *testing.T) {
@@ -64,6 +68,8 @@ func TestLoadRejectsInvalidDeclarations(t *testing.T) {
 		"bad var":           `{"envFiles": [{"path": ".env", "vars": ["A-B"]}]}`,
 		"bad check":         `{"checks": {"../x": "true"}}`,
 		"claudeSettings":    `{"claudeSettings": [1]}`,
+		"bad image entry":   `{"images": {"../x": {"diskMiB": 1}}}`,
+		"negative disk":     `{"images": {"go": {"diskMiB": -1}}}`,
 	}
 	for name, content := range cases {
 		dir := t.TempDir()
