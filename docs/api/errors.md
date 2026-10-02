@@ -31,7 +31,7 @@
 
 | RPC | コード | 条件 |
 |---|---|---|
-| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
+| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
 | | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
@@ -45,7 +45,7 @@
 | | `out_of_range` | `after_seq`が最新のseqより大きい（ストリームの最初に終わる）。`after_seq: 0`で繋ぎ直す |
 | | （正常な終わり） | `masuda serve`が止まると、エラーでなく正常な終わりでストリームが閉じる |
 | `Stop` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す |
+| | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す。engineが止めたBLOCKEDへの`Stop`はVMを片付けてBLOCKEDのまま返す |
 | `Remove` | `not_found` | ワークスペースが無い |
 | | `failed_precondition` | 動いている（STARTING・RUNNING・WAITING_GATE・WAITING_QUESTION）のに`force`が無い |
 | `AttachInfo` | `not_found` | ワークスペースが無い |

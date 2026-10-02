@@ -92,8 +92,8 @@ func (s *workflowService) Show(ctx context.Context, req *connect.Request[apiv1.S
 	return connect.NewResponse(&apiv1.ShowWorkflowResponse{Mermaid: mm}), nil
 }
 
-// Check はworkflowをrootとして検査する。workflowが空なら定義されているすべてのワークフローを
-// それぞれrootとして検査し、同じ問題は1つにまとめる。定義が読み込めないときは、その理由を
+// Check はworkflowをrootとして検査する。workflowが空ならrootのワークフロー（rootWorkflows）を
+// それぞれ検査し、同じ問題は1つにまとめる。定義が読み込めないときは、その理由を
 // 問題の1つとして返す（何が悪いかを知るための呼び出しなので、エラーにはしない）。
 func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.ShowWorkflowRequest]) (*connect.Response[apiv1.CheckWorkflowResponse], error) {
 	set, err := definitionsFor(ctx, req.Msg.RepoRoot)
@@ -110,10 +110,7 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 		}
 		roots = []string{req.Msg.Workflow}
 	} else {
-		for path := range set.Workflows {
-			roots = append(roots, path)
-		}
-		sort.Strings(roots)
+		roots = rootWorkflows(set)
 	}
 	out := &apiv1.CheckWorkflowResponse{}
 	seen := map[engine.Problem]bool{}
@@ -127,4 +124,30 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 		}
 	}
 	return connect.NewResponse(out), nil
+}
+
+// rootWorkflows は他のどのワークフローからも辿れないワークフロー（engineの仕様でのroot）。
+// 部品（`implement/build-step`等）は呼び出し元のデータを前提にするので、単独でrootとして
+// 検査すると、呼び出し元が用意するデータの欠落を問題として出してしまう。
+func rootWorkflows(set *engine.Set) []string {
+	used := map[string]bool{}
+	for path := range set.Workflows {
+		reach, err := set.Reachable(path)
+		if err != nil {
+			continue // 辿れない定義はCheckが問題として出す
+		}
+		for _, p := range reach {
+			if p != path {
+				used[p] = true
+			}
+		}
+	}
+	var roots []string
+	for path := range set.Workflows {
+		if !used[path] {
+			roots = append(roots, path)
+		}
+	}
+	sort.Strings(roots)
+	return roots
 }

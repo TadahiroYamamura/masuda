@@ -17,6 +17,7 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -55,6 +56,12 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	set, err := checkDefinitions(defs, m.Workflow, m.Inputs)
 	if err != nil {
 		return nil, err
+	}
+	// 観点のfrontmatter（enable）が読めなければ、ワークスペースを作る前に定義の誤りとして返す。
+	if dir := filepath.Join(defs, "reviews"); dirExists(dir) {
+		if _, err := perspectives.Merge(os.DirFS(dir)); err != nil {
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reading .masuda/reviews: %w", err))
+		}
 	}
 	plan, err := s.backend.planBoot(defs, repoRoot, set, m.Workflow, m.Image)
 	if err != nil {
@@ -301,4 +308,9 @@ func stagingError(err error) error {
 	default:
 		return connect.NewError(connect.CodeInternal, err)
 	}
+}
+
+func dirExists(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.IsDir()
 }

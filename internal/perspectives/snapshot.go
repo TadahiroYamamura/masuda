@@ -2,11 +2,14 @@ package perspectives
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
+
+	"go.yaml.in/yaml/v3"
 )
 
 // Merge は同梱の観点に、対象リポジトリの観点（repo、nil可）を重ねた`<id>.md`→中身を返す。
@@ -35,7 +38,37 @@ func Merge(repo fs.FS) (map[string][]byte, error) {
 			all[e.Name()] = b
 		}
 	}
+	// 重ねた後で外すので、リポジトリの同名ファイルを`enable: false`にすれば同梱の観点も外せる。
+	for name, b := range all {
+		on, err := enabled(b)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		if !on {
+			delete(all, name)
+		}
+	}
 	return all, nil
+}
+
+// enabled は観点ファイルのfrontmatterの`enable`を返す。frontmatterやキーが無ければ有効。
+func enabled(b []byte) (bool, error) {
+	text := strings.ReplaceAll(string(b), "\r\n", "\n")
+	rest, ok := strings.CutPrefix(text, "---\n")
+	if !ok {
+		return true, nil
+	}
+	front, _, ok := strings.Cut(rest, "\n---")
+	if !ok {
+		return true, nil
+	}
+	var fm struct {
+		Enable *bool `yaml:"enable"`
+	}
+	if err := yaml.Unmarshal([]byte(front), &fm); err != nil {
+		return false, fmt.Errorf("frontmatter: %w", err)
+	}
+	return fm.Enable == nil || *fm.Enable, nil
 }
 
 // Snapshot はMerge(repo)の結果をdstへ書く。実行はこの写しだけを観点として使う

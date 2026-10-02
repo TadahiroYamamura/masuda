@@ -159,7 +159,7 @@ masuda question answer 4f1c2a9e8b3d 000012 scope=yes "reason=既存のAPIは変�
 masuda stop <id>
 ```
 
-VMを止めて`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー。
+VMを止めて`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー。masudaが実行を止めた`blocked`（triageの`halt`等）はVMを片付けるだけで`blocked`のまま（再開はできない）。
 
 ## remove
 
@@ -243,8 +243,7 @@ masuda workflow check [<workflow>] [--repo <dir>]
 | `show` | ワークフローの図をMermaidで出す。呼び出す部品のワークフローと、masudaが差し込むゲート（`deviation`・`triage`）も描く |
 | `check` | 定義の検査。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ`ok` |
 
-!!! warning "`workflow check`を引数無しで打つと"
-    引数を省くと、部品として呼ばれるワークフロー（`workflows/implement/build-step`等）も単独で検査するため、同梱の定義だけでも「承認済みの計画が無い」という問題が出て終了コード1になる。自分のワークフローを確かめるときは、`masuda workflow check workflows/develop`のように始めるワークフローを指定する。
+`workflow check`の引数を省くと、rootのワークフロー（他のどのワークフローからも呼ばれないもの）をそれぞれ検査する。部品として呼ばれるワークフロー（`workflows/implement/build-step`等）は、呼び出し元から辿って検査される。
 
 ## version
 

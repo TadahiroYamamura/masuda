@@ -241,7 +241,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 
 | 操作 | できる状態 | 起きること |
 |---|---|---|
-| `Stop` | DONE以外 | VMを壊してSTOPPEDにする。記録・staging・WIPスナップショットは残る。STOPPEDへの`Stop`は何もしない |
+| `Stop` | DONE以外 | VMを壊してSTOPPEDにする。記録・staging・WIPスナップショットは残る。STOPPEDへの`Stop`は何もしない。engineが止めたBLOCKEDはVMを壊すだけでBLOCKEDのまま（再開できないことが変わらないように） |
 | `Resume` | STOPPED、起動に失敗したBLOCKED（`reason`が`sandbox boot failed: `で始まる） | 新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻して続ける。位置に応じてRUNNING・WAITING_GATE・WAITING_QUESTIONになる |
 | `Remove` | 動いていない（STOPPED・DONE・BLOCKED）。動いているものは`force: true` | `exports/`だけを残してワークスペースを消す。以後そのIDは`not_found` |
 

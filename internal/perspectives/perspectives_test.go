@@ -75,3 +75,36 @@ func TestSnapshotWithoutRepoReviewsIsBuiltin(t *testing.T) {
 		t.Fatalf("snapshot of builtin = %d files", len(got))
 	}
 }
+
+func TestMergeDropsDisabledPerspectives(t *testing.T) {
+	repo := t.TempDir()
+	off := "---\nname: \"x\"\nenable: false\n---\nbody\n"
+	if err := os.WriteFile(filepath.Join(repo, "dead-code.md"), []byte(off), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "mine.md"), []byte(off), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "plain.md"), []byte("no frontmatter"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	all, err := Merge(os.DirFS(repo))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := all["dead-code.md"]; ok {
+		t.Fatal("a builtin perspective overridden with enable: false must be dropped")
+	}
+	if _, ok := all["mine.md"]; ok {
+		t.Fatal("a disabled repo perspective must be dropped")
+	}
+	if _, ok := all["plain.md"]; !ok || len(all) != 14 {
+		t.Fatalf("enabled ones stay: %d", len(all))
+	}
+	if err := os.WriteFile(filepath.Join(repo, "bad.md"), []byte("---\nenable: [\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Merge(os.DirFS(repo)); err == nil {
+		t.Fatal("a broken frontmatter must be an error")
+	}
+}

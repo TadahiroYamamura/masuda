@@ -134,7 +134,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 ### 再開
 
-`Resume`できるのは、STOPPEDのワークスペースと、sandboxの起動に失敗してBLOCKEDになったワークスペース（理由が`sandbox boot failed: `で始まるもの）。engineが止めたBLOCKEDは再開できない。起動失敗のBLOCKEDはsandboxも実行の窓口も既に無く、記録は起動前のままなので、Stopを挟まずに再開できる。
+`Resume`できるのは、STOPPEDのワークスペースと、sandboxの起動に失敗してBLOCKEDになったワークスペース（理由が`sandbox boot failed: `で始まるもの）。engineが止めたBLOCKEDは再開できない（`Resume`は`FailedPrecondition`）。engineが止めたBLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。起動失敗のBLOCKEDはsandboxも実行の窓口も既に無く、記録は起動前のままなので、Stopを挟まずに再開できる。
 
 1. 定義は`records/definitions/`の写しから読み直す。作業ツリーの`.masuda/`がその後変わっていても、始めたときと同じ定義で進む
 2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）
@@ -388,7 +388,7 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 
 - `List`: ワークフローごとに、どこから来たか（`origin`、engineの`Set.Origins`）と受け取る`inputs`
 - `Show`: engineが割り込みを合成したMermaidの図（`Set.Mermaid`）
-- `Check`: `Set.Check`の問題の一覧。`workflow`が空なら全ワークフローをそれぞれrootにして検査し、重複を除く。定義が読み込めないときはエラーにせず、その理由を問題の1つとして返す
+- `Check`: `Set.Check`の問題の一覧。`workflow`が空ならrootのワークフロー（他のどのワークフローの`Set.Reachable`にも含まれないもの）をそれぞれ検査し、重複を除く。部品はrootから辿って検査される。定義が読み込めないときはエラーにせず、その理由を問題の1つとして返す
 
 ### AttachInfo
 

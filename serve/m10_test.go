@@ -378,3 +378,47 @@ func TestErrorCodesAreUnified(t *testing.T) {
 		t.Fatalf("Check of an undefined workflow: %v", err)
 	}
 }
+
+// 引数なしのCheckはrootのワークフローだけを検査する。同梱の部品（implement/build-step等）を
+// 単独で検査すると、呼び出し元が用意するデータの欠落が問題として出てしまうため。
+func TestCheckWithoutWorkflowChecksRootsOnly(t *testing.T) {
+	cl := startClients(t, t.TempDir(), Options{})
+	res, err := cl.workflows.Check(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{}))
+	if err != nil || len(res.Msg.Problems) != 0 {
+		t.Fatalf("bundled workflows checked as roots: %v %v", err, res.Msg.GetProblems())
+	}
+}
+
+// engineが止めたBLOCKED（triageのhalt）はStopできるが、Stopの後もResumeは断る。
+func TestEngineBlockedCannotBeResumedAfterStop(t *testing.T) {
+	cl := startClients(t, t.TempDir(), Options{})
+	repo := newSmokeRepo(t)
+	ctx := context.Background()
+	res, err := cl.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/halt", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	c := cl.srv.backend.runFor(id)
+	task, err := c.NextTask(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	occ := task.(map[string]any)["occurrence"].(string)
+	if _, err := c.ReportConcern(ctx, occ, "suspicious"); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE)
+	if _, err := cl.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: occ, Decision: &apiv1.Decision{Outcome: "halt"}})); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED)
+	st, err := cl.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id}))
+	if err != nil || st.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED {
+		t.Fatalf("Stop of an engine-blocked workspace: %v %v", err, st)
+	}
+	if _, err := cl.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("Resume after Stop of an engine-blocked workspace: %v", err)
+	}
+}

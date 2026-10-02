@@ -58,10 +58,17 @@ func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.St
 		// publish・discardで終わった実行はsandboxも既に無い。止めるものが無い。
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done", w.ID))
 	}
+	engineBlocked := w.State == workspace.StateBlocked && !resumable(w)
 	b.stopRun(w.ID)
 	// stopRunの間に状態が書かれていることがある（起動の失敗等）ので読み直してから書く。
 	if w, err = s.lookup(w.ID); err != nil {
 		return nil, err
+	}
+	if engineBlocked {
+		// engineが止めたBLOCKEDはVMを片付けるだけで状態は残す。STOPPEDにするとResumeが通り、
+		// VMを起動してからengineがまたBLOCKEDを返すだけになるため。
+		b.statusChanged(w.ID)
+		return connect.NewResponse(b.toProto(w)), nil
 	}
 	w.State = workspace.StateStopped
 	if err := w.Save(); err != nil {
