@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -40,6 +41,9 @@ type bootPlan struct {
 	vars           map[string]string
 	checks         map[string]string
 	claudeSettings json.RawMessage
+	// stallAfter は無活動のしきい値（settings.local.jsonのstallAfter、既定10分）。
+	// serveの--stall-afterが指定されていればそちらが勝つ（backend.stallFor）。
+	stallAfter time.Duration
 }
 
 // claudeTokenPrefix はClaude APIのトークン（OAuth）のプレースホルダの形。クライアントが
@@ -74,6 +78,9 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 	p.diskMiB = cfg.DiskMiB(p.image)
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	if p.stallAfter, err = local.StallAfterDuration(); err != nil {
+		add("%s: %v", config.SettingsLocalPath(repoRoot), err)
+	}
 
 	if !config.ValidCheckName(p.image) {
 		add("image %q is not a valid entry name", p.image)

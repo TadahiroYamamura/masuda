@@ -869,6 +869,7 @@ func (r *Runner) Discard(ctx context.Context, _ engine.RunID, export []string) e
 // finish はexportsを書き出してからsandboxを壊す。VMを先に壊すと、書き出しに失敗したときに
 // 調べる手がかりが残らないため。
 func (r *Runner) finish(ctx context.Context, export []string) error {
+	r.ExportTranscripts(ctx)
 	if err := r.WriteExports(export); err != nil {
 		return err
 	}
@@ -899,6 +900,47 @@ func (r *Runner) WriteExports(export []string) error {
 		}
 	}
 	return r.ExportLog()
+}
+
+// guestTranscripts はゲストのClaude Codeが会話ログ（JSONL）を書く場所の、ゲストのホームからの相対パス。
+const guestTranscripts = ".claude/projects"
+
+// TranscriptsDir は会話ログを書き出す`exports/`の下の場所。
+const TranscriptsDir = "transcripts"
+
+// ExportTranscripts はゲストのClaude Codeの会話ログ（`~/.claude/projects/`以下の*.jsonl）を
+// `exports/transcripts/`へ、`projects/`からの相対パスのまま写す。一覧はゲストで`find`して得る。
+// 読めなかったもの（一覧が取れない・大きすぎる等）は実行ログに記録して続ける。会話ログは
+// 調べるための補助で、無いことを理由にpublishやdiscardを止めないため。
+func (r *Runner) ExportTranscripts(ctx context.Context) {
+	warn := func(format string, a ...any) {
+		r.Log(engine.Event{Time: time.Now().UTC(), Kind: "export-warning", Run: engine.RunID(r.ws.ID), Detail: fmt.Sprintf(format, a...)})
+	}
+	// ホームをcwdにして相対パスで書く（パッケージの説明: フェイクはcwdだけを写像する）。
+	script := "[ -d " + guestTranscripts + " ] || exit 0\nfind " + guestTranscripts + " -type f -name '*.jsonl'"
+	res, err := guest.Exec(ctx, r.o.Sandbox, &sandboxv1.ExecRequest{Id: r.o.SandboxID, Shell: script, Cwd: guest.Home})
+	if err == nil && (res.ExitCode != 0 || res.Signal != "" || res.TimedOut) {
+		err = fmt.Errorf("exit %d %s: %s", res.ExitCode, res.Signal, bytes.TrimSpace(res.Stderr))
+	}
+	if err != nil {
+		warn("listing the guest's transcripts: %v", err)
+		return
+	}
+	dir := filepath.Join(r.ws.ExportsDir(), TranscriptsDir)
+	for _, line := range strings.Split(string(res.Stdout), "\n") {
+		rel, ok := strings.CutPrefix(strings.TrimSpace(line), guestTranscripts+"/")
+		if !ok || !filepath.IsLocal(rel) {
+			continue
+		}
+		b, err := guest.ReadFile(ctx, r.o.Sandbox, r.o.SandboxID, guest.Home+"/"+guestTranscripts+"/"+rel, 0)
+		if err != nil {
+			warn("reading transcript %s: %v", rel, err)
+			continue
+		}
+		if err := writeFileAtomic(filepath.Join(dir, rel), b); err != nil {
+			warn("writing transcript %s: %v", rel, err)
+		}
+	}
 }
 
 // ExportLog は実行ログを`exports/execution-log.jsonl`へ写す。

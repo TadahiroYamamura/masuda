@@ -252,7 +252,7 @@ func (b *backend) toProto(w *workspace.Workspace) *apiv1.Workspace {
 		Base:          w.Base,
 		Workflow:      w.Workflow,
 		State:         stateToProto[w.State],
-		Activity:      b.acts.compute(w, b.stallAfter, time.Now().UTC()),
+		Activity:      b.acts.compute(w, b.stallFor(w), time.Now().UTC()),
 		Position:      w.Position,
 		CreatedAt:     timestamppb.New(w.CreatedAt),
 		UpdatedAt:     timestamppb.New(w.UpdatedAt),

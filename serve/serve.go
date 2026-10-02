@@ -31,7 +31,8 @@ type Options struct {
 	FakeSandbox bool
 	// SandboxSocket は`masuda-sandbox serve`のUDSのパス。FakeSandboxのときは使わない。
 	SandboxSocket string
-	// StallAfter は無活動がこれだけ続いたら活動をSTALLEDにするしきい値。0なら既定（10分）。
+	// StallAfter は無活動がこれだけ続いたら活動をSTALLEDにするしきい値。0なら対象リポジトリの
+	// settings.local.jsonのstallAfter（無ければ10分）。0でなければすべてのワークスペースでこれを使う。
 	StallAfter time.Duration
 }
 
@@ -69,21 +70,22 @@ type backend struct {
 	// 作る」「止めてから消す」の間に別の操作が割り込まないようにするため。
 	lifeMu sync.Mutex
 
-	events     *eventBus
-	acts       *activities
-	stallAfter time.Duration
+	events *eventBus
+	acts   *activities
+	// stallOverride はserveの--stall-after（0なら各リポジトリのsettings.local.jsonに従う）。
+	stallOverride time.Duration
+
+	// diskOver は前回の計測でしきい値を超えていたか（超えたときにだけ警告するため）。
+	diskMu   sync.Mutex
+	diskOver bool
 }
 
 func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func(), opts Options) *backend {
 	ctx, cancel := context.WithCancel(context.Background())
-	stall := opts.StallAfter
-	if stall <= 0 {
-		stall = DefaultStallAfter
-	}
 	return &backend{
 		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox,
 		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
-		events: newEventBus(), acts: newActivities(), stallAfter: stall,
+		events: newEventBus(), acts: newActivities(), stallOverride: max(opts.StallAfter, 0),
 	}
 }
 
@@ -177,6 +179,7 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		return nil, err
 	}
 	b.goBackground(b.patrol)
+	b.goBackground(b.watchDisk)
 
 	// UDS上ではTLSが無いので、クライアント・サーバー両方向のストリーミングに要る
 	// HTTP/2を平文（h2c）で受ける。HTTP/1.1のHTTP+JSONも同じハンドラで受ける。
@@ -245,6 +248,6 @@ func newMux(b *backend) *http.ServeMux {
 	mux.Handle(apiv1connect.NewQuestionServiceHandler(&questionService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))
 	mux.Handle(apiv1connect.NewConfigServiceHandler(&configService{backend: b}))
-	mux.Handle(apiv1connect.NewWorkflowServiceHandler(apiv1connect.UnimplementedWorkflowServiceHandler{}))
+	mux.Handle(apiv1connect.NewWorkflowServiceHandler(&workflowService{}))
 	return mux
 }

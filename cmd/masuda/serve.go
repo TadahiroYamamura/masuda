@@ -19,7 +19,7 @@ func runServe(args []string) error {
 	dataDir := fs.String("data-dir", defaultDataDir(), "状態を置くディレクトリ")
 	fake := fs.Bool("fake-sandbox", false, "sandbox serviceの代わりにプロセス内のフェイクを使う（開発・テスト用）")
 	sandboxSocket := fs.String("sandbox-socket", filepath.Join(runtimeDir(), "masuda-sandbox.sock"), "masuda-sandbox serveのUDSのパス")
-	stallAfter := fs.Duration("stall-after", serve.DefaultStallAfter, "無活動がこれだけ続いたら活動をstalledにする")
+	stallAfter := fs.Duration("stall-after", 0, "無活動がこれだけ続いたら活動をstalledにする（0なら対象リポジトリのsettings.local.jsonのstallAfter、既定10m）")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil

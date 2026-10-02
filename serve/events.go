@@ -80,12 +80,13 @@ func (e *eventBus) forget(id string) {
 }
 
 // since はseqより後のイベントのうちidのもの（idが空なら全部）と、次を待つチャネルを返す。
+// workspace_idが空のイベント（ディスク使用量の警告等、serve全体のこと）はどのidにも流す。
 func (e *eventBus) since(seq uint64, id string) ([]*apiv1.WorkspaceEvent, uint64, <-chan struct{}) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	var out []*apiv1.WorkspaceEvent
 	for _, ev := range e.events {
-		if ev.Seq > seq && (id == "" || ev.WorkspaceId == id) {
+		if ev.Seq > seq && (id == "" || ev.WorkspaceId == id || ev.WorkspaceId == "") {
 			out = append(out, ev)
 		}
 	}

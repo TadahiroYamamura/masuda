@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"connectrpc.com/connect"
@@ -36,6 +37,10 @@ func (b *backend) stopRun(id string) {
 	}
 	b.destroySandbox(id)
 	b.acts.drop(id)
+	// sandboxと共に使えなくなる鍵を残さない。
+	if w, err := b.store.Get(id); err == nil {
+		_ = os.RemoveAll(filepath.Dir(sshKeyFile(w)))
+	}
 }
 
 func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.StopRequest]) (*connect.Response[apiv1.Workspace], error) {
@@ -139,20 +144,87 @@ func (s *workspaceService) AttachInfo(ctx context.Context, req *connect.Request[
 	if err != nil {
 		return nil, err
 	}
-	if s.backend.runFor(w.ID) == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s has no running sandbox", w.ID))
+	c := s.backend.runFor(w.ID)
+	if c == nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s has no running sandbox (state %s)", w.ID, w.State))
 	}
-	acc, err := s.backend.sandbox.EnableSsh(ctx, connect.NewRequest(&sandboxv1.EnableSshRequest{Id: w.ID}))
+	if !c.isBooted() {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is still starting its sandbox", w.ID))
+	}
+	acc, err := s.backend.sandbox.EnableSsh(ctx, connect.NewRequest(&sandboxv1.EnableSshRequest{Id: w.ID, User: guest.User}))
 	if err != nil {
-		// sandbox serviceのコード（フェイクのUnimplemented等）をそのまま返す。
 		var ce *connect.Error
 		if errors.As(err, &ce) {
+			if ce.Code() == connect.CodeUnimplemented {
+				return nil, connect.NewError(connect.CodeUnimplemented, fmt.Errorf("the sandbox service does not provide ssh (masuda serve is using the fake sandbox?): %s", ce.Message()))
+			}
 			return nil, connect.NewError(ce.Code(), fmt.Errorf("enabling ssh: %s", ce.Message()))
 		}
 		return nil, connect.NewError(connect.CodeUnavailable, err)
 	}
-	argv := append(append([]string(nil), acc.Msg.SshArgv...), "-t", "tmux attach -t "+guest.TmuxSession)
-	return connect.NewResponse(&apiv1.AttachInfoResponse{SshArgv: argv}), nil
+	key, err := writeSSHKey(w, acc.Msg.PrivateKeyPem)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.AttachInfoResponse{SshArgv: attachArgv(acc.Msg.SshArgv, key)}), nil
+}
+
+// sshKeyFile はEnableSshが返した秘密鍵を置く場所（`<DataDir>/workspaces/<id>/ssh/`）。
+// sandbox serviceが書いた鍵ファイルを使わないのは、その置き場所がsandbox側の都合で決まり、
+// 寿命（sandboxの破棄で消える等）もmasudaから見えないため。
+func sshKeyFile(w *workspace.Workspace) string { return filepath.Join(w.Dir, "ssh", "id") }
+
+// writeSSHKey はpemを0600で原子的に書き、そのパスを返す。EnableSshのたびに鍵は替わるので毎回書き直す。
+func writeSSHKey(w *workspace.Workspace, pem []byte) (string, error) {
+	if len(pem) == 0 {
+		return "", errors.New("the sandbox service returned no private key")
+	}
+	p := sshKeyFile(w)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return "", err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(p), ".id-")
+	if err != nil {
+		return "", err
+	}
+	if _, err := tmp.Write(pem); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	if err := os.Rename(tmp.Name(), p); err != nil {
+		os.Remove(tmp.Name())
+		return "", err
+	}
+	return p, nil
+}
+
+// attachArgv はsandboxが返したssh_argv（最後が接続先、リモートコマンド無し）を、keyの鍵で
+// tmuxのメインセッションへアタッチするコマンドにする。`-i`の値はkeyへ差し替え（無ければ足し）、
+// 端末を割り当てる`-t`を接続先の前に、リモートコマンドを後ろに置く。
+func attachArgv(argv []string, key string) []string {
+	if len(argv) < 2 {
+		return argv
+	}
+	opts := append([]string(nil), argv[:len(argv)-1]...)
+	dest := argv[len(argv)-1]
+	replaced := false
+	for i := 1; i+1 < len(opts); i++ {
+		if opts[i] == "-i" {
+			opts[i+1] = key
+			replaced = true
+			break
+		}
+	}
+	if !replaced {
+		opts = append([]string{opts[0], "-i", key}, opts[1:]...)
+	}
+	out := append(opts, "-t", dest, "tmux", "attach", "-t", guest.TmuxSession)
+	return out
 }
 
 // questionDiscardReason は再開で閉じたask_humanの質問の記録に残す理由。

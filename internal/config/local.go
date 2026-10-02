@@ -2,9 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // SettingsLocalFileName はDirName内のユーザーごとの承認ファイルの名前。
@@ -29,6 +31,42 @@ type LocalSettings struct {
 	ClaudeToken string `json:"claudeToken,omitempty"`
 	// Vars はenvFilesの公開値（秘密として宣言していない変数）の値。
 	Vars map[string]string `json:"vars,omitempty"`
+	// StallAfter は無活動がこれだけ続いたら活動をstalledにするしきい値（Goのduration、例 "10m"）。
+	// 空なら既定（DefaultStallAfter）。`masuda serve --stall-after`はこれを上書きする。
+	// 何分黙れば異常かは利用者のマシンの速さやClaudeのプランで変わるので、settings.jsonでなくここに置く。
+	StallAfter string `json:"stallAfter,omitempty"`
+	// DiskWarnBytes はワークスペース置き場の使用量がこれを超えたら警告するしきい値（バイト）。
+	// 0なら既定（DefaultDiskWarnBytes）。
+	DiskWarnBytes int64 `json:"diskWarnBytes,omitempty"`
+}
+
+// DefaultStallAfter は無活動のしきい値の既定。DefaultDiskWarnBytesはディスク使用量の警告の既定。
+const (
+	DefaultStallAfter    = 10 * time.Minute
+	DefaultDiskWarnBytes = int64(20) << 30
+)
+
+// StallAfterDuration はStallAfterを読む。空なら既定、正でない・読めない値はエラー。
+func (l LocalSettings) StallAfterDuration() (time.Duration, error) {
+	if l.StallAfter == "" {
+		return DefaultStallAfter, nil
+	}
+	d, err := time.ParseDuration(l.StallAfter)
+	if err != nil {
+		return 0, fmt.Errorf("stallAfter %q: %w", l.StallAfter, err)
+	}
+	if d <= 0 {
+		return 0, errors.New("stallAfter must be positive")
+	}
+	return d, nil
+}
+
+// DiskWarnThreshold はDiskWarnBytesの既定を埋めた値を返す。
+func (l LocalSettings) DiskWarnThreshold() int64 {
+	if l.DiskWarnBytes <= 0 {
+		return DefaultDiskWarnBytes
+	}
+	return l.DiskWarnBytes
 }
 
 // PrivilegedCommandApproval は宣言された特権コマンド1つへの承認。

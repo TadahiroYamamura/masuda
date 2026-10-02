@@ -11,12 +11,41 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // DefaultStallAfter は無活動がこれだけ続いたらSTALLEDとみなす既定のしきい値。
-const DefaultStallAfter = 10 * time.Minute
+const DefaultStallAfter = config.DefaultStallAfter
+
+// stallFor はwの無活動のしきい値。serveの--stall-afterが指定されていればそれ、無ければ
+// 実行を組み立てたときに読んだsettings.local.jsonのstallAfter（既定10分）。
+func (b *backend) stallFor(w *workspace.Workspace) time.Duration {
+	if b.stallOverride > 0 {
+		return b.stallOverride
+	}
+	if c := b.runFor(w.ID); c != nil && c.plan != nil && c.plan.stallAfter > 0 {
+		return c.plan.stallAfter
+	}
+	return DefaultStallAfter
+}
+
+// patrolTick は見回りの間隔。最も短いしきい値の1/4（1秒〜30秒）にして、STALLEDになるのが
+// しきい値からその程度の遅れで済むようにする。
+func (b *backend) patrolTick() time.Duration {
+	shortest := DefaultStallAfter
+	if b.stallOverride > 0 {
+		shortest = b.stallOverride
+	} else {
+		for _, c := range b.allRuns() {
+			if c.plan != nil && c.plan.stallAfter > 0 && c.plan.stallAfter < shortest {
+				shortest = c.plan.stallAfter
+			}
+		}
+	}
+	return min(max(shortest/4, time.Second), livenessEvery)
+}
 
 // inflightStale は進行中とみなすHTTPリクエストの寿命。sandboxはレスポンスのヘッダーを受けた時点で
 // http_finishedを出す（ストリーミングの本文の長さは含まない）ので、M8の実機では最長でも約20秒だった。
@@ -276,8 +305,7 @@ const livenessEvery = 30 * time.Second
 // patrol は動いているワークスペースを定期的に見て、時間の経過だけで変わる活動
 // （STALLED）と、Execで分かるプロセスの死（DEAD）をstatusイベントに反映する。
 func (b *backend) patrol(ctx context.Context) {
-	tick := min(max(b.stallAfter/4, time.Second), livenessEvery)
-	t := time.NewTicker(tick)
+	t := time.NewTimer(b.patrolTick())
 	defer t.Stop()
 	lastLiveness := time.Now()
 	for {
@@ -286,6 +314,7 @@ func (b *backend) patrol(ctx context.Context) {
 			return
 		case <-t.C:
 		}
+		t.Reset(b.patrolTick())
 		checkLiveness := !b.fake && time.Since(lastLiveness) >= livenessEvery
 		if checkLiveness {
 			lastLiveness = time.Now()

@@ -84,3 +84,35 @@ func TestLoadLocalMalformedJSONErrors(t *testing.T) {
 		t.Fatal("LoadLocal() error = nil, want an error for malformed JSON")
 	}
 }
+
+func TestLocalStallAfterAndDiskWarn(t *testing.T) {
+	var zero LocalSettings
+	if d, err := zero.StallAfterDuration(); err != nil || d != DefaultStallAfter {
+		t.Fatalf("default stallAfter: %v %v", d, err)
+	}
+	if zero.DiskWarnThreshold() != DefaultDiskWarnBytes {
+		t.Fatalf("default diskWarnBytes: %d", zero.DiskWarnThreshold())
+	}
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, DirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(SettingsLocalPath(dir), []byte(`{"stallAfter":"90s","diskWarnBytes":1024}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := LoadLocal(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d, err := got.StallAfterDuration(); err != nil || d.Seconds() != 90 {
+		t.Fatalf("stallAfter: %v %v", d, err)
+	}
+	if got.DiskWarnThreshold() != 1024 {
+		t.Fatalf("diskWarnBytes: %d", got.DiskWarnThreshold())
+	}
+	for _, bad := range []string{"soon", "-1m", "0s"} {
+		if _, err := (LocalSettings{StallAfter: bad}).StallAfterDuration(); err == nil {
+			t.Fatalf("stallAfter %q must be refused", bad)
+		}
+	}
+}
