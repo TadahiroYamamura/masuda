@@ -107,7 +107,23 @@ M8の実機1周で見つかったもの（優先）:
 - 流れのガイド: ワークスペースの起動と`Watch`（`seq`・`after_seq`・初回status・`ServeNotice`）、ゲートの表示と判断（`target_hash`・`StagingCommit`・deviationの`approved_files`・triage）、stagingの差分とコメントで差分ビューを組む、質問への回答、`Activity`の各状態の表示指針、`Resume`/`Stop`
 - TSクライアント: `masuda.proto`から生成したTypeScriptクライアントを`clients/ts/`に置き、`npm pack`できる形にする（公開はしない）
 
-### M12. 設定の整理（M10の提案）
+### M12. 設定の整理と、ドキュメント整備で見つかった不備
+
+M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の警告（`reviews.md`・`workflows.md`）が直す対象を指している。直したら該当する文書の警告も消す（同じコミットで）。
+
+- **エラーコードの統一**（`docs/design/contracts.md`「エラーコードの約束」）: 未定義ワークフローは`Run`も`InvalidArgument`、壊れた`settings.json`は`Config`も`InvalidArgument`、ゲートの種類に合わないoutcomeは`InvalidArgument`（`Unimplemented`をやめる）。`Watch`の`after_seq`が最新より大きければ`OutOfRange`
+- **review gateの承認対象**: engine（E10）が`Runner.Diff(DiffCommitted, …)`を呼ぶようになる。masudaの`Runner.Diff`に`DiffCommitted`（`refs/masuda/base..refs/heads/<branch>`）を実装し、`Gate.staging_commit`はそのブランチ先頭、`Gate.subject`はその差分。CLIの`gate show`とUIが「publishされない変更」の一覧を区別して出せるよう、`subject`の形は engine が決めるものをそのまま通す
+- **既存ブランチのレビュー**（`workflows/review`が単独で意味を持つように）: publishノードを含まないワークフロー（engineの`Set`から判定）に限り、`Run`で実リポジトリに既にあるブランチを指定できる。stagingはそのブランチを`refs/heads/<branch>`に持ち、base は実リポジトリの既定ブランチ（または`--base`）。`AlreadyExists`はpublishを含むワークフローだけ。`docs/user/workflows.md`の警告を消す
+- **観点の`enable`**: `.masuda/reviews/*.md`のfrontmatter `enable: false`の観点をスナップショットから除く（同梱の観点を外す手段にもなる）。`docs/user/reviews.md`の警告を消す
+- **`workflow check`（引数なし）**: rootのワークフローだけを検査する（engineの`Reachable`で部品を除く）。`overview.md`第9章も直す
+- **findingsをstagingのコメントへ**: review gateを開くとき、累積データ`findings`の各要素を`staging_commit`に対するコメント（author=観点名または`cross-cutting`、`severity`、`path`・`line`）として`records/comments.jsonl`に取り込む。UIが差分ビューに重ねられるように
+- **BLOCKEDの扱い**: engineが止めたBLOCKED（起動失敗以外）は`Stop`できるが`Resume`は`FailedPrecondition`。`overview.md`第4章の記述と揃える
+- **ServeNotice**: `disk-warning`を`EngineEvent`流用から`ServeNotice`へ。**ループバック待ち受け**: `$XDG_CONFIG_HOME/masuda/config.json`の`listen`があるときだけ`127.0.0.1:<port>`でもConnectを待ち受け、CORSは任意オリジン許可（ローカル前提）。サーバー全体の設定（`diskWarnBytes`・`stallAfter`の既定・`sandboxSocket`）も`config.json`へ。`settings.local.json`の`stallAfter`はリポジトリごとの上書き
+- **Claudeトークンの置き場所**: リポジトリごとではなくユーザー単位（`<DataDir>/secrets/_user/CLAUDE_CODE_OAUTH_TOKEN`）を既定にし、リポジトリごとの登録があればそれを優先。`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`は`--repo`無しならユーザー単位へ
+- 細かい点: `run --base`のヘルプを実装に合わせる（今チェックアウトしているブランチ）、`init`の雛形から意味の無い`egress: ["api.anthropic.com"]`を外しコメントで「Claude APIは常に許可」と書く、雛形DockerfileのコメントをS10以降の実態（イメージのENVは引き継がれる、PATHには`~/.local/bin`が足される、`-modcacherw`は不要）に直す、publishの`target: remote`の送り先を`settings.json`の`publish.remote`（既定`origin`）で設定できるようにしoverviewを合わせる、`overview.md`のCLI表に`list --repo`を足す
+- 契約テスト: C-M1〜C-M7が緑のまま。`contract/`に「publishを含まないワークフローは既存ブランチで`Run`できる」「review gateの`subject`が未コミットの変更を分けて載せる」ケースを**監督が足す**ので、着手時に確認
+
+### M12（旧）設定の整理（M10の提案）
 
 - サーバー全体の設定`$XDG_CONFIG_HOME/masuda/config.json`（`diskWarnBytes`・`stallAfter`の既定・`sandboxSocket`）を設け、`settings.local.json`の`stallAfter`はリポジトリごとの上書きに、`diskWarnBytes`は`config.json`だけにする
 - `ServeNotice`（契約に追加済み）で`disk-warning`を流す。`EngineEvent`の流用をやめる
