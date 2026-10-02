@@ -11,8 +11,6 @@ site_dir: site
 exclude_docs: |
   /work-orders.md
   /research/
-  /CONTRIBUTING.md
-  /INSTALLATION.md
 
 theme:
   name: material

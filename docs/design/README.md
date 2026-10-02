@@ -20,6 +20,19 @@ masudaは2026-10-02にゼロから再設計した。ここにあるのは**再�
 
 各リポジトリの作業単位は、それぞれの`docs/work-orders.md`にある。
 
+## 開発環境
+
+masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](../user/index.md)。
+
+- Go 1.26以上。`go build ./...`・`go vet ./...`・`go test ./...`
+- [masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)を`../masuda-engine`にチェックアウトしておく（`go.mod`の`replace`で参照する）
+- protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく
+- 契約テスト: `go test ./contract/`（例 `go test ./contract/ -run TestCM1`）。フェイクのsandbox（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（[contracts.md](contracts.md)）
+- 実機テスト: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`。実際の`masuda-sandbox serve`とClaudeのトークンが要る（前提は`live/live_test.go`の冒頭）
+- ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`
+- GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使う。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
+- 作業単位は`docs/work-orders.md`（サイトには載せない）
+
 ## 触る対象から引く
 
 | 触る対象 | パッケージ・ファイル | 読む節 |
