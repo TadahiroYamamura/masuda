@@ -21,7 +21,7 @@
 ## 生成コード
 
 - Go: `buf generate`で`gen/`へ。`protoc-gen-go`と`protoc-gen-connect-go`
-- TypeScript: `buf generate`で`src/gen/`へ。`@bufbuild/protoc-gen-es`と`@connectrpc/protoc-gen-connect-es`
+- TypeScript: `buf generate`で`src/gen/`へ。`@bufbuild/protoc-gen-es`（v2）のみ。Connect v2はサービス記述子を`*_pb.ts`から直接使うので、connect-es用プラグインは使わない
 - 生成コードはコミットする（使う側がbufを持たなくてよいように）
 
 ## 通信の前提
