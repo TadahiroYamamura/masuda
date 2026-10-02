@@ -14,11 +14,32 @@ masudaは2026-10-02にゼロから再設計した。ここにあるのは**再�
 
 | リポジトリ | 言語 | 役割 |
 |---|---|---|
-| [masuda-sandbox](../../../masuda-sandbox) | TypeScript | Gondolinを包む常駐サービス。VMの作成・実行・方針切替・秘密・転送 |
-| [masuda-engine](../../../masuda-engine) | Go | ワークフロー定義の読み込み・検査・実行。ライブラリ |
+| [masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox) | TypeScript | Gondolinを包む常駐サービス。VMの作成・実行・方針切替・秘密・転送 |
+| [masuda-engine](https://github.com/TadahiroYamamura/masuda-engine) | Go | ワークフロー定義の読み込み・検査・実行。ライブラリ |
 | masuda（このリポジトリ） | Go | CLI・公開API・ワークスペースとstaging・2つを結線する統合層 |
 
 各リポジトリの作業単位は、それぞれの`docs/work-orders.md`にある。
+
+## 触る対象から引く
+
+| 触る対象 | パッケージ・ファイル | 読む節 |
+|---|---|---|
+| CLIのサブコマンド・表示 | `cmd/masuda/`（`main.go`が一覧、`client.go`がAPIを叩く各コマンド、`chat.go`・`workflow.go`・`init.go`・`config.go`・`serve.go`、`templates/`が`masuda init`の雛形） | [overview.md](overview.md)「9. 公開API」のCLI |
+| 公開APIの実装（Connectのハンドラ）、実行の組み立てと起動、活動・Watch・ディスク監視 | `serve/`（`serve.go`・`sandbox.go`・`workspace.go`・`run.go`・`boot.go`・`lifecycle.go`・`gates.go`・`questions.go`・`staging.go`・`config.go`・`settings.go`・`images.go`・`privileged.go`・`workflows.go`・`activity.go`・`events.go`・`disk.go`） | 「8. 活動の観測と停止の検知」「9. 公開API」「4. 再開」 |
+| `engine.Runner`の実装（ゲストとのやり取り・データ・ゲートの記録・実行ログ・exports・WIP復元） | `internal/runner/` | 「3. 1つのタスクの流れ」「4. exports」 |
+| staging bareリポジトリ（clone・WIP取り込み・commit・publish・差分の表示） | `internal/staging/` | 「4. ワークスペースとstaging」 |
+| ワークスペースのディレクトリ・`workspace.json`・`records/`のゲート・質問・コメント | `internal/workspace/` | 「4. ホスト側のディレクトリ」 |
+| ゲスト向けMCP（`/mcp`）とフックの受け口（`/hooks`） | `internal/mcp/`（プロトコルの形）、ツールの中身は`serve/run.go` | [guest-protocol.md](../guest-protocol.md)、「7. ゲストとホストの間」 |
+| 起動時にゲストへ置くもの・ループ規約・メインセッションの起動 | `internal/guest/`（`loop-claude.md`がループ規約） | [guest-protocol.md](../guest-protocol.md) |
+| VM無しのsandbox（契約テスト・`--fake-sandbox`） | `internal/fakesandbox/` | 「6. サンドボックス」 |
+| 特権コマンドの実行手順 | `internal/privileged/`（宣言の読み込みと承認の確認は`serve/privileged.go`） | 「6. 特権コマンド」 |
+| `settings.json`・`settings.local.json`の形と検査 | `internal/config/` | 「6. 設定ファイル」 |
+| 秘密の値の保存 | `internal/secrets/` | 「6. 秘密」 |
+| 同梱のレビュー観点とスナップショット | `internal/perspectives/`（`builtin/`が同梱の観点） | 「5. 定義の置き場所」 |
+| 契約テスト（完了の定義） | `contract/` | [contracts.md](contracts.md) |
+| 実物のsandboxと本物のClaude Codeで1周させるテスト（`MASUDA_LIVE_TEST=1`） | `live/` | — |
+| 公開APIの契約 | `proto/masuda/api/v1/masuda.proto`（生成コードは`gen/`） | [contracts.md](contracts.md) |
+| ドキュメントサイト | `mkdocs.yml`、`scripts/docs-prepare.sh`、`buf.gen.docs.yaml`、`.github/workflows/docs.yml` | — |
 
 ## 書くときの決まり
 
