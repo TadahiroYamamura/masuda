@@ -14,6 +14,10 @@ test_fizzbuzz.py
 
 # Go
 /masuda
+# 隣のmasuda-engineを参照する開発用のworkspace（CLAUDE.md）。go.modはタグに固定する
+/go.work
+/go.work.sum
+/dist/
 
 # masuda CLI runtime state (worktrees, gate markers) — created wherever the CLI
 # is run, including here when dogfooding masuda against its own repo

@@ -190,7 +190,7 @@ const { workspaces: list } = await workspaces.list({});
 
 ### Go
 
-自分のモジュールの中で`masuda.proto`から生成する。masudaの`gen/`を直接importするのは勧めない（masudaの`go.mod`は`masuda-engine`をローカルの`replace`で参照しており、外のモジュールからは解決できない）。
+自分のモジュールの中で`masuda.proto`から生成する。masudaの`gen/`を直接importするのは勧めない（masudaはGoのパッケージとしての互換性を約束しておらず、importするとmasuda-engine等の依存もまとめて引き込む）。
 
 ```yaml
 # buf.gen.yaml

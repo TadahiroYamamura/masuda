@@ -15,6 +15,7 @@ AIとの協同開発を、ローカルPC上のVMで無人実行するための�
 ## 開発
 
 - `go build ./... && go vet ./... && go test ./...`
+- engineは`go.mod`でタグ（タグが無い間は`main`の擬似バージョン）に固定している。隣の`../masuda-engine`の作業中のコードで試すときは、gitignoreした`go.work`を作る: `go work init . && go work use ../masuda-engine`。`go.work`があるとビルドもテストも隣のチェックアウトを使う（engineの未コミットの変更も入る）ので、固定した版で確かめるときは`GOWORK=off go test ./...`。engineの版を上げるのは`go get github.com/TadahiroYamamura/masuda-engine@<tagまたはmain> && go mod tidy`
 - protoからの生成: `buf generate`（`gen/`、コミットする）。sandboxのクライアントは`../masuda-sandbox/proto`からも生成する（`buf.gen.yaml`参照）
 - 契約テスト: `go test ./contract/`。sandbox serviceの**フェイク**（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。これが緑なら作業項目は完了
 - 実機テスト: `MASUDA_LIVE_TEST=1 go test ./live/`。実際の`masuda-sandbox serve`とVMが要る
