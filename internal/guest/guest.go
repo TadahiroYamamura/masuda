@@ -204,10 +204,17 @@ func quoteAll(ss []string) []string {
 // ClaudeJSON はゲストの`~/.claude.json`。MCPサーバー`masuda`を利用者スコープで登録する。
 // `/workspace/.mcp.json`（プロジェクトスコープ）に置かないのは、対象リポジトリの作業ツリーへ
 // masudaのファイルを混ぜるとスナップショットに入り、計画外の変更として現れるため。
-// hasCompletedOnboardingは、まっさらなHOMEで起動したclaudeが初回の対話画面で止まらないようにする。
+// hasCompletedOnboarding・/workspaceのhasTrustDialogAccepted・bypassPermissionsModeAcceptedは、
+// まっさらなHOMEで起動したclaudeが初回の対話画面（オンボーディング・フォルダの信頼・
+// --dangerously-skip-permissionsの確認）で止まらないようにする。イメージ側で書いておいても
+// このファイルで上書きするので、ここで持つ。
 func ClaudeJSON() []byte {
 	b, _ := json.MarshalIndent(map[string]any{
-		"hasCompletedOnboarding": true,
+		"hasCompletedOnboarding":        true,
+		"bypassPermissionsModeAccepted": true,
+		"projects": map[string]any{
+			"/workspace": map[string]any{"hasTrustDialogAccepted": true},
+		},
 		"mcpServers": map[string]any{
 			"masuda": map[string]any{"type": "http", "url": MCPURL},
 		},
@@ -276,11 +283,15 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 		env[k] = v
 	}
 	cmd := "claude --dangerously-skip-permissions -- " + shellQuote(StartPrompt)
+	// argvではなくshell（sandboxでは`/bin/sh -lc`）で起こす。イメージのDockerfileのENVは
+	// ゲストのプロセスに引き継がれず、native版claudeの置き場所（~/.local/bin）は~/.profileが
+	// PATHへ足すため。tmuxサーバーはこのログインシェルの環境を継ぎ、セッション内のclaudeと
+	// そのサブエージェントのBashも同じPATHになる。
 	res, err := Exec(ctx, c, &sandboxv1.ExecRequest{
-		Id:   o.SandboxID,
-		Argv: []string{"tmux", "new-session", "-d", "-s", TmuxSession, cmd},
-		Cwd:  "/workspace",
-		Env:  env,
+		Id:    o.SandboxID,
+		Shell: "exec tmux new-session -d -s " + TmuxSession + " " + shellQuote(cmd),
+		Cwd:   "/workspace",
+		Env:   env,
 	})
 	if err != nil {
 		return fmt.Errorf("starting tmux: %w", err)
