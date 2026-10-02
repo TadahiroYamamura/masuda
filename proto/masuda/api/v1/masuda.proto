@@ -1,0 +1,340 @@
+// masuda public API: what the CLI and any UI use. Served by `masuda serve`
+// over Connect (gRPC and HTTP+JSON) on a Unix socket and, optionally,
+// loopback TCP.
+//
+// Owned by masuda. Implementers do not change this file; proposals go to
+// HANDOFF.md (see docs/design/contracts.md).
+syntax = "proto3";
+
+package masuda.api.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1;apiv1";
+
+// ---- workspaces -------------------------------------------------------------
+
+service WorkspaceService {
+  // Starts a workflow in a new workspace. Returns once the workspace exists
+  // and the sandbox is booting; follow with Watch.
+  rpc Run(RunRequest) returns (Workspace);
+  // Resumes a stopped workspace from its records (new sandbox, re-clone).
+  rpc Resume(ResumeRequest) returns (Workspace);
+  rpc Get(GetWorkspaceRequest) returns (Workspace);
+  rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
+  // Streams status changes and events for one workspace, or all when id is
+  // empty.
+  rpc Watch(WatchRequest) returns (stream WorkspaceEvent);
+  // Stops the sandbox but keeps records and staging; Resume continues.
+  rpc Stop(StopRequest) returns (Workspace);
+  // Removes everything: sandbox, staging, records, exports kept aside.
+  rpc Remove(RemoveRequest) returns (RemoveResponse);
+  // How to attach a terminal to the guest's tmux session.
+  rpc AttachInfo(AttachInfoRequest) returns (AttachInfoResponse);
+}
+
+message RunRequest {
+  string repo_root = 1;          // absolute path of the target repository
+  string workflow = 2;           // "workflows/develop"
+  string branch = 3;             // branch to create (from base)
+  string base = 4;               // base ref; empty = repository default branch
+  map<string, bytes> inputs = 5; // input name -> content
+  string image = 6;              // image entry; empty = settings.json default
+}
+
+message ResumeRequest { string id = 1; }
+message GetWorkspaceRequest { string id = 1; }
+message ListWorkspacesRequest { string repo_root = 1; }  // empty = all
+message ListWorkspacesResponse { repeated Workspace workspaces = 1; }
+message StopRequest { string id = 1; }
+message RemoveRequest { string id = 1; bool force = 2; }
+message RemoveResponse {}
+message AttachInfoRequest { string id = 1; }
+message AttachInfoResponse {
+  repeated string ssh_argv = 1;  // ready-to-run, attaches to tmux
+}
+
+message WatchRequest {
+  string id = 1;        // empty = all workspaces
+  uint64 after_seq = 2; // replay from here (0 = new only)
+}
+
+message Workspace {
+  string id = 1;
+  string repo_root = 2;
+  string branch = 3;
+  string base = 4;
+  string workflow = 5;
+  WorkspaceState state = 6;
+  Activity activity = 7;
+  // Current engine position, human readable ("agent planner (occ 0042)").
+  string position = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+  // Set when state is DONE or BLOCKED.
+  string outcome = 11;
+  string reason = 12;
+  // Open gates / questions, for list views.
+  repeated string open_gates = 13;
+  repeated string open_questions = 14;
+}
+
+enum WorkspaceState {
+  WORKSPACE_STATE_UNSPECIFIED = 0;
+  WORKSPACE_STATE_STARTING = 1;
+  WORKSPACE_STATE_RUNNING = 2;
+  WORKSPACE_STATE_WAITING_GATE = 3;
+  WORKSPACE_STATE_WAITING_QUESTION = 4;
+  WORKSPACE_STATE_STOPPED = 5;
+  WORKSPACE_STATE_DONE = 6;
+  WORKSPACE_STATE_BLOCKED = 7;
+}
+
+// Activity is what the agent is doing right now, combined from host-observed
+// API traffic (trustworthy) and guest hooks (informative).
+message Activity {
+  ActivityKind kind = 1;
+  google.protobuf.Timestamp last_activity = 2;
+  // From guest hooks: what Claude Code says it is waiting for.
+  string input_wait = 3;  // "permission", "idle", "question", ""
+  string detail = 4;
+}
+
+enum ActivityKind {
+  ACTIVITY_KIND_UNSPECIFIED = 0;
+  ACTIVITY_KIND_WORKING = 1;        // API request in flight or recent tool use
+  ACTIVITY_KIND_WAITING_INPUT = 2;  // guest reports it is waiting for a human
+  ACTIVITY_KIND_WAITING_GATE = 3;
+  ACTIVITY_KIND_WAITING_QUESTION = 4;
+  ACTIVITY_KIND_STALLED = 5;        // alive but silent past the threshold
+  ACTIVITY_KIND_DEAD = 6;           // tmux session or claude process gone
+  ACTIVITY_KIND_IDLE = 7;           // nothing to do (done/stopped)
+}
+
+message WorkspaceEvent {
+  uint64 seq = 1;
+  google.protobuf.Timestamp time = 2;
+  string workspace_id = 3;
+  oneof event {
+    Workspace status = 4;          // full status on every change
+    EngineEvent engine = 5;        // one execution-record line
+    GuestHookEvent guest_hook = 6; // from the guest's Claude Code hooks
+    HttpActivity http = 7;         // host-observed API traffic summary
+  }
+}
+
+message EngineEvent {
+  string kind = 1;
+  string occurrence = 2;
+  string workflow = 3;
+  string node = 4;
+  string outcome = 5;
+  string detail = 6;
+}
+
+message GuestHookEvent {
+  string hook = 1;   // Notification, PostToolUse, Stop, SessionEnd, SubagentStop
+  string detail = 2; // tool name, notification kind, ...
+}
+
+message HttpActivity {
+  string method = 1;
+  string host = 2;
+  string path = 3;
+  uint32 status = 4;       // 0 while in flight
+  uint32 duration_ms = 5;
+  bool denied = 6;
+}
+
+// ---- gates & questions ------------------------------------------------------
+
+service GateService {
+  rpc ListOpen(ListOpenGatesRequest) returns (ListOpenGatesResponse);
+  rpc Get(GetGateRequest) returns (Gate);
+  // Records a decision. Approvals must carry the gate's target_hash.
+  rpc Decide(DecideRequest) returns (Gate);
+}
+
+message ListOpenGatesRequest { string workspace_id = 1; } // empty = all
+message ListOpenGatesResponse { repeated Gate gates = 1; }
+message GetGateRequest { string workspace_id = 1; string occurrence = 2; }
+
+message Gate {
+  string workspace_id = 1;
+  string occurrence = 2;
+  string gate = 3;        // plan, review, interim, triage, deviation, or user-defined
+  string target = 4;      // plan, diff, data name, ""
+  string target_hash = 5;
+  bytes subject = 6;      // what is being decided on (plan text, deviation list, concern)
+  // For target=diff: the staging commit / tree the diff was computed from.
+  string staging_commit = 7;
+  google.protobuf.Timestamp opened_at = 8;
+  Decision decision = 9;  // set once decided
+}
+
+message Decision {
+  string outcome = 1;              // approved, rejected, dismiss, halt, redo
+  string comment = 2;
+  string target_hash = 3;
+  repeated string approved_files = 4;
+  google.protobuf.Timestamp decided_at = 5;
+}
+
+message DecideRequest {
+  string workspace_id = 1;
+  string occurrence = 2;
+  Decision decision = 3;
+}
+
+service QuestionService {
+  rpc ListOpen(ListOpenQuestionsRequest) returns (ListOpenQuestionsResponse);
+  rpc Answer(AnswerRequest) returns (AnswerResponse);
+}
+
+message ListOpenQuestionsRequest { string workspace_id = 1; }
+message ListOpenQuestionsResponse { repeated OpenQuestion questions = 1; }
+
+message OpenQuestion {
+  string workspace_id = 1;
+  string occurrence = 2;
+  repeated QuestionItem items = 3;
+  google.protobuf.Timestamp opened_at = 4;
+}
+
+message QuestionItem {
+  string id = 1;
+  string text = 2;
+  repeated string options = 3;
+}
+
+message AnswerRequest {
+  string workspace_id = 1;
+  string occurrence = 2;
+  map<string, string> answers = 3;
+}
+message AnswerResponse {}
+
+// ---- staging (git) ------------------------------------------------------------
+
+service StagingService {
+  rpc ListRefs(ListRefsRequest) returns (ListRefsResponse);
+  rpc GetCommit(GetCommitRequest) returns (Commit);
+  // Unified diff between two refs/commits (or a ref and its parent).
+  rpc Diff(DiffRequest) returns (DiffResponse);
+  rpc GetBlob(GetBlobRequest) returns (stream BlobChunk);
+  // Comments anchored to commit+file+line: agent findings and human notes
+  // share this model.
+  rpc ListComments(ListCommentsRequest) returns (ListCommentsResponse);
+  rpc AddComment(AddCommentRequest) returns (Comment);
+}
+
+message ListRefsRequest { string workspace_id = 1; }
+message ListRefsResponse { repeated Ref refs = 1; }
+message Ref { string name = 1; string commit = 2; }
+
+message GetCommitRequest { string workspace_id = 1; string rev = 2; }
+message Commit {
+  string hash = 1;
+  repeated string parents = 2;
+  string author = 3;
+  google.protobuf.Timestamp time = 4;
+  string message = 5;
+  repeated string files = 6;
+}
+
+message DiffRequest {
+  string workspace_id = 1;
+  string from = 2;  // rev; empty = parent of `to`
+  string to = 3;    // rev
+  repeated string paths = 4;
+}
+message DiffResponse { string unified = 1; }
+
+message GetBlobRequest { string workspace_id = 1; string rev = 2; string path = 3; }
+message BlobChunk { bytes data = 1; }
+
+message ListCommentsRequest { string workspace_id = 1; string commit = 2; }
+message ListCommentsResponse { repeated Comment comments = 1; }
+
+message Comment {
+  string id = 1;
+  string workspace_id = 2;
+  string commit = 3;
+  string path = 4;
+  uint32 line = 5;
+  string author = 6;    // "human", or an agent role
+  string body = 7;
+  string severity = 8;  // from findings; empty for human notes
+  google.protobuf.Timestamp time = 9;
+}
+
+message AddCommentRequest {
+  string workspace_id = 1;
+  string commit = 2;
+  string path = 3;
+  uint32 line = 4;
+  string body = 5;
+}
+
+// ---- repository configuration -------------------------------------------------
+
+service ConfigService {
+  rpc ListEgress(RepoRequest) returns (ListEgressResponse);
+  rpc ApproveEgress(HostRequest) returns (ListEgressResponse);
+  rpc RejectEgress(HostRequest) returns (ListEgressResponse);
+  rpc ListSecrets(RepoRequest) returns (ListSecretsResponse);
+  // Stores the value locally (never echoed back).
+  rpc SetSecret(SetSecretRequest) returns (ListSecretsResponse);
+  rpc ListPrivilegedCommands(RepoRequest) returns (ListPrivilegedCommandsResponse);
+  rpc ApprovePrivilegedCommand(NameRequest) returns (ListPrivilegedCommandsResponse);
+  rpc ListImages(RepoRequest) returns (ListImagesResponse);
+  rpc BuildImage(BuildImageRequest) returns (stream BuildImageEvent);
+}
+
+message RepoRequest { string repo_root = 1; }
+message HostRequest { string repo_root = 1; string host = 2; }
+message NameRequest { string repo_root = 1; string name = 2; }
+
+message ListEgressResponse { repeated EgressEntry entries = 1; }
+message EgressEntry { string host = 1; bool approved = 2; }
+
+message ListSecretsResponse { repeated SecretEntry entries = 1; }
+message SecretEntry {
+  string name = 1;
+  repeated string hosts = 2;
+  string mode = 3;        // placeholder | plaintext
+  bool value_set = 4;
+  bool approved = 5;      // plaintext needs approval
+}
+
+message SetSecretRequest { string repo_root = 1; string name = 2; string value = 3; }
+
+message ListPrivilegedCommandsResponse { repeated PrivilegedCommandEntry entries = 1; }
+message PrivilegedCommandEntry {
+  string name = 1;
+  string image = 2;
+  string command = 3;
+  bool approved = 4;
+  bool stale = 5;  // declaration changed since approval
+}
+
+message ListImagesResponse { repeated ImageEntry entries = 1; }
+message ImageEntry { string entry = 1; string build_id = 2; bool built = 3; }
+message BuildImageRequest { string repo_root = 1; string entry = 2; }
+message BuildImageEvent { string log_line = 1; string build_id = 2; }
+
+// ---- workflows ----------------------------------------------------------------
+
+service WorkflowService {
+  rpc List(RepoRequest) returns (ListWorkflowsResponse);
+  // Mermaid of the workflow with the engine's interrupts drawn in.
+  rpc Show(ShowWorkflowRequest) returns (ShowWorkflowResponse);
+  rpc Check(ShowWorkflowRequest) returns (CheckWorkflowResponse);
+}
+
+message ListWorkflowsResponse { repeated WorkflowEntry workflows = 1; }
+message WorkflowEntry { string path = 1; string origin = 2; repeated string inputs = 3; }
+message ShowWorkflowRequest { string repo_root = 1; string workflow = 2; }
+message ShowWorkflowResponse { string mermaid = 1; }
+message CheckWorkflowResponse { repeated Problem problems = 1; }
+message Problem { string path = 1; string node = 2; string message = 3; }

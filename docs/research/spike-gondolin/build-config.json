@@ -1,0 +1,7 @@
+{
+  "arch": "x86_64",
+  "distro": "alpine",
+  "oci": { "image": "spike1-guest:latest", "runtime": "docker", "pullPolicy": "never" },
+  "rootfs": { "label": "gondolin-root" },
+  "runtimeDefaults": { "rootfsMode": "cow" }
+}

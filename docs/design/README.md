@@ -1,61 +1,28 @@
-# 設計ドキュメント
+# 設計ドキュメント（再設計版）
 
-masudaが**現在**どう動いているかを記述する。「なぜそうなったか」は書かない——判断の経緯は `docs/adr/`（索引は [`../adr/README.md`](../adr/README.md)）にあり、ここからは `（ADR-NNNN）` のポインターだけを張る。
+masudaは2026-10-02にゼロから再設計した。ここにあるのは**再設計後の**設計で、現在形で書く。再設計に至った経緯とスパイクの結果は[redesign-background.md](redesign-background.md)にまとめてあり、それ以外のファイルは経緯を書かない。
 
-全体像から入るなら [`pipeline.md`](pipeline.md)。
+判断の理由は各コミットメッセージの`## 意図`・`## 設計上の考慮点`に残す。ADRは書かない（決定履歴の恒久的な置き場所は未決）。
 
-## 触る対象から引く
+## 読む順
 
-| 触る対象 | 読むファイル |
-|---|---|
-| `orchestrator/investigate_plan_graph.py`、`internal/hostloop/` | [discovery-blueprint.md](discovery-blueprint.md) |
-| `orchestrator/implement_review_graph.py` のステップ実行・バックストップ | [build.md](build.md) |
-| 同ファイルの観点レビュー・横断的チェック・synthesize、`internal/perspectives/` | [review.md](review.md) |
-| `internal/gate/`、`cmd/masuda/gate.go`、`cmd/masuda/triage.go`、`runtime/CLAUDE.md` | [gates.md](gates.md) |
-| `internal/workspace/`、`internal/worktree/`、`cmd/masuda/workspace.go` | [workspace.md](workspace.md) |
-| `internal/config/`、`runtime/merge_claude_settings.py` | [config.md](config.md) |
-| `internal/sandbox/` のVM起動・virtiofs・SSH鍵・認証、`runtime/entrypoint.sh` | [sandbox-vm.md](sandbox-vm.md) |
-| `internal/sandbox/vmnet.go`、`cmd/masuda-net-helper/`、`scripts/setup-vm-host.sh` | [networking.md](networking.md) |
-| `internal/egressproxy/`、`cmd/masuda-egress-proxy/`、`internal/sandbox/egressproxy.go`、`cmd/masuda/egress.go` | [egress-filter.md](egress-filter.md) |
-| `Dockerfile`、`templates/`、`internal/rootfs/`、`cmd/masuda/image.go` | [images-and-rootfs.md](images-and-rootfs.md) |
-| `internal/sandbox/disposablevm.go`、`cmd/masuda/privilegedcommand.go`、`runtime/masuda-run.*` | [privileged-commands.md](privileged-commands.md) |
-| `internal/statedaemon/`（KVストア・MCP 2面） | [state-daemon-mcp.md](state-daemon-mcp.md) |
-| `internal/statedaemon/mcpaggregator/`、`cmd/masuda/mcp.go` | [mcp-child-servers.md](mcp-child-servers.md) |
-| `internal/selfupdate/`、`internal/verify/`、`cmd/masuda/update.go`・`init.go`、`.github/workflows/` | [distribution-and-update.md](distribution-and-update.md) |
-| `cmd/masuda/main.go`、サブコマンドの一覧と呼び出し順 | [cli.md](cli.md) |
-| 段階をまたぐデータフロー、予算管理 | [pipeline.md](pipeline.md) |
+1. [overview.md](overview.md) — 全体設計。部品・契約・データの流れ・不変条件・脅威モデル。最初に読む
+2. [contracts.md](contracts.md) — 3つの契約の所在と、変更の手続き
+3. [redesign-background.md](redesign-background.md) — なぜ作り直したか、何を実機で確かめたか
 
-## このディレクトリの外にあるもの
+## リポジトリ
 
-- **用語の定義**（段階名・ゲート名・エスカレーション区分と旧称の対応）: [`../glossary.md`](../glossary.md)
-- **セットアップ手順**（何を実行するか）: [`../INSTALLATION.md`](../INSTALLATION.md)。ここが書くのは仕組みだけで、手順は繰り返さない
-- **masuda自身の開発手順**: [`../CONTRIBUTING.md`](../CONTRIBUTING.md)
-- **判断の経緯・却下した代替案**: [`../adr/README.md`](../adr/README.md)
+| リポジトリ | 言語 | 役割 |
+|---|---|---|
+| [masuda-sandbox](../../../masuda-sandbox) | TypeScript | Gondolinを包む常駐サービス。VMの作成・実行・方針切替・秘密・転送 |
+| [masuda-engine](../../../masuda-engine) | Go | ワークフロー定義の読み込み・検査・実行。ライブラリ |
+| masuda（このリポジトリ） | Go | CLI・公開API・ワークスペースとstaging・2つを結線する統合層 |
 
-## 既知の問題
-
-未修正のまま把握している問題は、該当する機構のドキュメント末尾に `## 既知の問題` として置いてある。一覧するには次を実行する。
-
-```bash
-grep -rn -A4 '^## 既知の問題' docs/design/
-```
+各リポジトリの作業単位は、それぞれの`docs/work-orders.md`にある。
 
 ## 書くときの決まり
 
-- **現在形だけで書く。** 「当初は」「〜という理由で」「〜ではなく〜を採用した」が出てきたら、それはADRの内容。`doc-placement` skill を使う
-- **1ファイル1関心事。** 他ファイルの担当範囲は書かず、参照1行で済ませる。同じ説明が2箇所にあると必ず片方が古くなる
-- **コードが正。** 既存の記述と実装が食い違っていたら実装を正とし、ドキュメントを直す
-
-## 書き終えたら
-
-```bash
-# 相互参照がすべて実在ファイルを指すか（左の出力が右にすべて含まれること）
-grep -ohE 'docs/design/[a-z-]+\.md' docs/design/*.md CLAUDE.md | sort -u
-ls docs/design/
-
-# 経緯が混入していないか（ヒットしたら doc-placement skill へ）
-# このREADME自身は禁止表現を説明のために書いているので除外する
-grep -n '当初は\|という理由で\|ではなく.*を採用した\|検討した結果\|実機で判明' docs/design/*.md | grep -v '^docs/design/README.md:'
-```
-
-行番号（`ファイル名:123`）を引用した場合は、その行が今も該当箇所を指すか確認すること。隣接する変更で簡単にずれる——`Dockerfile`に3行足されただけで3箇所がずれた実績がある。
+- 現在形だけで書く。「当初は」「〜という理由で」が出てきたら、それはコミットメッセージの内容
+- 1ファイル1関心事。他ファイルの範囲は参照1行で済ませる
+- コードが正。記述と実装が食い違ったら実装を正とし、ドキュメントを直す
+- 行番号は引用しない（すぐずれる）。関数名・ファイル名で指す

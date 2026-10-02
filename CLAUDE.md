@@ -1,20 +1,52 @@
 # masuda
 
-AIとの協同開発（Provision→Discovery→Blueprint→Scaffold→Build→Review）を、ローカルPC上のサンドボックス（Cloud Hypervisor microVM）で自己ループ実行するためのツール群。
+AIとの協同開発を、ローカルPC上のVMで無人実行するためのツール群の**統合層**。CLI、公開API（Connect）、ワークスペースとstaging、ゲスト向けMCP。ワークフローの実行は[masuda-engine](../masuda-engine)（Goライブラリ）、VMは[masuda-sandbox](../masuda-sandbox)（TypeScriptの常駐サービス）が担う。
 
-## 開発環境
-
-- Python: `venv/`に依存関係インストール済み（`requirements.txt`）。テスト: `pytest orchestrator/tests/`
-- Go: `go build ./...`・`go vet ./...`・`go test ./...`（標準の`go`ツールチェーンのみ、追加セットアップ不要）
-- GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使うこと。このリポジトリ専用のトークンを`.env`（Claudeからは読み書き不可、`.claude/settings.json`参照）から読み込んで`gh`に渡すラッパー
-- rootfsイメージビルド（`masuda internal rootfs build`）: `docker`・`fakeroot`・`mkfs.ext4`（e2fsprogsパッケージ）が必要。`internal/sandbox`の統合テスト同様、無ければ`go test`は自動でskipする
-- `orchestrator/`・`runtime/`を変更したら、実機テスト前にサンドボックスイメージを再ビルドすること（詳細は`docs/design/images-and-rootfs.md`）
+2026-10-02にゼロから再設計した。`redesign`ブランチが現在の正。旧実装はタグ`v1-frozen-*`に凍結してある。
 
 ## どこに何があるか
 
-- **現在の設計**: [`docs/design/`](docs/design/README.md) — 触る対象からファイルを引ける対応表がREADMEにある。全体像は`docs/design/pipeline.md`
-- **用語**: [`docs/glossary.md`](docs/glossary.md) — 段階名・ゲート名・エスカレーション区分と、ADRに出てくる旧称の対応表
-- **設計判断の経緯・却下した代替案**: [`docs/adr/README.md`](docs/adr/README.md)（索引）
-- **何がいつ変わったか**: `git log`。実装ロードマップという形のログは持っておらず、各コミットメッセージ（`意図`・`設計上の考慮点`・`懸念事項`）がその役割を担う
+- **全体設計**: `docs/design/overview.md`。最初に読む
+- **契約**: `docs/design/contracts.md`。このリポジトリが所有するのは`proto/masuda/api/v1/masuda.proto`と`docs/guest-protocol.md`
+- **再設計の経緯とスパイク**: `docs/design/redesign-background.md`、検証スクリプトは`docs/research/spike-gondolin/`
+- **作業単位**: `docs/work-orders.md`
+- 判断の理由はコミットメッセージ（`## 意図`・`## 設計上の考慮点`）。ADRは書かない
 
-**`docs/adr/` は作業前に読むものではない。** 現在何がどう動いているかは`docs/design/`が正となる。ADRを開くのは「なぜこうなっているのか」を問われたとき、または既存の設計判断を覆すときに限り、その場合も番号順に読まず索引から必要な番号だけを開く。
+## 開発
+
+- `go build ./... && go vet ./... && go test ./...`
+- protoからの生成: `buf generate`（`gen/`、コミットする）。sandboxのクライアントは`../masuda-sandbox/proto`からも生成する（`buf.gen.yaml`参照）
+- 契約テスト: `go test ./contract/`。sandbox serviceの**フェイク**（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。これが緑なら作業項目は完了
+- 実機テスト: `MASUDA_LIVE_TEST=1 go test ./live/`。実際の`masuda-sandbox serve`とVMが要る
+- GitHub操作は`gh`を直接使わず`scripts/gh.sh`（`.env`のトークンを渡すラッパー。`.env`はClaudeから読めない）
+
+## 契約の扱い
+
+- `proto/masuda/api/v1/masuda.proto`と`docs/guest-protocol.md`は契約。**変えない**。sandbox.protoとengineのAPIは他リポジトリの所有で、こちらからも変えない
+- 変えたくなったら`HANDOFF.md`の「契約への提案」に書いて止まる
+
+## 作業の進め方
+
+- 作業単位は`docs/work-orders.md`の1項目。1項目を1セッションで終える
+- セッション開始時: `HANDOFF.md`→`docs/work-orders.md`の該当項目→契約の順に読む
+- 探索はサブエージェントに出し、実装は自分で書く
+- 旧実装から流用してよいもの: `internal/worktree`（`git clone --bare --local`、fast-forward）、`internal/perspectives`（14観点）、`internal/config`の宣言/承認の形。`git show v1-frozen-develop:<path>`で読む。それ以外の旧コードは`redesign`ブランチで削除済みで、復活させない
+- コミットはユーザーの承認を得てから。メッセージは`<type>(<scope>): <summary>`に`## 意図`・`## 設計上の考慮点`・（あれば）`## 懸念事項`
+
+## HANDOFF.md
+
+セッション終了時に、次の見出しで**上書き**する（スキルは使わない。読むのはエージェント）。
+
+```
+# HANDOFF
+## 作業項目
+## 完了した契約テスト
+## 未完と理由
+## 次の一手
+## 注意点
+## 契約への提案
+```
+
+## コメント
+
+コードのコメントは、10行以上の要約、他の選択肢がある中での選択理由、コードから読めない背景、トレードオフ、のいずれかを満たすものだけ書く。
