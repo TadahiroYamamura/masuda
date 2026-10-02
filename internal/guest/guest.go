@@ -27,6 +27,9 @@ const Home = "/home/" + User
 // HooksURL はゲストのClaude Codeフックの送り先。
 const HooksURL = "http://masuda.internal:7000/hooks"
 
+// MCPServerName はゲストのclaudeに登録するMCPサーバーの名前。ツール名は`mcp__<名前>__<ツール>`になる。
+const MCPServerName = "masuda"
+
 // MCPURL はゲストから見たmasudaのMCPサーバー。
 const MCPURL = "http://masuda.internal:7000/mcp"
 
@@ -216,10 +219,23 @@ func ClaudeJSON() []byte {
 			"/workspace": map[string]any{"hasTrustDialogAccepted": true},
 		},
 		"mcpServers": map[string]any{
-			"masuda": map[string]any{"type": "http", "url": MCPURL},
+			MCPServerName: map[string]any{"type": "http", "url": MCPURL},
 		},
 	}, "", "  ")
 	return append(b, '\n')
+}
+
+// SubagentMCPTools はサブエージェント定義のtoolsへ必ず足すmasudaのMCPツール。定義のtoolsは
+// 作業に使う道具（エンジンが書き込めるかの判定に使う）だけを並べ、タスクの終わり方を伝える
+// ツールを含まない。toolsを持つサブエージェントからは、ここに無いMCPツールが見えないため、
+// 足さないとwrite_output・report_resultを呼べず、メインセッションが代筆してしまう。
+// next_taskはメインセッションの道具なので足さない。
+var SubagentMCPTools = []string{
+	"mcp__" + MCPServerName + "__write_output",
+	"mcp__" + MCPServerName + "__report_result",
+	"mcp__" + MCPServerName + "__report_concern",
+	"mcp__" + MCPServerName + "__ask_human",
+	"mcp__" + MCPServerName + "__run_privileged_command",
 }
 
 // AgentFile はエンジンのエージェント定義から、ゲストの`~/.claude/agents/<name>.md`の中身を作る。
@@ -231,7 +247,8 @@ func AgentFile(a *engine.Agent) Agent {
 	fmt.Fprintf(&b, "name: %s\n", yamlString(a.Name))
 	fmt.Fprintf(&b, "description: %s\n", yamlString(a.Description))
 	if a.Tools != nil {
-		fmt.Fprintf(&b, "tools: %s\n", yamlString(strings.Join(a.Tools, ", ")))
+		tools := append(append([]string(nil), a.Tools...), SubagentMCPTools...)
+		fmt.Fprintf(&b, "tools: %s\n", yamlString(strings.Join(tools, ", ")))
 	}
 	b.WriteString("---\n")
 	b.WriteString(a.Body)
