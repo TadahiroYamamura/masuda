@@ -3003,6 +3003,7 @@ masuda
 <li><strong>守るもの</strong>: ホストのファイルシステム、ホストの秘密（APIトークン、外部サービスの認証情報）、実リポジトリとリモート</li>
 <li><strong>敵</strong>: ゲスト内のコード全部。プロンプトインジェクション等で汚染されたエージェントが、ゲスト内のroot相当を取ったとしても成り立つこと</li>
 <li><strong>信頼するもの</strong>: ホストOS、<code>masuda serve</code>と<code>masuda-sandbox serve</code>のプロセス、QEMUの隔離、ゲストイメージの供給元</li>
+<li><strong>ホストで動く対象リポジトリ由来のもの</strong>: 作業ツリーの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>を<code>docker build</code>することだけ（<code>RUN</code>はホストのDockerの中で、egressの制限なしに動く）。定義は<code>masuda run</code>を打った作業ツリーの<code>.masuda/</code>から写し、<code>--branch</code>で指したブランチの<code>.masuda/</code>は使わない。したがってホストで動くのは、人間が自分でチェックアウトした定義だけで、チェックアウトしたリポジトリでビルドツールを打つのと同じ信頼になる。信頼できないブランチは作業ツリーに取り出さず<code>--branch</code>で指す。定義をブランチから取る設計に変えるなら、承認を挟むのではなく、特権コマンドと同じく使い捨てVMの中でビルドする（sandboxの契約変更）</li>
 <li><strong>守備範囲外</strong>: QEMU/KVM/HVFの脆弱性によるVM脱出、同じホストアカウントの別プロセス、サイドチャネル、DoS（VM内のCPU/メモリ消費、ホストのNodeプロセスへの負荷、stagingの肥大）。masudaはstagingとexportsのディスク使用量だけ監視する</li>
 <li><strong>不変条件</strong>: 秘密はゲストに入らない。ゲストが書いたものはすべて未検証データ。ホストFSへの経路はcommit/publishと宣言した<code>outputs</code>だけ。外部への経路は許可リストとSSHの<code>execPolicy</code>だけ。許可したホストへは、ゲストが読めるものは何でも送れる（これは許容する）</li>
 </ul>
