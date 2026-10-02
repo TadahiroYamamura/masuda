@@ -5,9 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
+
+	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
@@ -15,9 +18,9 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// workspaceService はWorkspaceServiceの実装。M3時点のRunはワークスペースとstagingを
-// 作り、sandboxを起動してゲストの初期配置をするところまで。定義の読み込み・engineの
-// 開始・メインセッションの起動はまだしない。
+// workspaceService はWorkspaceServiceの実装。Runは定義を読み込んで検査し、ワークスペースと
+// stagingを作り、sandboxの起動・ゲストの初期配置・engineの開始・メインセッションの起動を
+// バックグラウンドで行う。
 type workspaceService struct {
 	apiv1connect.UnimplementedWorkspaceServiceHandler
 	store   *workspace.Store
@@ -35,6 +38,10 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	repoRoot, err := repoTop(ctx, m.RepoRoot)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	set, err := checkDefinitions(repoRoot, m.Workflow, m.Inputs)
+	if err != nil {
+		return nil, err
 	}
 
 	w, err := s.store.Create(workspace.Meta{
@@ -71,8 +78,43 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	// VMの起動は秒単位かかるので、RunはSTARTINGで先に返し、起動はリクエストと
 	// 切り離して進める。結果は状態（RUNNING/BLOCKED）としてGetに現れる。
 	id := w.ID
-	s.backend.goBackground(func(ctx context.Context) { s.backend.boot(ctx, id) })
+	start := startRequest{set: set, inputs: m.Inputs}
+	s.backend.goBackground(func(ctx context.Context) { s.backend.boot(ctx, id, start) })
 	return connect.NewResponse(toProto(w)), nil
+}
+
+// checkDefinitions は定義を読み込み、workflowをrootとして検査する。問題があれば
+// ワークスペースを作る前に、問題の一覧をInvalidArgumentで返す。
+func checkDefinitions(repoRoot, workflow string, inputs map[string][]byte) (*engine.Set, error) {
+	set, _, err := loadDefinitions(repoRoot)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("loading definitions: %w", err))
+	}
+	wf := set.Workflows[workflow]
+	if wf == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", workflow))
+	}
+	if problems := set.Check(workflow); len(problems) > 0 {
+		var lines []string
+		for _, p := range problems {
+			loc := p.Path
+			if p.Node != "" {
+				loc += " (node " + p.Node + ")"
+			}
+			lines = append(lines, loc+": "+p.Message)
+		}
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s has problems:\n%s", workflow, strings.Join(lines, "\n")))
+	}
+	var missing []string
+	for _, in := range wf.Inputs {
+		if _, ok := inputs[in]; !ok {
+			missing = append(missing, in)
+		}
+	}
+	if len(missing) > 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v", workflow, missing))
+	}
+	return set, nil
 }
 
 // repoTop はrepo_rootが作業ツリーのトップそのものであることを確かめ、正規化したパスを返す。
@@ -142,7 +184,14 @@ var stateToProto = map[workspace.State]apiv1.WorkspaceState{
 }
 
 func toProto(w *workspace.Workspace) *apiv1.Workspace {
+	var openGates []string
+	if gs, err := w.OpenGates(); err == nil {
+		for _, g := range gs {
+			openGates = append(openGates, g.Gate)
+		}
+	}
 	return &apiv1.Workspace{
+		OpenGates: openGates,
 		Id:        w.ID,
 		RepoRoot:  w.RepoRoot,
 		Branch:    w.Branch,

@@ -105,3 +105,24 @@ func Shell(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id, cwd
 	}
 	return res, nil
 }
+
+// ReadFile はゲストのpathを読む。maxBytesが0ならsandbox serviceの既定の上限。
+// 無ければconnect.CodeNotFoundのエラー（IsNotFoundで判定できる）を返す。
+func ReadFile(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id, path string, maxBytes uint64) ([]byte, error) {
+	st, err := c.ReadFile(ctx, connect.NewRequest(&sandboxv1.ReadFileRequest{Id: id, Path: path, MaxBytes: maxBytes}))
+	if err != nil {
+		return nil, err
+	}
+	defer st.Close()
+	var out []byte
+	for st.Receive() {
+		out = append(out, st.Msg().Data...)
+	}
+	if err := st.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// IsNotFound はReadFile等がゲストにファイルが無いことを返したかを判定する。
+func IsNotFound(err error) bool { return connect.CodeOf(err) == connect.CodeNotFound }

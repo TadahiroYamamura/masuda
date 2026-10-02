@@ -50,16 +50,49 @@ type Server struct {
 type backend struct {
 	store   *workspace.Store
 	sandbox sandboxv1connect.SandboxServiceClient
+	// dataDir はserveのDataDir。fakeはフェイクsandboxを使っているか（MCPポートの公開と
+	// tmuxの起動の有無が変わる）。
+	dataDir string
+	fake    bool
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 	// closeSandbox はsandboxクライアントの後始末（フェイクならプロセス内サーバーの停止）。
 	closeSandbox func()
+
+	runsMu sync.Mutex
+	runs   map[string]*runCtl // ワークスペースID → 動いている実行
+	hookMu sync.Mutex
 }
 
-func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func()) *backend {
+func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func(), opts Options) *backend {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &backend{store: store, sandbox: sb, ctx: ctx, cancel: cancel, closeSandbox: closeSandbox}
+	return &backend{
+		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox,
+		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
+	}
+}
+
+func (b *backend) runFor(id string) *runCtl {
+	b.runsMu.Lock()
+	defer b.runsMu.Unlock()
+	return b.runs[id]
+}
+
+func (b *backend) addRun(c *runCtl) {
+	b.runsMu.Lock()
+	defer b.runsMu.Unlock()
+	b.runs[c.id] = c
+}
+
+func (b *backend) removeRun(id string) {
+	b.runsMu.Lock()
+	c := b.runs[id]
+	delete(b.runs, id)
+	b.runsMu.Unlock()
+	if c != nil {
+		c.close()
+	}
 }
 
 // goBackground はfをリクエストと切り離して動かす。fに渡すctxはStopで取り消される。
@@ -74,6 +107,13 @@ func (b *backend) goBackground(f func(ctx context.Context)) {
 // close はバックグラウンド処理を取り消して待ち、sandboxクライアントを閉じる。
 func (b *backend) close() {
 	b.cancel()
+	b.runsMu.Lock()
+	runs := b.runs
+	b.runs = map[string]*runCtl{}
+	b.runsMu.Unlock()
+	for _, c := range runs {
+		c.close()
+	}
 	b.wg.Wait()
 	if b.closeSandbox != nil {
 		b.closeSandbox()
@@ -106,7 +146,7 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		closeSandbox()
 		return nil, fmt.Errorf("serve: listening on %s: %w", opts.Socket, err)
 	}
-	b := newBackend(workspace.NewStore(opts.DataDir), sb, closeSandbox)
+	b := newBackend(workspace.NewStore(opts.DataDir), sb, closeSandbox, opts)
 
 	// UDS上ではTLSが無いので、クライアント・サーバー両方向のストリーミングに要る
 	// HTTP/2を平文（h2c）で受ける。HTTP/1.1のHTTP+JSONも同じハンドラで受ける。
@@ -171,7 +211,7 @@ func newMux(b *backend) *http.ServeMux {
 	store := b.store
 	mux := http.NewServeMux()
 	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{store: store, backend: b}))
-	mux.Handle(apiv1connect.NewGateServiceHandler(apiv1connect.UnimplementedGateServiceHandler{}))
+	mux.Handle(apiv1connect.NewGateServiceHandler(&gateService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewQuestionServiceHandler(apiv1connect.UnimplementedQuestionServiceHandler{}))
 	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))
 	mux.Handle(apiv1connect.NewConfigServiceHandler(apiv1connect.UnimplementedConfigServiceHandler{}))

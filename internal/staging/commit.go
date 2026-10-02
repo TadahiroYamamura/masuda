@@ -2,6 +2,8 @@ package staging
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -205,4 +207,28 @@ func (r *Repo) zeroOID(ctx context.Context) (string, error) {
 		return strings.Repeat("0", 64), nil
 	}
 	return strings.Repeat("0", 40), nil
+}
+
+// Changes はfromからtoへ内容かモードが変わったパスと、その変更の組を一意に表す
+// ダイジェストを返す。ダイジェストはパスだけでなく変更後のblobも含むので、同じファイルが
+// さらに書き換えられれば別の値になる（ゲートで承認した内容と後の内容を区別するため）。
+func (r *Repo) Changes(ctx context.Context, from, to string) ([]string, string, error) {
+	fromT, err := resolve(ctx, r.Dir, from, "tree")
+	if err != nil {
+		return nil, "", err
+	}
+	toT, err := resolve(ctx, r.Dir, to, "tree")
+	if err != nil {
+		return nil, "", err
+	}
+	raw, err := r.git(ctx, "diff-tree", "-r", "--no-renames", "--raw", "-z", "--abbrev=64", fromT, toT)
+	if err != nil {
+		return nil, "", err
+	}
+	paths, err := r.changedPaths(ctx, fromT, toT)
+	if err != nil {
+		return nil, "", err
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return paths, hex.EncodeToString(sum[:]), nil
 }

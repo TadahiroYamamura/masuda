@@ -204,20 +204,27 @@ func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 // ImportBundle はゲストが作ったbundleからsrcRefを取り込み、refs/masuda/wip/<occurrence>に置く。
 // WIPスナップショットはノード境界ごとに作り直すので、同じ出現IDの再取り込みは上書きする。
 func (r *Repo) ImportBundle(ctx context.Context, bundlePath, srcRef, occurrence string) (string, error) {
+	if occurrence == "" || strings.ContainsAny(occurrence, "/ ") {
+		return "", fmt.Errorf("occurrence %q: %w", occurrence, ErrInvalid)
+	}
+	return r.FetchBundle(ctx, bundlePath, srcRef, WIPRef(occurrence))
+}
+
+// FetchBundle はbundleのsrcRefをstagingのdstRefへ取り込み、そのコミットを返す。dstRefは上書きする。
+func (r *Repo) FetchBundle(ctx context.Context, bundlePath, srcRef, dstRef string) (string, error) {
 	if err := validRev(srcRef); err != nil {
 		return "", err
 	}
-	if occurrence == "" || strings.ContainsAny(occurrence, "/ ") {
-		return "", fmt.Errorf("occurrence %q: %w", occurrence, ErrInvalid)
+	if !strings.HasPrefix(dstRef, "refs/") {
+		return "", fmt.Errorf("ref %q: %w", dstRef, ErrInvalid)
 	}
 	if _, err := r.git(ctx, "bundle", "verify", "--quiet", "--", bundlePath); err != nil {
 		return "", err
 	}
-	ref := WIPRef(occurrence)
-	if _, err := r.git(ctx, "fetch", "--quiet", "--no-tags", "--", bundlePath, "+"+srcRef+":"+ref); err != nil {
+	if _, err := r.git(ctx, "fetch", "--quiet", "--no-tags", "--", bundlePath, "+"+srcRef+":"+dstRef); err != nil {
 		return "", err
 	}
-	return r.ResolveCommit(ctx, ref)
+	return r.ResolveCommit(ctx, dstRef)
 }
 
 // CreateBundle はrefs（stagingのref名）を含むbundleをoutPathに書く。ゲストへ渡す用。

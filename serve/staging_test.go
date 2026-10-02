@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -14,6 +15,8 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/fakesandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -30,7 +33,16 @@ func gitT(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// smokeInputs は同梱のworkflows/smokeが求める入力。
+var smokeInputs = map[string][]byte{"instructions": []byte("x")}
+
 func newTestAPI(t *testing.T) (apiv1connect.WorkspaceServiceClient, apiv1connect.StagingServiceClient, string) {
+	t.Helper()
+	return newTestAPIWith(t, nil)
+}
+
+// newTestAPIWith はwrapでsandboxクライアントを差し替えられるnewTestAPI。
+func newTestAPIWith(t *testing.T, wrap func(sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient) (apiv1connect.WorkspaceServiceClient, apiv1connect.StagingServiceClient, string) {
 	t.Helper()
 	repo := t.TempDir()
 	gitT(t, repo, "init", "-q", "-b", "main")
@@ -41,7 +53,11 @@ func newTestAPI(t *testing.T) (apiv1connect.WorkspaceServiceClient, apiv1connect
 	gitT(t, repo, "commit", "-qm", "init")
 	dataDir := t.TempDir()
 	fake := fakesandbox.StartInProcess(FakeDir(dataDir))
-	b := newBackend(workspace.NewStore(dataDir), fake.Client, fake.Close)
+	var client sandboxv1connect.SandboxServiceClient = fake.Client
+	if wrap != nil {
+		client = wrap(client)
+	}
+	b := newBackend(workspace.NewStore(dataDir), client, fake.Close, Options{DataDir: dataDir, FakeSandbox: true})
 	srv := httptest.NewServer(newMux(b))
 	t.Cleanup(func() {
 		srv.Close()
@@ -60,12 +76,14 @@ func TestRunRejectsBadRequests(t *testing.T) {
 		req  *apiv1.RunRequest
 		code connect.Code
 	}{
-		{&apiv1.RunRequest{RepoRoot: "rel", Workflow: "w", Branch: "b"}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "w"}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: filepath.Join(repo, "sub"), Workflow: "w", Branch: "b"}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "b", Base: "nope"}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "bad..name"}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "taken"}, connect.CodeAlreadyExists},
+		{&apiv1.RunRequest{RepoRoot: "rel", Workflow: "workflows/smoke", Branch: "b", Inputs: smokeInputs}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke"}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: filepath.Join(repo, "sub"), Workflow: "workflows/smoke", Branch: "b", Inputs: smokeInputs}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "b", Base: "nope", Inputs: smokeInputs}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "bad..name", Inputs: smokeInputs}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "taken", Inputs: smokeInputs}, connect.CodeAlreadyExists},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/nope", Branch: "b", Inputs: smokeInputs}, connect.CodeInvalidArgument},
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "b"}, connect.CodeInvalidArgument},
 	}
 	for _, c := range cases {
 		if _, err := ws.Run(ctx, connect.NewRequest(c.req)); connect.CodeOf(err) != c.code {
@@ -82,7 +100,7 @@ func TestRunRejectsBadRequests(t *testing.T) {
 func TestStagingRPCs(t *testing.T) {
 	ws, st, repo := newTestAPI(t)
 	ctx := context.Background()
-	run, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "feat/x"}))
+	run, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/x", Inputs: smokeInputs}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,16 +166,21 @@ func TestStagingRPCs(t *testing.T) {
 	}
 }
 
+// failingCreate はCreateSandboxだけが失敗するsandboxクライアント。
+type failingCreate struct {
+	sandboxv1connect.SandboxServiceClient
+}
+
+func (failingCreate) CreateSandbox(context.Context, *connect.Request[sandboxv1.CreateSandboxRequest]) (*connect.Response[sandboxv1.Sandbox], error) {
+	return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("no room for another VM"))
+}
+
 func TestRunBootFailureBlocksWorkspace(t *testing.T) {
-	ws, _, repo := newTestAPI(t)
+	ws, _, repo := newTestAPIWith(t, func(c sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient {
+		return failingCreate{c}
+	})
 	ctx := context.Background()
-	_ = os.MkdirAll(filepath.Join(repo, ".masuda/agents"), 0o755)
-	if err := os.WriteFile(filepath.Join(repo, ".masuda/agents/.hidden.md"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	gitT(t, repo, "add", "-A")
-	gitT(t, repo, "commit", "-qm", "bad agent")
-	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "feat/x"}))
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/x", Inputs: smokeInputs}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +191,7 @@ func TestRunBootFailureBlocksWorkspace(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.Msg.State == apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED {
-			if !strings.Contains(got.Msg.Reason, ".hidden.md") {
+			if !strings.Contains(got.Msg.Reason, "no room for another VM") {
 				t.Fatalf("reason %q", got.Msg.Reason)
 			}
 			return
