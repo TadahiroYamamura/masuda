@@ -29,6 +29,7 @@ type clients struct {
 	gates     apiv1connect.GateServiceClient
 	questions apiv1connect.QuestionServiceClient
 	config    apiv1connect.ConfigServiceClient
+	workflows apiv1connect.WorkflowServiceClient
 }
 
 func dial(socket string) *clients {
@@ -44,6 +45,7 @@ func dial(socket string) *clients {
 		gates:     apiv1connect.NewGateServiceClient(httpc, base, connect.WithGRPC()),
 		questions: apiv1connect.NewQuestionServiceClient(httpc, base, connect.WithGRPC()),
 		config:    apiv1connect.NewConfigServiceClient(httpc, base, connect.WithGRPC()),
+		workflows: apiv1connect.NewWorkflowServiceClient(httpc, base, connect.WithGRPC()),
 	}
 }
 
@@ -228,8 +230,9 @@ func runRemove(args []string) error {
 }
 
 func runList(args []string) error {
-	c := newCommand("list", "list [--repo <dir>]")
+	c := newCommand("list", "list [--repo <dir>] [--all]")
 	repo := c.fs.String("repo", "", "このリポジトリのワークスペースだけを出す（空なら全部）")
+	all := c.fs.Bool("all", false, "終わった（done）・止めた（stopped）ワークスペースも出す")
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return err
 	}
@@ -246,23 +249,54 @@ func runList(args []string) error {
 		return err
 	}
 	tw := newTable(os.Stdout)
-	fmt.Fprintln(tw, "ID\tSTATE\tACTIVITY\tBRANCH\tWORKFLOW\tPOSITION\tLAST ACTIVITY")
+	fmt.Fprintln(tw, "ID\tBRANCH\tSTATE\tACTIVITY\tPOSITION\tOPEN")
+	now := time.Now()
 	for _, w := range res.Msg.Workspaces {
-		pos := w.Position
-		switch {
-		case w.Reason != "":
-			pos = w.Reason
-		case w.Outcome != "":
-			pos = "outcome " + w.Outcome
+		if !*all && (w.State == apiv1.WorkspaceState_WORKSPACE_STATE_DONE || w.State == apiv1.WorkspaceState_WORKSPACE_STATE_STOPPED) {
+			continue
 		}
-		var last *timestamppb.Timestamp
-		if w.Activity != nil {
-			last = w.Activity.LastActivity
-		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", w.Id, shortState(w.State), shortActivity(w.Activity),
-			w.Branch, w.Workflow, orDash(firstLine(pos)), fmtTime(last))
+		fmt.Fprintln(tw, listRow(w, now))
 	}
 	return tw.Flush()
+}
+
+// listRow はワークスペース1つを一覧の1行（タブ区切り）にする。活動は種類と最終活動からの経過、
+// 位置は止まった理由・結果があればそちらを、OPENは開いているゲートと質問を出す。
+func listRow(w *apiv1.Workspace, now time.Time) string {
+	pos := w.Position
+	switch {
+	case w.Reason != "":
+		pos = w.Reason
+	case w.Outcome != "":
+		pos = "outcome " + w.Outcome
+	}
+	act := shortActivity(w.Activity)
+	if w.Activity != nil && w.Activity.LastActivity != nil && w.Activity.LastActivity.IsValid() {
+		act += " " + since(now.Sub(w.Activity.LastActivity.AsTime())) + " ago"
+	}
+	var open []string
+	for _, g := range w.OpenGates {
+		open = append(open, "gate:"+g)
+	}
+	for _, q := range w.OpenQuestions {
+		open = append(open, "question:"+q)
+	}
+	return strings.Join([]string{w.Id, w.Branch, shortState(w.State), act, orDash(firstLine(pos)), orDash(strings.Join(open, ","))}, "\t")
+}
+
+// since は経過時間を一覧で読みやすい粒度（秒・分・時間・日のうち1つ）にする。
+func since(d time.Duration) string {
+	switch {
+	case d < 0:
+		return "0s"
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 48*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
 }
 
 func firstLine(s string) string {
@@ -310,6 +344,10 @@ func formatEvent(ev *apiv1.WorkspaceEvent) string {
 		return s
 	case *apiv1.WorkspaceEvent_Engine:
 		x := e.Engine
+		if ev.WorkspaceId == "" {
+			// serve全体のこと（ディスク使用量の警告等）。出現もノードも無い。
+			return fmt.Sprintf("%s %s %s", head, x.Kind, x.Detail)
+		}
 		s := fmt.Sprintf("%s engine %s occ=%s %s/%s", head, x.Kind, orDash(x.Occurrence), x.Workflow, x.Node)
 		if x.Outcome != "" {
 			s += " outcome=" + x.Outcome
@@ -337,7 +375,7 @@ func formatEvent(ev *apiv1.WorkspaceEvent) string {
 // gates
 // ---------------------------------------------------------------------------
 
-const gateUsage = "gate list [<id>] | gate show <id> <occurrence> | gate approve <id> <occurrence> [--hash <h>] [--file <path>]... [--comment <text>] | gate reject <id> <occurrence> [--comment <text>]"
+const gateUsage = "gate list [<id>] | gate show <id> <occurrence> | gate approve <id> <occurrence> [--hash <h>] [--file <path>]... [--comment <text>] | gate reject <id> <occurrence> [--comment <text>] | gate dismiss|halt|redo <id> <occurrence> [--comment <text>]"
 
 func runGate(args []string) error {
 	if len(args) == 0 {
@@ -353,6 +391,8 @@ func runGate(args []string) error {
 		return gateDecide(args[1:], true)
 	case "reject":
 		return gateDecide(args[1:], false)
+	case "dismiss", "halt", "redo":
+		return gateTriage(args[0], args[1:])
 	}
 	fmt.Fprintf(os.Stderr, "usage: masuda %s\n", gateUsage)
 	return errUsage
@@ -390,22 +430,68 @@ func gateShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	g := res.Msg
-	fmt.Printf("gate:        %s\noccurrence:  %s\ntarget:      %s\ntarget_hash: %s\nopened:      %s\n",
+	fmt.Print(formatGate(res.Msg))
+	return nil
+}
+
+// triageOutcomes はtriageゲートの判断と、その意味（engineの扱い）。
+var triageOutcomes = []struct{ outcome, meaning string }{
+	{"dismiss", "懸念を退けて続ける"},
+	{"halt", "実行を止める"},
+	{"redo", "懸念の出た出現を差し戻して入り直す"},
+}
+
+// formatGate はゲートを人間が読む形にする。中身（subject）はゲートの種類で読み方が違うので、
+// triageは懸念の本文、deviationは計画の外で変わったファイルの一覧として見出しを付けて出し、
+// 最後にそのゲートで打てる判断のコマンドを添える。
+func formatGate(g *apiv1.Gate) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "gate:        %s\noccurrence:  %s\ntarget:      %s\ntarget_hash: %s\nopened:      %s\n",
 		g.Gate, g.Occurrence, orDash(g.Target), g.TargetHash, fmtTime(g.OpenedAt))
 	if g.StagingCommit != "" {
-		fmt.Printf("commit:      %s\n", g.StagingCommit)
+		fmt.Fprintf(&b, "commit:      %s\n", g.StagingCommit)
 	}
 	if d := g.Decision; d != nil {
-		fmt.Printf("decision:    %s %s\n", d.Outcome, d.Comment)
-	}
-	if len(g.Subject) > 0 {
-		fmt.Printf("\n%s", g.Subject)
-		if !strings.HasSuffix(string(g.Subject), "\n") {
-			fmt.Println()
+		fmt.Fprintf(&b, "decision:    %s %s\n", d.Outcome, d.Comment)
+		if len(d.ApprovedFiles) > 0 {
+			fmt.Fprintf(&b, "approved:    %s\n", strings.Join(d.ApprovedFiles, ", "))
 		}
 	}
-	return nil
+	subject := strings.TrimRight(string(g.Subject), "\n")
+	ref := g.WorkspaceId + " " + g.Occurrence
+	switch g.Gate {
+	case "triage":
+		b.WriteString("\nconcern (the agent reported this about its own task):\n")
+		for _, line := range strings.Split(subject, "\n") {
+			b.WriteString("  " + line + "\n")
+		}
+		if g.Decision == nil {
+			b.WriteString("\ndecide with one of:\n")
+			for _, o := range triageOutcomes {
+				fmt.Fprintf(&b, "  masuda gate %-7s %s [--comment <text>]   # %s\n", o.outcome, ref, o.meaning)
+			}
+		}
+	case "deviation":
+		b.WriteString("\nfiles changed outside the plan:\n")
+		for _, f := range strings.Split(subject, "\n") {
+			if f != "" {
+				b.WriteString("  - " + f + "\n")
+			}
+		}
+		if g.Decision == nil {
+			fmt.Fprintf(&b, "\nadd files to the plan:   masuda gate approve %s --hash %s --file <path>...\n", ref, g.TargetHash)
+			b.WriteString("  (files not listed stay uncommitted in the guest's work tree)\n")
+			fmt.Fprintf(&b, "send back to the agent:  masuda gate reject %s [--comment <text>]\n", ref)
+		}
+	default:
+		if subject != "" {
+			b.WriteString("\n" + subject + "\n")
+		}
+		if g.Decision == nil {
+			fmt.Fprintf(&b, "\napprove: masuda gate approve %s --hash %s [--comment <text>]\nreject:  masuda gate reject %s [--comment <text>]\n", ref, g.TargetHash, ref)
+		}
+	}
+	return b.String()
 }
 
 // gateDecide は承認・却下を送る。承認の--hashを省くと、今開いているゲートのtarget_hashを使う
@@ -448,6 +534,25 @@ func gateDecide(args []string, approve bool) error {
 		return err
 	}
 	fmt.Printf("%s %s %s\n", res.Msg.Gate, res.Msg.Occurrence, d.Outcome)
+	return nil
+}
+
+// gateTriage はtriageゲートへの判断（dismiss・halt・redo）を送る。triageの判断は内容の承認では
+// ないのでtarget_hashは要らない。
+func gateTriage(outcome string, args []string) error {
+	c := newCommand("gate "+outcome, "gate "+outcome+" <id> <occurrence> [--comment <text>]")
+	comment := c.fs.String("comment", "", "判断に添えるコメント")
+	pos, err := c.parse(args, 2, 2)
+	if err != nil {
+		return err
+	}
+	res, err := c.clients().gates.Decide(context.Background(), connect.NewRequest(&apiv1.DecideRequest{
+		WorkspaceId: pos[0], Occurrence: pos[1], Decision: &apiv1.Decision{Outcome: outcome, Comment: *comment},
+	}))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s %s %s\n", res.Msg.Gate, res.Msg.Occurrence, outcome)
 	return nil
 }
 

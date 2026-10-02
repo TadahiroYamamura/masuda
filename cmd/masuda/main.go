@@ -17,10 +17,11 @@ commands:
   serve                     公開APIを待ち受ける常駐プロセスを起動する
   run                       ワークフローを新しいワークスペースで始める
   resume <id>               止めたワークスペースを記録から再開する
-  list                      ワークスペースの一覧
+  list [--all]              ワークスペースの一覧（--allで終わった・止めたものも）
+  chat <id>                 ゲストのメインセッション（tmux）にsshでアタッチする
   watch [<id>]              状態とイベントを流し続ける
-  gate list|show|approve|reject
-                            ゲートの一覧・内容・判断
+  gate list|show|approve|reject|dismiss|halt|redo
+                            ゲートの一覧・内容・判断（dismiss/halt/redoはtriage）
   question list|answer      質問の一覧・回答
   stop <id>                 sandboxを止める（記録は残す）
   remove <id>               ワークスペースを消す（exportsは残す）
@@ -32,6 +33,7 @@ commands:
   privileged-command list|approve
                             特権コマンドの一覧・承認
   image list|build          ゲストイメージの一覧・ビルド
+  workflow list|show|check  ワークフローの一覧・図（Mermaid）・検査
   version                   バージョンを表示する
 
 serve・init以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
@@ -52,6 +54,10 @@ func main() {
 		err = runResume(os.Args[2:])
 	case "list":
 		err = runList(os.Args[2:])
+	case "chat":
+		err = runChat(os.Args[2:])
+	case "workflow":
+		err = runWorkflow(os.Args[2:])
 	case "watch":
 		err = runWatch(os.Args[2:])
 	case "gate":

@@ -1,0 +1,124 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"connectrpc.com/connect"
+
+	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
+)
+
+const workflowUsage = "workflow list [--repo <dir>] | workflow show <workflow> [--repo <dir>] | workflow check [<workflow>] [--repo <dir>]"
+
+func runWorkflow(args []string) error {
+	return subcommand(args, workflowUsage, map[string]func([]string) error{
+		"list":  workflowList,
+		"show":  workflowShow,
+		"check": workflowCheck,
+	})
+}
+
+// workflowRepoFlag は--repoを足す。省略時は今いる作業ツリーのトップ、作業ツリーの外なら同梱の定義だけを見る。
+func workflowRepoFlag(c *command) func() (string, error) {
+	repo := c.fs.String("repo", "", "対象リポジトリ（省略時は今いる作業ツリー。その外なら同梱の定義だけ）")
+	return func() (string, error) {
+		if *repo != "" {
+			return filepath.Abs(*repo)
+		}
+		out, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+		if err != nil {
+			return "", nil
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+}
+
+func workflowList(args []string) error {
+	c := newCommand("workflow list", "workflow list [--repo <dir>]")
+	repo := workflowRepoFlag(c)
+	if _, err := c.parse(args, 0, 0); err != nil {
+		return err
+	}
+	root, err := repo()
+	if err != nil {
+		return err
+	}
+	res, err := c.clients().workflows.List(context.Background(), connect.NewRequest(&apiv1.RepoRequest{RepoRoot: root}))
+	if err != nil {
+		return err
+	}
+	tw := newTable(os.Stdout)
+	fmt.Fprintln(tw, "WORKFLOW\tORIGIN\tINPUTS")
+	for _, w := range res.Msg.Workflows {
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", w.Path, w.Origin, orDash(strings.Join(w.Inputs, ",")))
+	}
+	return tw.Flush()
+}
+
+func workflowShow(args []string) error {
+	c := newCommand("workflow show", "workflow show <workflow> [--repo <dir>]")
+	repo := workflowRepoFlag(c)
+	pos, err := c.parse(args, 1, 1)
+	if err != nil {
+		return err
+	}
+	root, err := repo()
+	if err != nil {
+		return err
+	}
+	res, err := c.clients().workflows.Show(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: pos[0]}))
+	if err != nil {
+		return err
+	}
+	fmt.Print(res.Msg.Mermaid)
+	if !strings.HasSuffix(res.Msg.Mermaid, "\n") {
+		fmt.Println()
+	}
+	return nil
+}
+
+// workflowCheck は問題を1行ずつ出し、1つでもあれば終了コード1にする（CIや手元の確認で使えるように）。
+func workflowCheck(args []string) error {
+	c := newCommand("workflow check", "workflow check [<workflow>] [--repo <dir>]")
+	repo := workflowRepoFlag(c)
+	pos, err := c.parse(args, 0, 1)
+	if err != nil {
+		return err
+	}
+	root, err := repo()
+	if err != nil {
+		return err
+	}
+	wf := ""
+	if len(pos) == 1 {
+		wf = pos[0]
+	}
+	res, err := c.clients().workflows.Check(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: wf}))
+	if err != nil {
+		return err
+	}
+	for _, p := range res.Msg.Problems {
+		fmt.Println(formatProblem(p))
+	}
+	if n := len(res.Msg.Problems); n > 0 {
+		return fmt.Errorf("%d problem(s)", n)
+	}
+	fmt.Println("ok")
+	return nil
+}
+
+func formatProblem(p *apiv1.Problem) string {
+	loc := p.Path
+	if p.Node != "" {
+		loc += " (node " + p.Node + ")"
+	}
+	if loc == "" {
+		return p.Message
+	}
+	return loc + ": " + p.Message
+}
