@@ -19,6 +19,21 @@
 - 契約を変えたら、`docs/user/`・`docs/api/`の該当箇所も同じコミットで直す（APIリファレンスは`masuda.proto`から生成するので、手で書いた説明・ガイドの方）
 - 契約ファイルは後方互換を気にしない。3リポジトリは常に同じ時点の契約で揃える（M3までは特に）。バージョン番号は`v1`固定
 
+## エラーコードの約束（masuda API）
+
+Connectのコードは次の意味で使う。RPCごとの条件は`docs/api/errors.md`に一覧があり、実装がこれと食い違えば実装を直す。
+
+| コード | 意味 |
+|---|---|
+| `InvalidArgument` | リクエストの内容が不正。必須の欠落、形の誤り、宣言に無い名前、定義の読み込み・検査の失敗、**ゲートの種類に合わないoutcome**、未定義のワークフロー名（Run・Show・Checkで統一） |
+| `NotFound` | 指すものが無い。ワークスペースID、ゲートの出現、rev、ファイル |
+| `FailedPrecondition` | 今の状態では受け付けない。承認のハッシュ不一致、判断済みのゲート、止まっている・動いているワークスペース、秘密やトークンや承認の不足、設定ファイルが読めない（Run・Configで統一） |
+| `AlreadyExists` | 同名のものがある（ブランチ） |
+| `OutOfRange` | `Watch`の`after_seq`が最新のseqより大きい（serve再起動で番号が振り直された等）。クライアントは`after_seq: 0`で繋ぎ直す |
+| `Unimplemented` | その構成では提供しない（フェイクsandboxの`AttachInfo`等）。**ゲートのoutcomeの不一致には使わない** |
+| `Unavailable` | sandbox serviceに届かない |
+| `Internal` | ホスト側のI/O失敗 |
+
 ## 生成コード
 
 - Go: `buf generate`で`gen/`へ。`protoc-gen-go`と`protoc-gen-connect-go`
