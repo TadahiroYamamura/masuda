@@ -130,6 +130,18 @@ M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の�
 - `--stall-after`の既定`0`（設定に従う）はそのまま
 - **ループバックの待ち受け**: `config.json`の`listen`（例: `"127.0.0.1:7788"`）があるときだけ、UDSに加えてそのアドレスでもConnectを待ち受ける（`contracts.md`「通信の前提」どおり）。ブラウザのGUIはUDSに繋げないので、これが無いとAPIを使えない。CORSは同一ホストの任意オリジンを許す（ローカル前提）。実装と同じコミットで`overview.md`第9章を直す
 
+## M13. 配布（v0.1.0に向けて）
+
+決定（ユーザー）: npm公開はv1.0以降でそれまではtarball。macOSは「実験的」と明記。v0.1.0は今の機能で出し、互換性の保証はv1.0以降。
+
+- **バージョン埋め込み**: `-ldflags -X main.version=X.Y.Z`。`masuda version`はこれとGoのバージョン、接続先sandboxの`GetServerInfo`（届けば）を出す
+- **互換性の確認**: `masuda serve`は起動時と各ワークスペースの起動前にsandboxの`GetServerInfo`を呼び、`contract_sha256`が自分の生成元`sandbox.proto`のSHA-256（ビルド時に埋める）と違えば`FailedPrecondition`で止める（理由にバージョンを含める）。`masuda doctor`でも表示
+- **`masuda doctor`**: 前提の確認（`qemu-system-*`・`/dev/kvm`またはHVF・Node 22.19以上・Docker・git、sandbox serviceの到達と`GetServerInfo`、Claudeトークンの有無）。足りないものと直し方を出す
+- **GitHub Actions `release.yml`**: タグ`v*`で`linux/amd64`・`darwin/arm64`（darwinは「実験的」。macOSの検証はM5）をクロスビルドし、`masuda_X.Y.Z_<os>_<arch>.tar.gz`とSHA-256をGitHub Releaseに添付。`clients/ts`の`npm pack`のtgzも添付。**CI `ci.yml`**: `main`/`develop`へのpushとPRで`go build`・`go vet`・`go test ./...`（契約テストはフェイクで回るのでCIで回す。liveはskip）
+- **リリース手順書** `docs/design/release.md`: (1) 3リポジトリの契約テストが緑、liveテストが完走していること、(2) `redesign`→`develop`（初回のみ: `git branch -f develop redesign && git push -f origin develop`、旧developはタグ`v1-frozen-develop`。`v1-frozen-*`の3タグもpush）、(3) `main`を`develop`に合わせる、(4) sandbox→masudaの順にタグ`vX.Y.Z`を打つ（masudaのリリースノートに対応するsandboxのバージョンを書く）、(5) docsワークフローが`X.Y`と`latest`を公開することの確認、(6) Releaseの添付物でインストール手順（`docs/user/install.md`）を1回なぞる
+- `docs/user/install.md`を「ソースからビルド」から「Releaseのtarballを入れる」中心に書き直し、ソースからの手順は開発者向け（`design/README.md`）へ
+- 契約テスト: C-M1〜C-M8が緑のまま
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
