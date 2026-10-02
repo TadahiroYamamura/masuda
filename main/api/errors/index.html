@@ -1,0 +1,1941 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/main/api/errors/">
+      
+      
+        <link rel="prev" href="../flows/">
+      
+      
+        <link rel="next" href="../reference/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>エラーコード - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              エラーコード
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../user/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        コードの使い分け
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        すべてのRPCに共通
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workspaceservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkspaceService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gateservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GateService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#questionservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QuestionService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stagingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StagingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConfigService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflowservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkflowService
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../design/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        コードの使い分け
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rpc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        すべてのRPCに共通
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workspaceservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkspaceService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#gateservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        GateService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#questionservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        QuestionService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stagingservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StagingService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ConfigService
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#workflowservice" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WorkflowService
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">エラーコード<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>各RPCが失敗したときに返す<a href="https://connectrpc.com/docs/protocol/#error-codes">Connectのエラーコード</a>と、その条件。コードの意味は契約（<code>docs/design/contracts.md</code>「エラーコードの約束」）が定め、この一覧はRPCごとの条件をそれに沿って並べたもの。クライアントはこのコードで分岐してよい。メッセージ（<code>message</code>）は人間向けの英語で、文言は変わりうるので分岐に使わない。</p>
+<h2 id="_2">コードの使い分け<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>コード</th>
+<th>HTTP</th>
+<th>意味</th>
+<th>クライアントがすること</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>invalid_argument</code></td>
+<td>400</td>
+<td>要求そのものが誤り。何度送っても同じ結果になる</td>
+<td>入力を直す。定義の読み込み・検査の失敗、宣言に無い名前、未定義のワークフロー名、ゲートの種類に合わない<code>outcome</code>もここ</td>
+</tr>
+<tr>
+<td><code>not_found</code></td>
+<td>404</td>
+<td>指したもの（ワークスペース・ゲート・質問・rev・パス）が無い</td>
+<td>一覧を取り直す</td>
+</tr>
+<tr>
+<td><code>failed_precondition</code></td>
+<td>400</td>
+<td>要求は正しいが、今の状態では受け付けられない。設定ファイル（<code>settings.json</code>・<code>settings.local.json</code>）が読めないのもここ</td>
+<td>状態を取り直してから、条件を満たして送り直す（Stopしてから、承認してから、設定ファイルを直してから、等）</td>
+</tr>
+<tr>
+<td><code>already_exists</code></td>
+<td>409</td>
+<td>作ろうとしたものが既にある（publishするワークフローのRunのブランチ）</td>
+<td>別の名前にする</td>
+</tr>
+<tr>
+<td><code>out_of_range</code></td>
+<td>400</td>
+<td><code>Watch</code>の<code>after_seq</code>が最新のseqより大きい（serveの再起動で番号が振り直された等）</td>
+<td><code>after_seq: 0</code>で繋ぎ直す</td>
+</tr>
+<tr>
+<td><code>unimplemented</code></td>
+<td>501</td>
+<td>その構成では提供しない（フェイクsandboxの<code>AttachInfo</code>）</td>
+<td>機能を出さない・別の手段を案内する</td>
+</tr>
+<tr>
+<td><code>unavailable</code></td>
+<td>503</td>
+<td><code>masuda-sandbox serve</code>に届かない</td>
+<td>sandbox serviceの起動を案内する（<code>masuda doctor</code>）</td>
+</tr>
+<tr>
+<td><code>canceled</code></td>
+<td>499</td>
+<td>要求が取り消された（クライアントの切断等）</td>
+<td>必要なら送り直す</td>
+</tr>
+<tr>
+<td><code>internal</code></td>
+<td>500</td>
+<td>ホスト側の読み書きの失敗など、masudaの側の問題</td>
+<td>利用者に見せ、<code>masuda serve</code>のログを確かめてもらう</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>500</td>
+<td>分類していない失敗（sandbox serviceからの想定外のエラー等）</td>
+<td><code>internal</code>と同じ</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>HTTP+JSONで呼ぶときは、ステータスでなく本文の<code>code</code>で分岐する（<code>invalid_argument</code>と<code>failed_precondition</code>はどちらも400）</li>
+<li>サーバーストリーミング（<code>Watch</code>・<code>GetBlob</code>・<code>BuildImage</code>）のエラーは、HTTP 200のまま終わりのエンベロープで届く（<a href="../connect/#streaming">接続</a>）。ストリームの途中でもエラーで終わりうる</li>
+<li><code>failed_precondition</code>の多くは、<code>Run</code>・<code>Resume</code>の前提（秘密・承認・イメージ等）の不足。足りないものは1回の応答に<code>;</code>区切りでまとめて入る</li>
+</ul>
+<h2 id="rpc">すべてのRPCに共通<a class="headerlink" href="#rpc" title="Permanent link">&para;</a></h2>
+<ul>
+<li>ワークスペースのIDを受け取るRPCは、そのIDのワークスペースが無ければ<code>not_found</code>。IDとして不正な文字列（空文字列を含む）も<code>not_found</code></li>
+<li><code>repo_root</code>を受け取るRPC（<code>Run</code>・ConfigService・WorkflowService）は、絶対パスでない・gitの作業ツリーでない・作業ツリーのトップでない（サブディレクトリを渡した）なら<code>invalid_argument</code>。WorkflowServiceは<code>repo_root</code>を空にでき、そのときは同梱の定義だけを読む。ConfigServiceの<code>SetSecret</code>・<code>ListSecrets</code>も空にでき、そのときはユーザー単位の秘密（Claudeのトークン）を扱う</li>
+<li>ホスト側のファイルの読み書きに失敗すれば<code>internal</code></li>
+</ul>
+<h2 id="workspaceservice">WorkspaceService<a class="headerlink" href="#workspaceservice" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Run</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>repo_root</code>が不正。<code>workflow</code>か<code>branch</code>が空。<code>.masuda/</code>を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。<code>workflow</code>が定義に無い。ワークフローの<code>inputs</code>が足りない。<code>.masuda/reviews/</code>の観点ファイルのfrontmatterが読めない。ブランチ名が不正。<code>base</code>が実リポジトリに無い。既存のブランチで分岐元を決められない（<code>base</code>を渡す）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td><code>settings.json</code>・<code>settings.local.json</code>が読めない（JSONとして壊れている、知らないキーがある、<code>stallAfter</code>が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、<code>plaintext</code>の秘密が未承認、イメージのDockerfileが無い、<code>envFiles</code>の公開値が<code>vars</code>に無い、ワークフローが使う<code>checks</code>が宣言されていない。sandbox serviceの契約（<code>GetServerInfo</code>の<code>contract_sha256</code>）がmasudaと違う、または<code>GetServerInfo</code>を持たない古いsandbox（理由に両方のバージョンが入る）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>unavailable</code></td>
+<td>sandbox serviceに届かない（ワークスペースは作らない）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>already_exists</code></td>
+<td>ワークフローがpublishを含み、<code>branch</code>が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>canceled</code></td>
+<td>stagingを作っている間に要求が取り消された</td>
+</tr>
+<tr>
+<td></td>
+<td><code>internal</code></td>
+<td>ワークスペース・stagingの作成、engineの開始に失敗した</td>
+</tr>
+<tr>
+<td><code>Resume</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは<code>Stop</code>した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの<code>settings.json</code>や<code>settings.local.json</code>が読めない。起動に要るものが足りない、sandbox serviceの契約が違う（<code>Run</code>と同じ）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>unavailable</code></td>
+<td>sandbox serviceに届かない（状態は変えない）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>internal</code></td>
+<td>実行の窓口の用意・質問の破棄の記録に失敗した</td>
+</tr>
+<tr>
+<td><code>Get</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td><code>List</code></td>
+<td><code>internal</code></td>
+<td>一覧を読めない。<code>repo_root</code>は検査しない（一致するものが無ければ空の一覧）</td>
+</tr>
+<tr>
+<td><code>Watch</code></td>
+<td><code>not_found</code></td>
+<td><code>id</code>を指定し、そのワークスペースが無い（ストリームの最初に終わる）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>out_of_range</code></td>
+<td><code>after_seq</code>が最新のseqより大きい（ストリームの最初に終わる）。<code>after_seq: 0</code>で繋ぎ直す</td>
+</tr>
+<tr>
+<td></td>
+<td>（正常な終わり）</td>
+<td><code>masuda serve</code>が止まると、エラーでなく正常な終わりでストリームが閉じる</td>
+</tr>
+<tr>
+<td><code>Stop</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの<code>Stop</code>はエラーにせずそのまま返す。engineが止めたBLOCKEDへの<code>Stop</code>はVMを片付けてBLOCKEDのまま返す</td>
+</tr>
+<tr>
+<td><code>Remove</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>動いている（STARTING・RUNNING・WAITING_GATE・WAITING_QUESTION）のに<code>force</code>が無い</td>
+</tr>
+<tr>
+<td><code>AttachInfo</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>sandboxが無い（止まっている等）、またはまだ起動中</td>
+</tr>
+<tr>
+<td></td>
+<td><code>unimplemented</code></td>
+<td>sandbox serviceがSSHを提供しない（フェイクsandbox）</td>
+</tr>
+<tr>
+<td></td>
+<td>sandboxのコード</td>
+<td>sandbox serviceの<code>EnableSsh</code>が返したコードをそのまま返す。届かなければ<code>unavailable</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="gateservice">GateService<a class="headerlink" href="#gateservice" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ListOpen</code></td>
+<td><code>not_found</code></td>
+<td><code>workspace_id</code>を指定し、そのワークスペースが無い</td>
+</tr>
+<tr>
+<td><code>Get</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。その<code>occurrence</code>のゲートが無い</td>
+</tr>
+<tr>
+<td><code>Decide</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>decision</code>か<code>decision.outcome</code>が空。ゲートの種類に合わない<code>outcome</code>（plan・reviewなど定義のゲートとdeviationは<code>approved</code>・<code>rejected</code>、triageは<code>dismiss</code>・<code>halt</code>・<code>redo</code>だけを受け付ける）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。その<code>occurrence</code>のゲートが無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>ゲートが判断済み。<code>approved</code>で<code>target_hash</code>がゲートのものと違う。ワークスペースが動いていない（STOPPED等）。engineが受け付けない: そのゲートが今待っているものでない、deviationの<code>approved_files</code>にゲートが挙げていないファイルがある</td>
+</tr>
+</tbody>
+</table>
+<h2 id="questionservice">QuestionService<a class="headerlink" href="#questionservice" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ListOpen</code></td>
+<td><code>not_found</code></td>
+<td><code>workspace_id</code>を指定し、そのワークスペースが無い</td>
+</tr>
+<tr>
+<td><code>Answer</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。その<code>occurrence</code>の開いた質問が無い（答え済み・再開で破棄された質問を含む）</td>
+</tr>
+<tr>
+<td></td>
+<td><code>invalid_argument</code></td>
+<td>答えの無い質問がある。選択肢（<code>options</code>）のある質問に選択肢以外を答えた。聞かれていない<code>id</code>への答えがある</td>
+</tr>
+<tr>
+<td></td>
+<td><code>failed_precondition</code></td>
+<td>ワークスペースが動いていない。engineが受け付けない</td>
+</tr>
+</tbody>
+</table>
+<h2 id="stagingservice">StagingService<a class="headerlink" href="#stagingservice" title="Permanent link">&para;</a></h2>
+<p><code>rev</code>・<code>commit</code>・<code>from</code>・<code>to</code>には、コミットに解決できるもの（ref名・ハッシュ・<code>HEAD~1</code>等）を渡す。</p>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ListRefs</code></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い</td>
+</tr>
+<tr>
+<td><code>GetCommit</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>rev</code>が空、または<code>-</code>で始まる</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。<code>rev</code>がコミットに解決できない</td>
+</tr>
+<tr>
+<td><code>Diff</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>to</code>が空、または<code>from</code>・<code>to</code>が<code>-</code>で始まる</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。<code>from</code>・<code>to</code>がコミットに解決できない</td>
+</tr>
+<tr>
+<td><code>GetBlob</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>rev</code>が空、または<code>-</code>で始まる</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。<code>rev</code>が解決できない。その<code>path</code>がファイルでない・無い</td>
+</tr>
+<tr>
+<td></td>
+<td><code>internal</code></td>
+<td>読み出しの途中の失敗（いくつかのチャンクを送った後でも起こりうる）</td>
+</tr>
+<tr>
+<td><code>ListComments</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>commit</code>が<code>-</code>で始まる</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。<code>commit</code>を指定し、それが解決できない</td>
+</tr>
+<tr>
+<td><code>AddComment</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>body</code>が空。<code>commit</code>が空、または<code>-</code>で始まる</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td>ワークスペースが無い。<code>commit</code>が解決できない</td>
+</tr>
+</tbody>
+</table>
+<p><code>AddComment</code>は<code>path</code>・<code>line</code>がそのコミットに実在するかを確かめない。</p>
+<h2 id="configservice">ConfigService<a class="headerlink" href="#configservice" title="Permanent link">&para;</a></h2>
+<p>すべてのRPCは、最初に<code>repo_root</code>の検査と設定の読み込みをする（<code>repo_root</code>が空の<code>SetSecret</code>・<code>ListSecrets</code>を除く。リポジトリを読まない）。</p>
+<ul>
+<li><code>repo_root</code>が不正なら<code>invalid_argument</code></li>
+<li><code>.masuda/settings.json</code>・<code>.masuda/settings.local.json</code>が読めない（JSONとして壊れている、知らないキーがある）なら<code>failed_precondition</code></li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ListEgress</code></td>
+<td></td>
+<td>共通のものだけ</td>
+</tr>
+<tr>
+<td><code>ApproveEgress</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>host</code>が<code>settings.json</code>の<code>egress</code>に宣言されていない</td>
+</tr>
+<tr>
+<td><code>RejectEgress</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>host</code>が宣言にも承認にも無い（宣言から消えたホストの承認は取り消せる）</td>
+</tr>
+<tr>
+<td><code>ListSecrets</code></td>
+<td></td>
+<td>共通のものだけ</td>
+</tr>
+<tr>
+<td><code>SetSecret</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>name</code>が宣言した秘密でもClaudeのトークンの名前でもない（<code>repo_root</code>が空なら、名前の形が不正）。<code>value</code>が空</td>
+</tr>
+<tr>
+<td><code>ApproveSecret</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>name</code>が宣言されていない。<code>placeholder</code>モードで承認が要らない</td>
+</tr>
+<tr>
+<td><code>RejectSecret</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>name</code>が宣言にも承認にも無い。<code>placeholder</code>モードで承認の記録も無い</td>
+</tr>
+<tr>
+<td><code>ListPrivilegedCommands</code></td>
+<td></td>
+<td>共通のものだけ</td>
+</tr>
+<tr>
+<td><code>ApprovePrivilegedCommand</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>name</code>が宣言されていない。宣言の形が壊れている（コマンドが空、イメージのDockerfileが無い、<code>inputs</code>・<code>outputs</code>が作業ツリーの外を指す）</td>
+</tr>
+<tr>
+<td><code>ListImages</code></td>
+<td>sandboxのコード</td>
+<td>sandbox serviceの<code>ListImages</code>の失敗をそのまま返す（届かなければ<code>unavailable</code>）</td>
+</tr>
+<tr>
+<td><code>BuildImage</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>entry</code>（空なら<code>settings.json</code>の<code>image</code>）がエントリ名として不正</td>
+</tr>
+<tr>
+<td></td>
+<td><code>not_found</code></td>
+<td><code>.masuda/images/&lt;entry&gt;/Dockerfile</code>が無い</td>
+</tr>
+<tr>
+<td></td>
+<td>sandboxのコード</td>
+<td>ビルドの失敗はsandbox serviceのコードをそのまま返す。ビルド結果の記録に失敗すれば<code>unknown</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="workflowservice">WorkflowService<a class="headerlink" href="#workflowservice" title="Permanent link">&para;</a></h2>
+<p>作業ツリーの<code>.masuda/</code>（と同梱の定義）を読む。<code>repo_root</code>が空なら同梱だけ。</p>
+<table>
+<thead>
+<tr>
+<th>RPC</th>
+<th>コード</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>List</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>repo_root</code>が不正。定義が読み込めない</td>
+</tr>
+<tr>
+<td><code>Show</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>workflow</code>が空。<code>repo_root</code>が不正。定義が読み込めない。図にできない。<code>workflow</code>が定義に無い</td>
+</tr>
+<tr>
+<td><code>Check</code></td>
+<td><code>invalid_argument</code></td>
+<td><code>repo_root</code>が不正。<code>workflow</code>を指定し、それが定義に無い</td>
+</tr>
+</tbody>
+</table>
+<p><code>Check</code>は、定義が読み込めないときもエラーにせず、その理由を<code>problems</code>の1つとして返す。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
