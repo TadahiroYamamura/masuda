@@ -76,7 +76,9 @@ nav:
       - 概念: user/concepts.md
       - CLIリファレンス: user/cli.md
       - 設定ファイル: user/settings.md
+      - ワークフロー: user/workflows.md
       - ワークフロー定義の仕様: user/reference/workflow-schema.md
+      - レビュー観点: user/reviews.md
   - 統合開発者向け:
       - api/index.md
       - APIリファレンス: api/reference.md
