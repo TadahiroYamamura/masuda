@@ -66,6 +66,17 @@
 
 ## M9. 残り
 
+M8の実機1周で見つかったもの（優先）:
+
+- **観点の置き場所**: 起動時に`.masuda/reviews/*.md`（実リポジトリ側、無ければ同梱）を`/masuda/reviews/`へ`WriteFile`し、`Runner.Items(perspectives)`も同じスナップショットから返す（`docs/guest-protocol.md`に追記済み）。engine側のtrigger-matcherのプロンプトはE9で`/masuda/reviews/`を読むように変わる
+- **活動の判定**: メインセッションが人間に問いかけたまま止まっても`input_wait`にならなかった。ゲストのフックが`/hooks`に届いているか（`records/hooks.jsonl`）、`Notification`の`idle_prompt`が出る条件を実機で確かめて直す。あわせてループ規約（`~/.claude/CLAUDE.md`）に「人間に聞きたいことは`ask_human`で。会話で問いかけて待たない」を明記する
+- 起動失敗でBLOCKEDになったワークスペースを`stop`なしで`resume`できるようにする
+- `masuda init`が`.gitignore`に`.masuda/`があっても`settings.local.json`の行を足す重複を直す。雛形のDockerfileのコメントに`GOCACHE`等のキャッシュを`/tmp`へ向ける案内と、`-modcacherw`の注意（S10が直すまで）を書く
+- `CreateSandbox`に`disk_mib`を渡す（sandboxの契約に追加済み。`settings.json`の`image`エントリ側に`diskMiB`を持たせる。既定4096）
+- `live/`（`MASUDA_LIVE_TEST=1`）に、M8の段階1を自動化したテストを置く
+
+元から残っていたもの:
+
 - **Resumeで未コミットの作業ツリーを復元する**: 再cloneのあと、最新の`refs/masuda/wip/<occ>`のtreeを作業ツリーに展開する（`git read-tree -m -u <wip>` 相当。HEADはブランチのまま、WIPは未コミットの変更として戻す）。engineの基準点と作業ツリーがずれないため。再開前に開いていた`ask_human`の質問は閉じて（記録に「再開で破棄」）、再開後のエージェントに聞き直させる
 - `masuda chat`（`AttachInfo`→ssh）、`WorkflowService`、exports、`masuda workspace list`の表示、ディスク使用量の監視、CLIからのtriage判断（dismiss/halt/redo）、無活動しきい値のsettings.jsonへの統合、`docs/design/`への反映（Watchの初回status・活動の優先順）
 

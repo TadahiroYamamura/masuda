@@ -17,6 +17,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文を写す |
 | `~/.claude/settings.json` | フック設定（下記）と、対象リポジトリの`claudeSettings` |
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
+| `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の14観点）をタスク開始時にスナップショットしたもの。trigger-matcherと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |
 | `~/.claude/.mcp.json`相当 | `masuda`サーバー1つ（`http://masuda.internal:7000/mcp`） |
 
 環境変数（tmuxサーバーに継承させる）: `CLAUDE_CODE_OAUTH_TOKEN=<プレースホルダ>`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`、`GIT_AUTHOR_*`/`GIT_COMMITTER_*`。
