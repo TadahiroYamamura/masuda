@@ -47,6 +47,7 @@
 
 ## M6. 設定と秘密
 
+- `checks` の実体化: 同梱ワークフローの `exec` ノードは `command: ["/masuda/checks/<名前>"]` でチェックを呼ぶ。masuda はワークスペース起動時に `.masuda/settings.json` の `checks.<名前>`（シェルコマンド文字列）を `/masuda/checks/<名前>` の実行可能スクリプト（`#!/bin/sh -e` + `cd /workspace` + コマンド）として `WriteFile` する。宣言されていないチェック名を使う定義は `Set.Check` では分からないので、起動時に masuda が確かめて止める
 - `internal/config`: `.masuda/settings.json`（`image`、`egress`、`secrets`、`envFiles`、`privilegedCommands`、`checks`、`claudeSettings`）と`.masuda/settings.local.json`（`egressApproved`、`secretsApproved`（plaintext用）、`privilegedCommandsApproved`、`claudeToken`）。宣言ハッシュで承認の失効を判定
 - `internal/secrets`: `$XDG_DATA_HOME/masuda/secrets/<repo-hash>/<NAME>`（0600）。Claudeトークンも同じ仕組み（`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`。旧`masuda claude set-token`は無い）
 - イメージの再ビルド判定: Gondolinの`build_id`は同じDockerイメージからでもビルドのたびに変わり、1回約390MBの資産が溜まる。sandboxの`ListImages`に同じ`oci_digest`（`docker build`の結果）の資産があれば再ビルドせずそれを使う。資産の削除はsandbox APIに将来`DeleteImage`を足して対処する（今は無い）
