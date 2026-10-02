@@ -14,8 +14,10 @@ C-M1〜C-M8（`GOWORK=off go test -count=1 ./...`、手元とCI両方で緑）�
 1. リリース手順は`.claude/skills/release/SKILL.md`（Skill `release`、bb5b03c）に移した。次のリリースはこれに従う。`scripts/precheck.sh vX.Y.Z`が速い前確認
 2. quickstart実走で見つけた課題: masuda-engine#3と#66（`expected_byproducts`のglobがengineの完全一致・ホストの`path.Match`のどちらでも効かず、Pythonでは毎ステップdeviationが開く。両方を同じ版で直す）、masuda-engine#4（テスト不足の指摘の`file`が実装側を指し、fixerが構造的にcannot_fix）
 3. #65: ゲスト→ホストのフックcurl（TcpMap経由）が1接続だけ約135秒待たされ、メインセッションが止まる。5周目とliveの2周連続で1周に2回。緩和は`internal/guest/guest.go`のフックcurlに`--connect-timeout`・`--max-time`を付けること。原因の切り分けはIssueの手順
-4. #60〜#64、masuda-sandbox #1〜#5、masuda-engine #1〜#2
+4. 旧設計のIssue棚卸しは完了（#62クローズ）。masudaのopenは#7 #9 #15 #23 #51（新設計の言葉で書き直し済み）、#60 #61 #63 #64 #65 #66。engineは#1〜#6、sandboxは#1〜#6
 ## 注意点
+- ホストで動く対象リポジトリ由来のものは作業ツリーの`.masuda/images/*/Dockerfile`の`docker build`だけ（`--branch`の定義は使わない）。脅威モデルに明記した（d6f6a12）。承認制にはしない判断
+- サブエージェントからの`scripts/gh.sh issue`の書き込みは権限判定で止まる。Issue操作はメインのセッションで行う
 - `redesign`ブランチは役目を終えた（`develop`=`main`）。以後の開発は`develop`。CLAUDE.mdの正の記述も直した
 - 自動モードの安全判定で、**強制push・タグpush・CIでのsysctl編集**はエージェントから実行できない（ユーザーが`!`で打つ）。通常のpush（develop・redesign・main新設）とコミットはできた
 - `go get masuda-engine@<tag>`はタグ直後なら`GOPROXY=direct`。今回はプロキシも数分で返した
