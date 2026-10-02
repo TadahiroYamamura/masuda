@@ -47,7 +47,7 @@ masudaだけが読み書きする、ワークスペースごとのgitのbareリ�
 
 ## VM
 
-1ワークスペースにつき1つ。`.masuda/images/<entry>/Dockerfile`から作ったイメージで起動する。
+1ワークスペースにつき1つ。`.masuda/images/<entry>/Dockerfile`から作ったイメージで起動する。イメージは`masuda run`を打った**作業ツリー**の`.masuda/`から作る（`--branch`で指したブランチの`.masuda/`は使わない）。`Dockerfile`の`RUN`はホストのDockerで動くので、信頼できないブランチの定義を作業ツリーに取り出してから`run`しないこと。レビューしたいだけなら`--branch`で指せば、作業ツリーは`main`のままでよい。
 
 - 中には対象リポジトリのclone（`/workspace`）と、Claude Code（tmuxの`claude-work`セッション）がいる
 - **使い捨て**。止めたり、ホストを再起動したりすれば失われる。続きは新しいVMをstagingから作り直して再開する（最後のスナップショットの作業ツリーを、コミットしていない変更として戻す）。VMの中にだけ置いたもの（キャッシュ、生成物）は消える前提で使う
