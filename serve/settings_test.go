@@ -80,7 +80,7 @@ func TestRunPlacesEnvFilesChecksAndClaudeSettings(t *testing.T) {
 
 	check := filepath.Join(root, "masuda/checks/test")
 	b, err := os.ReadFile(check)
-	if err != nil || string(b) != "#!/bin/sh -e\ncd /workspace\ngo test ./...\n" {
+	if err != nil || string(b) != "#!/bin/sh -el\ncd /workspace\ngo test ./...\n" {
 		t.Fatalf("check script %q %v", b, err)
 	}
 	if st, _ := os.Stat(check); st.Mode().Perm()&0o111 == 0 {

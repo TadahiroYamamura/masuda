@@ -39,6 +39,24 @@ const (
 	MCPPort = 7000
 )
 
+// DefaultPath はゲストのコマンドに渡すPATH。sandbox（Gondolin）の起動層が設定するPATHは
+// `/usr/sbin:/usr/bin:/sbin:/bin`で/usr/local/binを含まず、DockerfileのENVも引き継がれない。
+// イメージに足したツール（/usr/local/binに置くのが慣例）がexecノードからも見えるよう、
+// Debian/Ubuntuの既定と同じ並びを明示する。~/.local/binはログインシェルの~/.profileが足す。
+const DefaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+// BaseEnv はゲストのコマンドに必ず渡す環境変数。PATHはDefaultPath。XDG_*_HOMEはゲストの
+// 利用者のHOME配下へ戻す。sandbox（Gondolin）は既定で`/tmp/.cache`等を指し、その
+// ディレクトリをroot所有で作るため、ubuntuで動くツール（goのビルドキャッシュ等）が書けない。
+func BaseEnv() map[string]string {
+	return map[string]string{
+		"PATH":            DefaultPath,
+		"XDG_CACHE_HOME":  Home + "/.cache",
+		"XDG_CONFIG_HOME": Home + "/.config",
+		"XDG_DATA_HOME":   Home + "/.local/share",
+	}
+}
+
 // TokenEnv はClaude APIのトークン（ゲストではプレースホルダ）を入れる環境変数。
 const TokenEnv = "CLAUDE_CODE_OAUTH_TOKEN"
 
@@ -161,7 +179,7 @@ func writeEnvFiles(ctx context.Context, c sandboxv1connect.SandboxServiceClient,
 }
 
 // writeChecks はチェックをゲストの`/masuda/checks/<名前>`へ実行可能スクリプトとして置く。
-// コマンドはsettings.jsonにシェルの1行として書かれるので、`sh -e`で/workspaceから動かす。
+// コマンドはsettings.jsonにシェルの1行として書かれるので、`sh -el`で/workspaceから動かす。
 func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, checks map[string]string) error {
 	names := make([]string, 0, len(checks))
 	for name := range checks {
@@ -179,9 +197,12 @@ func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, i
 	return nil
 }
 
-// CheckScript はチェック1つのスクリプトの中身。
+// CheckScript はチェック1つのスクリプトの中身。ログインシェル（-l）にするのは、execノードの
+// argvはsandboxでログインシェルを経ず、イメージのDockerfileのENVも引き継がれないため。
+// /etc/profileと~/.profileのPATH（/usr/local/bin・~/.local/bin等）を、メインセッション
+// （tmuxをログインシェルで起こす）とそのサブエージェントが見るものと揃える。
 func CheckScript(command string) []byte {
-	return []byte("#!/bin/sh -e\ncd /workspace\n" + strings.TrimRight(command, "\n") + "\n")
+	return []byte("#!/bin/sh -el\ncd /workspace\n" + strings.TrimRight(command, "\n") + "\n")
 }
 
 // DotEnv はvarsをdotenv形式にする。値は常にダブルクォートで囲み、`\`・`"`・`$`・バッククォートを

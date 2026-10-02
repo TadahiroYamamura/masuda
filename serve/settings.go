@@ -205,9 +205,10 @@ func (p *bootPlan) guestEnvFiles(placeholders map[string]string) []guest.EnvFile
 	return out
 }
 
-// guestEnv はゲストのコマンドへ渡すプレースホルダ（Claude APIのトークンを除く）。
+// guestEnv はゲストのコマンド（メインセッションとexecノード）へ渡す環境変数。宣言した秘密の
+// プレースホルダ（Claude APIのトークンを除く）と、guest.BaseEnv（PATH・XDGのディレクトリ）。
 func (p *bootPlan) guestEnv(placeholders map[string]string) map[string]string {
-	env := map[string]string{}
+	env := guest.BaseEnv()
 	for _, name := range p.placeholderNames {
 		if v, ok := placeholders[name]; ok {
 			env[name] = v
