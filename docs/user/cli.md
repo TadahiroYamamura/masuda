@@ -176,7 +176,7 @@ masuda remove <id> [--force]
 masuda init [--repo <dir>]
 ```
 
-対象リポジトリに`.masuda/`の雛形（`settings.json`、`images/default/Dockerfile`、同梱の14のレビュー観点`reviews/*.md`）を置き、`.gitignore`に`.masuda/settings.local.json`を足す。`masuda serve`は要らない。既にあるファイルは上書きしない。`.gitignore`に`.masuda/`ごと無視する行（`.masuda`・`.masuda/`・`.masuda/*`・`.masuda/**`、先頭`/`付きも）があれば、行を足さない。
+対象リポジトリに`.masuda/`の雛形（`settings.json`、`images/default/Dockerfile`、同梱の14のレビュー観点`reviews/*.md`）を置き、`.gitignore`に`.masuda/settings.local.json`を足す。`masuda serve`は要らない。既にあるファイルは上書きしない。雛形の`settings.json`の`egress`は空（Claude APIへの経路は常に開いているので宣言しない）。`.gitignore`に`.masuda/`ごと無視する行（`.masuda`・`.masuda/`・`.masuda/*`・`.masuda/**`、先頭`/`付きも）があれば、行を足さない。
 
 ## egress
 

@@ -119,6 +119,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 		AlwaysHosts:   []string{claudeAPIHost},
 		AlwaysSecrets: []string{guest.TokenEnv},
 		Egress:        plan.egress,
+		PublishRemote: plan.publishRemote,
 		Secrets:       plan.placeholderNames,
 		Plaintext:     sortedKeys(plan.plaintext),
 		OnLog:         func(e engine.Event) { b.publishEngine(id, e) },

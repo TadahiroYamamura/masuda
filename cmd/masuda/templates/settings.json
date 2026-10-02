@@ -1,6 +1,6 @@
 {
   "image": "default",
-  "egress": ["api.anthropic.com"],
+  "egress": [],
   "secrets": [],
   "envFiles": [],
   "checks": {

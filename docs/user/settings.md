@@ -48,7 +48,8 @@
   },
   "claudeSettings": {
     "env": { "GOCACHE": "/tmp/go-cache" }
-  }
+  },
+  "publish": { "remote": "origin" }
 }
 ```
 
@@ -152,6 +153,12 @@ VMの中に`/masuda/checks/<チェック名>`という実行可能スクリプ�
 | JSONオブジェクト | 空 |
 
 VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`（エージェントのプロセスに渡す環境変数）や`permissions`などを書ける。`hooks`はmasudaが自分のものを置くので、masudaのものが優先される。
+
+### publish
+
+| キー | 型 | 既定 | 意味 |
+|---|---|---|---|
+| `remote` | 文字列 | `"origin"` | ワークフローの`publish`ノードが`target: remote`のとき、pushする先のremoteの名前（あなたのリポジトリの`git remote`の名前）。`target: local`（既定）では使わない |
 
 ## settings.local.json {#settings-local}
 

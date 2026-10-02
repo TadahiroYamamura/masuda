@@ -63,6 +63,28 @@ type Settings struct {
 	// Images はイメージのエントリ（`.masuda/images/<entry>/`）ごとのVMの設定。書かなかった
 	// エントリは既定値で動く。
 	Images map[string]ImageDecl `json:"images,omitempty"`
+	// Publish はpublishノードの送り先の設定。
+	Publish PublishDecl `json:"publish,omitzero"`
+}
+
+// PublishDecl はpublishの設定。
+type PublishDecl struct {
+	// Remote は`target: remote`のpublishがpushする実リポジトリのremoteの名前。既定はDefaultRemote。
+	Remote string `json:"remote,omitempty"`
+}
+
+// DefaultRemote はpublish.remoteを省略したときの送り先。
+const DefaultRemote = "origin"
+
+// remoteNameRe はremoteの名前。gitの引数として解釈されないよう`-`で始まるものを通さない。
+var remoteNameRe = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._/-]*$`)
+
+// PublishRemote はpublish.remote（省略時はDefaultRemote）を返す。
+func (s Settings) PublishRemote() string {
+	if s.Publish.Remote == "" {
+		return DefaultRemote
+	}
+	return s.Publish.Remote
 }
 
 // DefaultDiskMiB はImageDecl.DiskMiBを省略したときのVMのルートディスクの最小容量。
@@ -261,6 +283,9 @@ func (s Settings) Validate() error {
 		if !ValidCheckName(name) {
 			add("images: entry %q must match %s", name, checkNameRe)
 		}
+	}
+	if r := s.Publish.Remote; r != "" && (!remoteNameRe.MatchString(r) || strings.Contains(r, "..")) {
+		add("publish.remote %q is not a remote name", r)
 	}
 	if len(s.ClaudeSettings) > 0 {
 		var obj map[string]json.RawMessage

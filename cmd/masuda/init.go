@@ -41,7 +41,10 @@ func runInit(args []string) error {
 	}
 	if len(created) == 0 {
 		fmt.Println("nothing to do: .masuda/ is already complete")
+		return nil
 	}
+	// settings.jsonはコメントを書けないJSONなので、雛形のegressが空である理由をここで伝える。
+	fmt.Println("note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json")
 	return nil
 }
 

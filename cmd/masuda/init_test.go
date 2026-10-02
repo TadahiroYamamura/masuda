@@ -25,7 +25,8 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the template settings.json must load: %v", err)
 	}
-	if cfg.Egress[0] != "api.anthropic.com" || cfg.Checks["test"] == "" {
+	// Claude APIは常に許可されるので、雛形は宣言しない（宣言・承認しても意味が無い）。
+	if len(cfg.Egress) != 0 || cfg.Checks["test"] == "" {
 		t.Fatalf("settings template: %+v", cfg)
 	}
 	ignore, _ := os.ReadFile(filepath.Join(root, ".gitignore"))

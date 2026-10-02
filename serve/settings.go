@@ -30,6 +30,8 @@ type bootPlan struct {
 	diskMiB uint32
 	// egress はノードが選んでよいホストの上限（宣言∩承認）。
 	egress []string
+	// publishRemote は`target: remote`のpublishの送り先（settings.jsonのpublish.remote、既定origin）。
+	publishRemote string
 	// secrets はsandboxへ宣言する秘密（Claude APIのトークンを含む）。値は秘密ストアから読んだもの。
 	secrets []*sandboxv1.SecretDecl
 	// placeholderNames はノードが有効にできる秘密の名前（トークンを除く）。
@@ -67,6 +69,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 	p := &bootPlan{
 		image:          image,
 		egress:         config.AllowedEgress(cfg, local),
+		publishRemote:  cfg.PublishRemote(),
 		plaintext:      map[string]string{},
 		envFiles:       cfg.EnvFiles,
 		vars:           local.Vars,

@@ -46,7 +46,7 @@ nodes:
 | `foreach` | 計画のステップ・レビュー観点・配列のデータの項目ごとに、別のワークフローを順に動かす |
 | `workflow` | 別のワークフローを呼ぶ |
 | `commit` | 計画の範囲の変更をコミットする（`scope: step`か`plan`） |
-| `publish` | あなたのリポジトリへ反映して終える（`target: local`既定、`remote`で`origin`へpush） |
+| `publish` | あなたのリポジトリへ反映して終える（`target: local`既定、`remote`で`settings.json`の`publish.remote`（既定`origin`）へpush） |
 | `discard` | 反映せずに終える |
 
 `next`は「終わり方→行き先」の対応で、行き先はノード名か`end`（`end:<ラベル>`で終わり方に名前を付けられる）。`max`（`agent`・`exec`の既定3）は同じノードに入れる回数の上限で、超えると`exhausted`という終わり方になる。

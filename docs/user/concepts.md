@@ -93,7 +93,7 @@ masudaは「承認した計画の範囲」でしかコミットしない。
 ## commit・publish・discard
 
 - **commit**: ホスト側のmasudaが、VMの作業ツリーのうち計画の対象ファイルだけでコミットを作り、stagingのブランチを進める。エージェントが`git commit`したものがそのまま採られるのではない
-- **publish**: stagingのブランチを、あなたのリポジトリの同じ名前のブランチへfast-forwardで反映する（ワークフローで`target: remote`にすると、代わりに`origin`へpushする）。反映するのは`review`ゲートで承認したcommitと同じものだけで、承認の後にブランチが動いていれば反映しない
+- **publish**: stagingのブランチを、あなたのリポジトリの同じ名前のブランチへfast-forwardで反映する（ワークフローで`target: remote`にすると、代わりに`settings.json`の`publish.remote`、既定`origin`へpushする）。反映するのは`review`ゲートで承認したcommitと同じものだけで、承認の後にブランチが動いていれば反映しない
 - **discard**: 反映せずに終える（同梱の`review`ワークフローはこれで終わる）
 
 publishとdiscardの最後に、結果（exports）を書き出してからVMを壊す。stagingは`masuda remove`まで残る。

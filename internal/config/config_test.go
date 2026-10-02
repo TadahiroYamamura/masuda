@@ -70,6 +70,7 @@ func TestLoadRejectsInvalidDeclarations(t *testing.T) {
 		"claudeSettings":    `{"claudeSettings": [1]}`,
 		"bad image entry":   `{"images": {"../x": {"diskMiB": 1}}}`,
 		"negative disk":     `{"images": {"go": {"diskMiB": -1}}}`,
+		"remote as option":  `{"publish": {"remote": "--upload-pack=x"}}`,
 	}
 	for name, content := range cases {
 		dir := t.TempDir()
@@ -131,5 +132,17 @@ func write(t *testing.T, dir, content string) {
 	}
 	if err := os.WriteFile(filepath.Join(settingsDir, SettingsFileName), []byte(content), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPublishRemote(t *testing.T) {
+	if r := (Settings{}).PublishRemote(); r != "origin" {
+		t.Fatalf("default remote: %q", r)
+	}
+	dir := t.TempDir()
+	write(t, dir, `{"publish": {"remote": "upstream"}}`)
+	s, err := Load(dir)
+	if err != nil || s.PublishRemote() != "upstream" {
+		t.Fatalf("publish.remote: %v %q", err, s.PublishRemote())
 	}
 }

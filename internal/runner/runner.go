@@ -60,6 +60,8 @@ type Options struct {
 	Plaintext []string
 	// OnLog は実行記録を1行書くたびに呼ばれる（公開APIのWatchへ流す）。nilなら呼ばない。
 	OnLog func(engine.Event)
+	// PublishRemote は`target: remote`のpublishがpushする実リポジトリのremote。空ならorigin。
+	PublishRemote string
 }
 
 // Runner は1つのワークスペースのengine.Runner。
@@ -914,8 +916,11 @@ func (r *Runner) Publish(ctx context.Context, p engine.PublishRequest) error {
 			return err
 		}
 	case "remote":
-		// 送り先のremoteを選ぶ設定は設定の項目（M6）で入れる。それまではoriginに送る。
-		url, err := staging.RemoteURL(ctx, r.ws.RepoRoot, "origin")
+		remote := r.o.PublishRemote
+		if remote == "" {
+			remote = config.DefaultRemote
+		}
+		url, err := staging.RemoteURL(ctx, r.ws.RepoRoot, remote)
 		if err != nil {
 			return err
 		}

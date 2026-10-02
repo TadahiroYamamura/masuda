@@ -89,7 +89,7 @@ publishノードを含まないワークフロー（rootから辿れるワーク
 ### commitとpublish
 
 - **commit**（エンジン固定ノード）: 最新のWIP treeと`HEAD`の差分を取り、計画の対象ファイル（`scope: step`ならそのステップ、`plan`なら計画全体）だけからなるtreeをホストが`commit-tree`で作り、`refs/heads/<branch>`を進める。対象外の変更があれば`deviation`ゲートで人間に回す。ゲストには`fetch`と`reset --soft`で新しいHEADを知らせる（作業ツリーは触らない）
-- **publish**: `target: local`なら実リポジトリの同名ブランチへfast-forward、`target: remote`なら設定したremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない
+- **publish**: `target: local`なら実リポジトリの同名ブランチへfast-forward、`target: remote`なら`settings.json`の`publish.remote`（既定`origin`）が指す実リポジトリのremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない
 - **discard**: 反映せずに片付ける
 
 publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。stagingは`masuda remove`まで残す。
@@ -282,6 +282,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `privilegedCommands` | 特権コマンドの宣言（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |
+| `publish.remote` | `target: remote`のpublishがpushする実リポジトリのremoteの名前。既定`origin` |
 
 `settings.local.json`（利用者ごとの承認と値）:
 
@@ -414,7 +415,7 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 |---|---|
 | `masuda run <workflow>` | ワークフローを新しいワークスペースで始める（`--repo`・`--branch`・`--base`・`--image`・`--input <名前>=<値>`／`<名前>=@<ファイル>`） |
 | `masuda resume <id>` | 再開 |
-| `masuda list [--all]` | 1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、BLOCKEDは常に出す |
+| `masuda list [--all] [--repo <dir>]` | `--repo`を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、BLOCKEDは常に出す |
 | `masuda chat <id>` | `AttachInfo`の`ssh_argv`を`exec`する。`Unimplemented`なら「このsandboxではsshで接続できません（フェイクsandbox等）」 |
 | `masuda watch [<id>]` | 状態とイベントを流し続ける。`workspace_id`が空のイベントは種類と本文だけで出す |
 | `masuda gate list / show / approve / reject / dismiss / halt / redo` | ゲートの一覧・内容・判断。`dismiss`・`halt`・`redo`は`<id> <出現ID> [--comment]`で`target_hash`を要らない。`show`はtriageなら懸念の本文を字下げで、deviationなら対象外のファイルを箇条書きで出し、未判断ならそのゲートで打てるコマンドを添える |
