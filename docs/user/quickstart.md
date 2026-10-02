@@ -77,14 +77,12 @@ RUN apt-get update \
 
 コマンドはVMの中の`/workspace`（対象リポジトリのclone）で、シェルの1行として動く。
 
-## 4. トークンを登録する
+## 4. トークンを確かめる
 
-```sh
-masuda secret set CLAUDE_CODE_OAUTH_TOKEN
-```
+[導入](install.md#claude-token)でClaudeのトークンを登録していれば、ここですることは無い。まだなら導入の手順で登録する（`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`）。
 
 - Claude APIへの経路は宣言や承認に関係なく常に開いているので、雛形の`egress`は空。VMから他のホストへ出る必要があれば、`settings.json`の`egress`に宣言して`masuda egress approve <host>`で承認する（[秘密・egress・特権コマンド](secrets-and-egress.md)）
-- `secret set`は、[導入](install.md#claude-token)で作ったトークンを聞いてくる（入力は画面に出ない）。`--repo`を付けなければユーザー単位の登録になり、次からはどのリポジトリでも打たなくてよい
+- トークンはユーザー単位に登録されていて、どのリポジトリでも使われる。このリポジトリだけ別のトークンにしたいときだけ、ここで`--repo .`を付けて登録する
 
 ```sh
 masuda secret list

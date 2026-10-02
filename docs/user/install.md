@@ -85,7 +85,7 @@ masuda version
 masuda doctor
 ```
 
-QEMU・KVM（macOSはHVF）・Node・Docker・gitと、`masuda-sandbox serve`への到達、Claudeのトークンを1項目ずつ確かめ、足りないものに直し方を添える。この時点では`masuda-sandbox`（まだ起動していない）とClaudeトークン（まだ登録していない）がNGになる。次の「起動」と「Claudeのトークンを用意する」のあとでもう一度打ち、すべて`ok`になることを確かめる（[CLIリファレンス](cli.md#doctor)）。
+QEMU・KVM（macOSはHVF）・Node・Docker・gitと、`masuda-sandbox serve`への到達、Claudeのトークンを1項目ずつ確かめ、足りないものに直し方を添える。この時点では`masuda-sandbox`（まだ起動していない）とClaudeトークン（まだ登録していない）がNGになる。次の「起動」と「Claudeのトークンを登録する」のあとでもう一度打ち、すべて`ok`になることを確かめる（[CLIリファレンス](cli.md#doctor)）。
 
 ## 起動
 
@@ -110,20 +110,35 @@ masuda serve
 
 止めるときは、どちらもCtrl-C。`masuda serve`を止めると動いていたワークスペースは「止めた（stopped）」扱いになり、自動では再開しない（[運用](operations.md#serve-restart)）。
 
-## Claudeのトークンを用意する {#claude-token}
+## Claudeのトークンを登録する {#claude-token}
 
-VMの中のClaude Codeは、あなたのClaudeのサブスクリプションで動く。そのためのOAuthトークンを作っておく。
+VMの中のClaude Codeは、あなたのClaudeのサブスクリプションで動く。そのためのOAuthトークンを作り、masudaに登録する。登録はユーザーごとに1回でよく、どのリポジトリのワークスペースでも使われる。
+
+### 1. トークンを作る
 
 ```sh
 claude setup-token
 ```
 
-`claude setup-token`は、Claude Codeが入っているマシンならどこで実行してもよい（ホストに入れていなければ、一時的に入れるか、別のマシンで作る）。出てきたトークン（`sk-ant-oat01-`で始まる）を控えておく。
+`claude setup-token`はClaude Codeのコマンドで、Claude Codeが入っているマシンならどこで実行してもよい。ホストに入っていなければ、`npm install -g @anthropic-ai/claude-code`で入れて実行する（作ったあとに消してもよい。masudaはホストのClaude Codeを使わない）。ブラウザでログインすると、`sk-ant-oat01-`で始まるトークンが表示されるので控えておく。
 
-トークンはユーザーごとに1回masudaへ登録すれば、どのリポジトリでも使われる。登録は[はじめての1周](quickstart.md)の中で行う（`masuda serve`が動いている必要がある）。
+### 2. masudaに登録する
+
+`masuda serve`が動いている状態で打つ（登録先は`masuda serve`の状態ディレクトリ）。
 
 ```sh
-masuda secret set CLAUDE_CODE_OAUTH_TOKEN   # どこで打ってもよい。値は入力を求められる（画面に出ない）
+masuda secret set CLAUDE_CODE_OAUTH_TOKEN
+# CLAUDE_CODE_OAUTH_TOKENの値: （貼り付けてEnter。入力は画面に出ない）
+```
+
+値を引数で渡す形にしていないのは、シェルの履歴や`ps`に残さないため。端末以外から渡すときは標準入力に流す（`masuda secret set CLAUDE_CODE_OAUTH_TOKEN < token.txt`）。
+
+```sh
+masuda secret list
+# NAME  MODE  HOSTS  VALUE  APPROVED
+# Claude token: set
+masuda doctor
+# ... [ok  ] Claudeトークン: 登録済み
 ```
 
 特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで`--repo .`を付けて登録する（リポジトリごとの登録が優先される）。

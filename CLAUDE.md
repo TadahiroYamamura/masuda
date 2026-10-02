@@ -2,7 +2,7 @@
 
 AIとの協同開発を、ローカルPC上のVMで無人実行するためのツール群の**統合層**。CLI、公開API（Connect）、ワークスペースとstaging、ゲスト向けMCP。ワークフローの実行は[masuda-engine](../masuda-engine)（Goライブラリ）、VMは[masuda-sandbox](../masuda-sandbox)（TypeScriptの常駐サービス）が担う。
 
-2026-10-02にゼロから再設計した。`redesign`ブランチが現在の正。旧実装はタグ`v1-frozen-*`に凍結してある。
+2026-10-02にゼロから再設計し、2026-10-03にv0.1.0として公開した。開発は`develop`で行い、リリースは`main`の先頭にタグを打つ（Skill `release`）。旧実装はタグ`v1-frozen-*`に凍結してある。
 
 ## どこに何があるか
 
