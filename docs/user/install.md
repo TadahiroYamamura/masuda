@@ -14,7 +14,7 @@ masudaは2つの常駐プロセスで動く。
 | | Linux x86_64（WSL2を含む） | macOS arm64（実験的） |
 |---|---|---|
 | 仮想化 | QEMU + KVM（`/dev/kvm`） | QEMU + HVF |
-| パッケージ | `sudo apt install qemu-system-x86 qemu-utils lz4` | `brew install qemu node@22` |
+| パッケージ | `sudo apt install qemu-system-x86 qemu-utils` | `brew install qemu node@22` |
 | Node | 22.19以上（npmを含む） | 22.19以上 |
 | Docker | VMのイメージのビルドに使う。sudo無しで`docker`を叩けること | Docker Desktop等 |
 | git | 必須 | 必須 |

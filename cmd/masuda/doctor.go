@@ -207,18 +207,12 @@ func checkQEMU(ctx context.Context) checkResult {
 		return r
 	}
 	r.detail = out
-	if runtime.GOOS == "linux" {
-		var missing []string
-		for _, b := range []string{"qemu-img", "lz4"} {
-			if _, err := exec.LookPath(b); err != nil {
-				missing = append(missing, b)
-			}
-		}
-		if len(missing) > 0 {
-			r.status = checkWarn
-			r.detail += "（" + strings.Join(missing, "・") + "が見つからない）"
-			r.fix = qemuHint()
-		}
+	// Gondolinは起動のたびにqemu-imgでqcow2のオーバーレイを作る（lz4は自前でinitramfsを組むときだけで、
+	// 配布済みのアセットを使うmasudaの経路では要らない）。
+	if _, err := exec.LookPath("qemu-img"); err != nil {
+		r.status = checkFail
+		r.detail += "（qemu-imgが見つからない）"
+		r.fix = qemuHint()
 	}
 	return r
 }
@@ -227,7 +221,7 @@ func qemuHint() string {
 	if runtime.GOOS == "darwin" {
 		return "`brew install qemu`"
 	}
-	return "`sudo apt install qemu-system-x86 qemu-utils lz4`（Debian/Ubuntu）"
+	return "`sudo apt install qemu-system-x86 qemu-utils`（Debian/Ubuntu）"
 }
 
 func installHint(what, pkg string) string {

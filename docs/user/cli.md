@@ -281,7 +281,7 @@ masudaを動かす前提を1項目ずつ確かめ、`[ok  ]`・`[warn]`・`[NG  
 | git | `git --version` |
 | docker | sudo無しでdockerデーモンに繋がるか |
 | node | 22.19以上か。24.17以上は既知の問題（Gondolin #134）でwarn |
-| qemu | `qemu-system-x86_64`（arm64なら`qemu-system-aarch64`）。Linuxで`qemu-img`・`lz4`が無ければwarn |
+| qemu | `qemu-system-x86_64`（arm64なら`qemu-system-aarch64`）と`qemu-img`（Gondolinが起動のたびに使う）。どちらか無ければNG |
 | /dev/kvm（Linux）・HVF（macOS） | KVMを読み書きできるか、`kern.hv_support`が1か |
 | masuda-sandbox | `masuda-sandbox serve`に届き、`GetServerInfo`の契約がmasudaと同じか |
 | Claudeトークン | ユーザー単位（`--repo`を付ければそのリポジトリの登録も）に登録されているか |
