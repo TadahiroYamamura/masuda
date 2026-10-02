@@ -1,0 +1,17 @@
+version: v2
+# masuda.protoからTypeScriptのクライアント用コードをgen/へ生成する（npm run generate）。
+# 生成物はコミットする。利用者がbufもprotoc-gen-esも持たずに使えるように。
+#
+# BSRのリモートプラグイン（buf.build/bufbuild/es）でなくnode_modulesのprotoc-gen-esを使うのは、
+# 版をpackage-lock.jsonで固定し、生成物が実行のたびに揺れないようにするため。
+# target=js+dtsにするのは、利用者側でTypeScriptをコンパイルしなくても（素のJSからも）
+# 使えるようにするため。型は.d.tsで付く。
+inputs:
+  - directory: ../../proto
+clean: true
+plugins:
+  - local: protoc-gen-es
+    out: gen
+    opt:
+      - target=js+dts
+      - import_extension=js
