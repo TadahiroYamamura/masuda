@@ -79,7 +79,7 @@ stateDiagram-v2
 
 | `gate` | `target` | `subject` | 判断 |
 |---|---|---|---|
-| 定義のゲート（`plan`・`review`・`interim`等） | `plan`・`diff`・データ名 | `target`のデータの中身（`plan`ならJSON）。`diff`なら`refs/masuda/base..staging_commit`のunified diffと、続けて「publishされない変更（未コミット）」のファイル一覧 | `approved`（`target_hash`必須）・`rejected` |
+| 定義のゲート（`plan`・`review`・`interim`等） | `plan`・`diff`・`step-diff`・データ名 | `target`のデータの中身（`plan`ならJSON）。`diff`ならpublishされる内容（`refs/masuda/base..staging_commit`、コミット済み）のunified diffと、続けて「publishされない変更（未コミット）」のファイル一覧。`step-diff`ならこれからcommitされる内容（ブランチ先頭..作業ツリー、未コミット）のunified diffで、`staging_commit`はその作業ツリーのスナップショット | `approved`（`target_hash`必須）・`rejected` |
 | `deviation` | 空 | 計画外に変わったファイルのパス（改行区切り） | `approved`（`target_hash`必須、`approved_files`）・`rejected` |
 | `triage` | 空 | エージェントが報告した懸念の本文 | `dismiss`・`halt`・`redo`（`target_hash`不要） |
 

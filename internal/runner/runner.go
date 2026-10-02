@@ -73,6 +73,11 @@ type Runner struct {
 	repo    *staging.Repo
 	logMu   sync.Mutex
 	guestMu sync.Mutex // ゲストのgit操作（index・refs/masuda/snapshot）を直列にする
+	// stepDiffs はDiff(step-diff)が取り込んだ作業ツリーのスナップショットを、書き込んだデータの
+	// 出現ごとに覚える。engineはstep-diffのゲートでDiffの直後にOpenGateを呼ぶので、ゲートの
+	// 承認対象がどのスナップショットから作られたかをここから引く。
+	stepMu    sync.Mutex
+	stepDiffs map[string]string
 }
 
 var _ engine.Runner = (*Runner)(nil)
@@ -565,7 +570,28 @@ func (r *Runner) Diff(ctx context.Context, run engine.RunID, kind engine.DiffKin
 	if err != nil {
 		return err
 	}
+	if kind == engine.DiffFromHead {
+		r.stepMu.Lock()
+		if r.stepDiffs == nil {
+			r.stepDiffs = map[string]string{}
+		}
+		r.stepDiffs[into.Occurrence] = cur
+		r.stepMu.Unlock()
+	}
 	return r.PutData(ctx, run, into, []byte(d))
+}
+
+// stepDiffSnapshot はoccのDiff(step-diff)が取り込んだスナップショット。覚えていなければ
+// （serveの再起動を挟んだ等）最後に取り込んだ作業ツリー。
+func (r *Runner) stepDiffSnapshot(ctx context.Context, occ string) (string, error) {
+	r.stepMu.Lock()
+	c, ok := r.stepDiffs[occ]
+	delete(r.stepDiffs, occ)
+	r.stepMu.Unlock()
+	if ok {
+		return c, nil
+	}
+	return r.repo.ResolveCommit(ctx, worktreeRef)
 }
 
 func (r *Runner) ChangedSince(ctx context.Context, _ engine.RunID, from engine.SnapshotRef) ([]string, string, error) {
@@ -755,13 +781,25 @@ func (r *Runner) OpenGate(ctx context.Context, g engine.GateRequest) error {
 		Subject:    g.Subject,
 		OpenedAt:   time.Now().UTC(),
 	}
-	if g.Target == string(engine.DiffFromBase) {
-		c, err := r.repo.ResolveCommit(ctx, staging.BranchRef(r.ws.Branch))
-		if err != nil {
-			return err
+	// 指摘（findings）は、その行番号が指す内容を持つコミットへのコメントとして取り込む。diffは
+	// publishされるブランチ先頭、step-diffはこれからcommitされる作業ツリーのスナップショット
+	// （親がブランチ先頭なので、そのコミット単体の差分が承認対象と一致する）。
+	var commit string
+	var err error
+	switch g.Target {
+	case string(engine.DiffFromBase):
+		commit, err = r.repo.ResolveCommit(ctx, staging.BranchRef(r.ws.Branch))
+	case string(engine.DiffFromHead):
+		if commit, err = r.stepDiffSnapshot(ctx, g.Occurrence); err == nil {
+			err = r.repo.SetRef(ctx, staging.GateRef(g.Occurrence), commit)
 		}
-		rec.StagingCommit = c
-		if err := r.importFindings(c); err != nil {
+	}
+	if err != nil {
+		return err
+	}
+	if commit != "" {
+		rec.StagingCommit = commit
+		if err := r.importFindings(commit); err != nil {
 			return err
 		}
 	}

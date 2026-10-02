@@ -2,12 +2,14 @@ package runner
 
 import (
 	"context"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
+	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -92,5 +94,46 @@ func TestImportFindingsAndSupersede(t *testing.T) {
 	open, err := ws.OpenGates()
 	if err != nil || len(open) != 0 {
 		t.Fatalf("superseded gate still open: %v %+v", err, open)
+	}
+}
+
+// step-diffのゲートは、承認対象を作った作業ツリーのスナップショットをstaging_commitにして
+// refs/masuda/gates/<occ>に留め、findingsをそのコミットへのコメントとして取り込む。
+func TestOpenGateStepDiffPinsSnapshot(t *testing.T) {
+	ws, err := workspace.NewStore(t.TempDir()).Create(workspace.Meta{RepoRoot: "/r", Branch: "b", Workflow: "workflows/w", State: workspace.StateRunning})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := ws.StagingDir()
+	git := func(args ...string) string {
+		t.Helper()
+		out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).Output()
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if out, err := exec.Command("git", "init", "-q", "--bare", dir).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	tree := git("mktree")
+	snap := git("commit-tree", tree, "-m", "masuda snapshot worktree")
+	r := New(Options{Workspace: ws})
+	r.stepDiffs = map[string]string{"0000012": snap}
+	if err := r.PutData(context.Background(), "", engine.DataRef{Name: "findings", Occurrence: "0000011"}, []byte(`[{"id":"security-0000011-1","file":"a.go","line":3,"severity":"高","message":"m"}]`)); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.OpenGate(context.Background(), engine.GateRequest{Occurrence: "0000012", Gate: "interim", Target: string(engine.DiffFromHead), TargetHash: "h", Subject: []byte("d")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := git("rev-parse", staging.GateRef("0000012")); got != snap {
+		t.Fatalf("gate ref = %s, want %s", got, snap)
+	}
+	gates, err := ws.OpenGates()
+	if err != nil || len(gates) != 1 || gates[0].StagingCommit != snap {
+		t.Fatalf("gates: %v %+v", err, gates)
+	}
+	if cs, err := ws.Comments(snap); err != nil || len(cs) != 1 || cs[0].Line != 3 {
+		t.Fatalf("comments: %v %+v", err, cs)
 	}
 }

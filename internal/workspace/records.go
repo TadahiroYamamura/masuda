@@ -22,7 +22,8 @@ type GateRecord struct {
 	Target     string `json:"target,omitempty"`
 	TargetHash string `json:"targetHash"`
 	Subject    []byte `json:"subject,omitempty"`
-	// StagingCommit はtarget=diffのゲートを開いた時点のrefs/heads/<branch>。
+	// StagingCommit はtarget=diffのゲートを開いた時点のrefs/heads/<branch>、target=step-diffなら
+	// 承認対象を作った作業ツリーのスナップショット（親はその時点のブランチ先頭、refs/masuda/gates/<occ>）。
 	StagingCommit string          `json:"stagingCommit,omitempty"`
 	OpenedAt      time.Time       `json:"openedAt"`
 	Decision      *DecisionRecord `json:"decision,omitempty"`

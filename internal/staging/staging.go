@@ -18,6 +18,11 @@ import (
 // BaseRef は分岐元を指すref。diffの基準になる。
 const BaseRef = "refs/masuda/base"
 
+// GateRef はcommit前の承認（target: step-diff）が対象にした作業ツリーのスナップショットを
+// 留めておくref名を返す。refs/masuda/worktreeは次の取り込みで上書きされるので、ゲストのコメントが
+// 付くコミットをgcから守り、UIが後から引けるようにする。
+func GateRef(occurrence string) string { return "refs/masuda/gates/" + occurrence }
+
 // WIPRef はノード境界のWIPスナップショットのref名を返す。
 func WIPRef(occurrence string) string { return "refs/masuda/wip/" + occurrence }
 
@@ -130,6 +135,12 @@ func resolve(ctx context.Context, dir, rev, kind string) (string, error) {
 // ResolveCommit はrevをコミットハッシュへ解決する。
 func (r *Repo) ResolveCommit(ctx context.Context, rev string) (string, error) {
 	return resolve(ctx, r.Dir, rev, "commit")
+}
+
+// SetRef はrefをcommitに置く（無ければ作る）。
+func (r *Repo) SetRef(ctx context.Context, ref, commit string) error {
+	_, err := r.git(ctx, "update-ref", ref, commit)
+	return err
 }
 
 // Clone は実リポジトリrepoRootからstagingをdirへ作る。

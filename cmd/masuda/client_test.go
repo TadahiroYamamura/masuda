@@ -29,6 +29,23 @@ func TestFormatGateTriageAndDeviation(t *testing.T) {
 	}
 }
 
+// diffとstep-diffはどちらもunified diffなので、承認して確定するものの違いを見出しで出し分ける。
+func TestFormatGateDiffTargets(t *testing.T) {
+	review := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0007", Gate: "review", Target: "diff", TargetHash: "h", Subject: []byte("diff --git a/x b/x")})
+	interim := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0005", Gate: "interim", Target: "step-diff", TargetHash: "h", StagingCommit: "c1", Subject: []byte("diff --git a/y b/y")})
+	for _, tc := range []struct{ out, want, not string }{
+		{review, "changes to be published", "this step will commit"},
+		{review, "publishされる内容", "これからcommit"},
+		{interim, "changes this step will commit", "to be published"},
+		{interim, "これからcommitされる内容", "publishされる内容"},
+		{interim, "c1（作業ツリーのスナップショット", ""},
+	} {
+		if !strings.Contains(tc.out, tc.want) || (tc.not != "" && strings.Contains(tc.out, tc.not)) {
+			t.Fatalf("want %q and not %q in:\n%s", tc.want, tc.not, tc.out)
+		}
+	}
+}
+
 func TestListRow(t *testing.T) {
 	now := time.Now()
 	w := &apiv1.Workspace{

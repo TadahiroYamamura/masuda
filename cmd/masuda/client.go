@@ -440,15 +440,32 @@ var triageOutcomes = []struct{ outcome, meaning string }{
 	{"redo", "懸念の出た出現を差し戻して入り直す"},
 }
 
+// diffTargets はゲートの承認対象のうち差分であるもの。どちらも中身はunified diffだが、承認して
+// 確定するものが違う（diffはpublishされるコミット済みの内容、step-diffはこれからcommitされる内容）
+// ので、取り違えないよう見出しで区別する。
+var diffTargets = map[string]struct{ meaning, heading string }{
+	"diff":      {"publishされる内容: 分岐元..ブランチ先頭のコミット済みの差分", "changes to be published (committed, base..branch head):"},
+	"step-diff": {"これからcommitされる内容: ブランチ先頭..作業ツリーの未コミットの差分", "changes this step will commit (uncommitted, branch head..work tree):"},
+}
+
 // formatGate はゲートを人間が読む形にする。中身（subject）はゲートの種類で読み方が違うので、
 // triageは懸念の本文、deviationは計画の外で変わったファイルの一覧として見出しを付けて出し、
 // 最後にそのゲートで打てる判断のコマンドを添える。
 func formatGate(g *apiv1.Gate) string {
 	var b strings.Builder
+	target := orDash(g.Target)
+	dt, isDiff := diffTargets[g.Target]
+	if isDiff {
+		target += "（" + dt.meaning + "）"
+	}
 	fmt.Fprintf(&b, "gate:        %s\noccurrence:  %s\ntarget:      %s\ntarget_hash: %s\nopened:      %s\n",
-		g.Gate, g.Occurrence, orDash(g.Target), g.TargetHash, fmtTime(g.OpenedAt))
+		g.Gate, g.Occurrence, target, g.TargetHash, fmtTime(g.OpenedAt))
 	if g.StagingCommit != "" {
-		fmt.Fprintf(&b, "commit:      %s\n", g.StagingCommit)
+		note := ""
+		if g.Target == "step-diff" {
+			note = "（作業ツリーのスナップショット。親がブランチ先頭）"
+		}
+		fmt.Fprintf(&b, "commit:      %s%s\n", g.StagingCommit, note)
 	}
 	if d := g.Decision; d != nil {
 		if d.Outcome == "superseded" {
@@ -487,6 +504,12 @@ func formatGate(g *apiv1.Gate) string {
 			fmt.Fprintf(&b, "send back to the agent:  masuda gate reject %s [--comment <text>]\n", ref)
 		}
 	default:
+		if isDiff {
+			b.WriteString("\n" + dt.heading + "\n")
+			if subject == "" {
+				b.WriteString("  (no changes)\n")
+			}
+		}
 		if subject != "" {
 			b.WriteString("\n" + subject + "\n")
 		}

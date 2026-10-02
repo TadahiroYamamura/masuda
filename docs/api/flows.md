@@ -124,17 +124,25 @@ function serveNotice(ev) {
 |---|---|---|
 | `target: "plan"` | 計画のJSON（同梱のスキーマなら`summary`・`steps[]{number, description, files}`・`expected_byproducts`） | ステップと対象ファイルの一覧。JSONとして読めなければ全文 |
 | `target: "diff"` | 分岐元（`refs/masuda/base`）から`stagingCommit`までのunified diff（publishされる内容）。続けて、未コミットの変更があれば`## publishされない変更（未コミット）`の見出しの下に1行1ファイルで並ぶ | 差分ビュー（下の節）と、publishされないファイルの一覧 |
+| `target: "step-diff"` | ブランチ先頭から作業ツリーまでのunified diff（**これからcommitされる**未コミットの内容。未追跡のファイルを含む）。見出しは付かない | 差分ビュー。`diff`と取り違えないよう「publishされる内容」でなく「このステップでコミットされる内容」と明示する |
 | `target`が他のデータ名 | そのデータの中身（Markdown・JSON等） | 全文 |
 | `gate: "deviation"` | 計画の外で変わったファイルのパス（改行区切り） | ファイルごとのチェックボックス（`approved_files`） |
 | `gate: "triage"` | エージェントが報告した懸念の本文 | 全文と、判断の3つのボタン |
 
 `target: "diff"`のゲートには`stagingCommit`が入る。これはゲートを開いた時点のワークスペースのブランチ（`refs/heads/<branch>`）の先端で、承認された後にpublishされるのはこのコミット。`subject`の差分部分は`refs/masuda/base..stagingCommit`そのもの（`targetHash`もこの差分だけから計算する）で、コミットされていない変更（deviationで加えなかったファイル等）は差分に混ざらず、見出し`## publishされない変更（未コミット）`の下にファイル名だけが並ぶ。差分ビューを組むなら、見出しより前を`StagingService.Diff`（`from: "refs/masuda/base"`、`to: stagingCommit`）の結果と同じものとして扱い、見出しより後を「publishされない」一覧として別に見せる。
 
-review gateを開いた時点の累積データ`findings`（観点のレビューと横断チェックの指摘）は、`stagingCommit`へのコメントとして取り込まれる（`ListComments`で`commit: stagingCommit`）。`author`は観点名（横断チェックは`cross-cutting`）、`severity`は`高`・`中`・`低`、`path`・`line`は指摘の場所。
+`target: "step-diff"`のゲート（同梱の定義では`interim`）にも`stagingCommit`が入る。こちらはゲートを開いた時点の作業ツリーのスナップショット（staging上のコミットで、親はその時点のブランチ先頭。`refs/masuda/gates/<occurrence>`に残る）。ブランチにはまだ載っておらず、承認すると`commit`ノードが同じ内容をコミットする。`subject`は`StagingService.Diff`（`to: stagingCommit`、`from`は空＝親との差分）と同じもので、`targetHash`は`subject`全体のSHA-256。
+
+| `target` | 承認して確定するもの | `stagingCommit` |
+|---|---|---|
+| `diff` | publishされる内容（分岐元..ブランチ先頭、コミット済み） | ブランチ先頭 |
+| `step-diff` | これからcommitされる内容（ブランチ先頭..作業ツリー、未コミット） | 作業ツリーのスナップショット |
+
+`target: "diff"`・`"step-diff"`のゲートを開いた時点の累積データ`findings`（観点のレビューと横断チェックの指摘）は、`stagingCommit`へのコメントとして取り込まれる（`ListComments`で`commit: stagingCommit`）。指摘の行番号はレビューした内容（`diff`ならブランチ先頭、`step-diff`なら作業ツリー）の行なので、どちらも`stagingCommit`のファイルの行と一致する。累積データなので、それより前のステップで出た指摘も同じコミットに取り込まれる（その行番号は今の内容とずれていることがある）。`author`は観点名（横断チェックは`cross-cutting`）、`severity`は`高`・`中`・`低`、`path`・`line`は指摘の場所。
 
 ### `targetHash`
 
-`approved`の判断には、ゲートの`targetHash`をそのまま渡す。ハッシュはクライアントで計算しない（deviationのハッシュは`subject`から計算したものではなく、`target: "diff"`のハッシュも`subject`全体ではなく差分の部分だけから計算する）。
+`approved`の判断には、ゲートの`targetHash`をそのまま渡す。ハッシュはクライアントで計算しない（deviationのハッシュは`subject`から計算したものではなく、`target: "diff"`のハッシュも`subject`全体ではなく差分の部分だけから計算する。`target: "step-diff"`は`subject`全体から計算する）。
 
 - 画面に出した時点のゲートの`targetHash`を覚えておき、判断にはそれを使う。見ていない内容を承認させないための仕組みで、内容が変わっていれば`failed_precondition`になる
 - `rejected`・triageの判断には要らない
@@ -156,7 +164,7 @@ Content-Type: application/json
 
 | ゲート | 判断 | 意味 |
 |---|---|---|
-| 定義のゲート | `approved` | 先へ進む。`target: "diff"`なら、承認したときのコミットがpublishの対象になる |
+| 定義のゲート | `approved` | 先へ進む。`target: "diff"`なら、承認したときのコミットがpublishの対象になる。`target: "step-diff"`なら、続く`commit`ノードが承認した内容をコミットする |
 | | `rejected` | 定義の`next.rejected`へ戻る。`comment`は差し戻されたエージェントへの理由になる |
 | `deviation` | `approved` + `approved_files` | `approved_files`に挙げたファイルだけを計画に加えてコミットする。挙げなかったファイルはコミットされず作業ツリーに残る。**空の`approved_files`は「何も加えずにコミットを進める」で、「全部承認」ではない** |
 | | `rejected` | コミットせず、commitノードの`next.rejected`（同梱の定義では実装のエージェント）へ差し戻す。書き込めないはずのエージェントが作業ツリーを変えたときのdeviationなら、実行が止まる（BLOCKED） |

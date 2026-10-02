@@ -153,7 +153,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 |---|---|---|---|
 | `agent` | エージェント | `role`、`max`、`inputs`、`outputs`、`egress`、`secrets` | 役割（エージェント定義）に1つのタスクをさせる |
 | `exec` | エンジン（サンドボックス内で実行） | `command`、`inputs`、`outputs`、`max`、`egress`、`secrets`、`timeout` | 決定論のコマンド。`/workspace`をcwdに、入力を`/masuda/in/<occ>/`、出力を`/masuda/out/<occ>/`で受け渡す。終了コード0で`done`、それ以外で`failed` |
-| `approval` | 人間 | `gate`、`target` | 人間の承認を待つ。`target`は`plan`・`diff`・任意のデータ名 |
+| `approval` | 人間 | `gate`、`target` | 人間の承認を待つ。`target`は`plan`・`diff`（publishされるコミット済みの差分。commitの後の承認）・`step-diff`（これからcommitされる差分。commitの前の承認）・任意のデータ名 |
 | `question` | 人間 | `role`または`questions`、`outputs` | エージェント（または固定の質問）が構造化した質問を出し、人間がAPIで答える。答えは次ノードの入力データになる |
 | `foreach` | エンジン | `over`、`body`、`on_incomplete`、`with`、`max` | 項目ごとに`body`のワークフローを直列に実行する |
 | `workflow` | エンジン | `workflow`、`with`、`max` | 別のワークフローを呼ぶ |

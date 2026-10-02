@@ -41,7 +41,7 @@ nodes:
 |---|---|
 | `agent` | エージェントに1つのタスクをさせる。終わり方はエージェント定義の`outcomes` |
 | `exec` | 決まったコマンドをVMの中で動かす（例 `command: ["/masuda/checks/test"]`）。終了コード0で`done`、それ以外で`failed` |
-| `approval` | 人間の承認を待つ（ゲート）。`gate`にゲートの名前、`target`に見せるもの（`plan`・`diff`・データ名） |
+| `approval` | 人間の承認を待つ（ゲート）。`gate`にゲートの名前、`target`に見せるもの（`plan`・`diff`＝publishされるコミット済みの差分・`step-diff`＝これからcommitされる未コミットの差分・データ名） |
 | `question` | 人間に質問して答えを待つ |
 | `foreach` | 計画のステップ・レビュー観点・配列のデータの項目ごとに、別のワークフローを順に動かす |
 | `workflow` | 別のワークフローを呼ぶ |
@@ -205,7 +205,7 @@ flowchart TD
     w2_pick_perspectives["pick-perspectives<br/>type: agent<br/>agents/trigger-matcher<br/>max: 3"]
     w2_interim_find["interim-find<br/>type: foreach<br/>over: perspectives(from=pick-perspectives)<br/>body: workflows/review/perspective-review"]
     w2_interim_fix["interim-fix<br/>type: foreach<br/>over: findings[autofix=true]<br/>body: workflows/fix-finding"]
-    w2_approve_interim{"approve-interim<br/>type: approval<br/>gate: interim, target: diff"}
+    w2_approve_interim{"approve-interim<br/>type: approval<br/>gate: interim, target: step-diff"}
     w2_commit["commit<br/>type: commit<br/>scope: step"]
     w2_end_done((("end")))
     w2_end_stuck((("end:stuck")))
