@@ -342,7 +342,7 @@ func TestTriageGateDecisions(t *testing.T) {
 	if g.Gate != "triage" || !strings.Contains(string(g.Subject), "~/.ssh") {
 		t.Fatalf("triage gate: %+v", g)
 	}
-	if _, err := cl.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+	if _, err := cl.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("approved on a triage gate: %v", err)
 	}
 	d, err := cl.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "dismiss", Comment: "fine"}}))

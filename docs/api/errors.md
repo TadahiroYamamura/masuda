@@ -58,10 +58,9 @@
 |---|---|---|
 | `ListOpen` | `not_found` | `workspace_id`を指定し、そのワークスペースが無い |
 | `Get` | `not_found` | ワークスペースが無い。その`occurrence`のゲートが無い |
-| `Decide` | `invalid_argument` | `decision`か`decision.outcome`が空 |
+| `Decide` | `invalid_argument` | `decision`か`decision.outcome`が空。ゲートの種類に合わない`outcome`（plan・reviewなど定義のゲートとdeviationは`approved`・`rejected`、triageは`dismiss`・`halt`・`redo`だけを受け付ける） |
 | | `not_found` | ワークスペースが無い。その`occurrence`のゲートが無い |
-| | `failed_precondition` | ゲートが判断済み。`approved`で`target_hash`がゲートのものと違う。ワークスペースが動いていない（STOPPED等）。engineが受け付けない: そのゲートが今待っているものでない、ゲートの種類に合わない`outcome`（plan・reviewなど定義のゲートに`dismiss`、triageに`approved`等）、deviationの`approved_files`にゲートが挙げていないファイルがある |
-| | `unimplemented` | deviationゲートに`approved`・`rejected`以外の`outcome` |
+| | `failed_precondition` | ゲートが判断済み。`approved`で`target_hash`がゲートのものと違う。ワークスペースが動いていない（STOPPED等）。engineが受け付けない: そのゲートが今待っているものでない、deviationの`approved_files`にゲートが挙げていないファイルがある |
 
 ## QuestionService
 
@@ -136,4 +135,3 @@
 
 - 定義に無いワークフロー: `Run`は`invalid_argument`、`Show`・`Check`は`not_found`
 - 壊れた`settings.json`: `Run`は`invalid_argument`、ConfigServiceは`failed_precondition`
-- ゲートの種類に合わない`outcome`: deviationゲートは`unimplemented`、それ以外のゲートは`failed_precondition`

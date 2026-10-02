@@ -114,7 +114,7 @@ function serveNotice(ev) {
 ```
 
 !!! warning "今判断できるのは1つだけ"
-    1つのワークスペースが同時に待つゲートは1つで、その出現は`Workspace.position`（`"gate review (occ 0000005)"`）に出ている。triageの割り込みで中断された出現のゲートは、判断されないまま`ListOpen`・`open_gates`に残ることがあり、それへの`Decide`は`failed_precondition`になる。複数返ったら、`openedAt`が最も新しいもの（`position`の出現と一致するもの）を判断の対象として見せる。
+    1つのワークスペースが同時に待つゲートは1つで、その出現は`Workspace.position`（`"gate review (occ 0000005)"`）に出ている。triageの割り込み（`redo`・`dismiss`）で入り直した出現の古いゲートは、serveが`decision.outcome: "superseded"`（triageで無効）で閉じるので`ListOpen`・`open_gates`には残らない。例外として、`dismiss`で入り直さずにそのゲートを待ち続ける場合は開いたまま。判断の対象は`position`の出現と一致するものを見せる。
 
 ### `subject`を見せる
 
@@ -123,16 +123,18 @@ function serveNotice(ev) {
 | ゲート | `subject` | 見せ方 |
 |---|---|---|
 | `target: "plan"` | 計画のJSON（同梱のスキーマなら`summary`・`steps[]{number, description, files}`・`expected_byproducts`） | ステップと対象ファイルの一覧。JSONとして読めなければ全文 |
-| `target: "diff"` | 分岐元（`refs/masuda/base`）から、ゲートを開いた時点の作業ツリーまでのunified diff | 差分ビュー（下の節） |
+| `target: "diff"` | 分岐元（`refs/masuda/base`）から`stagingCommit`までのunified diff（publishされる内容）。続けて、未コミットの変更があれば`## publishされない変更（未コミット）`の見出しの下に1行1ファイルで並ぶ | 差分ビュー（下の節）と、publishされないファイルの一覧 |
 | `target`が他のデータ名 | そのデータの中身（Markdown・JSON等） | 全文 |
 | `gate: "deviation"` | 計画の外で変わったファイルのパス（改行区切り） | ファイルごとのチェックボックス（`approved_files`） |
 | `gate: "triage"` | エージェントが報告した懸念の本文 | 全文と、判断の3つのボタン |
 
-`target: "diff"`のゲートには`stagingCommit`が入る。これはゲートを開いた時点のワークスペースのブランチ（`refs/heads/<branch>`）の先端で、承認された後にpublishされるのはこのコミット。`subject`の差分は作業ツリーから取っているので、コミットされていない変更（deviationで加えなかったファイル等）も含み、`stagingCommit`の中身より多いことがある。何が実リポジトリに入るかを正確に見せるには、`StagingService.Diff`（`from: "refs/masuda/base"`、`to: stagingCommit`）の結果を並べる。
+`target: "diff"`のゲートには`stagingCommit`が入る。これはゲートを開いた時点のワークスペースのブランチ（`refs/heads/<branch>`）の先端で、承認された後にpublishされるのはこのコミット。`subject`の差分部分は`refs/masuda/base..stagingCommit`そのもの（`targetHash`もこの差分だけから計算する）で、コミットされていない変更（deviationで加えなかったファイル等）は差分に混ざらず、見出し`## publishされない変更（未コミット）`の下にファイル名だけが並ぶ。差分ビューを組むなら、見出しより前を`StagingService.Diff`（`from: "refs/masuda/base"`、`to: stagingCommit`）の結果と同じものとして扱い、見出しより後を「publishされない」一覧として別に見せる。
+
+review gateを開いた時点の累積データ`findings`（観点のレビューと横断チェックの指摘）は、`stagingCommit`へのコメントとして取り込まれる（`ListComments`で`commit: stagingCommit`）。`author`は観点名（横断チェックは`cross-cutting`）、`severity`は`高`・`中`・`低`、`path`・`line`は指摘の場所。
 
 ### `targetHash`
 
-`approved`の判断には、ゲートの`targetHash`をそのまま渡す。ハッシュはクライアントで計算しない（deviationのハッシュは`subject`から計算したものではない）。
+`approved`の判断には、ゲートの`targetHash`をそのまま渡す。ハッシュはクライアントで計算しない（deviationのハッシュは`subject`から計算したものではなく、`target: "diff"`のハッシュも`subject`全体ではなく差分の部分だけから計算する）。
 
 - 画面に出した時点のゲートの`targetHash`を覚えておき、判断にはそれを使う。見ていない内容を承認させないための仕組みで、内容が変わっていれば`failed_precondition`になる
 - `rejected`・triageの判断には要らない
@@ -162,6 +164,8 @@ Content-Type: application/json
 | | `halt` | 実行を止める（BLOCKED。`reason`に懸念の本文が入る）。BLOCKEDになったものは`Resume`できない |
 | | `redo` | 割り込まれたノードへ差し戻して入り直す。`comment`が理由になる（空なら懸念の本文） |
 
+ゲートの種類に合わない`outcome`（定義のゲート・deviationに`dismiss`、triageに`approved`、未知の文字列等）は`invalid_argument`になる。
+
 triageの`occurrence`は懸念を報告したエージェントの出現で、割り込まれた出現（待っていたゲート等）とは違うことがある。triageは他のどの状態にも割り込んで開くので、ゲートの表示中に別のゲート（triage）が現れることを想定しておく。
 
 ## stagingの差分とコメントで差分ビューを組む {#diff-view}
@@ -182,7 +186,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 4. `ListComments`でコメントを取り、`commit`・`path`・`line`で差分の行に重ねる。`commit`を指定すると、そのコミットのものだけが返る
 5. 人間がコメントを付けるときは`AddComment`。`commit`はref名でもハッシュでもよく、記録はハッシュで残る（返る`Comment.commit`はハッシュ）。後でブランチが進んでも、コメントは付けたときのコミットに残る
 
-`line`はそのコミットの時点のファイル（差分の新しい側）の行番号として扱う。serveは`path`と`line`が実在するかを確かめないので、クライアントが差分の中の行から選ばせる。コメントの`author`は人間なら`"human"`、`severity`は空。
+`line`はそのコミットの時点のファイル（差分の新しい側）の行番号として扱う。serveは`path`と`line`が実在するかを確かめないので、クライアントが差分の中の行から選ばせる。コメントの`author`は人間なら`"human"`で`severity`は空。review gateを開いたときに取り込まれたエージェントの指摘（[上の節](#gates)）は`author`が観点名か`cross-cutting`で、`severity`が入る。
 
 ## 質問への回答 {#questions}
 

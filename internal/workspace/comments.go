@@ -22,6 +22,9 @@ type Comment struct {
 	Body     string    `json:"body"`
 	Severity string    `json:"severity,omitempty"`
 	Time     time.Time `json:"time"`
+	// FindingID はfindingsから取り込んだコメントの元の指摘のid。同じゲートを開き直したときに
+	// 二重に取り込まないために持つ（公開APIには出さない）。
+	FindingID string `json:"findingId,omitempty"`
 }
 
 // commentsMu はcomments.jsonlへの追記を直列化する。ワークスペースをまたいで1つで足りる程度の頻度。

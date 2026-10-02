@@ -100,6 +100,32 @@ func (w *Workspace) SaveGate(g *GateRecord) error {
 	return writeJSON(w.gatesDir(), fmt.Sprintf("%s-%d.json", g.Occurrence, g.Seq), g)
 }
 
+// OutcomeSuperseded は人間が判断する前にengineが閉じたゲート（triageで入り直した出現の
+// 古いゲート）の判断。
+const OutcomeSuperseded = "superseded"
+
+// SupersedeGate はoccの最後のゲートが未判断なら、判断（OutcomeSuperseded）を書いて閉じる。
+// engineは出現ごとに最後のゲートだけを閉じるので、それに合わせる。閉じたらtrueを返す。
+func (w *Workspace) SupersedeGate(occ, comment string, at time.Time) (bool, error) {
+	recordsMu.Lock()
+	defer recordsMu.Unlock()
+	gs, err := w.gatesLocked()
+	if err != nil {
+		return false, err
+	}
+	var last *GateRecord
+	for _, g := range gs {
+		if g.Occurrence == occ {
+			last = g
+		}
+	}
+	if last == nil || last.Decision != nil {
+		return false, nil
+	}
+	last.Decision = &DecisionRecord{Outcome: OutcomeSuperseded, Comment: comment, DecidedAt: at}
+	return true, writeJSON(w.gatesDir(), fmt.Sprintf("%s-%d.json", last.Occurrence, last.Seq), last)
+}
+
 // Gates は記録されたゲートを開いた順に返す。
 func (w *Workspace) Gates() ([]*GateRecord, error) {
 	recordsMu.Lock()

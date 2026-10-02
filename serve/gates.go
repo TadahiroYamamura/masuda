@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -79,6 +81,12 @@ func (s *gateService) Decide(_ context.Context, req *connect.Request[apiv1.Decid
 	if g.Decision != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("gate %s of occurrence %s has already been decided", g.Gate, g.Occurrence))
 	}
+	// ゲートの種類に合わないoutcomeはリクエストの誤りとして返す（契約「エラーコードの約束」）。
+	// engineはdeviationの不一致をErrNotImplemented、他を一般のエラーで返し区別できないため、先に見る。
+	if allowed := gateOutcomes(g.Gate); !slices.Contains(allowed, m.Decision.Outcome) {
+		return nil, connect.NewError(connect.CodeInvalidArgument,
+			fmt.Errorf("outcome %q is not valid for a %s gate (use one of: %s)", m.Decision.Outcome, g.Gate, strings.Join(allowed, ", ")))
+	}
 	// 承認は人間が見た内容に結びつける。engineも同じ検査をするが、エラーの種類を区別できる
 	// 形では返さないので、ここで先に見てFailedPreconditionにする。
 	if m.Decision.Outcome == engine.OutcomeApproved && m.Decision.TargetHash != g.TargetHash {
@@ -96,14 +104,20 @@ func (s *gateService) Decide(_ context.Context, req *connect.Request[apiv1.Decid
 		ApprovedFiles: m.Decision.ApprovedFiles,
 	})
 	switch {
-	case errors.Is(err, engine.ErrNotImplemented):
-		return nil, connect.NewError(connect.CodeUnimplemented, err)
 	case errors.Is(err, errDecision):
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	case err != nil:
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(gateToProto(w.ID, g)), nil
+}
+
+// gateOutcomes はゲートの種類ごとに受け付けるoutcome。
+func gateOutcomes(gate string) []string {
+	if gate == engine.GateTriage {
+		return []string{"dismiss", "halt", "redo"}
+	}
+	return []string{engine.OutcomeApproved, engine.OutcomeRejected}
 }
 
 // latestGate はoccurrenceが開いたゲートのうち最後のもの（deviationは同じ出現で何度も開く）。

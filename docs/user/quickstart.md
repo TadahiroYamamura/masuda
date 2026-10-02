@@ -170,7 +170,7 @@ masuda gate approve <id> 000004 --hash <gate showが出したtarget_hash>
 masuda gate show <id> <出現ID>
 ```
 
-`gate show`は分岐元からの差分と、反映されるコミット（`commit:`）を出す。レビューのレポート（残っている指摘、自動で直した指摘）はホストのファイルで読める。
+`gate show`は分岐元から反映されるコミット（`commit:`）までの差分を出す。コミットされずに作業ツリーに残ったファイルがあれば、差分の後に「publishされない変更（未コミット）」として名前だけが並ぶ（これらは反映されない）。レビューの指摘はstagingのそのコミットへのコメントとしても残る。レビューのレポート（残っている指摘、自動で直した指摘）はホストのファイルで読める。
 
 ```sh
 cat ~/.local/share/masuda/workspaces/<id>/data/*/report

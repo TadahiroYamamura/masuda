@@ -533,6 +533,14 @@ func (r *Runner) current(ctx context.Context) (string, error) {
 }
 
 func (r *Runner) Diff(ctx context.Context, run engine.RunID, kind engine.DiffKind, from engine.SnapshotRef, into engine.DataRef) error {
+	if kind == engine.DiffCommitted {
+		// publishが載せるものだけを見せるため、作業ツリーは取り込まない。
+		d, err := r.repo.Diff(ctx, staging.BaseRef, staging.BranchRef(r.ws.Branch), nil)
+		if err != nil {
+			return err
+		}
+		return r.PutData(ctx, run, into, []byte(d))
+	}
 	cur, err := r.current(ctx)
 	if err != nil {
 		return err
@@ -751,8 +759,66 @@ func (r *Runner) OpenGate(ctx context.Context, g engine.GateRequest) error {
 			return err
 		}
 		rec.StagingCommit = c
+		if err := r.importFindings(c); err != nil {
+			return err
+		}
 	}
 	return r.ws.AddGate(rec)
+}
+
+// findingIDPattern は観点のレビューがfindingsに付けるid（`<観点名>-<出現ID>-<連番>`、
+// 横断チェックは観点名の代わりに`cross-cutting`）。
+var findingIDPattern = regexp.MustCompile(`^(.+)-[0-9][0-9A-Za-z._]*-[0-9]+$`)
+
+// importFindings は累積データfindingsの各指摘を、承認対象のstagingのコミットへのコメントとして
+// `records/comments.jsonl`に取り込む。UIが差分ビューに指摘を重ねられるように、人間のメモと
+// 同じ形に揃える。同じコミットに取り込み済みの指摘（同じid）は書かない。
+func (r *Runner) importFindings(commit string) error {
+	b, ok := r.latestData("findings")
+	if !ok {
+		return nil
+	}
+	var findings []struct {
+		ID         string `json:"id"`
+		File       string `json:"file"`
+		Line       uint32 `json:"line"`
+		Severity   string `json:"severity"`
+		Message    string `json:"message"`
+		Suggestion string `json:"suggestion"`
+	}
+	if err := json.Unmarshal(b, &findings); err != nil {
+		return fmt.Errorf("findings: %w", err)
+	}
+	existing, err := r.ws.Comments(commit)
+	if err != nil {
+		return err
+	}
+	seen := map[string]bool{}
+	for _, c := range existing {
+		if c.FindingID != "" {
+			seen[c.FindingID] = true
+		}
+	}
+	for _, f := range findings {
+		if f.ID == "" || seen[f.ID] {
+			continue
+		}
+		author := "reviewer"
+		if m := findingIDPattern.FindStringSubmatch(f.ID); m != nil {
+			author = m[1]
+		}
+		body := f.Message
+		if f.Suggestion != "" {
+			body += "\n\n提案: " + f.Suggestion
+		}
+		if _, err := r.ws.AddComment(workspace.Comment{
+			Commit: commit, Path: f.File, Line: f.Line, Author: author, Body: body, Severity: f.Severity, FindingID: f.ID,
+		}); err != nil {
+			return err
+		}
+		seen[f.ID] = true
+	}
+	return nil
 }
 
 func (r *Runner) OpenQuestion(_ context.Context, q engine.QuestionRequest) error {
@@ -975,6 +1041,11 @@ func (r *Runner) Log(e engine.Event) {
 	}
 	_, _ = f.Write(append(b, '\n'))
 	f.Close()
+	// engineがtriageで無効にしたゲートは実行ログでしか知らされない（Runnerに専用の呼び出しが無い）。
+	// 記録を閉じないとListOpenに残り、Decideは「待っていない」で失敗し続ける。
+	if e.Kind == "decision" && e.Outcome == workspace.OutcomeSuperseded && e.Occurrence != "" {
+		_, _ = r.ws.SupersedeGate(e.Occurrence, e.Detail, e.Time)
+	}
 	if r.o.OnLog != nil {
 		r.o.OnLog(e)
 	}

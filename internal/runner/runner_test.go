@@ -1,10 +1,14 @@
 package runner
 
 import (
+	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
+
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 func TestFileStoreApplyAndReopen(t *testing.T) {
@@ -51,5 +55,42 @@ func TestValidate(t *testing.T) {
 	}
 	if p := Validate(schemas, "free", []byte("  \n")); len(p) == 0 {
 		t.Fatal("empty data without a schema accepted")
+	}
+}
+
+func TestImportFindingsAndSupersede(t *testing.T) {
+	ws, err := workspace.NewStore(t.TempDir()).Create(workspace.Meta{RepoRoot: "/r", Branch: "b", Workflow: "workflows/w", State: workspace.StateRunning})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := New(Options{Workspace: ws})
+	findings := `[{"id":"security-0000004-1","file":"a.go","line":3,"severity":"高","autofix":false,"message":"m","suggestion":"s"},
+{"id":"cross-cutting-0000009-2","file":"b.go","line":1,"severity":"低","autofix":false,"message":"n"}]`
+	if err := r.PutData(context.Background(), "", engine.DataRef{Name: "findings", Occurrence: "0000009"}, []byte(findings)); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // 開き直しても二重に取り込まない
+		if err := r.importFindings("c1"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cs, err := ws.Comments("c1")
+	if err != nil || len(cs) != 2 {
+		t.Fatalf("comments: %v %+v", err, cs)
+	}
+	if cs[0].Author != "security" || cs[0].Severity != "高" || cs[0].Path != "a.go" || cs[0].Line != 3 || !strings.Contains(cs[0].Body, "s") {
+		t.Fatalf("first: %+v", cs[0])
+	}
+	if cs[1].Author != "cross-cutting" {
+		t.Fatalf("second: %+v", cs[1])
+	}
+
+	if err := ws.AddGate(&workspace.GateRecord{Occurrence: "0000010", Gate: "deviation"}); err != nil {
+		t.Fatal(err)
+	}
+	r.Log(engine.Event{Kind: "decision", Occurrence: "0000010", Outcome: "superseded", Detail: "deviation: triageで無効になった"})
+	open, err := ws.OpenGates()
+	if err != nil || len(open) != 0 {
+		t.Fatalf("superseded gate still open: %v %+v", err, open)
 	}
 }

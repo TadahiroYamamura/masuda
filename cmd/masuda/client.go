@@ -452,7 +452,11 @@ func formatGate(g *apiv1.Gate) string {
 		fmt.Fprintf(&b, "commit:      %s\n", g.StagingCommit)
 	}
 	if d := g.Decision; d != nil {
-		fmt.Fprintf(&b, "decision:    %s %s\n", d.Outcome, d.Comment)
+		if d.Outcome == "superseded" {
+			fmt.Fprintf(&b, "decision:    superseded（triageで無効。入り直した出現が新しいゲートを開く）\n")
+		} else {
+			fmt.Fprintf(&b, "decision:    %s %s\n", d.Outcome, d.Comment)
+		}
 		if len(d.ApprovedFiles) > 0 {
 			fmt.Fprintf(&b, "approved:    %s\n", strings.Join(d.ApprovedFiles, ", "))
 		}

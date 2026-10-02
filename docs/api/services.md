@@ -79,13 +79,13 @@ stateDiagram-v2
 
 | `gate` | `target` | `subject` | 判断 |
 |---|---|---|---|
-| 定義のゲート（`plan`・`review`・`interim`等） | `plan`・`diff`・データ名 | `target`のデータの中身（`plan`ならJSON、`diff`ならunified diff） | `approved`（`target_hash`必須）・`rejected` |
+| 定義のゲート（`plan`・`review`・`interim`等） | `plan`・`diff`・データ名 | `target`のデータの中身（`plan`ならJSON）。`diff`なら`refs/masuda/base..staging_commit`のunified diffと、続けて「publishされない変更（未コミット）」のファイル一覧 | `approved`（`target_hash`必須）・`rejected` |
 | `deviation` | 空 | 計画外に変わったファイルのパス（改行区切り） | `approved`（`target_hash`必須、`approved_files`）・`rejected` |
 | `triage` | 空 | エージェントが報告した懸念の本文 | `dismiss`・`halt`・`redo`（`target_hash`不要） |
 
-どれも`comment`を付けられ、`rejected`・`redo`のコメントはエージェントへの差し戻しの理由になる。判断の意味と表示の仕方は[ゲートの表示と判断](flows.md#gates)にある。
+triageで入り直した出現の古いゲートは`decision.outcome: "superseded"`で閉じられる（判断済みとして扱う）。どれも`comment`を付けられ、`rejected`・`redo`のコメントはエージェントへの差し戻しの理由になる。判断の意味と表示の仕方は[ゲートの表示と判断](flows.md#gates)にある。
 
-返すコード: `Decide`は判断済み・`target_hash`の不一致・今待っていないゲート・止まっているワークスペースに`failed_precondition`、`outcome`が空なら`invalid_argument`、無いゲートは`not_found`。詳細は[エラーコード](errors.md#gateservice)。
+返すコード: `Decide`は判断済み・`target_hash`の不一致・今待っていないゲート・止まっているワークスペースに`failed_precondition`、`outcome`が空・ゲートの種類に合わないなら`invalid_argument`、無いゲートは`not_found`。詳細は[エラーコード](errors.md#gateservice)。
 
 ## QuestionService {#questionservice}
 
