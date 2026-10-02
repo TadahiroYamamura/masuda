@@ -176,7 +176,10 @@ message Gate {
   string target = 4;      // plan, diff, data name, ""
   string target_hash = 5;
   bytes subject = 6;      // what is being decided on (plan text, deviation list, concern)
-  // For target=diff: the staging commit / tree the diff was computed from.
+  // For target=diff: the staging branch head the diff was computed from
+  // (what publish will land). For target=step-diff: a snapshot commit of the
+  // worktree, parented on the branch head, so that Staging.Diff(to: this)
+  // reproduces the subject and comments can anchor to worktree lines.
   string staging_commit = 7;
   google.protobuf.Timestamp opened_at = 8;
   Decision decision = 9;  // set once decided
