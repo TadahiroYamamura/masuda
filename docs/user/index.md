@@ -1,10 +1,25 @@
 # 利用者向け
 
-準備中。
+masudaは、Claude Codeに調査・計画・実装・レビューをさせ、人間は要所（計画の承認、レビュー結果の承認など）でだけ判断する、という流れをローカルPCで無人実行するツール。
 
-このセクションには次を置く。
+- エージェントは使い捨てのVMの中で動き、ホストのファイルや秘密には触れない
+- 作業はmasudaが持つ作業用のgitリポジトリ（staging）に溜まり、人間が承認したcommitだけが手元のリポジトリへ反映される
+- 流れはYAMLのワークフローで書ける。新機能の開発（`develop`）とレビュー（`review`）を同梱している
 
-- 導入: 前提（QEMU・Node・Docker・git）、Linux x86_64（WSL2を含む）とmacOS arm64での手順、`masuda-sandbox serve`と`masuda serve`の起動、`masuda init`、Claudeのトークンの登録、最初の1周
-- 概念: ワークスペース、staging、VM、ゲート（plan・review・interim・deviation・triage）、質問、publishとdiscard、ホストに触れるもの、秘密がゲストに入らないこと
-- リファレンス: CLIの全サブコマンド、`settings.json`と`settings.local.json`の全項目、[ワークフロー定義](reference/workflow-schema.md)、エージェント定義、レビュー観点、スキーマ、同梱ワークフローの図
-- 運用: 秘密・egress・特権コマンドの宣言と承認、`.env`の生成、再開とWIP、`masuda chat`、exportsの読み方、トラブルシューティング
+## 最初に読む順
+
+1. [導入](install.md): 必要なものを入れ、`masuda-sandbox serve`と`masuda serve`を起動する
+2. [はじめての1周](quickstart.md): 手元のリポジトリで`develop`ワークフローを1回通す
+3. [概念](concepts.md): ワークスペース・staging・ゲートなど、画面に出てくる言葉の意味
+
+ここまでで使い始められる。あとは必要になったときに引く。
+
+| 知りたいこと | ページ |
+|---|---|
+| コマンドとフラグ | [CLIリファレンス](cli.md) |
+| `.masuda/settings.json`・`settings.local.json`の項目 | [設定ファイル](settings.md) |
+| ワークフローを変える・自分で書く | [ワークフロー](workflows.md)、[ワークフロー定義の仕様](reference/workflow-schema.md) |
+| レビューで何を見るかを変える | [レビュー観点](reviews.md) |
+| APIキー等の秘密、外部への通信、rootが要るテスト | [秘密・egress・特権コマンド](secrets-and-egress.md) |
+| 止める・再開する・中を覗く・結果を読む | [運用](operations.md) |
+| うまく動かない | [トラブルシューティング](troubleshooting.md) |
