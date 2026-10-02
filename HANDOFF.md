@@ -1,43 +1,38 @@
 # HANDOFF
 ## 作業項目
-M10（M9の「元から残っていたもの」のうち、`docs/design/`への反映を除いた分）。
-- `de85558` serve側
-  - **WorkflowService**: `List`（作業ツリーの`.masuda/`＋同梱。`origin`はengineの`Set.Origins`、`inputs`はワークフローの`inputs`。repo_rootが空なら同梱だけ）、`Show`（`Set.Mermaid`）、`Check`（`Set.Check`。workflowが空なら全ワークフローをそれぞれrootにして重複を除く。定義が読み込めないときは理由を`Problem`の1つとして返す）。Runと違い写しは取らない
-  - **AttachInfo**: `EnableSsh(user: ubuntu)`の`private_key_pem`を`<DataDir>/workspaces/<id>/ssh/id`へ0600で置き、`ssh_argv`の`-i`をそこへ差し替え、接続先の前に`-t`、後ろに`tmux attach -t claude-work`。起動中（boot前）・止まっているものはFailedPrecondition。フェイクのUnimplementedは「fake sandbox?」を含む文面のUnimplementedで返す。鍵はStop（stopRun）で消す
-  - **会話ログのexport**: `Runner.finish`（publish・discard）の最初に、ゲストのホームをcwdにして`find .claude/projects -type f -name '*.jsonl'`をExecし、各ファイルを`ReadFile`で`exports/transcripts/<projects/からの相対パス>`へ写す。一覧が取れない・読めない・書けないものは実行ログに`kind: export-warning`で記録して続ける
-  - **stallAfter**: `.masuda/settings.local.json`の`stallAfter`（Goのduration、既定`10m`）。Run・Resumeの組み立て（`planBoot`）で読み、読めない・正でない値はFailedPreconditionで断る。`masuda serve --stall-after`（既定を0＝settingsに従う、に変更）が0でなければ全ワークスペースでそちらが勝つ。見回りの間隔は最短のしきい値の1/4（1秒〜30秒）
-  - **ディスク使用量**: serveが60秒ごとに`<DataDir>/workspaces/`の通常ファイルの合計（と内数の`<id>/exports/`）を測る。しきい値は`settings.local.json`の`diskWarnBytes`（既定20GiB）で、ワークスペースのあるリポジトリのうち最小の値。下回っていた状態から超えたときだけ、標準エラーへのログと、`workspace_id`空・`EngineEvent{kind: "disk-warning", detail}`のイベントを出す。`workspace_id`空のイベントはどのワークスペースのWatchにも流すよう`eventBus.since`を変えた。削除はしない
-- `14b5aae` CLI側
-  - `masuda chat <id>`: AttachInfoの`ssh_argv`を`syscall.Exec`。Unimplementedなら「このsandboxではsshで接続できません（フェイクsandbox等）」
-  - `masuda workflow list|show|check [<workflow>] [--repo <dir>]`: --repo省略時は今いる作業ツリーのトップ（`git rev-parse --show-toplevel`）、その外なら同梱だけ。checkは問題があれば終了コード1
-  - `masuda gate dismiss|halt|redo <id> <occ> [--comment]`（target_hash不要）。`gate show`はtriageなら懸念の本文を字下げで、deviationならファイルを箇条書きで出し、未判断ならそのゲートで打てるコマンドを添える
-  - `masuda list [--all]`: `ID BRANCH STATE ACTIVITY(種類＋最終活動からの経過) POSITION OPEN(gate:<名前>,question:<出現>)`。DONE・STOPPEDは`--all`のときだけ（BLOCKEDは常に出す）
-  - `masuda watch`は`workspace_id`空のイベントを種類と本文だけで出す
+M11a（サイトの土台とdesignの反映）。M11b・M11cの本文は書いていない。
+- `80a7213` サイトの土台
+  - `mkdocs.yml`: Material、`language: ja`、検索（`lang: ja`）、`pymdownx.superfences`のmermaidフェンス、mikeのバージョン選択（`extra.version.provider: mike`、既定`latest`）。navは「ホーム」「利用者向け」`user/`・「統合開発者向け」`api/`・「開発者向け」`design/`（`guest-protocol.md`を含む）
+  - `exclude_docs`で`work-orders.md`・`research/`・`CONTRIBUTING.md`・`INSTALLATION.md`をサイトから外した
+  - `requirements-docs.txt`: `mkdocs>=1.6,<2`（MkDocs 2.0はMaterialが動かないので固定）・`mkdocs-material`・`mike`・`pymdown-extensions`
+  - `docs/index.md`（3行の説明と3系統の入口）、`docs/user/index.md`・`docs/api/index.md`（「準備中」と予定の項目）
+  - `scripts/docs-prepare.sh`: `buf generate --template buf.gen.docs.yaml`で`docs/api/reference.md`を生成し、`$MASUDA_ENGINE_DIR`（既定`../masuda-engine`）の`docs/workflow-schema.md`を`docs/user/reference/workflow-schema.md`へ注記（admonition）付きで写す。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest`
+  - `buf.gen.docs.yaml`: プラグインはBSRの`buf.build/community/pseudomuto-doc`（指示にあった`pseudomuto-protoc-gen-doc`はBSRに無い名前だった）、`opt: markdown,reference.md`
+  - `.gitignore`: 生成物2つ、`/site/`、`/.venv-docs/`
+  - `.github/workflows/docs.yml`: push（main・develop・タグ`v*`）と`workflow_dispatch`。engineは`path: masuda-engine`にcheckoutして`MASUDA_ENGINE_DIR`で渡す。バージョンは、手動実行→`dev`（どのrefから起動しても）、タグ`vX.Y.Z`→`X.Y`+`latest`、main→`main`、develop→`dev`。タグのpushのときだけ`mike set-default --push latest`。`permissions: contents: write`、`concurrency: docs-deploy`（取り消さず直列）
+- `2bc9d8d` designの反映
+  - `overview.md`: HANDOFF（M10）の「docs/design/へ反映すべき事項」とM11aの列挙をすべて現在形で書いた（第3・4・5・6・8・9章）
+  - `README.md`: 「触る対象から引く」表を新設（`cmd/masuda`・`serve/`・`internal/*`10個・`contract/`・`live/`・proto・サイト）。リポジトリへのリンクをGitHubのURLに
+  - `contracts.md`: 変更の手続きに「契約を変えたら`docs/user/`・`docs/api/`の該当箇所も同じコミットで直す」
 ## 完了した契約テスト
-C-M1〜C-M7は緑のまま。`go build ./...`・`go vet ./...`・`go test -count=1 ./...`すべて通る。契約ファイル（両proto、`docs/guest-protocol.md`）と契約テストのassertionは変えていない。追加したテストは`serve/m10_test.go`（WorkflowService・AttachInfo・argvと鍵・会話ログ・stallAfter・ディスク警告・triageの判断）、`cmd/masuda/client_test.go`（gate showの整形・listの1行）、`internal/config/local_test.go`（stallAfter・diskWarnBytes）
+契約テスト・契約ファイル（両proto、`docs/guest-protocol.md`）は触っていない。`go build ./...`・`go vet ./...`は通る。ローカルで`.venv-docs/`に入れて`scripts/docs-prepare.sh`→`mkdocs build --strict`が通る（INFOが1件: 生成した`reference.md`の`#google-protobuf-Timestamp`へのアンカーが無い。strictでは失敗しない）。`mike deploy`・`mike set-default`は使い捨ての複製で動作を確かめた（push無し）
 ## 未完と理由
-- `docs/design/`への反映（指示により今回の範囲外）。反映すべき事項は下の「docs/design/へ反映すべき事項」
-- 実VMでの確認はしていない: `masuda chat`のアタッチ（実sandboxの`EnableSsh`）と会話ログの回収はフェイクと単体テストでしか見ていない。liveテストにも足していない
-- `docs/work-orders.md`のM9の記述は更新していない
+- `workflow_dispatch`で`dev`が公開されることは未確認。pushしておらず、Pagesも未有効化のため
+- GitHub Pagesの有効化はユーザーが行う（下記）
 ## 次の一手
-1. 実機で`masuda chat <id>`を試す（tmuxにアタッチでき、`C-b d`で戻れるか）。liveテストの終わりに`exports/transcripts/`に*.jsonlがあるかを見る
-2. 下の「契約への提案」の判断（特にserve全体の設定の置き場所）
-3. `docs/design/`への反映
+1. ユーザー: `redesign`をpushし、Actionsの「docs」を`workflow_dispatch`で実行する。成功するとgh-pagesブランチができる
+2. ユーザー: リポジトリのSettings → Pages → Build and deployment で、Source: **Deploy from a branch**、Branch: **`gh-pages`**、フォルダ: **`/ (root)`** を選んで保存する。`https://tadahiroyamamura.github.io/masuda/dev/`で見られる（タグを打つまで`latest`が無いので、ルートはmikeの既定が無く404になりうる。必要なら一度だけ`mike set-default --push dev`）
+3. M11b（`docs/user/`）、M11c（`docs/api/`）
 ## 注意点
-- **diskWarnBytesの解釈は指示に無い判断**: 置き場（`<DataDir>/workspaces/`）はserve全体で1つだがsettings.local.jsonはリポジトリごとにあるので、「ワークスペースのあるリポジトリのうち最小の値」をしきい値にした。読めないsettings.local.jsonは既定扱い。警告は超えた瞬間だけで、下回ってからまた超えるまで繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）
-- `--stall-after`の既定を`10m`から`0`（settings.local.jsonに従う）に変えた。`serve.Options.StallAfter`も0ならリポジトリごと。stallAfterは実行の組み立て時に読むので、変更はResumeか次のRunから効く
-- 会話ログはpublish/discardの時点のもの。VMを壊すStop・serveの再起動・Removeでは回収しない（その時点のゲストは無くなる）
-- `exports/`は設計書の`exports/<id>/`ではなく実装どおり`<DataDir>/workspaces/<id>/exports/`
-- ssh鍵はEnableSshのたびに替わる（sandboxの契約）。前の`masuda chat`の接続はそのまま残る
-- engineの不具合と思われる挙動には当たらなかった
+- 生成物（`docs/api/reference.md`・`docs/user/reference/workflow-schema.md`）はコミットしない。`mkdocs serve`・`mkdocs build`の前に必ず`scripts/docs-prepare.sh`を走らせる。navが両方を参照しているので、走らせ忘れると`--strict`で落ちる
+- M11b: `user/index.md`の予定の項目を本文のページに置き換え、navの「利用者向け」に足す。`docs/INSTALLATION.md`・`CONTRIBUTING.md`は今はサイトから外している（`exclude_docs`）ので、中身を`user/`へ移したら`exclude_docs`から消すか削除する。`README.md`・`CONTRIBUTING.md`からのリンクも追従させる
+- M11b: 表の中で`|`を使うと、GitHubとPython-Markdownでエスケープの扱いが違う（コード内の`\|`がMkDocsでは`\|`のまま出る）。表のセルにパイプを書かない
+- M11c: `reference.md`は`pseudomuto-doc`の既定テンプレートの英語出力。気になるなら`opt`でテンプレートを渡せる（`markdown`の代わりに`<tmpl>,reference.md`）。BSRのリモートプラグインは版を固定していない
+- design/overview.mdに書いた「ServeNoticeはまだ出さない（disk-warningはEngineEventで流す）」と「`settings.local.json`の`stallAfter`・`diskWarnBytes`」は、M12で変わる。M12の実装と同じコミットでoverview.mdの第6章（設定ファイル）・第8章（無活動のしきい値・ディスク使用量）・第9章（Watch）を直す
+- `docs/design/contracts.md`の「通信の前提」は「設定で有効にしたときだけ`127.0.0.1:<port>`」と書いているが、実装はUDSだけ。overview.mdは実装どおりに書き、contracts.mdは契約の記述なので変えていない
+- design/overview.md第13章（マイルストーン）はwork-orders.mdのM番号と一致しない古い表のまま残している
 ## docs/design/へ反映すべき事項
-- overview 第4章: exportsの中身と置き場所（`workspaces/<id>/exports/`に`<export:のデータ名>`・`execution-log.jsonl`・`transcripts/<project>/…/*.jsonl`）、会話ログの回収方法（find＋ReadFile、失敗は`export-warning`として実行ログへ）、回収はpublish/discardのときだけ
-- overview 第8章: 無活動のしきい値の置き場所（settings.local.jsonの`stallAfter`、`--stall-after`が上書き）、活動の優先順（状態→dead→進行中のAPI（2分で打ち切り、idle_promptで60秒より前のものを捨てる）→入力待ち→stalled）、Watchの初回status、ディスク使用量の監視（60秒、`diskWarnBytes`既定20GiB、リポジトリの最小値、`disk-warning`イベント、削除しない）
-- overview 第9章: Gateの判断にredoを足す（approve/reject/dismiss/halt/redo。triageはtarget_hash不要）、Workflow `List`/`Show`/`Check`の意味（作業ツリーを直接読む、repo_root空は同梱だけ、Check空は全ワークフロー、読み込み失敗も問題として返す）、`AttachInfo`（鍵は`workspaces/<id>/ssh/id`、Stopで消す）、`workspace_id`が空のイベントはすべてのWatchに届く
-- settings.local.jsonの項目一覧に`stallAfter`・`diskWarnBytes`
-- CLI: `masuda chat`、`masuda workflow list|show|check`、`masuda gate dismiss|halt|redo`、`masuda list --all`と列
-- 前回からの持ち越し（未反映）: 観点の写し（`records/reviews/`→ゲストの`/masuda/reviews/`）、`images.<entry>.diskMiB`、BLOCKED（起動失敗）からの再開、WIP復元と質問の「再開で破棄」、「定義の置き場所」表のレビュー観点の行
+- なし（M10までの事項はすべて反映済み）。反映しきれなかったもの: contracts.mdの待ち受けの記述と実装のずれ（上記）
 ## 契約への提案
-- **masuda API: serve全体のイベントの型が無い**。ディスク使用量の警告を`EngineEvent{kind: "disk-warning"}`・`workspace_id`空で流している。`WorkspaceEvent`のoneofに`ServeNotice{kind, detail}`（または`DiskUsage{workspaces_bytes, exports_bytes, threshold_bytes}`）を足し、「workspace_idが空のイベントはどのWatchにも届く」を契約に書く提案
-- **serve全体の設定の置き場所が無い**。`diskWarnBytes`はリポジトリごとのsettings.local.jsonに置くよう指示されたが、監視は全リポジトリ共通なので最小値を取る解釈にした。`$XDG_CONFIG_HOME/masuda/config.json`のような利用者単位の設定（diskWarnBytes・stallAfterの既定）を設ける提案
-- 前回からの持ち越し（判断状況はこちらでは未確認）: sandboxの応答前に切られたHTTPリクエストに終わりのイベントが無い（`http_finished`に`aborted`等）、sandboxのExecの既定環境（PATHに/usr/local/binが無い、`XDG_CACHE_HOME=/tmp/.cache`がroot所有）、engineのfixerに「直せない」終わり方が無い
+- `contracts.md`「通信の前提」のループバック待ち受けは未実装。実装するか、記述を「UDSのみ（ループバックは将来）」にするかの判断（M11cの「接続」の章の前提になる）
+- 前回からの持ち越し（判断状況はこちらでは未確認）: serve全体の設定の置き場所（M12で予定）、sandboxの応答前に切られたHTTPリクエストに終わりのイベントが無い、sandboxのExecの既定環境、engineのfixerに「直せない」終わり方が無い
