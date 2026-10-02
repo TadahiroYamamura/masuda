@@ -129,20 +129,24 @@ func (s *configService) RejectEgress(ctx context.Context, req *connect.Request[a
 // ---------------------------------------------------------------------------
 
 // secretEntries は宣言した秘密の一覧（宣言の順）。approvedはplaintextなら承認の有無、
-// placeholderなら承認が要らないのでtrue。Claude APIのトークンは宣言ではないので含めない。
+// placeholderなら承認が要らないのでtrue。Claude APIのトークンは宣言ではないので含めず、
+// 値の有無だけをclaude_token_setで返す（Runが使うのと同じく、M4の暫定ファイルも見る）。
 func (s *configService) secretEntries(root string, cfg config.Settings, local config.LocalSettings) *apiv1.ListSecretsResponse {
 	store := secrets.New(s.backend.dataDir)
 	out := &apiv1.ListSecretsResponse{}
 	for _, d := range cfg.Secrets {
 		mode := d.EffectiveMode()
+		plaintext := mode == config.ModePlaintext
 		out.Entries = append(out.Entries, &apiv1.SecretEntry{
-			Name:     d.Name,
-			Hosts:    d.Hosts,
-			Mode:     mode,
-			ValueSet: store.Has(root, d.Name),
-			Approved: mode != config.ModePlaintext || contains(local.SecretsApproved, d.Name),
+			Name:             d.Name,
+			Hosts:            d.Hosts,
+			Mode:             mode,
+			ValueSet:         store.Has(root, d.Name),
+			ApprovalRequired: plaintext,
+			Approved:         !plaintext || contains(local.SecretsApproved, d.Name),
 		})
 	}
+	_, out.ClaudeTokenSet, _ = store.ClaudeToken(root, local.ClaudeTokenName())
 	return out
 }
 
@@ -171,6 +175,65 @@ func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv
 	}
 	if err := secrets.New(s.backend.dataDir).Set(root, name, req.Msg.Value); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(s.secretEntries(root, cfg, local)), nil
+}
+
+// ApproveSecret はplaintextモードの秘密の承認を記録する。placeholderは承認が要らないので
+// InvalidArgument（承認したつもりで何も変わらないことに気づけるように）。
+func (s *configService) ApproveSecret(ctx context.Context, req *connect.Request[apiv1.NameRequest]) (*connect.Response[apiv1.ListSecretsResponse], error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, cfg, local, err := s.load(ctx, req.Msg.RepoRoot)
+	if err != nil {
+		return nil, err
+	}
+	name := req.Msg.Name
+	d, ok := cfg.Secret(name)
+	if !ok {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json", name))
+	}
+	if d.EffectiveMode() != config.ModePlaintext {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is in %s mode and needs no approval", name, d.EffectiveMode()))
+	}
+	if !contains(local.SecretsApproved, name) {
+		local.SecretsApproved = append(local.SecretsApproved, name)
+		if err := s.saveLocal(root, local); err != nil {
+			return nil, err
+		}
+	}
+	return connect.NewResponse(s.secretEntries(root, cfg, local)), nil
+}
+
+// RejectSecret は承認を取り消す。RejectEgressと同じく、宣言から消えた名前の承認も掃除できる。
+// 宣言がplaceholderで承認の記録も無い名前はInvalidArgument。
+func (s *configService) RejectSecret(ctx context.Context, req *connect.Request[apiv1.NameRequest]) (*connect.Response[apiv1.ListSecretsResponse], error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, cfg, local, err := s.load(ctx, req.Msg.RepoRoot)
+	if err != nil {
+		return nil, err
+	}
+	name := req.Msg.Name
+	recorded := contains(local.SecretsApproved, name)
+	d, declared := cfg.Secret(name)
+	switch {
+	case !declared && !recorded:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is neither declared nor approved", name))
+	case declared && d.EffectiveMode() != config.ModePlaintext && !recorded:
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is in %s mode and needs no approval", name, d.EffectiveMode()))
+	}
+	if recorded {
+		var kept []string
+		for _, x := range local.SecretsApproved {
+			if x != name {
+				kept = append(kept, x)
+			}
+		}
+		local.SecretsApproved = kept
+		if err := s.saveLocal(root, local); err != nil {
+			return nil, err
+		}
 	}
 	return connect.NewResponse(s.secretEntries(root, cfg, local)), nil
 }

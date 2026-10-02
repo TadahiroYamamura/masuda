@@ -103,7 +103,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		}
 		if d.EffectiveMode() == config.ModePlaintext {
 			if !contains(local.SecretsApproved, d.Name) {
-				add("secret %s is plaintext (its real value goes into the guest) and is not approved: add it to secretsApproved in .masuda/settings.local.json", d.Name)
+				add("secret %s is plaintext (its real value goes into the guest) and is not approved: run masuda secret approve %s", d.Name, d.Name)
 			}
 			if !ok {
 				add("secret %s has no value (masuda secret set %s)", d.Name, d.Name)

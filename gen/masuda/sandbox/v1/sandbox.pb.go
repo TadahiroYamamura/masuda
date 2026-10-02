@@ -1934,7 +1934,8 @@ func (x *WriteFileResponse) GetBytesWritten() uint64 {
 type WatchEventsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// Replay events after this sequence number first (0 = only new events).
+	// Replay buffered events after this sequence number first, then go live.
+	// 0 replays everything still buffered (the service keeps the last 1000).
 	AfterSeq      uint64 `protobuf:"varint,2,opt,name=after_seq,json=afterSeq,proto3" json:"after_seq,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache

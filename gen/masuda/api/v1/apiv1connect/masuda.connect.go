@@ -107,6 +107,12 @@ const (
 	ConfigServiceListSecretsProcedure = "/masuda.api.v1.ConfigService/ListSecrets"
 	// ConfigServiceSetSecretProcedure is the fully-qualified name of the ConfigService's SetSecret RPC.
 	ConfigServiceSetSecretProcedure = "/masuda.api.v1.ConfigService/SetSecret"
+	// ConfigServiceApproveSecretProcedure is the fully-qualified name of the ConfigService's
+	// ApproveSecret RPC.
+	ConfigServiceApproveSecretProcedure = "/masuda.api.v1.ConfigService/ApproveSecret"
+	// ConfigServiceRejectSecretProcedure is the fully-qualified name of the ConfigService's
+	// RejectSecret RPC.
+	ConfigServiceRejectSecretProcedure = "/masuda.api.v1.ConfigService/RejectSecret"
 	// ConfigServiceListPrivilegedCommandsProcedure is the fully-qualified name of the ConfigService's
 	// ListPrivilegedCommands RPC.
 	ConfigServiceListPrivilegedCommandsProcedure = "/masuda.api.v1.ConfigService/ListPrivilegedCommands"
@@ -829,6 +835,10 @@ type ConfigServiceClient interface {
 	ListSecrets(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// Stores the value locally (never echoed back).
 	SetSecret(context.Context, *connect.Request[v1.SetSecretRequest]) (*connect.Response[v1.ListSecretsResponse], error)
+	// Approves / revokes a secret that needs approval (mode plaintext: the real
+	// value enters the guest). Placeholder secrets need no approval.
+	ApproveSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error)
+	RejectSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	ListPrivilegedCommands(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error)
 	ApprovePrivilegedCommand(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error)
 	ListImages(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListImagesResponse], error)
@@ -876,6 +886,18 @@ func NewConfigServiceClient(httpClient connect.HTTPClient, baseURL string, opts 
 			connect.WithSchema(configServiceMethods.ByName("SetSecret")),
 			connect.WithClientOptions(opts...),
 		),
+		approveSecret: connect.NewClient[v1.NameRequest, v1.ListSecretsResponse](
+			httpClient,
+			baseURL+ConfigServiceApproveSecretProcedure,
+			connect.WithSchema(configServiceMethods.ByName("ApproveSecret")),
+			connect.WithClientOptions(opts...),
+		),
+		rejectSecret: connect.NewClient[v1.NameRequest, v1.ListSecretsResponse](
+			httpClient,
+			baseURL+ConfigServiceRejectSecretProcedure,
+			connect.WithSchema(configServiceMethods.ByName("RejectSecret")),
+			connect.WithClientOptions(opts...),
+		),
 		listPrivilegedCommands: connect.NewClient[v1.RepoRequest, v1.ListPrivilegedCommandsResponse](
 			httpClient,
 			baseURL+ConfigServiceListPrivilegedCommandsProcedure,
@@ -910,6 +932,8 @@ type configServiceClient struct {
 	rejectEgress             *connect.Client[v1.HostRequest, v1.ListEgressResponse]
 	listSecrets              *connect.Client[v1.RepoRequest, v1.ListSecretsResponse]
 	setSecret                *connect.Client[v1.SetSecretRequest, v1.ListSecretsResponse]
+	approveSecret            *connect.Client[v1.NameRequest, v1.ListSecretsResponse]
+	rejectSecret             *connect.Client[v1.NameRequest, v1.ListSecretsResponse]
 	listPrivilegedCommands   *connect.Client[v1.RepoRequest, v1.ListPrivilegedCommandsResponse]
 	approvePrivilegedCommand *connect.Client[v1.NameRequest, v1.ListPrivilegedCommandsResponse]
 	listImages               *connect.Client[v1.RepoRequest, v1.ListImagesResponse]
@@ -941,6 +965,16 @@ func (c *configServiceClient) SetSecret(ctx context.Context, req *connect.Reques
 	return c.setSecret.CallUnary(ctx, req)
 }
 
+// ApproveSecret calls masuda.api.v1.ConfigService.ApproveSecret.
+func (c *configServiceClient) ApproveSecret(ctx context.Context, req *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return c.approveSecret.CallUnary(ctx, req)
+}
+
+// RejectSecret calls masuda.api.v1.ConfigService.RejectSecret.
+func (c *configServiceClient) RejectSecret(ctx context.Context, req *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return c.rejectSecret.CallUnary(ctx, req)
+}
+
 // ListPrivilegedCommands calls masuda.api.v1.ConfigService.ListPrivilegedCommands.
 func (c *configServiceClient) ListPrivilegedCommands(ctx context.Context, req *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error) {
 	return c.listPrivilegedCommands.CallUnary(ctx, req)
@@ -969,6 +1003,10 @@ type ConfigServiceHandler interface {
 	ListSecrets(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	// Stores the value locally (never echoed back).
 	SetSecret(context.Context, *connect.Request[v1.SetSecretRequest]) (*connect.Response[v1.ListSecretsResponse], error)
+	// Approves / revokes a secret that needs approval (mode plaintext: the real
+	// value enters the guest). Placeholder secrets need no approval.
+	ApproveSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error)
+	RejectSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error)
 	ListPrivilegedCommands(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error)
 	ApprovePrivilegedCommand(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error)
 	ListImages(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListImagesResponse], error)
@@ -1012,6 +1050,18 @@ func NewConfigServiceHandler(svc ConfigServiceHandler, opts ...connect.HandlerOp
 		connect.WithSchema(configServiceMethods.ByName("SetSecret")),
 		connect.WithHandlerOptions(opts...),
 	)
+	configServiceApproveSecretHandler := connect.NewUnaryHandler(
+		ConfigServiceApproveSecretProcedure,
+		svc.ApproveSecret,
+		connect.WithSchema(configServiceMethods.ByName("ApproveSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
+	configServiceRejectSecretHandler := connect.NewUnaryHandler(
+		ConfigServiceRejectSecretProcedure,
+		svc.RejectSecret,
+		connect.WithSchema(configServiceMethods.ByName("RejectSecret")),
+		connect.WithHandlerOptions(opts...),
+	)
 	configServiceListPrivilegedCommandsHandler := connect.NewUnaryHandler(
 		ConfigServiceListPrivilegedCommandsProcedure,
 		svc.ListPrivilegedCommands,
@@ -1048,6 +1098,10 @@ func NewConfigServiceHandler(svc ConfigServiceHandler, opts ...connect.HandlerOp
 			configServiceListSecretsHandler.ServeHTTP(w, r)
 		case ConfigServiceSetSecretProcedure:
 			configServiceSetSecretHandler.ServeHTTP(w, r)
+		case ConfigServiceApproveSecretProcedure:
+			configServiceApproveSecretHandler.ServeHTTP(w, r)
+		case ConfigServiceRejectSecretProcedure:
+			configServiceRejectSecretHandler.ServeHTTP(w, r)
 		case ConfigServiceListPrivilegedCommandsProcedure:
 			configServiceListPrivilegedCommandsHandler.ServeHTTP(w, r)
 		case ConfigServiceApprovePrivilegedCommandProcedure:
@@ -1083,6 +1137,14 @@ func (UnimplementedConfigServiceHandler) ListSecrets(context.Context, *connect.R
 
 func (UnimplementedConfigServiceHandler) SetSecret(context.Context, *connect.Request[v1.SetSecretRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.api.v1.ConfigService.SetSecret is not implemented"))
+}
+
+func (UnimplementedConfigServiceHandler) ApproveSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.api.v1.ConfigService.ApproveSecret is not implemented"))
+}
+
+func (UnimplementedConfigServiceHandler) RejectSecret(context.Context, *connect.Request[v1.NameRequest]) (*connect.Response[v1.ListSecretsResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.api.v1.ConfigService.RejectSecret is not implemented"))
 }
 
 func (UnimplementedConfigServiceHandler) ListPrivilegedCommands(context.Context, *connect.Request[v1.RepoRequest]) (*connect.Response[v1.ListPrivilegedCommandsResponse], error) {

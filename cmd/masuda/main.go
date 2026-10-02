@@ -27,7 +27,8 @@ commands:
   init                      対象リポジトリに.masuda/の雛形を置く（serve不要）
   egress list|approve|reject
                             egressの宣言と承認
-  secret list|set           秘密の一覧・値の登録（値は標準入力から）
+  secret list|set|approve|reject
+                            秘密の一覧・値の登録（値は標準入力から）・plaintextの承認
   privileged-command list|approve
                             特権コマンドの一覧・承認
   image list|build          ゲストイメージの一覧・ビルド

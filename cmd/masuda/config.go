@@ -114,12 +114,14 @@ func egressDecide(args []string, approve bool) error {
 // secret
 // ---------------------------------------------------------------------------
 
-const secretUsage = "secret list|set <NAME> [--repo <dir>]"
+const secretUsage = "secret list|set|approve|reject <NAME> [--repo <dir>]"
 
 func runSecret(args []string) error {
 	return subcommand(args, secretUsage, map[string]func([]string) error{
-		"list": secretList,
-		"set":  secretSet,
+		"list":    secretList,
+		"set":     secretSet,
+		"approve": func(a []string) error { return secretDecide(a, true) },
+		"reject":  func(a []string) error { return secretDecide(a, false) },
 	})
 }
 
@@ -129,7 +131,7 @@ func printSecrets(res *apiv1.ListSecretsResponse) {
 	fmt.Fprintln(t, "NAME\tMODE\tHOSTS\tVALUE\tAPPROVED")
 	for _, e := range res.Entries {
 		mode, approved := e.Mode, "-"
-		if e.Mode == "plaintext" {
+		if e.ApprovalRequired {
 			mode = "PLAINTEXT"
 			approved = yesNo(e.Approved)
 		}
@@ -140,6 +142,40 @@ func printSecrets(res *apiv1.ListSecretsResponse) {
 		fmt.Fprintf(t, "%s\t%s\t%s\t%s\t%s\n", e.Name, mode, orDash(strings.Join(e.Hosts, ",")), value, approved)
 	}
 	t.Flush()
+	token := "unset"
+	if res.ClaudeTokenSet {
+		token = "set"
+	}
+	fmt.Printf("Claude token: %s\n", token)
+}
+
+func secretDecide(args []string, approve bool) error {
+	name := "secret reject"
+	if approve {
+		name = "secret approve"
+	}
+	c := newCommand(name, name+" <NAME> [--repo <dir>]")
+	repo := repoFlag(c)
+	pos, err := c.parse(args, 1, 1)
+	if err != nil {
+		return err
+	}
+	root, err := absRepo(*repo)
+	if err != nil {
+		return err
+	}
+	req := connect.NewRequest(&apiv1.NameRequest{RepoRoot: root, Name: pos[0]})
+	var res *connect.Response[apiv1.ListSecretsResponse]
+	if approve {
+		res, err = c.clients().config.ApproveSecret(context.Background(), req)
+	} else {
+		res, err = c.clients().config.RejectSecret(context.Background(), req)
+	}
+	if err != nil {
+		return err
+	}
+	printSecrets(res.Msg)
+	return nil
 }
 
 func secretList(args []string) error {

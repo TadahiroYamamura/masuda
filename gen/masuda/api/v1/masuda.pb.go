@@ -2983,10 +2983,14 @@ func (x *EgressEntry) GetApproved() bool {
 }
 
 type ListSecretsResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Entries       []*SecretEntry         `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Entries []*SecretEntry         `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
+	// Whether the Claude token this repository uses (settings.local.json
+	// claudeToken, default CLAUDE_CODE_OAUTH_TOKEN) has a value stored. The
+	// token is not listed among entries.
+	ClaudeTokenSet bool `protobuf:"varint,2,opt,name=claude_token_set,json=claudeTokenSet,proto3" json:"claude_token_set,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *ListSecretsResponse) Reset() {
@@ -3026,15 +3030,25 @@ func (x *ListSecretsResponse) GetEntries() []*SecretEntry {
 	return nil
 }
 
+func (x *ListSecretsResponse) GetClaudeTokenSet() bool {
+	if x != nil {
+		return x.ClaudeTokenSet
+	}
+	return false
+}
+
 type SecretEntry struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
-	Hosts         []string               `protobuf:"bytes,2,rep,name=hosts,proto3" json:"hosts,omitempty"`
-	Mode          string                 `protobuf:"bytes,3,opt,name=mode,proto3" json:"mode,omitempty"` // placeholder | plaintext
-	ValueSet      bool                   `protobuf:"varint,4,opt,name=value_set,json=valueSet,proto3" json:"value_set,omitempty"`
-	Approved      bool                   `protobuf:"varint,5,opt,name=approved,proto3" json:"approved,omitempty"` // plaintext needs approval
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	Name     string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Hosts    []string               `protobuf:"bytes,2,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	Mode     string                 `protobuf:"bytes,3,opt,name=mode,proto3" json:"mode,omitempty"` // placeholder | plaintext
+	ValueSet bool                   `protobuf:"varint,4,opt,name=value_set,json=valueSet,proto3" json:"value_set,omitempty"`
+	// approval_required is true for mode plaintext. approved is meaningful
+	// only then; for placeholder secrets it is always true.
+	ApprovalRequired bool `protobuf:"varint,6,opt,name=approval_required,json=approvalRequired,proto3" json:"approval_required,omitempty"`
+	Approved         bool `protobuf:"varint,5,opt,name=approved,proto3" json:"approved,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *SecretEntry) Reset() {
@@ -3091,6 +3105,13 @@ func (x *SecretEntry) GetMode() string {
 func (x *SecretEntry) GetValueSet() bool {
 	if x != nil {
 		return x.ValueSet
+	}
+	return false
+}
+
+func (x *SecretEntry) GetApprovalRequired() bool {
+	if x != nil {
+		return x.ApprovalRequired
 	}
 	return false
 }
@@ -4012,14 +4033,16 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\aentries\x18\x01 \x03(\v2\x1a.masuda.api.v1.EgressEntryR\aentries\"=\n" +
 	"\vEgressEntry\x12\x12\n" +
 	"\x04host\x18\x01 \x01(\tR\x04host\x12\x1a\n" +
-	"\bapproved\x18\x02 \x01(\bR\bapproved\"K\n" +
+	"\bapproved\x18\x02 \x01(\bR\bapproved\"u\n" +
 	"\x13ListSecretsResponse\x124\n" +
-	"\aentries\x18\x01 \x03(\v2\x1a.masuda.api.v1.SecretEntryR\aentries\"\x84\x01\n" +
+	"\aentries\x18\x01 \x03(\v2\x1a.masuda.api.v1.SecretEntryR\aentries\x12(\n" +
+	"\x10claude_token_set\x18\x02 \x01(\bR\x0eclaudeTokenSet\"\xb1\x01\n" +
 	"\vSecretEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05hosts\x18\x02 \x03(\tR\x05hosts\x12\x12\n" +
 	"\x04mode\x18\x03 \x01(\tR\x04mode\x12\x1b\n" +
-	"\tvalue_set\x18\x04 \x01(\bR\bvalueSet\x12\x1a\n" +
+	"\tvalue_set\x18\x04 \x01(\bR\bvalueSet\x12+\n" +
+	"\x11approval_required\x18\x06 \x01(\bR\x10approvalRequired\x12\x1a\n" +
 	"\bapproved\x18\x05 \x01(\bR\bapproved\"Y\n" +
 	"\x10SetSecretRequest\x12\x1b\n" +
 	"\trepo_root\x18\x01 \x01(\tR\brepoRoot\x12\x12\n" +
@@ -4105,14 +4128,16 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\aGetBlob\x12\x1d.masuda.api.v1.GetBlobRequest\x1a\x18.masuda.api.v1.BlobChunk0\x01\x12W\n" +
 	"\fListComments\x12\".masuda.api.v1.ListCommentsRequest\x1a#.masuda.api.v1.ListCommentsResponse\x12F\n" +
 	"\n" +
-	"AddComment\x12 .masuda.api.v1.AddCommentRequest\x1a\x16.masuda.api.v1.Comment2\x87\x06\n" +
+	"AddComment\x12 .masuda.api.v1.AddCommentRequest\x1a\x16.masuda.api.v1.Comment2\xa8\a\n" +
 	"\rConfigService\x12K\n" +
 	"\n" +
 	"ListEgress\x12\x1a.masuda.api.v1.RepoRequest\x1a!.masuda.api.v1.ListEgressResponse\x12N\n" +
 	"\rApproveEgress\x12\x1a.masuda.api.v1.HostRequest\x1a!.masuda.api.v1.ListEgressResponse\x12M\n" +
 	"\fRejectEgress\x12\x1a.masuda.api.v1.HostRequest\x1a!.masuda.api.v1.ListEgressResponse\x12M\n" +
 	"\vListSecrets\x12\x1a.masuda.api.v1.RepoRequest\x1a\".masuda.api.v1.ListSecretsResponse\x12P\n" +
-	"\tSetSecret\x12\x1f.masuda.api.v1.SetSecretRequest\x1a\".masuda.api.v1.ListSecretsResponse\x12c\n" +
+	"\tSetSecret\x12\x1f.masuda.api.v1.SetSecretRequest\x1a\".masuda.api.v1.ListSecretsResponse\x12O\n" +
+	"\rApproveSecret\x12\x1a.masuda.api.v1.NameRequest\x1a\".masuda.api.v1.ListSecretsResponse\x12N\n" +
+	"\fRejectSecret\x12\x1a.masuda.api.v1.NameRequest\x1a\".masuda.api.v1.ListSecretsResponse\x12c\n" +
 	"\x16ListPrivilegedCommands\x12\x1a.masuda.api.v1.RepoRequest\x1a-.masuda.api.v1.ListPrivilegedCommandsResponse\x12e\n" +
 	"\x18ApprovePrivilegedCommand\x12\x1a.masuda.api.v1.NameRequest\x1a-.masuda.api.v1.ListPrivilegedCommandsResponse\x12K\n" +
 	"\n" +
@@ -4264,46 +4289,50 @@ var file_masuda_api_v1_masuda_proto_depIdxs = []int32{
 	45, // 53: masuda.api.v1.ConfigService.RejectEgress:input_type -> masuda.api.v1.HostRequest
 	44, // 54: masuda.api.v1.ConfigService.ListSecrets:input_type -> masuda.api.v1.RepoRequest
 	51, // 55: masuda.api.v1.ConfigService.SetSecret:input_type -> masuda.api.v1.SetSecretRequest
-	44, // 56: masuda.api.v1.ConfigService.ListPrivilegedCommands:input_type -> masuda.api.v1.RepoRequest
-	46, // 57: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:input_type -> masuda.api.v1.NameRequest
-	44, // 58: masuda.api.v1.ConfigService.ListImages:input_type -> masuda.api.v1.RepoRequest
-	56, // 59: masuda.api.v1.ConfigService.BuildImage:input_type -> masuda.api.v1.BuildImageRequest
-	44, // 60: masuda.api.v1.WorkflowService.List:input_type -> masuda.api.v1.RepoRequest
-	60, // 61: masuda.api.v1.WorkflowService.Show:input_type -> masuda.api.v1.ShowWorkflowRequest
-	60, // 62: masuda.api.v1.WorkflowService.Check:input_type -> masuda.api.v1.ShowWorkflowRequest
-	13, // 63: masuda.api.v1.WorkspaceService.Run:output_type -> masuda.api.v1.Workspace
-	13, // 64: masuda.api.v1.WorkspaceService.Resume:output_type -> masuda.api.v1.Workspace
-	13, // 65: masuda.api.v1.WorkspaceService.Get:output_type -> masuda.api.v1.Workspace
-	6,  // 66: masuda.api.v1.WorkspaceService.List:output_type -> masuda.api.v1.ListWorkspacesResponse
-	15, // 67: masuda.api.v1.WorkspaceService.Watch:output_type -> masuda.api.v1.WorkspaceEvent
-	13, // 68: masuda.api.v1.WorkspaceService.Stop:output_type -> masuda.api.v1.Workspace
-	9,  // 69: masuda.api.v1.WorkspaceService.Remove:output_type -> masuda.api.v1.RemoveResponse
-	11, // 70: masuda.api.v1.WorkspaceService.AttachInfo:output_type -> masuda.api.v1.AttachInfoResponse
-	20, // 71: masuda.api.v1.GateService.ListOpen:output_type -> masuda.api.v1.ListOpenGatesResponse
-	22, // 72: masuda.api.v1.GateService.Get:output_type -> masuda.api.v1.Gate
-	22, // 73: masuda.api.v1.GateService.Decide:output_type -> masuda.api.v1.Gate
-	26, // 74: masuda.api.v1.QuestionService.ListOpen:output_type -> masuda.api.v1.ListOpenQuestionsResponse
-	30, // 75: masuda.api.v1.QuestionService.Answer:output_type -> masuda.api.v1.AnswerResponse
-	32, // 76: masuda.api.v1.StagingService.ListRefs:output_type -> masuda.api.v1.ListRefsResponse
-	35, // 77: masuda.api.v1.StagingService.GetCommit:output_type -> masuda.api.v1.Commit
-	37, // 78: masuda.api.v1.StagingService.Diff:output_type -> masuda.api.v1.DiffResponse
-	39, // 79: masuda.api.v1.StagingService.GetBlob:output_type -> masuda.api.v1.BlobChunk
-	41, // 80: masuda.api.v1.StagingService.ListComments:output_type -> masuda.api.v1.ListCommentsResponse
-	42, // 81: masuda.api.v1.StagingService.AddComment:output_type -> masuda.api.v1.Comment
-	47, // 82: masuda.api.v1.ConfigService.ListEgress:output_type -> masuda.api.v1.ListEgressResponse
-	47, // 83: masuda.api.v1.ConfigService.ApproveEgress:output_type -> masuda.api.v1.ListEgressResponse
-	47, // 84: masuda.api.v1.ConfigService.RejectEgress:output_type -> masuda.api.v1.ListEgressResponse
-	49, // 85: masuda.api.v1.ConfigService.ListSecrets:output_type -> masuda.api.v1.ListSecretsResponse
-	49, // 86: masuda.api.v1.ConfigService.SetSecret:output_type -> masuda.api.v1.ListSecretsResponse
-	52, // 87: masuda.api.v1.ConfigService.ListPrivilegedCommands:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
-	52, // 88: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
-	54, // 89: masuda.api.v1.ConfigService.ListImages:output_type -> masuda.api.v1.ListImagesResponse
-	57, // 90: masuda.api.v1.ConfigService.BuildImage:output_type -> masuda.api.v1.BuildImageEvent
-	58, // 91: masuda.api.v1.WorkflowService.List:output_type -> masuda.api.v1.ListWorkflowsResponse
-	61, // 92: masuda.api.v1.WorkflowService.Show:output_type -> masuda.api.v1.ShowWorkflowResponse
-	62, // 93: masuda.api.v1.WorkflowService.Check:output_type -> masuda.api.v1.CheckWorkflowResponse
-	63, // [63:94] is the sub-list for method output_type
-	32, // [32:63] is the sub-list for method input_type
+	46, // 56: masuda.api.v1.ConfigService.ApproveSecret:input_type -> masuda.api.v1.NameRequest
+	46, // 57: masuda.api.v1.ConfigService.RejectSecret:input_type -> masuda.api.v1.NameRequest
+	44, // 58: masuda.api.v1.ConfigService.ListPrivilegedCommands:input_type -> masuda.api.v1.RepoRequest
+	46, // 59: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:input_type -> masuda.api.v1.NameRequest
+	44, // 60: masuda.api.v1.ConfigService.ListImages:input_type -> masuda.api.v1.RepoRequest
+	56, // 61: masuda.api.v1.ConfigService.BuildImage:input_type -> masuda.api.v1.BuildImageRequest
+	44, // 62: masuda.api.v1.WorkflowService.List:input_type -> masuda.api.v1.RepoRequest
+	60, // 63: masuda.api.v1.WorkflowService.Show:input_type -> masuda.api.v1.ShowWorkflowRequest
+	60, // 64: masuda.api.v1.WorkflowService.Check:input_type -> masuda.api.v1.ShowWorkflowRequest
+	13, // 65: masuda.api.v1.WorkspaceService.Run:output_type -> masuda.api.v1.Workspace
+	13, // 66: masuda.api.v1.WorkspaceService.Resume:output_type -> masuda.api.v1.Workspace
+	13, // 67: masuda.api.v1.WorkspaceService.Get:output_type -> masuda.api.v1.Workspace
+	6,  // 68: masuda.api.v1.WorkspaceService.List:output_type -> masuda.api.v1.ListWorkspacesResponse
+	15, // 69: masuda.api.v1.WorkspaceService.Watch:output_type -> masuda.api.v1.WorkspaceEvent
+	13, // 70: masuda.api.v1.WorkspaceService.Stop:output_type -> masuda.api.v1.Workspace
+	9,  // 71: masuda.api.v1.WorkspaceService.Remove:output_type -> masuda.api.v1.RemoveResponse
+	11, // 72: masuda.api.v1.WorkspaceService.AttachInfo:output_type -> masuda.api.v1.AttachInfoResponse
+	20, // 73: masuda.api.v1.GateService.ListOpen:output_type -> masuda.api.v1.ListOpenGatesResponse
+	22, // 74: masuda.api.v1.GateService.Get:output_type -> masuda.api.v1.Gate
+	22, // 75: masuda.api.v1.GateService.Decide:output_type -> masuda.api.v1.Gate
+	26, // 76: masuda.api.v1.QuestionService.ListOpen:output_type -> masuda.api.v1.ListOpenQuestionsResponse
+	30, // 77: masuda.api.v1.QuestionService.Answer:output_type -> masuda.api.v1.AnswerResponse
+	32, // 78: masuda.api.v1.StagingService.ListRefs:output_type -> masuda.api.v1.ListRefsResponse
+	35, // 79: masuda.api.v1.StagingService.GetCommit:output_type -> masuda.api.v1.Commit
+	37, // 80: masuda.api.v1.StagingService.Diff:output_type -> masuda.api.v1.DiffResponse
+	39, // 81: masuda.api.v1.StagingService.GetBlob:output_type -> masuda.api.v1.BlobChunk
+	41, // 82: masuda.api.v1.StagingService.ListComments:output_type -> masuda.api.v1.ListCommentsResponse
+	42, // 83: masuda.api.v1.StagingService.AddComment:output_type -> masuda.api.v1.Comment
+	47, // 84: masuda.api.v1.ConfigService.ListEgress:output_type -> masuda.api.v1.ListEgressResponse
+	47, // 85: masuda.api.v1.ConfigService.ApproveEgress:output_type -> masuda.api.v1.ListEgressResponse
+	47, // 86: masuda.api.v1.ConfigService.RejectEgress:output_type -> masuda.api.v1.ListEgressResponse
+	49, // 87: masuda.api.v1.ConfigService.ListSecrets:output_type -> masuda.api.v1.ListSecretsResponse
+	49, // 88: masuda.api.v1.ConfigService.SetSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	49, // 89: masuda.api.v1.ConfigService.ApproveSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	49, // 90: masuda.api.v1.ConfigService.RejectSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	52, // 91: masuda.api.v1.ConfigService.ListPrivilegedCommands:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
+	52, // 92: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
+	54, // 93: masuda.api.v1.ConfigService.ListImages:output_type -> masuda.api.v1.ListImagesResponse
+	57, // 94: masuda.api.v1.ConfigService.BuildImage:output_type -> masuda.api.v1.BuildImageEvent
+	58, // 95: masuda.api.v1.WorkflowService.List:output_type -> masuda.api.v1.ListWorkflowsResponse
+	61, // 96: masuda.api.v1.WorkflowService.Show:output_type -> masuda.api.v1.ShowWorkflowResponse
+	62, // 97: masuda.api.v1.WorkflowService.Check:output_type -> masuda.api.v1.CheckWorkflowResponse
+	65, // [65:98] is the sub-list for method output_type
+	32, // [32:65] is the sub-list for method input_type
 	32, // [32:32] is the sub-list for extension type_name
 	32, // [32:32] is the sub-list for extension extendee
 	0,  // [0:32] is the sub-list for field type_name
