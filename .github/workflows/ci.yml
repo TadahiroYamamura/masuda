@@ -1,0 +1,53 @@
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # buf.gen.yamlとinternal/sandboxcontractは隣の../masuda-sandboxを読むので、
+      # 2つを同じ親ディレクトリに並べてcheckoutする（ワークスペースの外にはcheckoutできない）。
+      - uses: actions/checkout@v4
+        with:
+          path: masuda
+      - uses: actions/checkout@v4
+        with:
+          repository: TadahiroYamamura/masuda-sandbox
+          path: masuda-sandbox
+
+      # go.workは無いので、engineはgo.modで固定した版をモジュールプロキシから取る。
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: masuda/go.mod
+          cache-dependency-path: masuda/go.sum
+
+      # stagingのテストがコミットを作るので、git identityを置く。
+      - name: Configure git identity
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+
+      - name: Build
+        working-directory: masuda
+        run: go build ./...
+      - name: Vet
+        working-directory: masuda
+        run: go vet ./...
+      # 契約テスト（contract/）はフェイクのsandboxで回るのでここで回す。live/はMASUDA_LIVE_TEST無しでskipする。
+      - name: Test
+        working-directory: masuda
+        run: go test ./...
+
+      # sandbox.protoのSHA-256（serveの互換性の確認に使う）が、masuda-sandboxのmainの文面と合っていること。
+      - name: Generated files are up to date
+        working-directory: masuda
+        run: |
+          go generate ./internal/sandboxcontract/
+          git diff --exit-code -- internal/sandboxcontract/

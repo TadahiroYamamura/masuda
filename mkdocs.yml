@@ -92,4 +92,5 @@ nav:
       - 全体設計: design/overview.md
       - 契約: design/contracts.md
       - ゲストプロトコル: guest-protocol.md
+      - リリース手順: design/release.md
       - 再設計の経緯: design/redesign-background.md

@@ -1,0 +1,117 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: masuda
+      # 同じタグのmasuda-sandboxと組で配る（docs/design/release.md）。契約の文面が合うことをここで確かめる。
+      - uses: actions/checkout@v4
+        with:
+          repository: TadahiroYamamura/masuda-sandbox
+          ref: ${{ github.ref_name }}
+          path: masuda-sandbox
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: masuda/go.mod
+          cache-dependency-path: masuda/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Configure git identity
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.invalid
+
+      - name: Check versions
+        id: versions
+        working-directory: masuda
+        run: |
+          tag="$GITHUB_REF_NAME"
+          engine=$(go list -m -f '{{.Version}}' github.com/TadahiroYamamura/masuda-engine)
+          if [ "$engine" != "$tag" ]; then
+            echo "go.mod requires masuda-engine $engine, but the release tag is $tag (go get github.com/TadahiroYamamura/masuda-engine@$tag)" >&2
+            exit 1
+          fi
+          # 注釈付きタグなら^{}の行がコミット、軽量タグなら唯一の行がコミット。
+          refs=$(git ls-remote https://github.com/TadahiroYamamura/masuda-engine.git "refs/tags/$tag" "refs/tags/$tag^{}")
+          engine_commit=$(echo "$refs" | awk -v t="refs/tags/$tag^{}" '$2 == t { print $1 }')
+          [ -n "$engine_commit" ] || engine_commit=$(echo "$refs" | awk 'NR == 1 { print $1 }')
+          sandbox_commit=$(git -C ../masuda-sandbox rev-parse HEAD)
+          echo "version=${tag#v}" >>"$GITHUB_OUTPUT"
+          {
+            echo "masuda $tag"
+            echo
+            echo "| | tag | commit |"
+            echo "|---|---|---|"
+            echo "| masuda | $tag | $GITHUB_SHA |"
+            echo "| masuda-engine | $tag | $engine_commit |"
+            echo "| masuda-sandbox | $tag | $sandbox_commit |"
+            echo
+            echo "masuda-sandboxは同じタグのReleaseのtgzを入れる。手順は docs/user/install.md。macOS（darwin/arm64）は実験的。"
+          } >../release-notes.md
+          cat ../release-notes.md
+
+      - name: Vet and test
+        working-directory: masuda
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Contract matches masuda-sandbox at the same tag
+        working-directory: masuda
+        run: |
+          go generate ./internal/sandboxcontract/
+          git diff --exit-code -- internal/sandboxcontract/
+
+      - name: Build
+        working-directory: masuda
+        env:
+          VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          mkdir -p ../dist
+          for target in linux/amd64 darwin/arm64; do
+            os=${target%/*}
+            arch=${target#*/}
+            name="masuda_${VERSION}_${os}_${arch}"
+            mkdir -p "../dist/$name"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath \
+              -ldflags "-s -w -X main.version=$VERSION" -o "../dist/$name/masuda" ./cmd/masuda
+            cp README.md "../dist/$name/"
+            tar -C ../dist -czf "../dist/$name.tar.gz" "$name"
+            rm -r "../dist/$name"
+          done
+
+      # clients/tsのpackage.jsonの版はタグから書き込む（npmレジストリには公開しない）。
+      - name: Pack clients/ts
+        working-directory: masuda/clients/ts
+        env:
+          VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          npm pkg set version="$VERSION"
+          npm pack --pack-destination ../../../dist
+
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum *.tar.gz *.tgz >SHA256SUMS
+          cat SHA256SUMS
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release-notes.md
+          files: |
+            dist/*.tar.gz
+            dist/*.tgz
+            dist/SHA256SUMS

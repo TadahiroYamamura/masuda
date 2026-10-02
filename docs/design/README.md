@@ -25,6 +25,7 @@ masudaは2026-10-02にゼロから再設計した。ここにあるのは**再�
 masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](../user/index.md)。
 
 - Go 1.26以上。`go build ./...`・`go vet ./...`・`go test ./...`
+- CI（`.github/workflows/ci.yml`）は`main`・`develop`へのpushとPRで、build・vet・test（契約テストを含む）と、`internal/sandboxcontract/sha.go`が`masuda-sandbox`の`main`の`sandbox.proto`と合っていることを確かめる。リリースは[リリース手順](release.md)
 - [masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)は`go.mod`で版（タグ、無い間は`main`の擬似バージョン）に固定している。隣の`../masuda-engine`の作業中のコードで試すときは、gitignoreした`go.work`を作る: `go work init . && go work use ../masuda-engine`（固定した版で確かめるときは`GOWORK=off`）。版の上げ方は[リリース手順](release.md#engine)
 - protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく。そのときは`go generate ./internal/sandboxcontract/`で`internal/sandboxcontract/sha.go`（sandbox.protoのSHA-256）も作り直す
 - 契約テスト: `go test ./contract/`（例 `go test ./contract/ -run TestCM1`）。フェイクのsandbox（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（[contracts.md](contracts.md)）
@@ -32,6 +33,28 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 - ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`
 - GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使う。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
 - 作業単位は`docs/work-orders.md`（サイトには載せない）
+
+### ソースからビルドして使う {#source}
+
+利用者向けの[導入](../user/install.md)はReleaseのtarballを入れる。masuda自体を直しながら使うときは、3つのリポジトリを同じディレクトリに並べてチェックアウトし、ソースからビルドする。前提は導入と同じに加え、Go 1.26.3以上とpnpm。
+
+```sh
+mkdir -p ~/src && cd ~/src
+git clone https://github.com/TadahiroYamamura/masuda.git
+git clone https://github.com/TadahiroYamamura/masuda-engine.git
+git clone https://github.com/TadahiroYamamura/masuda-sandbox.git
+
+cd ~/src/masuda-sandbox
+pnpm install && pnpm build          # dist/cli.js。`node ~/src/masuda-sandbox/dist/cli.js serve --socket ...`で動かす
+
+cd ~/src/masuda
+go work init . && go work use ../masuda-engine   # engineも手元のものを使うときだけ
+go build -o ~/.local/bin/masuda ./cmd/masuda
+masuda version                      # dev。契約が隣のmasuda-sandboxと合っていればcontract: ok
+```
+
+- ソースからのビルドはバージョンが`dev`になる。リリースと同じに埋めるなら`go build -ldflags "-X main.version=X.Y.Z"`
+- masudaとmasuda-sandboxの契約（`sandbox.proto`）がずれていると`masuda serve`が起動しない。両方を同じ時点に揃えるか、`buf generate`と`go generate ./internal/sandboxcontract/`で作り直す
 
 ## 触る対象から引く
 
@@ -54,6 +77,7 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 | 実物のsandboxと本物のClaude Codeで1周させるテスト（`MASUDA_LIVE_TEST=1`） | `live/` | — |
 | 公開APIの契約 | `proto/masuda/api/v1/masuda.proto`（生成コードは`gen/`） | [contracts.md](contracts.md) |
 | ドキュメントサイト | `mkdocs.yml`、`scripts/docs-prepare.sh`、`buf.gen.docs.yaml`、`.github/workflows/docs.yml` | — |
+| CI・リリース（クロスビルド、tarball、`clients/ts`の`npm pack`） | `.github/workflows/ci.yml`・`release.yml` | [release.md](release.md) |
 
 ## 書くときの決まり
 

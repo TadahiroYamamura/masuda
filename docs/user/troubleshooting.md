@@ -75,7 +75,7 @@ DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭に�
 
 非rootでGoのモジュールを`go mod download`したイメージ（モジュールのキャッシュが読み取り専用になる）は、古い`masuda-sandbox`ではビルドが`Build failed: EACCES, Permission denied: /tmp/gondolin-build-XXXX`で失敗する。
 
-- `masuda-sandbox`を最新にしてビルドし直す（`git pull && pnpm install && pnpm build`のあと`masuda-sandbox serve`を起動し直す）
+- masudaと同じバージョンの`masuda-sandbox`を入れ直し（[導入](install.md)）、`masuda-sandbox serve`を起動し直す
 - 更新できないなら、Dockerfileで`go mod download -modcacherw all`のように`-modcacherw`を付けてキャッシュを書き込める形で取る
 
 ## 証明書のエラー・`NODE_EXTRA_CA_CERTS`の警告
