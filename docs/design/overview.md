@@ -409,7 +409,7 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 
 ### CLI
 
-`masuda serve`と`masuda init`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
+`masuda serve`・`masuda init`・`masuda version`・`masuda doctor`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
 
 | コマンド | 動き |
 |---|---|
@@ -424,7 +424,9 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 | `masuda workflow list / show / check [<workflow>] [--repo <dir>]` | `--repo`を省略すると今いる作業ツリーのトップ（`git rev-parse --show-toplevel`）、作業ツリーの外なら同梱だけ。`check`は問題があれば終了コード1 |
 | `masuda egress / secret / privileged-command / image ...` | 宣言の一覧と承認、秘密の値の登録（標準入力から）、イメージのビルド |
 | `masuda init` | 対象リポジトリに`.masuda/`の雛形を置く |
-| `masuda serve` | 常駐プロセス（`--socket`・`--data-dir`・`--sandbox-socket`・`--stall-after`・`--fake-sandbox`） |
+| `masuda serve` | 常駐プロセス（`--socket`・`--data-dir`・`--sandbox-socket`・`--stall-after`・`--config`・`--fake-sandbox`） |
+| `masuda version` | masudaのバージョン（`-ldflags -X main.version`）・Goの版・sandbox.protoのSHA-256と、届けば接続先のsandboxの`GetServerInfo`と契約の一致 |
+| `masuda doctor` | 前提（config.json・git・Docker・Node・QEMU・KVM/HVF・sandbox serviceの到達と契約・Claudeトークン）を確かめ、足りないものと直し方を出す。足りなければ終了コード1 |
 
 ## 10. 脅威モデル
 
@@ -445,6 +447,15 @@ Gondolinの前提をそのまま採り、masudaの不変条件を足す。
 | sudo | 不要 | 不要 |
 
 masuda自身の開発にはGo 1.26以上とbuf。
+
+### sandboxとの互換性
+
+masudaとmasuda-sandboxは同じタグでリリースし、組で使う（[リリース手順](release.md)）。組が合っているかは契約の文面で確かめる。masudaはビルド時に、sandboxクライアントの生成元`sandbox.proto`のSHA-256を`internal/sandboxcontract`の定数に埋める（`go generate ./internal/sandboxcontract/`、CIが生成し直して差分が無いことを確かめる）。sandbox serviceは`GetServerInfo`の`contract_sha256`に自分の生成元の同じ値を返す。
+
+- `masuda serve`は起動時に`GetServerInfo`を呼ぶ。値が違えば（`GetServerInfo`を持たない古いsandboxも）起動しない。届かないだけなら警告を出して起動を続ける（sandboxを後から起動する順序も許すため）
+- `Run`・`Resume`はワークスペースを作る・STARTINGにする前にもう一度呼ぶ。値が違えば`FailedPrecondition`（理由に両方のバージョン）、届かなければ`Unavailable`
+- フェイクsandboxは常にmasudaの値を返す
+- `masuda version`・`masuda doctor`も同じ確認をして表示する
 
 ## 12. 旧設計から残すもの・捨てるもの
 

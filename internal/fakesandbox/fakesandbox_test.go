@@ -14,6 +14,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/fakesandbox"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/sandboxcontract"
 )
 
 func newFake(t *testing.T) (sandboxv1connect.SandboxServiceClient, string) {
@@ -195,5 +196,17 @@ func TestExecAsRootSeesGuestPaths(t *testing.T) {
 	uid, _ := os.ReadFile(filepath.Join(root, "workspace", "uid.txt"))
 	if strings.TrimSpace(string(uid)) != "0" {
 		t.Fatalf("uid %q", uid)
+	}
+}
+
+// フェイクの契約はmasudaの生成元と同じなので、serveの互換性の確認を常に通る。
+func TestGetServerInfoReportsMasudaContract(t *testing.T) {
+	c, _ := newFake(t)
+	res, err := c.GetServerInfo(context.Background(), connect.NewRequest(&sandboxv1.GetServerInfoRequest{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Msg.ContractSha256 != sandboxcontract.SHA256 || res.Msg.Contract != "masuda.sandbox.v1" {
+		t.Fatalf("info = %v", res.Msg)
 	}
 }

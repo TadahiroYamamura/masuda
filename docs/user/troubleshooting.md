@@ -2,6 +2,7 @@
 
 まず見る場所:
 
+- `masuda doctor`（前提がそろっているか。足りないものと直し方が出る）
 - `masuda list --all`のSTATEとPOSITION（`blocked`なら理由が出る）
 - `masuda watch <id>`の流れ
 - `masuda chat <id>`でVMの中のClaude Codeの画面
@@ -15,6 +16,8 @@
 | メッセージ（抜粋） | 直し方 |
 |---|---|
 | `connection refused`、`no such file or directory`（ソケット） | `masuda serve`が起動していない、または`--socket`の場所が違う |
+| `sandbox service is not reachable` | `masuda-sandbox serve`が起動していない、またはソケットの場所が`masuda serve`の`--sandbox-socket`（`config.json`の`sandboxSocket`）と違う |
+| `was built from a different sandbox.proto than masuda`、`does not implement GetServerInfo` | masudaとmasuda-sandboxのバージョンが組になっていない。`masuda version`で両方を確かめ、同じバージョンのリリースを入れ直す（[導入](install.md)）。`masuda serve`も同じ理由で起動しない |
 | `the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value` | `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（ユーザー単位。`claudeToken`で別名を選んでいるならその名前で） |
 | `the workflow runs /masuda/checks/test but checks.test is not declared` | `settings.json`の`checks`に`test`を書く |
 | `image default: .masuda/images/default/Dockerfile is missing` | `masuda init`するか、Dockerfileを置く |

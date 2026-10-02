@@ -34,9 +34,10 @@ commands:
                             特権コマンドの一覧・承認
   image list|build          ゲストイメージの一覧・ビルド
   workflow list|show|check  ワークフローの一覧・図（Mermaid）・検査
-  version                   バージョンを表示する
+  version                   masudaと、接続先のmasuda-sandboxのバージョンを表示する
+  doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
 
-serve・init以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init・version・doctor以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -79,7 +80,9 @@ func main() {
 	case "image":
 		err = runImage(os.Args[2:])
 	case "version", "--version":
-		fmt.Println(version)
+		err = runVersion(os.Args[2:])
+	case "doctor":
+		err = runDoctor(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
@@ -88,6 +91,9 @@ func main() {
 	}
 	if errors.Is(err, flag.ErrHelp) {
 		return
+	}
+	if errors.Is(err, errDoctorFailed) {
+		os.Exit(1)
 	}
 	if errors.Is(err, errUsage) {
 		os.Exit(2)

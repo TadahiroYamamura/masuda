@@ -104,6 +104,9 @@ func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv
 	if err != nil {
 		return nil, err
 	}
+	if err := b.checkSandbox(ctx); err != nil {
+		return nil, err
+	}
 	prevState, prevReason := w.State, w.Reason
 	w.State = workspace.StateStarting
 	w.Reason = ""

@@ -4,7 +4,7 @@
 masuda <command> [flags]
 ```
 
-`serve`・`init`・`version`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
+`serve`・`init`・`version`・`doctor`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
 
 ## 共通の約束
 
@@ -34,7 +34,8 @@ masuda <command> [flags]
 | [`privileged-command`](#privileged-command) | 特権コマンドの一覧・承認 |
 | [`image`](#image) | イメージの一覧・ビルド |
 | [`workflow`](#workflow) | ワークフローの一覧・図・検査 |
-| [`version`](#version) | バージョンを出す |
+| [`version`](#version) | masudaと接続先のmasuda-sandboxのバージョンを出す |
+| [`doctor`](#doctor) | 動かすための前提を確かめる |
 
 ## serve
 
@@ -249,7 +250,44 @@ masuda workflow check [<workflow>] [--repo <dir>]
 ## version
 
 ```text
-masuda version
+masuda version [--sandbox-socket <path>] [--config <path>]
 ```
 
-ビルドに埋め込んだバージョンを出す。ソースからビルドしたものは`dev`。
+ビルドに埋め込んだバージョン（ソースからビルドしたものは`dev`）、Goの版、masudaが前提にするsandboxの契約（`sandbox.proto`のSHA-256）を出す。`masuda-sandbox serve`に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（`contract: ok`か`contract: MISMATCH`）も出す。届かなくても終了コードは0。
+
+```text
+masuda 0.1.0 (go1.26.3 linux/amd64)
+  sandbox contract sha256: 495d81…
+masuda-sandbox 0.1.0 (linux/amd64, gondolin 0.12.0)
+  sandbox contract sha256: 495d81…
+  contract: ok
+```
+
+`--sandbox-socket`の既定は`masuda serve`と同じ（`config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）。
+
+契約が合わないと`masuda serve`は起動せず、`run`・`resume`も断られる。masudaとmasuda-sandboxは同じバージョンのリリースを組で入れる（[導入](install.md)）。
+
+## doctor
+
+```text
+masuda doctor [--sandbox-socket <path>] [--config <path>] [--data-dir <dir>] [--repo <dir>]
+```
+
+masudaを動かす前提を1項目ずつ確かめ、`[ok  ]`・`[warn]`・`[NG  ]`で出す。足りないもの（NG・warn）には直し方を添える。NGが1つでもあれば終了コード1（warnだけなら0）。`masuda serve`は要らない。
+
+| 項目 | 確かめること |
+|---|---|
+| config.json | 読めるか（無ければ既定で可） |
+| git | `git --version` |
+| docker | sudo無しでdockerデーモンに繋がるか |
+| node | 22.19以上か。24.17以上は既知の問題（Gondolin #134）でwarn |
+| qemu | `qemu-system-x86_64`（arm64なら`qemu-system-aarch64`）。Linuxで`qemu-img`・`lz4`が無ければwarn |
+| /dev/kvm（Linux）・HVF（macOS） | KVMを読み書きできるか、`kern.hv_support`が1か |
+| masuda-sandbox | `masuda-sandbox serve`に届き、`GetServerInfo`の契約がmasudaと同じか |
+| Claudeトークン | ユーザー単位（`--repo`を付ければそのリポジトリの登録も）に登録されているか |
+
+```text
+[ok  ] git: git version 2.43.0
+[NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable: ...
+       `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`を起動する。...
+```

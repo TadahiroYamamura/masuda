@@ -12,7 +12,7 @@
 | `already_exists` | 409 | 作ろうとしたものが既にある（publishするワークフローのRunのブランチ） | 別の名前にする |
 | `out_of_range` | 400 | `Watch`の`after_seq`が最新のseqより大きい（serveの再起動で番号が振り直された等） | `after_seq: 0`で繋ぎ直す |
 | `unimplemented` | 501 | その構成では提供しない（フェイクsandboxの`AttachInfo`） | 機能を出さない・別の手段を案内する |
-| `unavailable` | 503 | `masuda-sandbox serve`に届かない | sandbox serviceの起動を案内する |
+| `unavailable` | 503 | `masuda-sandbox serve`に届かない | sandbox serviceの起動を案内する（`masuda doctor`） |
 | `canceled` | 499 | 要求が取り消された（クライアントの切断等） | 必要なら送り直す |
 | `internal` | 500 | ホスト側の読み書きの失敗など、masudaの側の問題 | 利用者に見せ、`masuda serve`のログを確かめてもらう |
 | `unknown` | 500 | 分類していない失敗（sandbox serviceからの想定外のエラー等） | `internal`と同じ |
@@ -32,12 +32,14 @@
 | RPC | コード | 条件 |
 |---|---|---|
 | `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
-| | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない |
+| | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない。sandbox serviceの契約（`GetServerInfo`の`contract_sha256`）がmasudaと違う、または`GetServerInfo`を持たない古いsandbox（理由に両方のバージョンが入る） |
+| | `unavailable` | sandbox serviceに届かない（ワークスペースは作らない） |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
 | | `internal` | ワークスペース・stagingの作成、engineの開始に失敗した |
 | `Resume` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。起動に要るものが足りない（`Run`と同じ） |
+| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。起動に要るものが足りない、sandbox serviceの契約が違う（`Run`と同じ） |
+| | `unavailable` | sandbox serviceに届かない（状態は変えない） |
 | | `internal` | 実行の窓口の用意・質問の破棄の記録に失敗した |
 | `Get` | `not_found` | ワークスペースが無い |
 | `List` | `internal` | 一覧を読めない。`repo_root`は検査しない（一致するものが無ければ空の一覧） |

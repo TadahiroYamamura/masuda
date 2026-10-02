@@ -26,7 +26,7 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 
 - Go 1.26以上。`go build ./...`・`go vet ./...`・`go test ./...`
 - [masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)は`go.mod`で版（タグ、無い間は`main`の擬似バージョン）に固定している。隣の`../masuda-engine`の作業中のコードで試すときは、gitignoreした`go.work`を作る: `go work init . && go work use ../masuda-engine`（固定した版で確かめるときは`GOWORK=off`）。版の上げ方は[リリース手順](release.md#engine)
-- protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく
+- protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく。そのときは`go generate ./internal/sandboxcontract/`で`internal/sandboxcontract/sha.go`（sandbox.protoのSHA-256）も作り直す
 - 契約テスト: `go test ./contract/`（例 `go test ./contract/ -run TestCM1`）。フェイクのsandbox（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（[contracts.md](contracts.md)）
 - 実機テスト: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`。実際の`masuda-sandbox serve`とClaudeのトークンが要る（前提は`live/live_test.go`の冒頭）
 - ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`
@@ -37,13 +37,14 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 
 | 触る対象 | パッケージ・ファイル | 読む節 |
 |---|---|---|
-| CLIのサブコマンド・表示 | `cmd/masuda/`（`main.go`が一覧、`client.go`がAPIを叩く各コマンド、`chat.go`・`workflow.go`・`init.go`・`config.go`・`serve.go`、`templates/`が`masuda init`の雛形） | [overview.md](overview.md)「9. 公開API」のCLI |
+| CLIのサブコマンド・表示 | `cmd/masuda/`（`main.go`が一覧、`client.go`がAPIを叩く各コマンド、`chat.go`・`workflow.go`・`init.go`・`config.go`・`serve.go`・`version.go`・`doctor.go`、`templates/`が`masuda init`の雛形） | [overview.md](overview.md)「9. 公開API」のCLI |
 | 公開APIの実装（Connectのハンドラ）、実行の組み立てと起動、活動・Watch・ディスク監視 | `serve/`（`serve.go`・`sandbox.go`・`workspace.go`・`run.go`・`boot.go`・`lifecycle.go`・`gates.go`・`questions.go`・`staging.go`・`config.go`・`settings.go`・`images.go`・`privileged.go`・`workflows.go`・`activity.go`・`events.go`・`disk.go`・`listen.go`（ループバックの待ち受けとCORS）） | 「8. 活動の観測と停止の検知」「9. 公開API」「4. 再開」 |
 | `engine.Runner`の実装（ゲストとのやり取り・データ・ゲートの記録・実行ログ・exports・WIP復元） | `internal/runner/` | 「3. 1つのタスクの流れ」「4. exports」 |
 | staging bareリポジトリ（clone・WIP取り込み・commit・publish・差分の表示） | `internal/staging/` | 「4. ワークスペースとstaging」 |
 | ワークスペースのディレクトリ・`workspace.json`・`records/`のゲート・質問・コメント | `internal/workspace/` | 「4. ホスト側のディレクトリ」 |
 | ゲスト向けMCP（`/mcp`）とフックの受け口（`/hooks`） | `internal/mcp/`（プロトコルの形）、ツールの中身は`serve/run.go` | [guest-protocol.md](../guest-protocol.md)、「7. ゲストとホストの間」 |
 | 起動時にゲストへ置くもの・ループ規約・メインセッションの起動 | `internal/guest/`（`loop-claude.md`がループ規約） | [guest-protocol.md](../guest-protocol.md) |
+| sandboxとの互換性の確認（`sandbox.proto`のSHA-256の定数と`GetServerInfo`との比較） | `internal/sandboxcontract/`（`sha.go`は`go generate`の生成物）、`serve/sandbox.go`の`SandboxInfo`・`CheckContract` | 「11. 対応プラットフォームと依存」の「sandboxとの互換性」 |
 | VM無しのsandbox（契約テスト・`--fake-sandbox`） | `internal/fakesandbox/` | 「6. サンドボックス」 |
 | 特権コマンドの実行手順 | `internal/privileged/`（宣言の読み込みと承認の確認は`serve/privileged.go`） | 「6. 特権コマンド」 |
 | `settings.json`・`settings.local.json`・serve全体の`config.json`の形と検査 | `internal/config/`（`config.json`は`serve.go`） | 「6. 設定ファイル」 |

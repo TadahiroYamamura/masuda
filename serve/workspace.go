@@ -67,6 +67,9 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	if err != nil {
 		return nil, err
 	}
+	if err := s.backend.checkSandbox(ctx); err != nil {
+		return nil, err
+	}
 
 	s.backend.lifeMu.Lock()
 	defer s.backend.lifeMu.Unlock()

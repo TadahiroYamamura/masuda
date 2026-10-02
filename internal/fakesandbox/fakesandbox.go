@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -26,6 +27,7 @@ import (
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/sandboxcontract"
 )
 
 // Service はSandboxServiceHandlerの実装。
@@ -326,4 +328,15 @@ func (s *Service) sandboxFor(id string) (root, defaultUser string, env map[strin
 		return "", "", nil, err
 	}
 	return s.Root(id), sb.defaultUser, sb.env, nil
+}
+
+// GetServerInfo は実物と同じ形で返す。contract_sha256はmasudaの生成元のものなので、
+// フェイクとの契約は常に合う。
+func (s *Service) GetServerInfo(context.Context, *connect.Request[sandboxv1.GetServerInfoRequest]) (*connect.Response[sandboxv1.ServerInfo], error) {
+	return connect.NewResponse(&sandboxv1.ServerInfo{
+		Version:        "fake",
+		Contract:       "masuda.sandbox.v1",
+		ContractSha256: sandboxcontract.SHA256,
+		Platform:       runtime.GOOS + "/" + runtime.GOARCH,
+	}), nil
 }

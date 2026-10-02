@@ -19,7 +19,7 @@ func runServe(args []string) error {
 	socket := fs.String("socket", filepath.Join(runtimeDir(), "masuda.sock"), "公開APIを待ち受けるUDSのパス")
 	dataDir := fs.String("data-dir", defaultDataDir(), "状態を置くディレクトリ")
 	fake := fs.Bool("fake-sandbox", false, "sandbox serviceの代わりにプロセス内のフェイクを使う（開発・テスト用）")
-	sandboxSocket := fs.String("sandbox-socket", filepath.Join(runtimeDir(), "masuda-sandbox.sock"), "masuda-sandbox serveのUDSのパス")
+	sandboxSocket := fs.String("sandbox-socket", defaultSandboxSocket(), "masuda-sandbox serveのUDSのパス")
 	stallAfter := fs.Duration("stall-after", 0, "無活動がこれだけ続いたら活動をstalledにする（0なら対象リポジトリのsettings.local.jsonのstallAfter、無ければconfig.jsonのstallAfter、既定10m）")
 	configPath := fs.String("config", config.ServeConfigPath(), "serve全体の設定ファイル（listen・sandboxSocket・stallAfter・diskWarnBytes）。無ければすべて既定")
 	if err := fs.Parse(args); err != nil {
@@ -51,6 +51,7 @@ func runServe(args []string) error {
 		DefaultStallAfter: defaultStall,
 		DiskWarnBytes:     cfg.DiskWarnBytes,
 		Listen:            cfg.Listen,
+		Version:           version,
 	})
 	if err != nil {
 		return err

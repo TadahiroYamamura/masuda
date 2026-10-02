@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"connectrpc.com/connect"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 
@@ -46,6 +47,9 @@ type Options struct {
 	// Listen はUDSに加えてConnectを待ち受けるループバックのアドレス（config.jsonのlisten）。
 	// 空ならUDSだけ。CORSは任意のオリジンを許す（serve/listen.go）。
 	Listen string
+	// Version はmasudaのバージョン（`-ldflags -X main.version`）。sandboxとの契約が合わないときの
+	// 理由に含める。空なら"dev"。
+	Version string
 }
 
 // Server は起動中の`masuda serve`。
@@ -72,6 +76,7 @@ type backend struct {
 	// tmuxの起動の有無が変わる）。
 	dataDir string
 	fake    bool
+	version string
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
@@ -102,7 +107,7 @@ type backend struct {
 func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func(), opts Options) *backend {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &backend{
-		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox,
+		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox, version: opts.Version,
 		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
 		events: newEventBus(), acts: newActivities(), stallOverride: max(opts.StallAfter, 0),
 		stallDefault: cmp.Or(max(opts.DefaultStallAfter, 0), DefaultStallAfter),
@@ -187,6 +192,19 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	sb, closeSandbox, err := connectSandbox(opts)
 	if err != nil {
 		return nil, err
+	}
+	// 契約の違うsandboxとは動かさない。届かないだけなら起動は続ける（sandboxを後から起動する
+	// 順序も許すため）。そのときもRun・Resumeの前にもう一度確かめる。
+	if info, err := SandboxInfo(ctx, sb); err == nil {
+		if err := CheckContract(info, opts.Version); err != nil {
+			closeSandbox()
+			return nil, fmt.Errorf("serve: %w", err)
+		}
+	} else if connect.CodeOf(err) == connect.CodeFailedPrecondition {
+		closeSandbox()
+		return nil, fmt.Errorf("serve: %w", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "masuda: warning: %v (checked again before each workspace boots)\n", err)
 	}
 	var tcpLn net.Listener
 	if opts.Listen != "" {
