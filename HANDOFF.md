@@ -1,38 +1,38 @@
 # HANDOFF
 ## 作業項目
-M11a（サイトの土台とdesignの反映）。M11b・M11cの本文は書いていない。
-- `80a7213` サイトの土台
-  - `mkdocs.yml`: Material、`language: ja`、検索（`lang: ja`）、`pymdownx.superfences`のmermaidフェンス、mikeのバージョン選択（`extra.version.provider: mike`、既定`latest`）。navは「ホーム」「利用者向け」`user/`・「統合開発者向け」`api/`・「開発者向け」`design/`（`guest-protocol.md`を含む）
-  - `exclude_docs`で`work-orders.md`・`research/`・`CONTRIBUTING.md`・`INSTALLATION.md`をサイトから外した
-  - `requirements-docs.txt`: `mkdocs>=1.6,<2`（MkDocs 2.0はMaterialが動かないので固定）・`mkdocs-material`・`mike`・`pymdown-extensions`
-  - `docs/index.md`（3行の説明と3系統の入口）、`docs/user/index.md`・`docs/api/index.md`（「準備中」と予定の項目）
-  - `scripts/docs-prepare.sh`: `buf generate --template buf.gen.docs.yaml`で`docs/api/reference.md`を生成し、`$MASUDA_ENGINE_DIR`（既定`../masuda-engine`）の`docs/workflow-schema.md`を`docs/user/reference/workflow-schema.md`へ注記（admonition）付きで写す。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest`
-  - `buf.gen.docs.yaml`: プラグインはBSRの`buf.build/community/pseudomuto-doc`（指示にあった`pseudomuto-protoc-gen-doc`はBSRに無い名前だった）、`opt: markdown,reference.md`
-  - `.gitignore`: 生成物2つ、`/site/`、`/.venv-docs/`
-  - `.github/workflows/docs.yml`: push（main・develop・タグ`v*`）と`workflow_dispatch`。engineは`path: masuda-engine`にcheckoutして`MASUDA_ENGINE_DIR`で渡す。バージョンは、手動実行→`dev`（どのrefから起動しても）、タグ`vX.Y.Z`→`X.Y`+`latest`、main→`main`、develop→`dev`。タグのpushのときだけ`mike set-default --push latest`。`permissions: contents: write`、`concurrency: docs-deploy`（取り消さず直列）
-- `2bc9d8d` designの反映
-  - `overview.md`: HANDOFF（M10）の「docs/design/へ反映すべき事項」とM11aの列挙をすべて現在形で書いた（第3・4・5・6・8・9章）
-  - `README.md`: 「触る対象から引く」表を新設（`cmd/masuda`・`serve/`・`internal/*`10個・`contract/`・`live/`・proto・サイト）。リポジトリへのリンクをGitHubのURLに
-  - `contracts.md`: 変更の手続きに「契約を変えたら`docs/user/`・`docs/api/`の該当箇所も同じコミットで直す」
+**M11b（利用者向け`docs/user/`）**。M11c（`docs/api/`・`clients/`）は別セッションが並行して書いており、このセッションは触っていない（`mkdocs.yml`の`nav`の`api`セクションも触っていない）。
+- `6bb47ab` 入口・導入・はじめての1周・概念（`user/index.md`・`install.md`・`quickstart.md`・`concepts.md`）
+- `20cf9d4` CLIと設定ファイルのリファレンス（`user/cli.md`・`settings.md`）
+- `1ca8c7e` ワークフローとレビュー観点（`user/workflows.md`・`reviews.md`）。developとreviewの図は`masuda workflow show`の出力をそのまま貼った
+- `a179f4d` 秘密・egress・特権コマンド、運用、トラブルシューティング（`user/secrets-and-egress.md`・`operations.md`・`troubleshooting.md`）
+- `15b26f6` `docs/INSTALLATION.md`・`docs/CONTRIBUTING.md`を削除。開発者向けの中身は`docs/design/README.md`の「開発環境」へ。`exclude_docs`から2ファイルを外し、`README.md`のリンクと使い方（`masuda-sandbox serve --socket`）を直した
+- `mkdocs.yml`の`nav`の「利用者向け」: index→導入→はじめての1周→概念→CLI→設定→ワークフロー→ワークフロー定義の仕様→レビュー観点→秘密・egress・特権コマンド→運用→トラブルシューティング
 ## 完了した契約テスト
-契約テスト・契約ファイル（両proto、`docs/guest-protocol.md`）は触っていない。`go build ./...`・`go vet ./...`は通る。ローカルで`.venv-docs/`に入れて`scripts/docs-prepare.sh`→`mkdocs build --strict`が通る（INFOが1件: 生成した`reference.md`の`#google-protobuf-Timestamp`へのアンカーが無い。strictでは失敗しない）。`mike deploy`・`mike set-default`は使い捨ての複製で動作を確かめた（push無し）
+契約ファイル（両proto、`docs/guest-protocol.md`）・契約テスト・コードは触っていない。`scripts/docs-prepare.sh && mkdocs build --strict`は最終コミットで通る（INFOはM11aからの`api/reference.md`の`#google-protobuf-Timestamp`1件だけ）。途中のコミット（`6bb47ab`〜`1ca8c7e`）はまだ無いページへのリンクがあり、単体ではstrictで落ちる
 ## 未完と理由
-- `workflow_dispatch`で`dev`が公開されることは未確認。pushしておらず、Pagesも未有効化のため
-- GitHub Pagesの有効化はユーザーが行う（下記）
+- VMを起動する手順（`masuda-sandbox`の`pnpm install && pnpm build`と`serve`、`claude setup-token`、`masuda image build`、実VMでの`run`→`watch`→`gate show/approve`→publish、`resume`、実VMへの`chat`、特権コマンド）は打っていない（指示どおり）。live_test.goとM8のHANDOFFの記録に合わせて書いた
+- 確かめた手順: `masuda --help`・`serve -h`・`run -h`・`version`、一時リポジトリでの`masuda init`（2回目の「nothing to do」と`.gitignore`）、`--fake-sandbox`のserveに対する`workflow list/check/show`（同梱と自作の例）、`egress list/approve`（宣言外のエラー）、`secret set`（パイプ）・`list`、`image list`、`privileged-command list`、`run`（成功と、ブランチ既存・入力不足・未定義ワークフローのエラー）、`list`・`list --all`、`watch`の初回status、`gate list`、`question list`、`stop`、`remove`（`--force`の要否）、`chat`（フェイクでのエラー）、`settings.json`の知らないキーのエラー、`ubuntu:24.04`に`resize2fs`があること
+- 確かめていない記述: macOSの手順、KVMのグループ設定、ツールごとのCAバンドルの環境変数（`REQUESTS_CA_BUNDLE`等）の案内、`masuda-sandbox images prune`、DockerfileのENV（PATH以外）が今のsandbox＋masudaでチェック・エージェントに届くか
 ## 次の一手
-1. ユーザー: `redesign`をpushし、Actionsの「docs」を`workflow_dispatch`で実行する。成功するとgh-pagesブランチができる
-2. ユーザー: リポジトリのSettings → Pages → Build and deployment で、Source: **Deploy from a branch**、Branch: **`gh-pages`**、フォルダ: **`/ (root)`** を選んで保存する。`https://tadahiroyamamura.github.io/masuda/dev/`で見られる（タグを打つまで`latest`が無いので、ルートはmikeの既定が無く404になりうる。必要なら一度だけ`mike set-default --push dev`）
-3. M11b（`docs/user/`）、M11c（`docs/api/`）
+1. ユーザー（M11aから持ち越し）: `redesign`をpushし、Actionsの「docs」を`workflow_dispatch`で実行→Settings → Pagesで`gh-pages`・`/ (root)`を選ぶ。`https://tadahiroyamamura.github.io/masuda/dev/`で見られる
+2. 実機の環境で`docs/user/quickstart.md`を頭から通し、出力例（`masuda list`・`watch`・`gate show`）を実物に差し替える
+3. 下の「実装と文書の食い違い」のうち実装側のものを直す（直したら`docs/user/`の警告を消す）
+4. M12（設定の整理）で`stallAfter`・`diskWarnBytes`が`config.json`へ移ったら、`user/settings.md`・`operations.md`・`troubleshooting.md`の該当箇所も同じコミットで直す
 ## 注意点
-- 生成物（`docs/api/reference.md`・`docs/user/reference/workflow-schema.md`）はコミットしない。`mkdocs serve`・`mkdocs build`の前に必ず`scripts/docs-prepare.sh`を走らせる。navが両方を参照しているので、走らせ忘れると`--strict`で落ちる
-- M11b: `user/index.md`の予定の項目を本文のページに置き換え、navの「利用者向け」に足す。`docs/INSTALLATION.md`・`CONTRIBUTING.md`は今はサイトから外している（`exclude_docs`）ので、中身を`user/`へ移したら`exclude_docs`から消すか削除する。`README.md`・`CONTRIBUTING.md`からのリンクも追従させる
-- M11b: 表の中で`|`を使うと、GitHubとPython-Markdownでエスケープの扱いが違う（コード内の`\|`がMkDocsでは`\|`のまま出る）。表のセルにパイプを書かない
-- M11c: `reference.md`は`pseudomuto-doc`の既定テンプレートの英語出力。気になるなら`opt`でテンプレートを渡せる（`markdown`の代わりに`<tmpl>,reference.md`）。BSRのリモートプラグインは版を固定していない
-- design/overview.mdに書いた「ServeNoticeはまだ出さない（disk-warningはEngineEventで流す）」と「`settings.local.json`の`stallAfter`・`diskWarnBytes`」は、M12で変わる。M12の実装と同じコミットでoverview.mdの第6章（設定ファイル）・第8章（無活動のしきい値・ディスク使用量）・第9章（Watch）を直す
-- `docs/design/contracts.md`の「通信の前提」は「設定で有効にしたときだけ`127.0.0.1:<port>`」と書いているが、実装はUDSだけ。overview.mdは実装どおりに書き、contracts.mdは契約の記述なので変えていない
-- design/overview.md第13章（マイルストーン）はwork-orders.mdのM番号と一致しない古い表のまま残している
-## docs/design/へ反映すべき事項
-- なし（M10までの事項はすべて反映済み）。反映しきれなかったもの: contracts.mdの待ち受けの記述と実装のずれ（上記）
+- 生成物（`docs/api/reference.md`・`docs/user/reference/workflow-schema.md`）はコミットしない。`mkdocs build`の前に`scripts/docs-prepare.sh`
+- 表のセルに`|`を書かない（M11aの注意）。`docs/user/`の全表で列数を機械的に確かめてある
+- ページ間のリンクは日本語見出しの自動ID（`#_2`等）に頼らず、`{#id}`で明示したアンカーへ張っている。見出しを変えるときはIDを残す
+- `user/workflows.md`の2つのMermaid図は`masuda workflow show`の出力の貼り付け。engineの同梱定義が変わったら貼り直す
+- 実装と文書の食い違い（括弧内はどちらを直すべきか）:
+  - **観点の`enable`が効かない**（実装を直す）: frontmatterの`enable`はmasuda（`perspectives.Merge`・`runner.perspectiveItems`）もengine（trigger-matcher）も読まない。`enable: false`でも使われ、同梱の観点を外す手段も無い。`user/reviews.md`に警告を書いた
+  - **`workflows/review`を単独で動かすと差分が空**（設計・実装を直す）: `staging.Create`はブランチを分岐元と同じコミットに置き、`diff`は`refs/masuda/base`からなので、既存の変更をレビューする手段が無い。例えば「既存のブランチを起点にし、`--base`を差分の基準にする」実行の形が要る。`user/workflows.md`に警告を書いた
+  - **引数無しの`masuda workflow check`が同梱の定義で終了コード1**（実装を直す）: 全ワークフローをrootとして検査するので、部品（`implement/build-step`・`fix-finding`）で「承認済み計画が無い」が出る。engineの仕様（rootは「どのワークフローのReachableにも含まれないもの」）に合わせ、rootだけを検査すべき。`overview.md`第9章の「全ワークフローをそれぞれrootにして検査し」も合わせて直す
+  - **`run --base`のヘルプ**（実装の文言を直す）: 「空ならリポジトリの既定のブランチ」とあるが、実装は今チェックアウトしているブランチ（detachedならそのコミット）。文書は実装どおりに書いた
+  - **雛形Dockerfileのコメントが古い**（実装＝雛形を直す）: masuda-sandboxのS10以降、イメージのENVはExecへ引き継がれ、読み取り専用ディレクトリのあるイメージのビルド（`-modcacherw`）も直っている。一方masudaは`guest.BaseEnv`でPATH・XDG_*をExec.envに上書きし、チェックは`sh -el`なのでENVのPATHは効かない。雛形のコメントと`guest.BaseEnv`の要否（sandboxのS10 HANDOFFは「不要になった」と書いている）を見直す。文書は「PATHは効かない、それ以外は確実な渡し方を勧める」で書いた
+  - **publishの`target: remote`の送り先**（設計文書か実装を直す）: `overview.md`第4章は「設定したremoteへpush」だが、実装（`runner.Publish`）は常に`origin`で、設定の項目は無い。利用者向けは実装どおり`origin`と書いた
+  - **`overview.md`第9章のCLI表**（文書を直す）: `masuda list`の`--repo`が載っていない
+  - **Claudeのトークンがリポジトリごと**（提案）: 秘密ストアはリポジトリの絶対パスで分かれるので、リポジトリごとに`secret set CLAUDE_CODE_OAUTH_TOKEN`が要り、移動すると失われる。M4の暫定ファイル`<DataDir>/claude-oauth-token`へのフォールバックが残っているが、文書には書いていない。マシン全体の既定のトークン（M12の`config.json`等）を検討する価値がある
+  - **雛形の`egress: ["api.anthropic.com"]`**（提案）: Claude APIは常に許可なので宣言・承認は意味を持たない。quickstartでは「無くても動く」と書いて承認の手順を残した。雛形から外すか、意味を持たせるかの判断
+  - **エージェントの`feedback`が実行ログに出ない**（提案）: `finish`イベントにoutcomeしか無く、out_of_scope・stuckの理由は`records/engine.json`を掘るしかない。`execution-log.jsonl`の`detail`に載せると利用者が読める
 ## 契約への提案
-- `contracts.md`「通信の前提」のループバック待ち受けは未実装。実装するか、記述を「UDSのみ（ループバックは将来）」にするかの判断（M11cの「接続」の章の前提になる）
-- 前回からの持ち越し（判断状況はこちらでは未確認）: serve全体の設定の置き場所（M12で予定）、sandboxの応答前に切られたHTTPリクエストに終わりのイベントが無い、sandboxのExecの既定環境、engineのfixerに「直せない」終わり方が無い
+- なし（このセッションで契約に関わる新しい発見は無い）。M11aからの持ち越し: `contracts.md`「通信の前提」のループバック待ち受け（M12で実装予定）、serve全体の設定の置き場所（M12）、engineのfixerの終わり方（engine側で`cannot_fix`が入っている）
