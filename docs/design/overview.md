@@ -436,10 +436,12 @@ masuda自身の開発にはGo 1.26以上とbuf。
 
 ## 13. マイルストーン
 
-| | 内容 | 完了の判定 |
+| | 内容 | 状態（2026-10-02） |
 |---|---|---|
-| M1 | 契約の凍結。3つの契約・契約テスト・作業指示書 | 3リポジトリが同時に着手できる |
-| M2 | sandbox serviceとengineの並列実装。masudaはstagingとworkspace | 各リポジトリの契約テストが緑 |
-| M3 | masudaで結線。`masuda run`で同梱developワークフローが1周する | 実機で1周 |
-| M4 | 同梱ワークフロー・観点の移植、`question`ノード、停止検知、公開APIの残り | dogfooding再開 |
-| M5 | macOSでの検証 | チームメイトの環境で1周 |
+| M1 | 契約の凍結。3つの契約・契約テスト・作業指示書 | 完了 |
+| M2 | sandbox serviceとengineの並列実装。masudaはstagingとworkspace | 完了（契約テスト3リポジトリとも全部緑） |
+| M3 | masudaで結線。`masuda run`で同梱developワークフローが実機で1周する | 完了（2周。各リポジトリの`docs/work-orders.md`のM8とliveテスト） |
+| M4 | ドキュメント（利用者・統合開発者・開発者の3系統）、設定の整理、ストリーミングの復旧 | 進行中 |
+| M5 | macOSでの検証 | 未着手（チームメイトの環境で1周） |
+
+細かい作業単位は各リポジトリの`docs/work-orders.md`にある。

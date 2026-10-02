@@ -112,6 +112,7 @@ M8の実機1周で見つかったもの（優先）:
 - サーバー全体の設定`$XDG_CONFIG_HOME/masuda/config.json`（`diskWarnBytes`・`stallAfter`の既定・`sandboxSocket`）を設け、`settings.local.json`の`stallAfter`はリポジトリごとの上書きに、`diskWarnBytes`は`config.json`だけにする
 - `ServeNotice`（契約に追加済み）で`disk-warning`を流す。`EngineEvent`の流用をやめる
 - `--stall-after`の既定`0`（設定に従う）はそのまま
+- **ループバックの待ち受け**: `config.json`の`listen`（例: `"127.0.0.1:7788"`）があるときだけ、UDSに加えてそのアドレスでもConnectを待ち受ける（`contracts.md`「通信の前提」どおり）。ブラウザのGUIはUDSに繋げないので、これが無いとAPIを使えない。CORSは同一ホストの任意オリジンを許す（ローカル前提）。実装と同じコミットで`overview.md`第9章を直す
 
 ## 契約テストの対応表
 
