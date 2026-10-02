@@ -32,7 +32,7 @@
 |---|---|---|
 | `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`settings.json`が読めない・知らないキーがある。ブランチ名が不正。`base`が実リポジトリに無い |
 | | `failed_precondition` | 起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない、`settings.local.json`が読めない・`stallAfter`が不正 |
-| | `already_exists` | `branch`が実リポジトリに既にある |
+| | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
 | | `internal` | ワークスペース・stagingの作成、engineの開始に失敗した |
 | `Resume` | `not_found` | ワークスペースが無い |

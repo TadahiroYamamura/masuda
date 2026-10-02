@@ -145,7 +145,10 @@ type CreateOptions struct {
 	RepoRoot string // 実リポジトリ（作業ツリーのトップ）
 	Dir      string // 作るstaging.git
 	Branch   string // ワークスペースのブランチ。stagingにだけ作る
-	Base     string // 分岐元のrev。空なら実リポジトリのHEADが指すブランチ
+	Base     string // 分岐元のrev。空なら実リポジトリのHEADが指すブランチ（ExistingBranchなら既定ブランチ）
+	// AllowExisting はBranchが実リポジトリに既にあってもよいこと（publishを含まないワークフロー）。
+	// あればstagingのブランチはその先頭に置き、分岐元は既定のブランチとの分岐点にする。
+	AllowExisting bool
 }
 
 // CreateResult はCreateが決めたもの。
@@ -156,11 +159,30 @@ type CreateResult struct {
 
 // Create はstagingを作り、refs/masuda/baseとrefs/heads/<branch>を分岐元に置く。
 // 実リポジトリは読むだけで、ブランチもrefも作らない。
+//
+// AllowExistingでBranchが実リポジトリにあるときは、refs/heads/<branch>をその先頭に、
+// refs/masuda/baseを分岐元（Baseか既定のブランチ）とブランチの分岐点（merge-base）に置く。
+// 分岐元の先頭そのものを置くと、ブランチを切った後に分岐元へ入った変更が逆向きの差分として
+// 混ざり、ブランチで行った変更だけをレビューできないため。
 func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 	if _, err := runGit(ctx, o.RepoRoot, "check-ref-format", "--branch", o.Branch); err != nil || strings.HasPrefix(o.Branch, "-") {
 		return CreateResult{}, fmt.Errorf("branch name %q: %w", o.Branch, ErrInvalid)
 	}
+	existing := ""
+	if c, err := resolve(ctx, o.RepoRoot, BranchRef(o.Branch), "commit"); err == nil {
+		if !o.AllowExisting {
+			return CreateResult{}, fmt.Errorf("%q in %s: %w", o.Branch, o.RepoRoot, ErrBranchExists)
+		}
+		existing = c
+	}
 	base := o.Base
+	if base == "" && existing != "" {
+		b, err := DefaultBranch(ctx, o.RepoRoot, o.Branch)
+		if err != nil {
+			return CreateResult{}, err
+		}
+		base = b
+	}
 	if base == "" {
 		// 実リポジトリにoriginがあってもorigin/HEADは使わない。ローカルの既定ブランチの
 		// 方が利用者の手元の状態に近く、publish先（同名ローカルブランチ）とも揃う。
@@ -179,8 +201,13 @@ func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 	if base == "HEAD" {
 		base = baseCommit
 	}
-	if _, err := resolve(ctx, o.RepoRoot, BranchRef(o.Branch), "commit"); err == nil {
-		return CreateResult{}, fmt.Errorf("%q in %s: %w", o.Branch, o.RepoRoot, ErrBranchExists)
+	branchCommit := baseCommit
+	if existing != "" {
+		mb, err := runGit(ctx, o.RepoRoot, "merge-base", "--end-of-options", baseCommit, existing)
+		if err != nil {
+			return CreateResult{}, fmt.Errorf("%s and %s have no common ancestor: %w", base, o.Branch, ErrInvalid)
+		}
+		baseCommit, branchCommit = strings.TrimSpace(mb), existing
 	}
 
 	if err := Clone(ctx, o.RepoRoot, o.Dir); err != nil {
@@ -206,10 +233,43 @@ func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 	if _, err := r.git(ctx, "update-ref", BaseRef, baseCommit, ""); err != nil {
 		return CreateResult{}, err
 	}
-	if _, err := r.git(ctx, "update-ref", BranchRef(o.Branch), baseCommit, ""); err != nil {
+	// bare cloneは実リポジトリのブランチをすべて写すので、既存のブランチならrefは既にある。
+	if _, err := r.git(ctx, "update-ref", BranchRef(o.Branch), branchCommit); err != nil {
 		return CreateResult{}, err
 	}
 	return CreateResult{Base: base, BaseCommit: baseCommit}, nil
+}
+
+// DefaultBranch は実リポジトリの既定のブランチの名前を返す。originのHEADが指すブランチ
+// （同名のローカルブランチがあればそれ）、`init.defaultBranch`、`main`・`master`の順に、
+// 実在してbranchそのものでないものを選ぶ。どれも無ければ、今チェックアウトしているブランチが
+// branchと違えばそれ。決まらなければErrInvalid（分岐元を明示してもらう）。
+func DefaultBranch(ctx context.Context, repoRoot, branch string) (string, error) {
+	var candidates []string
+	if out, err := runGit(ctx, repoRoot, "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"); err == nil {
+		remote := strings.TrimSpace(out)
+		candidates = append(candidates, strings.TrimPrefix(remote, "origin/"), remote)
+	}
+	if out, err := runGit(ctx, repoRoot, "config", "--get", "init.defaultBranch"); err == nil {
+		candidates = append(candidates, strings.TrimSpace(out))
+	}
+	candidates = append(candidates, "main", "master")
+	if out, err := runGit(ctx, repoRoot, "symbolic-ref", "--quiet", "--short", "HEAD"); err == nil {
+		candidates = append(candidates, strings.TrimSpace(out))
+	}
+	for _, c := range candidates {
+		if c == "" || c == branch {
+			continue
+		}
+		ref := BranchRef(c)
+		if strings.HasPrefix(c, "origin/") {
+			ref = "refs/remotes/" + c
+		}
+		if _, err := resolve(ctx, repoRoot, ref, "commit"); err == nil {
+			return c, nil
+		}
+	}
+	return "", fmt.Errorf("cannot tell the default branch of %s; pass a base: %w", repoRoot, ErrInvalid)
 }
 
 // ImportBundle はゲストが作ったbundleからsrcRefを取り込み、refs/masuda/wip/<occurrence>に置く。

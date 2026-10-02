@@ -303,3 +303,40 @@ func TestListBlobs(t *testing.T) {
 		t.Fatalf("ListBlobs(missing): %v %q", err, got)
 	}
 }
+
+func TestCreateOnExistingBranch(t *testing.T) {
+	repo := newRepo(t)
+	ctx := context.Background()
+	git(t, repo, "checkout", "-q", "-b", "feat/x")
+	write(t, repo, "x.go", "package x\n")
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-qm", "x")
+	head := git(t, repo, "rev-parse", "HEAD")
+	fork := git(t, repo, "rev-parse", "main")
+	// 分岐の後にmainが進んでも、差分はブランチの変更だけになる。
+	git(t, repo, "checkout", "-q", "main")
+	write(t, repo, "later.go", "package later\n")
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-qm", "later")
+	git(t, repo, "checkout", "-q", "feat/x") // 今いるブランチがfeat/xでも既定はmain
+
+	dir := filepath.Join(t.TempDir(), "staging.git")
+	if _, err := Create(ctx, CreateOptions{RepoRoot: repo, Dir: dir, Branch: "feat/x"}); err == nil {
+		t.Fatal("existing branch accepted without AllowExisting")
+	}
+	res, err := Create(ctx, CreateOptions{RepoRoot: repo, Dir: dir, Branch: "feat/x", AllowExisting: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := Open(dir)
+	if res.Base != "main" || res.BaseCommit != fork {
+		t.Fatalf("base %+v, want main at %s", res, fork)
+	}
+	if c, _ := s.ResolveCommit(ctx, BranchRef("feat/x")); c != head {
+		t.Fatalf("branch %s, want %s", c, head)
+	}
+	d, err := s.Diff(ctx, BaseRef, BranchRef("feat/x"), nil)
+	if err != nil || !strings.Contains(d, "x.go") || strings.Contains(d, "later.go") {
+		t.Fatalf("diff: %v\n%s", err, d)
+	}
+}

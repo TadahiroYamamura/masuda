@@ -138,8 +138,8 @@ func runRun(args []string) error {
 	c := newCommand("run", "run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...")
 	repo := c.fs.String("repo", ".", "対象リポジトリ（作業ツリーのトップ）")
 	workflow := c.fs.String("workflow", "", "ワークフロー（例: workflows/develop）。位置引数でも渡せる")
-	branch := c.fs.String("branch", "", "作るブランチ")
-	base := c.fs.String("base", "", "分岐元（空ならリポジトリの既定のブランチ）")
+	branch := c.fs.String("branch", "", "作るブランチ。publishしないワークフローなら既存のブランチも指定できる")
+	base := c.fs.String("base", "", "分岐元（空なら今チェックアウトしているブランチ、既存のブランチを指定したときはリポジトリの既定のブランチ）")
 	image := c.fs.String("image", "", "イメージのエントリ（空ならsettings.jsonの既定）")
 	var inputs multiFlag
 	c.fs.Var(&inputs, "input", "入力。name=value、またはname=@file でファイルの中身（繰り返し可）")

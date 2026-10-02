@@ -286,8 +286,12 @@ flowchart TD
 
 コードを変えず、ゲートでも止まらない。終わったら`exports/report`と`exports/findings`を読む。
 
-!!! warning "今の実装では既存のブランチをレビューできない"
-    `review`が見るのは「分岐元からの差分」だが、`masuda run`は常に分岐元と同じコミットから新しいブランチを作るので、単独で動かすと差分が空になる。既にある変更をこのワークフローでレビューする手段は今は無い。
+publishを含まないので、**既にあるブランチ**を`--branch`に指定して、そのブランチの変更をレビューできる。差分の基準は`--base`（省略時はリポジトリの既定のブランチ。originのHEADが指すもの、無ければ`main`・`master`）とブランチの分岐点で、手元のブランチには何も書かない。
+
+```sh
+masuda run workflows/review --branch feat/login
+masuda run workflows/review --branch feat/login --base develop
+```
 
 ```mermaid
 %% workflows/review

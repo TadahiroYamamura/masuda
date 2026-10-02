@@ -40,6 +40,7 @@ Content-Type: application/json
 
 - `inputs`の値は`bytes`なのでbase64。必要な入力の名前は`WorkflowService.List`の`inputs`にある
 - `base`を省くと、実リポジトリのHEADが指すブランチから分岐する。`image`を省くと`settings.json`の`image`
+- publishを含まないワークフロー（`workflows/review`等）では、`branch`に実リポジトリに既にあるブランチを指定できる。stagingのブランチはその先頭から始まり、`refs/masuda/base`は`base`（省けば実リポジトリの既定のブランチ）とブランチの分岐点になる。publishを含むワークフローで既存のブランチを指定すると`already_exists`
 - `Run`はSTARTINGの`Workspace`を返す。VMの起動は返った後に進み、成功すればRUNNING、失敗すればBLOCKED（`reason`が`sandbox boot failed: `で始まる）になる。どちらも`Watch`の`status`で分かる
 - 前提が欠けていると`failed_precondition`で、足りないもの（秘密の値、承認、Dockerfile等）が`; `区切りでまとめて返る。そのまま利用者に見せ、[設定](#config)の画面へ案内する
 

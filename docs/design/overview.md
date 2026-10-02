@@ -74,9 +74,17 @@ masuda
 
 | ref | 意味 |
 |---|---|
-| `refs/heads/<branch>` | ワークスペースのブランチ。commitノードが進める |
+| `refs/heads/<branch>` | ワークスペースのブランチ。commitノードが進める。新しいブランチなら分岐元と同じコミットから、既存のブランチ（下記）ならその先頭から始まる |
 | `refs/masuda/wip/<出現ID>` | ノード境界のWIPスナップショット（作業ツリー全体を`git add -A`したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う |
-| `refs/masuda/base` | 分岐元。diffの基準 |
+| `refs/masuda/base` | 分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base） |
+
+### 既存のブランチで動かす
+
+publishノードを含まないワークフロー（rootから辿れるワークフローのどれにもpublishが無いもの。engineの`Set.Reachable`で判定）に限り、`Run`の`branch`に実リポジトリに既にあるブランチを指定できる。実リポジトリには書かないので上書きの心配が無く、既にある変更のレビュー（`workflows/review`）に使う。
+
+- stagingの`refs/heads/<branch>`は実リポジトリのそのブランチの先頭
+- 分岐元は`base`、空なら実リポジトリの既定のブランチ（originのHEADが指すもの、`init.defaultBranch`、`main`・`master`の順に、実在してそのブランチ自身でないもの）。`refs/masuda/base`はその分岐元とブランチのmerge-baseに置く。分岐の後に分岐元へ入った変更を差分に混ぜないため
+- publishを含むワークフローで既存のブランチを指定すると`AlreadyExists`
 
 ### commitとpublish
 

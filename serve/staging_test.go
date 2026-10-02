@@ -86,6 +86,15 @@ func TestRunRejectsBadRequests(t *testing.T) {
 	ctx := context.Background()
 	gitT(t, repo, "branch", "taken")
 	_ = os.Mkdir(filepath.Join(repo, "sub"), 0o755)
+	pub := "version: 1\ninputs: [instructions]\nstart: echo\nnodes:\n" +
+		"  echo: {type: agent, role: agents/echo, inputs: [instructions], outputs: [echo], next: done}\n" +
+		"  done: {type: publish, target: local, next: end}\n"
+	if err := os.MkdirAll(filepath.Join(repo, ".masuda", "workflows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".masuda", "workflows", "pub.yaml"), []byte(pub), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	cases := []struct {
 		req  *apiv1.RunRequest
 		code connect.Code
@@ -95,7 +104,8 @@ func TestRunRejectsBadRequests(t *testing.T) {
 		{&apiv1.RunRequest{RepoRoot: filepath.Join(repo, "sub"), Workflow: "workflows/smoke", Branch: "b", Inputs: smokeInputs}, connect.CodeInvalidArgument},
 		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "b", Base: "nope", Inputs: smokeInputs}, connect.CodeInvalidArgument},
 		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "bad..name", Inputs: smokeInputs}, connect.CodeInvalidArgument},
-		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "taken", Inputs: smokeInputs}, connect.CodeAlreadyExists},
+		// publishするワークフローだけが既存のブランチを断る（smokeはdiscardで終わるので通る）。
+		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/pub", Branch: "taken", Inputs: smokeInputs}, connect.CodeAlreadyExists},
 		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/nope", Branch: "b", Inputs: smokeInputs}, connect.CodeInvalidArgument},
 		{&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "b"}, connect.CodeInvalidArgument},
 	}

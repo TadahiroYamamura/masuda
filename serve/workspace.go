@@ -79,6 +79,9 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 		Dir:      w.StagingDir(),
 		Branch:   m.Branch,
 		Base:     m.Base,
+		// publishしないワークフローは実リポジトリのブランチに書かないので、既存のブランチを
+		// 起点にしてよい（既存の変更のレビュー等）。publishするものは上書きを防ぐため断る。
+		AllowExisting: !publishes(set, m.Workflow),
 	})
 	if err != nil {
 		_ = s.store.Remove(w.ID)
@@ -164,6 +167,27 @@ func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.S
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v", workflow, missing))
 	}
 	return set, nil
+}
+
+// publishes はrootから辿れるワークフローのどれかにpublishノードがあるかを返す。
+func publishes(set *engine.Set, root string) bool {
+	paths, err := set.Reachable(root)
+	if err != nil {
+		// 検査を通った定義では起きない。判定できないなら安全側（publishする）に倒す。
+		return true
+	}
+	for _, p := range paths {
+		wf := set.Workflows[p]
+		if wf == nil {
+			continue
+		}
+		for _, n := range wf.Nodes {
+			if n.Type == engine.NodePublish {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // repoTop はrepo_rootが作業ツリーのトップそのものであることを確かめ、正規化したパスを返す。

@@ -18,7 +18,7 @@
 | `the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value` | そのリポジトリで`masuda secret set CLAUDE_CODE_OAUTH_TOKEN` |
 | `the workflow runs /masuda/checks/test but checks.test is not declared` | `settings.json`の`checks`に`test`を書く |
 | `image default: .masuda/images/default/Dockerfile is missing` | `masuda init`するか、Dockerfileを置く |
-| `branch already exists` | `--branch`に、対象リポジトリにまだ無い名前を使う |
+| `branch already exists` | publishするワークフローでは、`--branch`に対象リポジトリにまだ無い名前を使う（既にあるブランチを指定できるのはpublishしないワークフローだけ） |
 | `repo_root ... is not the top of its work tree` | 作業ツリーのトップで打つか、`--repo`にトップを渡す |
 | `workflow ... needs inputs [instructions]` | `--input instructions=@task.md`を渡す |
 | `workflow ... has problems:` | 定義の検査で落ちた。`masuda workflow check <workflow>`で同じ問題が出る |
