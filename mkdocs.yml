@@ -74,6 +74,10 @@ nav:
       - ワークフロー定義の仕様: user/reference/workflow-schema.md
   - 統合開発者向け:
       - api/index.md
+      - 接続: api/connect.md
+      - サービスとRPC: api/services.md
+      - 典型的な流れ: api/flows.md
+      - エラーコード: api/errors.md
       - APIリファレンス: api/reference.md
   - 開発者向け:
       - design/README.md
