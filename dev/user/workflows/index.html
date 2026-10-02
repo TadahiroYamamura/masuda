@@ -1,0 +1,2011 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/dev/user/workflows/">
+      
+      
+        <link rel="prev" href="../settings/">
+      
+      
+        <link rel="next" href="../reference/workflow-schema/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>ワークフロー - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              ワークフロー
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3種類の定義
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ワークフローの書き方
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ワークフローの書き方">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masudaが必ず差し込むもの
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エージェントの書き方
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        データとスキーマ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱のワークフロー
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="同梱のワークフロー">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#develop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        develop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱を上書きする・自分のものを足す
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="同梱を上書きする・自分のものを足す">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        検査で拒否されるもの
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../design/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3種類の定義
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ワークフローの書き方
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ワークフローの書き方">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masudaが必ず差し込むもの
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エージェントの書き方
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        データとスキーマ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱のワークフロー
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="同梱のワークフロー">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#develop" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        develop
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#review" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        review
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#override" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱を上書きする・自分のものを足す
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="同梱を上書きする・自分のものを足す">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        検査で拒否されるもの
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">ワークフロー<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>ワークフローは「どの役のエージェントに何をさせ、どこで人間に聞き、いつコミットして反映するか」を書いたYAML。masudaは2つの同梱のワークフローを持ち、対象リポジトリの<code>.masuda/</code>で上書き・追加できる。</p>
+<p>このページは導入と同梱の説明。キーの全仕様は<a href="../reference/workflow-schema/">ワークフロー定義の仕様</a>にある。</p>
+<h2 id="3">3種類の定義<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>種類</th>
+<th>置き場所</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ワークフロー</td>
+<td><code>.masuda/workflows/**.yaml</code></td>
+<td>ノードと、その終わり方ごとの行き先</td>
+</tr>
+<tr>
+<td>エージェント</td>
+<td><code>.masuda/agents/**.md</code></td>
+<td>役（調査・計画・実装・レビュー等）。frontmatterで使える道具・入力・出力・終わり方を宣言し、本文が役のプロンプトになる</td>
+</tr>
+<tr>
+<td>スキーマ</td>
+<td><code>.masuda/schemas/&lt;データ名&gt;.json</code></td>
+<td>ノードの間で受け渡すデータの形（JSON Schema）。masudaが受け取るときに検証し、合わなければエージェントへ差し戻す</td>
+</tr>
+</tbody>
+</table>
+<p>参照は<code>.masuda/</code>からの拡張子なしのパスで書く（<code>workflows/develop</code>、<code>agents/planner</code>）。</p>
+<h2 id="_2">ワークフローの書き方<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<span class="nt">inputs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">instructions</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># masuda run --input で受け取るデータ</span>
+<span class="nt">start</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">investigate</span>
+<span class="nt">nodes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">investigate</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span><span class="w">               </span><span class="c1"># エージェントに1つのタスクをさせる</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents/investigator</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">summarize</span><span class="w">           </span><span class="c1"># 終わり方 done の行き先（省略形）</span>
+<span class="w">  </span><span class="nt">summarize</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents/summarizer</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">finish</span>
+<span class="w">  </span><span class="nt">finish</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">discard</span><span class="w">             </span><span class="c1"># 反映せずに終え、データを exports に書き出す</span>
+<span class="w">    </span><span class="nt">export</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">investigation</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">summary</span><span class="p p-Indicator">]</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">end</span>
+</code></pre></div>
+<p>ノードの種類:</p>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>何をするか</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent</code></td>
+<td>エージェントに1つのタスクをさせる。終わり方はエージェント定義の<code>outcomes</code></td>
+</tr>
+<tr>
+<td><code>exec</code></td>
+<td>決まったコマンドをVMの中で動かす（例 <code>command: ["/masuda/checks/test"]</code>）。終了コード0で<code>done</code>、それ以外で<code>failed</code></td>
+</tr>
+<tr>
+<td><code>approval</code></td>
+<td>人間の承認を待つ（ゲート）。<code>gate</code>にゲートの名前、<code>target</code>に見せるもの（<code>plan</code>・<code>diff</code>＝publishされるコミット済みの差分・<code>step-diff</code>＝これからcommitされる未コミットの差分・データ名）</td>
+</tr>
+<tr>
+<td><code>question</code></td>
+<td>人間に質問して答えを待つ</td>
+</tr>
+<tr>
+<td><code>foreach</code></td>
+<td>計画のステップ・レビュー観点・配列のデータの項目ごとに、別のワークフローを順に動かす</td>
+</tr>
+<tr>
+<td><code>workflow</code></td>
+<td>別のワークフローを呼ぶ</td>
+</tr>
+<tr>
+<td><code>commit</code></td>
+<td>計画の範囲の変更をコミットする（<code>scope: step</code>か<code>plan</code>）</td>
+</tr>
+<tr>
+<td><code>publish</code></td>
+<td>あなたのリポジトリへ反映して終える（<code>target: local</code>既定、<code>remote</code>で<code>settings.json</code>の<code>publish.remote</code>（既定<code>origin</code>）へpush）</td>
+</tr>
+<tr>
+<td><code>discard</code></td>
+<td>反映せずに終える</td>
+</tr>
+</tbody>
+</table>
+<p><code>next</code>は「終わり方→行き先」の対応で、行き先はノード名か<code>end</code>（<code>end:&lt;ラベル&gt;</code>で終わり方に名前を付けられる）。<code>max</code>（<code>agent</code>・<code>exec</code>の既定3）は同じノードに入れる回数の上限で、超えると<code>exhausted</code>という終わり方になる。</p>
+<p>ノードごとに<code>egress:</code>（そのノードの間だけ開く通信先）と<code>secrets:</code>（そのノードの間だけ使える秘密）を書ける。どちらも<code>settings.json</code>の宣言とあなたの承認の範囲の中からしか選べない（<a href="../secrets-and-egress/">秘密・egress・特権コマンド</a>）。</p>
+<h3 id="masuda">masudaが必ず差し込むもの<a class="headerlink" href="#masuda" title="Permanent link">&para;</a></h3>
+<p>ワークフローに書かなくても、次は常に働き、外せない。</p>
+<ul>
+<li><code>triage</code>ゲート: エージェントがセキュリティ上の懸念を報告したら、どこからでも割り込む</li>
+<li><code>deviation</code>ゲート: コミットの直前と、書き込めないエージェントの実行の後に、計画外の変更を確かめる</li>
+<li>書き込めるエージェント（<code>tools</code>に<code>Write</code>か<code>Edit</code>を持つ、または<code>tools</code>を省略した）と<code>commit</code>は、承認済みの計画がある状態でしか動けない。読み込みの検査で、計画の承認より前にそれらへ届く経路があれば拒否する</li>
+<li>1回の実行のノードの出現は20000までで打ち切る</li>
+</ul>
+<h2 id="_3">エージェントの書き方<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<div class="highlight"><span class="filename">.masuda/agents/summarizer.md</span><pre><span></span><code>---
+name: summarizer
+description: 調査結果を、人間が読む3行の要約にする
+tools: Read, Grep, Glob
+inputs: [investigation]
+outputs: [summary]
+outcomes:
+<span class="gu">  done: 要約を書いた</span>
+<span class="gu">---</span>
+入力の調査結果（`investigation`）を読み、要点を3行以内の日本語で`summary`に書く。コードは変更しない。
+</code></pre></div>
+<ul>
+<li><code>tools</code>: Claude Codeの道具の名前。<code>Write</code>・<code>Edit</code>を持たないエージェントは「書き込めない」役になり、作業ツリーを変えると<code>deviation</code>ゲートが開く</li>
+<li><code>inputs</code>・<code>outputs</code>: 受け取る・書くデータの名前。入力はVMの<code>/masuda/in/&lt;出現ID&gt;/&lt;名前&gt;</code>にファイルとして置かれる</li>
+<li><code>outcomes</code>: 終わり方と、その意味の説明。<code>done</code>は必須。エージェントはこの中から1つを選んで報告する</li>
+</ul>
+<p>本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（12個）の定義は<a href="https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents">masuda-engineの<code>engine/defaults/agents/</code></a>にあり、書き方の見本になる。</p>
+<h2 id="_4">データとスキーマ<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>ノードの間で受け渡すものはすべて名前の付いたデータで、実体はホストのファイル（<code>workspaces/&lt;id&gt;/data/</code>）。</p>
+<ul>
+<li><code>.masuda/schemas/&lt;データ名&gt;.json</code>を置くと、そのデータはJSON Schema（draft 2020-12）で検証される。スキーマが無いデータは空でないことだけを確かめる</li>
+<li>スキーマのトップレベルが<code>"type": "string"</code>なら、出力をJSONとして読まず、ファイルの中身をそのまま1つの文字列として検証する</li>
+</ul>
+<div class="highlight"><span class="filename">.masuda/schemas/summary.json</span><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"$schema"</span><span class="p">:</span><span class="w"> </span><span class="s2">"https://json-schema.org/draft/2020-12/schema"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"string"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"maxLength"</span><span class="p">:</span><span class="w"> </span><span class="mi">2000</span>
+<span class="p">}</span>
+</code></pre></div>
+<ul>
+<li>masudaが自分で用意するデータ: <code>diff</code>（分岐元からの差分）、<code>step-diff</code>（今のステップの差分）、<code>fix-diff</code>（修正を始めた時点からの差分）</li>
+<li>同梱のスキーマ: <code>plan</code>（計画）、<code>findings</code>（指摘の台帳。実行中に書かれたものが溜まっていく）、<code>commit-message</code>、<code>selected-perspectives</code>、<code>answers</code></li>
+</ul>
+<h2 id="_5">同梱のワークフロー<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p><code>masuda workflow list</code>で一覧が出る。人が始めるのは<code>develop</code>と<code>review</code>で、残りはその部品。</p>
+<table>
+<thead>
+<tr>
+<th>ワークフロー</th>
+<th>入力</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workflows/develop</code></td>
+<td><code>instructions</code></td>
+<td>指示書から、調査・計画・実装・レビューをして反映する</td>
+</tr>
+<tr>
+<td><code>workflows/review</code></td>
+<td>なし</td>
+<td>分岐元からの差分をレビューし、レポートを残して終える（反映しない）</td>
+</tr>
+<tr>
+<td><code>workflows/implement/build-step</code></td>
+<td><code>step</code></td>
+<td><code>develop</code>の部品。計画の1ステップを実装・テスト・途中レビュー・コミットする</td>
+</tr>
+<tr>
+<td><code>workflows/review/perspectives</code></td>
+<td><code>diff</code></td>
+<td>部品。全レビュー観点で差分を見る</td>
+</tr>
+<tr>
+<td><code>workflows/review/perspective-review</code></td>
+<td><code>perspective</code>・<code>diff</code></td>
+<td>部品。1つの観点でレビューし、別の役が指摘の正確さを確かめる</td>
+</tr>
+<tr>
+<td><code>workflows/review/cross-cutting</code></td>
+<td><code>diff</code></td>
+<td>部品。観点に分けにくい横断的な問題を探して確かめる</td>
+</tr>
+<tr>
+<td><code>workflows/fix-finding</code></td>
+<td><code>finding</code></td>
+<td>部品。指摘1件を直し、別の役が解消を確かめる</td>
+</tr>
+<tr>
+<td><code>workflows/smoke</code></td>
+<td><code>instructions</code></td>
+<td>疎通確認用。指示をそのまま書き返して終える</td>
+</tr>
+</tbody>
+</table>
+<h3 id="develop">develop<a class="headerlink" href="#develop" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>調査 → 計画 → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 自動修正 → コミット）
+     → 全観点レビュー → 横断チェック → 自動修正 → コミット → レポート → [review gate] → publish
+</code></pre></div>
+<ul>
+<li>計画を立てる役は、調査が足りなければ調査へ戻し、依頼がこのリポジトリで扱うものでなければ<code>out_of_scope</code>で終える</li>
+<li>ステップの実装は<code>/masuda/checks/test</code>（<code>settings.json</code>の<code>checks.test</code>）が通るまで、最大3回やり直す。直せなければ<code>stuck</code>で計画の承認へ戻る</li>
+<li>途中レビューは、ステップの差分に関係しそうな観点だけを選んで行う（<a href="../reviews/">レビュー観点</a>）。指摘のうち自動で直してよいもの（<code>autofix: true</code>）は直しを試み、直しきれなければ<code>interim</code>ゲートで止まる</li>
+<li>最後のレビューは全観点で行い、自動修正の後にレポート（<code>report</code>）を書いて<code>review</code>ゲートを開く。却下するとコメントを踏まえて手直し（<code>rework</code>）からやり直す</li>
+<li>publishのとき<code>report</code>をexportsに書き出す</li>
+</ul>
+<p><code>masuda workflow show workflows/develop</code>が出す図（部品と、masudaが差し込むゲートを含む。黄色が人間の判断）:</p>
+<pre class="mermaid"><code>%% workflows/develop
+flowchart TD
+  entry((start)) --&gt; w0_investigate
+  subgraph w0_graph["workflows/develop"]
+    w0_investigate["investigate&lt;br/&gt;type: agent&lt;br/&gt;agents/investigator&lt;br/&gt;max: 3"]
+    w0_plan["plan&lt;br/&gt;type: agent&lt;br/&gt;agents/planner&lt;br/&gt;max: 4"]
+    w0_approve_plan{"approve-plan&lt;br/&gt;type: approval&lt;br/&gt;gate: plan, target: plan"}
+    w0_implement["implement&lt;br/&gt;type: foreach&lt;br/&gt;over: steps&lt;br/&gt;body: workflows/implement/build-step"]
+    w0_review["review&lt;br/&gt;type: workflow&lt;br/&gt;workflows/review/perspectives"]
+    w0_cross_cutting["cross-cutting&lt;br/&gt;type: workflow&lt;br/&gt;workflows/review/cross-cutting"]
+    w0_fix["fix&lt;br/&gt;type: foreach&lt;br/&gt;over: findings[autofix=true]&lt;br/&gt;body: workflows/fix-finding"]
+    w0_review_commit["review-commit&lt;br/&gt;type: commit&lt;br/&gt;scope: plan"]
+    w0_report["report&lt;br/&gt;type: agent&lt;br/&gt;agents/synthesizer&lt;br/&gt;max: 3"]
+    w0_approve_review{"approve-review&lt;br/&gt;type: approval&lt;br/&gt;gate: review, target: diff"}
+    w0_rework["rework&lt;br/&gt;type: agent&lt;br/&gt;agents/implementer&lt;br/&gt;max: 3"]
+    w0_rework_test["rework-test&lt;br/&gt;type: exec&lt;br/&gt;/masuda/checks/test&lt;br/&gt;max: 3"]
+    w0_rework_commit["rework-commit&lt;br/&gt;type: commit&lt;br/&gt;scope: plan"]
+    w0_publish["publish&lt;br/&gt;type: publish&lt;br/&gt;target: local"]
+    w0_end_done((("end")))
+    w0_end_out_of_scope((("end:out_of_scope")))
+    w0_end_stuck((("end:stuck")))
+  end
+  w0_investigate -. "after run" .-&gt; w0_investigate_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w0_investigate --&gt;|"done"| w0_plan
+  w0_plan -. "after run" .-&gt; w0_plan_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w0_plan --&gt;|"done"| w0_approve_plan
+  w0_plan --&gt;|"needs_more_investigation"| w0_investigate
+  w0_plan --&gt;|"out_of_scope"| w0_end_out_of_scope
+  w0_approve_plan --&gt;|"approved"| w0_implement
+  w0_approve_plan --&gt;|"rejected"| w0_plan
+  w0_implement --&gt;|"done"| w0_review
+  w0_implement --&gt;|"stuck"| w0_approve_plan
+  w0_implement -. "foreach" .-&gt; w2_implement
+  w0_review --&gt;|"done"| w0_cross_cutting
+  w0_review -. "workflow" .-&gt; w5_each
+  w0_cross_cutting --&gt;|"done"| w0_fix
+  w0_cross_cutting -. "workflow" .-&gt; w3_explore
+  w0_fix --&gt;|"done"| w0_review_commit
+  w0_fix --&gt;|"incomplete"| w0_review_commit
+  w0_fix -. "foreach" .-&gt; w1_fix
+  w0_review_commit -. "before commit" .-&gt; w0_review_commit_deviation{{"deviation gate (engine)&lt;br/&gt;opens if files outside the plan changed"}}
+  w0_review_commit --&gt;|"done"| w0_report
+  w0_review_commit --&gt;|"rejected"| w0_rework
+  w0_report -. "after run" .-&gt; w0_report_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w0_report --&gt;|"done"| w0_approve_review
+  w0_approve_review --&gt;|"approved"| w0_publish
+  w0_approve_review --&gt;|"rejected"| w0_rework
+  w0_rework --&gt;|"done"| w0_rework_test
+  w0_rework --&gt;|"stuck"| w0_end_stuck
+  w0_rework_test --&gt;|"done"| w0_rework_commit
+  w0_rework_test --&gt;|"failed"| w0_rework
+  w0_rework_commit -. "before commit" .-&gt; w0_rework_commit_deviation{{"deviation gate (engine)&lt;br/&gt;opens if files outside the plan changed"}}
+  w0_rework_commit --&gt;|"done"| w0_review
+  w0_rework_commit --&gt;|"rejected"| w0_rework
+  w0_publish --&gt;|"done"| w0_end_done
+  subgraph w1_graph["workflows/fix-finding"]
+    w1_fix["fix&lt;br/&gt;type: agent&lt;br/&gt;agents/fixer&lt;br/&gt;max: 3"]
+    w1_recheck["recheck&lt;br/&gt;type: agent&lt;br/&gt;agents/rechecker&lt;br/&gt;max: 3"]
+    w1_end_done((("end")))
+    w1_end_unresolved((("end:unresolved")))
+  end
+  w1_fix --&gt;|"cannot_fix"| w1_end_unresolved
+  w1_fix --&gt;|"done"| w1_recheck
+  w1_fix --&gt;|"exhausted"| w1_end_unresolved
+  w1_recheck -. "after run" .-&gt; w1_recheck_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w1_recheck --&gt;|"done"| w1_end_done
+  w1_recheck --&gt;|"unresolved"| w1_fix
+  subgraph w2_graph["workflows/implement/build-step"]
+    w2_implement["implement&lt;br/&gt;type: agent&lt;br/&gt;agents/implementer&lt;br/&gt;max: 3"]
+    w2_test["test&lt;br/&gt;type: exec&lt;br/&gt;/masuda/checks/test&lt;br/&gt;max: 3"]
+    w2_pick_perspectives["pick-perspectives&lt;br/&gt;type: agent&lt;br/&gt;agents/trigger-matcher&lt;br/&gt;max: 3"]
+    w2_interim_find["interim-find&lt;br/&gt;type: foreach&lt;br/&gt;over: perspectives(from=pick-perspectives)&lt;br/&gt;body: workflows/review/perspective-review"]
+    w2_interim_fix["interim-fix&lt;br/&gt;type: foreach&lt;br/&gt;over: findings[autofix=true]&lt;br/&gt;body: workflows/fix-finding"]
+    w2_approve_interim{"approve-interim&lt;br/&gt;type: approval&lt;br/&gt;gate: interim, target: step-diff"}
+    w2_commit["commit&lt;br/&gt;type: commit&lt;br/&gt;scope: step"]
+    w2_end_done((("end")))
+    w2_end_stuck((("end:stuck")))
+  end
+  w2_implement --&gt;|"done"| w2_test
+  w2_implement --&gt;|"exhausted"| w2_end_stuck
+  w2_implement --&gt;|"stuck"| w2_end_stuck
+  w2_test --&gt;|"done"| w2_pick_perspectives
+  w2_test --&gt;|"failed"| w2_implement
+  w2_pick_perspectives -. "after run" .-&gt; w2_pick_perspectives_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w2_pick_perspectives --&gt;|"done"| w2_interim_find
+  w2_interim_find --&gt;|"done"| w2_interim_fix
+  w2_interim_find --&gt;|"incomplete"| w2_approve_interim
+  w2_interim_find -. "foreach" .-&gt; w4_review
+  w2_interim_fix --&gt;|"done"| w2_commit
+  w2_interim_fix --&gt;|"incomplete"| w2_approve_interim
+  w2_interim_fix -. "foreach" .-&gt; w1_fix
+  w2_approve_interim --&gt;|"approved"| w2_commit
+  w2_approve_interim --&gt;|"rejected"| w2_implement
+  w2_commit -. "before commit" .-&gt; w2_commit_deviation{{"deviation gate (engine)&lt;br/&gt;opens if files outside the plan changed"}}
+  w2_commit --&gt;|"done"| w2_end_done
+  w2_commit --&gt;|"rejected"| w2_implement
+  subgraph w3_graph["workflows/review/cross-cutting"]
+    w3_explore["explore&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-explorer&lt;br/&gt;max: 3"]
+    w3_verify["verify&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-verifier&lt;br/&gt;max: 3"]
+    w3_end_done((("end")))
+  end
+  w3_explore -. "after run" .-&gt; w3_explore_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w3_explore --&gt;|"done"| w3_verify
+  w3_explore --&gt;|"none_found"| w3_end_done
+  w3_verify -. "after run" .-&gt; w3_verify_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w3_verify --&gt;|"done"| w3_end_done
+  subgraph w4_graph["workflows/review/perspective-review"]
+    w4_review["review&lt;br/&gt;type: agent&lt;br/&gt;agents/reviewer&lt;br/&gt;max: 3"]
+    w4_check_review["check-review&lt;br/&gt;type: agent&lt;br/&gt;agents/review-checker&lt;br/&gt;max: 3"]
+    w4_end_done((("end")))
+    w4_end_unresolved((("end:unresolved")))
+  end
+  w4_review -. "after run" .-&gt; w4_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w4_review --&gt;|"done"| w4_check_review
+  w4_review --&gt;|"exhausted"| w4_end_unresolved
+  w4_check_review -. "after run" .-&gt; w4_check_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w4_check_review --&gt;|"done"| w4_end_done
+  w4_check_review --&gt;|"inaccurate"| w4_review
+  subgraph w5_graph["workflows/review/perspectives"]
+    w5_each["each&lt;br/&gt;type: foreach&lt;br/&gt;over: perspectives&lt;br/&gt;body: workflows/review/perspective-review"]
+    w5_end_done((("end")))
+  end
+  w5_each --&gt;|"done"| w5_end_done
+  w5_each --&gt;|"incomplete"| w5_end_done
+  w5_each -. "foreach" .-&gt; w4_review
+  triage{{"triage gate (engine)&lt;br/&gt;can interrupt any node when an agent reports a concern"}}
+  classDef human fill:#fde68a,stroke:#b45309
+  classDef engine stroke-dasharray: 4 3
+  class w0_approve_plan human
+  class w0_approve_review human
+  class w0_investigate_deviation human
+  class w0_plan_deviation human
+  class w0_review_commit_deviation human
+  class w0_report_deviation human
+  class w0_rework_commit_deviation human
+  class w1_recheck_deviation human
+  class w2_approve_interim human
+  class w2_pick_perspectives_deviation human
+  class w2_commit_deviation human
+  class w3_explore_deviation human
+  class w3_verify_deviation human
+  class w4_review_deviation human
+  class w4_check_review_deviation human
+  class triage engine</code></pre>
+<h3 id="review">review<a class="headerlink" href="#review" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>全観点レビュー → 横断チェック → レポート → discard（report と findings を exports へ）
+</code></pre></div>
+<p>コードを変えず、ゲートでも止まらない。終わったら<code>exports/report</code>と<code>exports/findings</code>を読む。</p>
+<p>publishを含まないので、<strong>既にあるブランチ</strong>を<code>--branch</code>に指定して、そのブランチの変更をレビューできる。差分の基準は<code>--base</code>（省略時はリポジトリの既定のブランチ。originのHEADが指すもの、無ければ<code>main</code>・<code>master</code>）とブランチの分岐点で、手元のブランチには何も書かない。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>run<span class="w"> </span>workflows/review<span class="w"> </span>--branch<span class="w"> </span>feat/login
+masuda<span class="w"> </span>run<span class="w"> </span>workflows/review<span class="w"> </span>--branch<span class="w"> </span>feat/login<span class="w"> </span>--base<span class="w"> </span>develop
+</code></pre></div>
+<pre class="mermaid"><code>%% workflows/review
+flowchart TD
+  entry((start)) --&gt; w0_review
+  subgraph w0_graph["workflows/review"]
+    w0_review["review&lt;br/&gt;type: workflow&lt;br/&gt;workflows/review/perspectives"]
+    w0_cross_cutting["cross-cutting&lt;br/&gt;type: workflow&lt;br/&gt;workflows/review/cross-cutting"]
+    w0_report["report&lt;br/&gt;type: agent&lt;br/&gt;agents/synthesizer&lt;br/&gt;max: 3"]
+    w0_cleanup["cleanup&lt;br/&gt;type: discard"]
+    w0_end_done((("end")))
+  end
+  w0_review --&gt;|"done"| w0_cross_cutting
+  w0_review -. "workflow" .-&gt; w3_each
+  w0_cross_cutting --&gt;|"done"| w0_report
+  w0_cross_cutting -. "workflow" .-&gt; w1_explore
+  w0_report -. "after run" .-&gt; w0_report_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w0_report --&gt;|"done"| w0_cleanup
+  w0_cleanup --&gt;|"done"| w0_end_done
+  subgraph w1_graph["workflows/review/cross-cutting"]
+    w1_explore["explore&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-explorer&lt;br/&gt;max: 3"]
+    w1_verify["verify&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-verifier&lt;br/&gt;max: 3"]
+    w1_end_done((("end")))
+  end
+  w1_explore -. "after run" .-&gt; w1_explore_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w1_explore --&gt;|"done"| w1_verify
+  w1_explore --&gt;|"none_found"| w1_end_done
+  w1_verify -. "after run" .-&gt; w1_verify_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w1_verify --&gt;|"done"| w1_end_done
+  subgraph w2_graph["workflows/review/perspective-review"]
+    w2_review["review&lt;br/&gt;type: agent&lt;br/&gt;agents/reviewer&lt;br/&gt;max: 3"]
+    w2_check_review["check-review&lt;br/&gt;type: agent&lt;br/&gt;agents/review-checker&lt;br/&gt;max: 3"]
+    w2_end_done((("end")))
+    w2_end_unresolved((("end:unresolved")))
+  end
+  w2_review -. "after run" .-&gt; w2_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w2_review --&gt;|"done"| w2_check_review
+  w2_review --&gt;|"exhausted"| w2_end_unresolved
+  w2_check_review -. "after run" .-&gt; w2_check_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w2_check_review --&gt;|"done"| w2_end_done
+  w2_check_review --&gt;|"inaccurate"| w2_review
+  subgraph w3_graph["workflows/review/perspectives"]
+    w3_each["each&lt;br/&gt;type: foreach&lt;br/&gt;over: perspectives&lt;br/&gt;body: workflows/review/perspective-review"]
+    w3_end_done((("end")))
+  end
+  w3_each --&gt;|"done"| w3_end_done
+  w3_each --&gt;|"incomplete"| w3_end_done
+  w3_each -. "foreach" .-&gt; w2_review
+  triage{{"triage gate (engine)&lt;br/&gt;can interrupt any node when an agent reports a concern"}}
+  classDef human fill:#fde68a,stroke:#b45309
+  classDef engine stroke-dasharray: 4 3
+  class w0_report_deviation human
+  class w1_explore_deviation human
+  class w1_verify_deviation human
+  class w2_review_deviation human
+  class w2_check_review_deviation human
+  class triage engine</code></pre>
+<h2 id="override">同梱を上書きする・自分のものを足す<a class="headerlink" href="#override" title="Permanent link">&para;</a></h2>
+<p><code>.masuda/</code>の下に同梱と<strong>同じパス</strong>のファイルを置くと、同梱のものを丸ごと置き換える（部分的な上書きはできない）。同梱に無いパスなら、新しい定義として足される。</p>
+<table>
+<thead>
+<tr>
+<th>置いたファイル</th>
+<th>結果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.masuda/workflows/develop.yaml</code></td>
+<td><code>workflows/develop</code>が自分のものになる</td>
+</tr>
+<tr>
+<td><code>.masuda/agents/planner.md</code></td>
+<td><code>develop</code>が使う計画の役が自分のものになる</td>
+</tr>
+<tr>
+<td><code>.masuda/workflows/investigate.yaml</code></td>
+<td>新しいワークフロー<code>workflows/investigate</code>が増える</td>
+</tr>
+</tbody>
+</table>
+<p>同梱の定義の元は<a href="https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults">masuda-engineの<code>engine/defaults/</code></a>にある。上書きするときはそこから写して直す。</p>
+<p>手順:</p>
+<ol>
+<li>定義を書く</li>
+<li><code>masuda workflow list</code>で、ORIGINが<code>repo</code>になっていることを確かめる</li>
+<li><code>masuda workflow check workflows/&lt;名前&gt;</code>で検査する（<code>ok</code>が出るまで直す）</li>
+<li><code>masuda workflow show workflows/&lt;名前&gt;</code>で図を確かめる（Mermaidを表示できる所に貼る）</li>
+<li><code>masuda run workflows/&lt;名前&gt; --branch ... --input ...</code></li>
+</ol>
+<p><code>masuda run</code>は始めるときに<code>.masuda/</code>を写し、その実行は最後まで写した定義で進む。実行中に定義を直しても、その実行には効かない（<code>resume</code>しても同じ）。</p>
+<h3 id="_6">検査で拒否されるもの<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p><code>masuda run</code>と<code>masuda workflow check</code>は、始める前に次を検査する（詳しくは<a href="../reference/workflow-schema/">仕様</a>の「読み込み時の検査」）。</p>
+<ul>
+<li>参照先のワークフロー・エージェントがあり、呼び出しが循環しない</li>
+<li>各ノードが出しうる終わり方すべてに行き先があり、出さない終わり方への行き先が無い</li>
+<li>承認も<code>max</code>も含まない閉路が無い</li>
+<li>入力データが、そのノードに至るどの経路でも用意されている</li>
+<li>承認済みの計画が無いまま、書き込めるエージェントや<code>commit</code>に届かない</li>
+<li>コミットしていない変更が残ったまま<code>publish</code>に届かない</li>
+<li><code>masuda run</code>ではさらに、ワークフローが呼ぶ<code>/masuda/checks/&lt;名前&gt;</code>が<code>settings.json</code>の<code>checks</code>に宣言されていること</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
