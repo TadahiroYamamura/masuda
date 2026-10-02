@@ -60,15 +60,16 @@ VMのルートディスクが足りない。ビルドのキャッシュ（Goの`
 
 ## Dockerfileの`ENV`が効かない {#dockerfile-env}
 
-Dockerfileに`ENV PATH=/usr/local/go/bin:$PATH`や`ENV GOCACHE=...`と書いても、VMの中のチェックやエージェントに届かないことがある。
+DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭には`~/.local/bin`が足される。それでも`ENV PATH=/usr/local/go/bin:$PATH`等が届かないときは、次を確かめる。
 
-- **PATH**: チェック（`/masuda/checks/*`）とメインのClaude Codeはログインシェルで動き、PATHは`/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`と`~/.local/bin`に揃えられる。`ENV PATH`の追加分は使われない。道具は`/usr/local/bin`に置くか、リンクを張る
+- **PATH**: チェック（`/masuda/checks/*`）とメインのClaude Codeはログインシェルで動く。`/etc/profile`がPATHを置き換えるイメージ（Debian系のベースイメージ等。`ubuntu`は置き換えない）では、`ENV PATH`の追加分が消える。道具は`/usr/local/bin`に置くか、リンクを張る
 
     ```dockerfile
     RUN ln -s /usr/local/go/bin/go /usr/local/bin/go
     ```
 
-- **それ以外の変数**: `masuda-sandbox`の版によっては引き継がれない。確実に渡すには、チェックはコマンドの頭に（`"test": "GOCACHE=/tmp/go-cache go test ./..."`）、エージェントには`settings.json`の`claudeSettings.env`に書く
+- **masuda-sandboxが古い**: ENVを引き継がない版がある。`masuda version`でmasudaと同じバージョンか確かめる
+- **確実に渡すには**: チェックはコマンドの頭に（`"test": "GOCACHE=/tmp/go-cache go test ./..."`）、エージェントには`settings.json`の`claudeSettings.env`に書く
 
 ## イメージのビルドが`EACCES`で失敗する（`-modcacherw`）
 

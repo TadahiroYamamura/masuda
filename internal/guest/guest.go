@@ -39,24 +39,6 @@ const (
 	MCPPort = 7000
 )
 
-// DefaultPath はゲストのコマンドに渡すPATH。sandbox（Gondolin）の起動層が設定するPATHは
-// `/usr/sbin:/usr/bin:/sbin:/bin`で/usr/local/binを含まず、DockerfileのENVも引き継がれない。
-// イメージに足したツール（/usr/local/binに置くのが慣例）がexecノードからも見えるよう、
-// Debian/Ubuntuの既定と同じ並びを明示する。~/.local/binはログインシェルの~/.profileが足す。
-const DefaultPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-
-// BaseEnv はゲストのコマンドに必ず渡す環境変数。PATHはDefaultPath。XDG_*_HOMEはゲストの
-// 利用者のHOME配下へ戻す。sandbox（Gondolin）は既定で`/tmp/.cache`等を指し、その
-// ディレクトリをroot所有で作るため、ubuntuで動くツール（goのビルドキャッシュ等）が書けない。
-func BaseEnv() map[string]string {
-	return map[string]string{
-		"PATH":            DefaultPath,
-		"XDG_CACHE_HOME":  Home + "/.cache",
-		"XDG_CONFIG_HOME": Home + "/.config",
-		"XDG_DATA_HOME":   Home + "/.local/share",
-	}
-}
-
 // TokenEnv はClaude APIのトークン（ゲストではプレースホルダ）を入れる環境変数。
 const TokenEnv = "CLAUDE_CODE_OAUTH_TOKEN"
 
@@ -224,9 +206,8 @@ func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, i
 }
 
 // CheckScript はチェック1つのスクリプトの中身。ログインシェル（-l）にするのは、execノードの
-// argvはsandboxでログインシェルを経ず、イメージのDockerfileのENVも引き継がれないため。
-// /etc/profileと~/.profileのPATH（/usr/local/bin・~/.local/bin等）を、メインセッション
-// （tmuxをログインシェルで起こす）とそのサブエージェントが見るものと揃える。
+// argvはsandboxでログインシェルを経ないため。/etc/profileと~/.profileが足すものを、メインセッション
+// （sandboxはshellのExecを`/bin/sh -lc`で動かす）とそのサブエージェントが見るものと揃える。
 func CheckScript(command string) []byte {
 	return []byte("#!/bin/sh -el\ncd /workspace\n" + strings.TrimRight(command, "\n") + "\n")
 }
@@ -347,10 +328,10 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 		env[k] = v
 	}
 	cmd := "claude --dangerously-skip-permissions -- " + shellQuote(StartPrompt)
-	// argvではなくshell（sandboxでは`/bin/sh -lc`）で起こす。イメージのDockerfileのENVは
-	// ゲストのプロセスに引き継がれず、native版claudeの置き場所（~/.local/bin）は~/.profileが
-	// PATHへ足すため。tmuxサーバーはこのログインシェルの環境を継ぎ、セッション内のclaudeと
-	// そのサブエージェントのBashも同じPATHになる。
+	// argvではなくshell（sandboxでは`/bin/sh -lc`）で起こし、claudeをPATHから引く。PATHは
+	// sandboxの既定（イメージのENVを引き継ぎ、native版claudeの置き場所~/.local/binを先頭に足す）に
+	// 任せる。tmuxサーバーはこのシェルの環境を継ぎ、セッション内のclaudeとそのサブエージェントの
+	// Bashも同じPATHになる。
 	res, err := Exec(ctx, c, &sandboxv1.ExecRequest{
 		Id:    o.SandboxID,
 		Shell: "exec tmux new-session -d -s " + TmuxSession + " " + shellQuote(cmd),

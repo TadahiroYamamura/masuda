@@ -16,10 +16,11 @@ RUN apt-get update \
 # ビルド・テストのキャッシュについて:
 # - VMのルートディスクは小さい（既定はsettings.jsonの`images.<entry>.diskMiB`、4096MiB）。
 #   GOCACHE・pipやnpmのキャッシュなど大きくなるものは、tmpfsの/tmpへ向けると収まりやすい
-# - このファイルのENV（例 ENV GOCACHE=/tmp/go-cache）はVMの中のプロセスに引き継がれる。
-#   ただしPATHとXDG_*_HOMEはmasudaが決める: PATHは/usr/local/bin等の標準の並びで、ログイン
-#   シェルで動くチェックとエージェント（Claude Code）には~/.local/binも足される。ENVでPATHに
-#   足したディレクトリは見えないので、ツールは/usr/local/binか~/.local/binに置く
+# - このファイルのENV（例 ENV GOCACHE=/tmp/go-cache、ENV PATH=/usr/local/go/bin:$PATH）は
+#   VMの中のプロセスに引き継がれる。PATHの先頭にはいつも~/.local/bin（Claude Codeの置き場所）が
+#   足される。ENVで決めていない変数は、HOME=/home/ubuntu、XDG_*_HOMEはその下になる。
+#   チェックとエージェントはログインシェルで動くので、/etc/profileがPATHを置き換えるイメージ
+#   （Debian等）ではENVのPATHが消える。そのときはツールを/usr/local/binに置く
 # - 実行中に外へ出られるのは許可したホストだけなので、依存はここで取っておく
 #   （例 Goなら非rootで`go mod download all`）
 
@@ -28,6 +29,5 @@ RUN mkdir -p /workspace /masuda && chown ubuntu:ubuntu /workspace /masuda
 USER ubuntu
 WORKDIR /home/ubuntu
 RUN curl -fsSL https://claude.ai/install.sh | bash
-# このPATHはこの後のRUN（ビルド中）のため。VMの中では上の説明のとおりmasudaがPATHを決める。
 ENV PATH=/home/ubuntu/.local/bin:$PATH
 USER root

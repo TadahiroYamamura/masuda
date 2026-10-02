@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -141,18 +142,32 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	return stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Exited_{Exited: exited}})
 }
 
-// execEnv はホストの環境を引き継がずに組み立てる。ホストのHOMEやトークン類が
-// ゲストのつもりのコマンドへ漏れないよう、PATHだけをホストから取る。
-func execEnv(home, user string, layers ...map[string]string) []string {
+// execEnv はsandbox serviceの既定の環境（sandbox.protoのExecRequest.env）を真似て組み立てる。
+// HOMEとXDG_*_HOMEはゲストのHOME（の写像）の下、PATHは$HOME/.local/binを先頭にし、その上に
+// CreateSandboxのenv（sbEnv）を重ね、PATHの先頭が$HOME/.local/binでなければ足し直してから、
+// Execのenv（reqEnv）を最後に重ねる。フェイクにはイメージのENVが無いので、その層は無い。
+// ホストのHOMEやトークン類がゲストのつもりのコマンドへ漏れないよう、ホストの環境はPATHだけを
+// 「システムのPATH」として取る（コマンドはホストで動くので、ホストの道具が見えている必要がある）。
+func execEnv(home, user string, sbEnv, reqEnv map[string]string) []string {
+	localBin := home + "/.local/bin"
 	env := map[string]string{
-		"PATH": os.Getenv("PATH"),
-		"HOME": home,
-		"USER": user,
+		"PATH":            localBin + ":" + os.Getenv("PATH"),
+		"HOME":            home,
+		"USER":            user,
+		"XDG_CACHE_HOME":  home + "/.cache",
+		"XDG_CONFIG_HOME": home + "/.config",
+		"XDG_DATA_HOME":   home + "/.local/share",
 	}
-	for _, l := range layers {
-		for k, v := range l {
-			env[k] = v
-		}
+	for k, v := range sbEnv {
+		env[k] = v
+	}
+	if p := env["PATH"]; p == "" {
+		env["PATH"] = localBin
+	} else if first, _, _ := strings.Cut(p, ":"); first != localBin {
+		env["PATH"] = localBin + ":" + p
+	}
+	for k, v := range reqEnv {
+		env[k] = v
 	}
 	keys := make([]string, 0, len(env))
 	for k := range env {

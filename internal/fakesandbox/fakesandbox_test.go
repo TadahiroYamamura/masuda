@@ -129,6 +129,33 @@ func TestExecMapsCwdAndHome(t *testing.T) {
 	}
 }
 
+// 既定の環境はsandbox serviceと同じ形: XDG_*_HOMEはHOMEの下、PATHは$HOME/.local/binが先頭。
+// CreateSandboxのenvでPATHを替えても先頭に足し直し、Execのenvは最後に重ねる。
+func TestExecDefaultEnvMimicsSandbox(t *testing.T) {
+	dir := t.TempDir()
+	p := fakesandbox.StartInProcess(dir)
+	t.Cleanup(p.Close)
+	ctx := context.Background()
+	if _, err := p.Client.CreateSandbox(ctx, connect.NewRequest(&sandboxv1.CreateSandboxRequest{
+		Id: "sb1", DefaultUser: "ubuntu", Env: map[string]string{"PATH": "/opt/img/bin:" + os.Getenv("PATH")},
+	})); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(dir, "sb1", "root", "home/ubuntu")
+	res, err := guest.Shell(ctx, p.Client, "sb1", "", `echo "$XDG_CACHE_HOME $XDG_CONFIG_HOME $XDG_DATA_HOME"; echo "$PATH" | cut -d: -f1-2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := home + "/.cache " + home + "/.config " + home + "/.local/share\n" + home + "/.local/bin:/opt/img/bin\n"
+	if string(res.Stdout) != want {
+		t.Fatalf("stdout %q, want %q", res.Stdout, want)
+	}
+	res, err = guest.Exec(ctx, p.Client, &sandboxv1.ExecRequest{Id: "sb1", Shell: `echo "$PATH"`, Env: map[string]string{"PATH": os.Getenv("PATH")}})
+	if err != nil || string(res.Stdout) != os.Getenv("PATH")+"\n" {
+		t.Fatalf("Exec env should be applied last: %v %q", err, res.Stdout)
+	}
+}
+
 func TestFilesDoNotFollowSymlinks(t *testing.T) {
 	c, root := newFake(t)
 	ctx := context.Background()
