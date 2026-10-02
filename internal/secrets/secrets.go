@@ -1,4 +1,5 @@
 // Package secrets は秘密の値をホストに置く（`<DataDir>/secrets/<repo-hash>/<NAME>`、0600）。
+// リポジトリに依らないユーザー単位の値（Claudeのトークン）は`<DataDir>/secrets/_user/<NAME>`に置く。
 //
 // 値は対象リポジトリの外、利用者ごとのデータディレクトリに置くので、チームメイトごとに
 // 別の値を持て、リポジトリへ漏れない。値を書く口と、sandboxへ渡すために読む口だけがあり、
@@ -34,8 +35,14 @@ func RepoHash(repoRoot string) string {
 	return hex.EncodeToString(sum[:])[:16]
 }
 
-// Dir はrepoRootの秘密を置くディレクトリ。
+// UserScope はユーザー単位の秘密を置くディレクトリの名前。RepoHashは16桁の16進数なので衝突しない。
+const UserScope = "_user"
+
+// Dir はrepoRootの秘密を置くディレクトリ。repoRootが空ならユーザー単位の置き場所。
 func (s *Store) Dir(repoRoot string) string {
+	if repoRoot == "" {
+		return filepath.Join(s.dataDir, "secrets", UserScope)
+	}
 	return filepath.Join(s.dataDir, "secrets", RepoHash(repoRoot))
 }
 
@@ -103,12 +110,19 @@ func (s *Store) Has(repoRoot, name string) bool {
 }
 
 // ClaudeToken はClaude APIのトークンを返す。name（settings.local.jsonのclaudeToken、既定は
-// CLAUDE_CODE_OAUTH_TOKEN）を秘密ストアから読み、無ければM4の暫定ファイルを読む。
+// CLAUDE_CODE_OAUTH_TOKEN）を、リポジトリの置き場所、ユーザー単位の置き場所の順に読み、
+// どちらにも無ければM4の暫定ファイルを読む。トークンはアカウントに付くものでリポジトリごとに
+// 登録し直す理由が無いので、ユーザー単位を既定の置き場所にし、リポジトリごとの登録は上書きに使う。
 // 前後の空白・改行は落とす（`echo ... | masuda secret set`で入る改行がヘッダーを壊すため）。
 func (s *Store) ClaudeToken(repoRoot, name string) (string, bool, error) {
 	v, ok, err := s.Get(repoRoot, name)
 	if err != nil {
 		return "", false, err
+	}
+	if !ok && repoRoot != "" {
+		if v, ok, err = s.Get("", name); err != nil {
+			return "", false, err
+		}
 	}
 	if !ok {
 		b, err := os.ReadFile(filepath.Join(s.dataDir, legacyTokenFile))

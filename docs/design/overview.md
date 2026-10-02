@@ -241,7 +241,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 - 宣言: `.masuda/settings.json`の`secrets`に、名前・送ってよいホスト・置換場所（`header`既定、`body`は明示）・モード（`placeholder`既定、`plaintext`は例外）を書く
 - 値: `masuda secret set <NAME>`で`$XDG_DATA_HOME/masuda/secrets/<repo-hash>/<NAME>`（0600）に置く。チームメイトごとに別の値を持てる
-- Claude APIのトークンも同じ仕組みの1つ（名前`CLAUDE_CODE_OAUTH_TOKEN`、ホスト`api.anthropic.com`）。`claudeToken`でどの登録トークンを使うかを選ぶ
+- Claude APIのトークンも同じ仕組みの1つ（名前`CLAUDE_CODE_OAUTH_TOKEN`、ホスト`api.anthropic.com`）。`claudeToken`でどの登録トークンを使うかを選ぶ。トークンはアカウントに付くものなので、既定の置き場所はユーザー単位の`$XDG_DATA_HOME/masuda/secrets/_user/<NAME>`（`SetSecret`の`repo_root`が空、`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`の`--repo`無し）。リポジトリの置き場所に同じ名前があればそちらを優先する
 - `.env`はコピーしない。`envFiles`の宣言から、秘密はプレースホルダ・公開値は実値で**生成**する
 - `plaintext`モードはローカルの承認が無ければ起動を拒否し、`masuda secret list`で一目で分かる
 
@@ -294,7 +294,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `vars` | `envFiles`の公開値（秘密として宣言していない変数の値） |
 | `stallAfter` | 無活動のしきい値（Goのduration）のこのリポジトリでの上書き。無ければ`config.json`の値（「活動の観測と停止の検知」の節） |
 
-秘密の値はどちらにも置かない（`<DataDir>/secrets/<repo-hash>/<NAME>`）。
+秘密の値はどちらにも置かない（`<DataDir>/secrets/<repo-hash>/<NAME>`、Claudeのトークンは既定で`<DataDir>/secrets/_user/<NAME>`）。
 
 リポジトリに依らない`masuda serve`全体の設定は`$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`。`masuda serve --config`で変えられる）。無ければすべて既定で、知らないキーがあれば`masuda serve`は起動しない。
 

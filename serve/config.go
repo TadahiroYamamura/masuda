@@ -151,7 +151,11 @@ func (s *configService) secretEntries(root string, cfg config.Settings, local co
 	return out
 }
 
+// ListSecrets はrepo_rootが空なら、ユーザー単位のClaudeのトークン（既定の名前）の有無だけを返す。
 func (s *configService) ListSecrets(ctx context.Context, req *connect.Request[apiv1.RepoRequest]) (*connect.Response[apiv1.ListSecretsResponse], error) {
+	if req.Msg.RepoRoot == "" {
+		return connect.NewResponse(&apiv1.ListSecretsResponse{ClaudeTokenSet: secrets.New(s.backend.dataDir).Has("", config.ReservedSecret)}), nil
+	}
 	root, cfg, local, err := s.load(ctx, req.Msg.RepoRoot)
 	if err != nil {
 		return nil, err
@@ -161,7 +165,12 @@ func (s *configService) ListSecrets(ctx context.Context, req *connect.Request[ap
 
 // SetSecret は値を秘密ストアへ置く。宣言した名前と、Claude APIのトークンの名前
 // （CLAUDE_CODE_OAUTH_TOKENか、settings.local.jsonのclaudeTokenが選んだ名前）だけを受け付ける。
+// repo_rootが空ならユーザー単位の置き場所へ置く（Claudeのトークン用。どのリポジトリでも、
+// リポジトリごとの登録が無ければこれを使う）。
 func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv1.SetSecretRequest]) (*connect.Response[apiv1.ListSecretsResponse], error) {
+	if req.Msg.RepoRoot == "" {
+		return s.setUserSecret(req.Msg.Name, req.Msg.Value)
+	}
 	root, cfg, local, err := s.load(ctx, req.Msg.RepoRoot)
 	if err != nil {
 		return nil, err
@@ -178,6 +187,23 @@ func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
 	return connect.NewResponse(s.secretEntries(root, cfg, local)), nil
+}
+
+// setUserSecret はユーザー単位の値を置く。宣言はリポジトリにあるので、ここでは名前の形だけを
+// 確かめる（claudeTokenでリポジトリごとに別名を選べるので、名前を既定の1つに絞らない）。
+// 応答のclaude_token_setは置いた名前に値があるか。entriesは空。
+func (s *configService) setUserSecret(name, value string) (*connect.Response[apiv1.ListSecretsResponse], error) {
+	if !config.ValidName(name) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid secret name %q", name))
+	}
+	if value == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty"))
+	}
+	store := secrets.New(s.backend.dataDir)
+	if err := store.Set("", name, value); err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&apiv1.ListSecretsResponse{ClaudeTokenSet: store.Has("", name)}), nil
 }
 
 // ApproveSecret はplaintextモードの秘密の承認を記録する。placeholderは承認が要らないので

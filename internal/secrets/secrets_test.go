@@ -60,3 +60,26 @@ func TestClaudeTokenFallsBackToLegacyFile(t *testing.T) {
 		t.Fatalf("store must win over the legacy file: %q", v)
 	}
 }
+
+func TestClaudeTokenUserScope(t *testing.T) {
+	data := t.TempDir()
+	s := New(data)
+	if err := s.Set("", "CLAUDE_CODE_OAUTH_TOKEN", "user\n"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(data, "secrets", UserScope, "CLAUDE_CODE_OAUTH_TOKEN")); err != nil {
+		t.Fatal(err)
+	}
+	if v, ok, _ := s.ClaudeToken("/r", "CLAUDE_CODE_OAUTH_TOKEN"); !ok || v != "user" {
+		t.Fatalf("user-scope token for any repository: %q %v", v, ok)
+	}
+	if err := s.Set("/r", "CLAUDE_CODE_OAUTH_TOKEN", "repo"); err != nil {
+		t.Fatal(err)
+	}
+	if v, _, _ := s.ClaudeToken("/r", "CLAUDE_CODE_OAUTH_TOKEN"); v != "repo" {
+		t.Fatalf("a per-repository token overrides the user one: %q", v)
+	}
+	if v, _, _ := s.ClaudeToken("/other", "CLAUDE_CODE_OAUTH_TOKEN"); v != "user" {
+		t.Fatalf("other repositories keep the user token: %q", v)
+	}
+}

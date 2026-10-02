@@ -15,7 +15,7 @@
 | メッセージ（抜粋） | 直し方 |
 |---|---|
 | `connection refused`、`no such file or directory`（ソケット） | `masuda serve`が起動していない、または`--socket`の場所が違う |
-| `the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value` | そのリポジトリで`masuda secret set CLAUDE_CODE_OAUTH_TOKEN` |
+| `the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value` | `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（ユーザー単位。`claudeToken`で別名を選んでいるならその名前で） |
 | `the workflow runs /masuda/checks/test but checks.test is not declared` | `settings.json`の`checks`に`test`を書く |
 | `image default: .masuda/images/default/Dockerfile is missing` | `masuda init`するか、Dockerfileを置く |
 | `branch already exists` | publishするワークフローでは、`--branch`に対象リポジトリにまだ無い名前を使う（既にあるブランチを指定できるのはpublishしないワークフローだけ） |

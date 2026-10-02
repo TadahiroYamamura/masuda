@@ -72,7 +72,7 @@ masuda secret set CLAUDE_CODE_OAUTH_TOKEN
 ```
 
 - `egress approve`は、`settings.json`が宣言した通信先を、あなたが承認したことを`.masuda/settings.local.json`に記録する。Claude APIへの経路は宣言や承認に関係なく常に開いているので、この1行は無くても動く。他のホストを使うときの手順は[秘密・egress・特権コマンド](secrets-and-egress.md)
-- `secret set`は、[導入](install.md#claude-token)で作ったトークンを聞いてくる（入力は画面に出ない）。登録はリポジトリごと
+- `secret set`は、[導入](install.md#claude-token)で作ったトークンを聞いてくる（入力は画面に出ない）。`--repo`を付けなければユーザー単位の登録になり、次からはどのリポジトリでも打たなくてよい
 
 ```sh
 masuda secret list

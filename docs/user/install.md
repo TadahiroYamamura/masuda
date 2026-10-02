@@ -98,11 +98,13 @@ claude setup-token
 
 `claude setup-token`は、Claude Codeが入っているマシンならどこで実行してもよい（ホストに入れていなければ、一時的に入れるか、別のマシンで作る）。出てきたトークン（`sk-ant-oat01-`で始まる）を控えておく。
 
-トークンは対象リポジトリごとにmasudaへ登録する。登録は[はじめての1周](quickstart.md)の中で行う。
+トークンはユーザーごとに1回masudaへ登録すれば、どのリポジトリでも使われる。登録は[はじめての1周](quickstart.md)の中で行う（`masuda serve`が動いている必要がある）。
 
 ```sh
-masuda secret set CLAUDE_CODE_OAUTH_TOKEN   # 対象リポジトリのトップで。値は入力を求められる（画面に出ない）
+masuda secret set CLAUDE_CODE_OAUTH_TOKEN   # どこで打ってもよい。値は入力を求められる（画面に出ない）
 ```
+
+特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで`--repo .`を付けて登録する（リポジトリごとの登録が優先される）。
 
 トークンの本物の値はホストの`~/.local/share/masuda/secrets/`にだけ置かれ、VMには入らない（[概念](concepts.md#secrets)）。
 

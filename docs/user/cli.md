@@ -200,7 +200,7 @@ masuda secret reject <NAME> [--repo <dir>]
 | サブコマンド | 動き |
 |---|---|
 | `list` | 宣言した秘密の名前・モード・送り先・値の有無・承認の有無と、Claudeのトークンの有無。`plaintext`の秘密はMODEが`PLAINTEXT`と大文字で出る |
-| `set` | 値を標準入力から読んで登録する。端末なら入力を画面に出さずに1行、パイプなら全部を読んで末尾の改行1つを落とす。宣言した名前と、Claudeのトークンの名前（`CLAUDE_CODE_OAUTH_TOKEN`、または`claudeToken`で選んだ名前）だけを受け付ける |
+| `set` | 値を標準入力から読んで登録する。端末なら入力を画面に出さずに1行、パイプなら全部を読んで末尾の改行1つを落とす。宣言した名前と、Claudeのトークンの名前（`CLAUDE_CODE_OAUTH_TOKEN`、または`claudeToken`で選んだ名前）だけを受け付ける。`CLAUDE_CODE_OAUTH_TOKEN`は`--repo`を付けなければユーザー単位（どのリポジトリでも使う）に、付ければそのリポジトリだけに登録する |
 | `approve` | `plaintext`モードの秘密を、本物の値をVMに置いてよいと承認する。`placeholder`モードの秘密は承認が要らないのでエラー |
 | `reject` | `plaintext`の承認を取り消す |
 

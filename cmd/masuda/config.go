@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 )
 
 // repoFlag は設定系のサブコマンドが共通で受ける--repo。
@@ -198,16 +200,22 @@ func secretList(args []string) error {
 
 // secretSet は値を標準入力から読む。引数やフラグで受けないのは、シェルの履歴やpsに残さないため。
 // 端末ならエコーせずに1行読み、パイプなら全部読んで末尾の改行1つだけを落とす。
+// secretSet は値を置く。Claudeのトークン（CLAUDE_CODE_OAUTH_TOKEN）は、--repoを付けなければ
+// ユーザー単位（どのリポジトリでも使う）に置く。--repoを付ければそのリポジトリだけの上書き。
 func secretSet(args []string) error {
-	c := newCommand("secret set", "secret set <NAME> [--repo <dir>]  (値は標準入力から)")
+	c := newCommand("secret set", "secret set <NAME> [--repo <dir>]  (値は標準入力から。CLAUDE_CODE_OAUTH_TOKENは--repo無しならユーザー単位)")
 	repo := repoFlag(c)
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {
 		return err
 	}
-	root, err := absRepo(*repo)
-	if err != nil {
-		return err
+	repoGiven := false
+	c.fs.Visit(func(f *flag.Flag) { repoGiven = repoGiven || f.Name == "repo" })
+	root := ""
+	if repoGiven || pos[0] != config.ReservedSecret {
+		if root, err = absRepo(*repo); err != nil {
+			return err
+		}
 	}
 	value, err := readSecretValue(pos[0])
 	if err != nil {
@@ -219,6 +227,10 @@ func secretSet(args []string) error {
 	res, err := c.clients().config.SetSecret(context.Background(), connect.NewRequest(&apiv1.SetSecretRequest{RepoRoot: root, Name: pos[0], Value: value}))
 	if err != nil {
 		return err
+	}
+	if root == "" {
+		fmt.Printf("%s: set for this user (used by every repository without its own value)\n", pos[0])
+		return nil
 	}
 	printSecrets(res.Msg)
 	return nil

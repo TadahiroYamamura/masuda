@@ -254,7 +254,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 
 1. **定義の確認**: `WorkflowService.Check`（`workflow`は空で全部）。問題があれば一覧を見せる。`Show`のMermaidで図も出せる
 2. **egress**: `ConfigService.ListEgress`で宣言されたホストと承認の有無。`ApproveEgress`・`RejectEgress`で切り替える（どれも更新後の一覧を返す）
-3. **秘密**: `ListSecrets`で一覧。`valueSet`が偽なら`SetSecret`で値を入れる（値はパスワード欄で受け、表示しない。返ることも無い）。`approvalRequired`が真（`plaintext`モード、本物の値がゲストに入る）のものは、その意味を説明してから`ApproveSecret`。`claudeTokenSet`が偽なら、Claudeのトークン（`CLAUDE_CODE_OAUTH_TOKEN`）を`SetSecret`で入れるよう促す
+3. **秘密**: `ListSecrets`で一覧。`valueSet`が偽なら`SetSecret`で値を入れる（値はパスワード欄で受け、表示しない。返ることも無い）。`approvalRequired`が真（`plaintext`モード、本物の値がゲストに入る）のものは、その意味を説明してから`ApproveSecret`。`claudeTokenSet`が偽なら、Claudeのトークン（`CLAUDE_CODE_OAUTH_TOKEN`）を`SetSecret`で入れるよう促す。`repoRoot`を空にした`SetSecret`はユーザー単位の登録で、以後どのリポジトリでも`claudeTokenSet`が真になる（リポジトリごとの登録が優先）。`repoRoot`を空にした`ListSecrets`は、ユーザー単位のトークンの有無だけを返す
 4. **特権コマンド**: `ListPrivilegedCommands`。`command`と`image`を見せて`ApprovePrivilegedCommand`。`stale`は「承認した後に宣言が変わった」で、もう一度承認が要る
 5. **イメージ**: `ListImages`。`built`が偽のエントリは、`BuildImage`でビルドしておくと初回の`Run`が速い（`Run`も起動のたびにビルドするので必須ではない）。`BuildImage`はログの行（`logLine`）を流し、最後のメッセージに`buildId`が入る
 

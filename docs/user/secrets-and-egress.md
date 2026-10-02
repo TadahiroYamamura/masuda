@@ -125,7 +125,7 @@ masuda secret list
 - 値はホストの`~/.local/share/masuda/secrets/<リポジトリのパスのハッシュ>/<NAME>`（パーミッション0600）に置く。リポジトリにも設定ファイルにも書かない。チームメイトはそれぞれ自分の値を登録する
 - 置き場所はリポジトリの**絶対パス**で決まる。リポジトリを移動・複製したら、その場所でもう一度`masuda secret set`する
 - 値を読み戻すコマンドは無い。変えるときは`set`し直す
-- Claudeのトークンも同じ仕組みの1つで、名前は`CLAUDE_CODE_OAUTH_TOKEN`、送り先は`api.anthropic.com`。どのノードでも有効。複数のアカウントを使い分けるときは、`settings.local.json`の`claudeToken`で別の名前を選ぶ（[設定ファイル](settings.md#settings-local)）
+- Claudeのトークンも同じ仕組みの1つで、名前は`CLAUDE_CODE_OAUTH_TOKEN`、送り先は`api.anthropic.com`。どのノードでも有効。ただし置き場所は既定でユーザー単位（`~/.local/share/masuda/secrets/_user/`）で、`--repo`無しの`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`が置く。リポジトリごとに登録したもの（`--repo`付き）があればそちらが優先される。複数のアカウントを使い分けるときは、`settings.local.json`の`claudeToken`で別の名前を選ぶ（[設定ファイル](settings.md#settings-local)）
 
 ### `.env`を生成する
 

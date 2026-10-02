@@ -83,3 +83,29 @@ func TestApproveAndRejectSecret(t *testing.T) {
 		t.Fatalf("after storing the token: %+v", list.Msg)
 	}
 }
+
+// repo_rootを空にしたSetSecretはユーザー単位の置き場所へ置き、どのリポジトリでもトークンとして見える。
+func TestSetSecretUserScope(t *testing.T) {
+	dataDir := t.TempDir()
+	s := &configService{backend: &backend{dataDir: dataDir}}
+	repo := newSmokeRepo(t)
+	ctx := context.Background()
+	res, err := s.SetSecret(ctx, connect.NewRequest(&apiv1.SetSecretRequest{Name: config.ReservedSecret, Value: "tok"}))
+	if err != nil || !res.Msg.ClaudeTokenSet {
+		t.Fatalf("user-scope SetSecret: %v %v", err, res)
+	}
+	if !secrets.New(dataDir).Has("", config.ReservedSecret) {
+		t.Fatal("not stored in the user scope")
+	}
+	list, err := s.ListSecrets(ctx, connect.NewRequest(&apiv1.RepoRequest{RepoRoot: repo}))
+	if err != nil || !list.Msg.ClaudeTokenSet {
+		t.Fatalf("a repository sees the user token: %v %v", err, list)
+	}
+	user, err := s.ListSecrets(ctx, connect.NewRequest(&apiv1.RepoRequest{}))
+	if err != nil || !user.Msg.ClaudeTokenSet || len(user.Msg.Entries) != 0 {
+		t.Fatalf("user-scope ListSecrets: %v %v", err, user)
+	}
+	if _, err := s.SetSecret(ctx, connect.NewRequest(&apiv1.SetSecretRequest{Name: "../x", Value: "v"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("bad name: %v", err)
+	}
+}

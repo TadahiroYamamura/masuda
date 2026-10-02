@@ -137,7 +137,7 @@ stagingにあるref:
 |---|---|
 | `ListEgress` / `ApproveEgress` / `RejectEgress` | ゲストが届いてよいホストの宣言と承認。宣言と承認の両方にあるホストだけが許される |
 | `ListSecrets` | 宣言した秘密の一覧と、値の有無・承認の要否と有無。`claude_token_set`はClaude APIのトークンの値の有無（トークンは一覧に入らない） |
-| `SetSecret` | 秘密の値をホストの秘密ストアに置く。値は二度と返らない。Claudeのトークンもこれで置く（名前は`CLAUDE_CODE_OAUTH_TOKEN`か、`settings.local.json`の`claudeToken`） |
+| `SetSecret` | 秘密の値をホストの秘密ストアに置く。値は二度と返らない。Claudeのトークンもこれで置く（名前は`CLAUDE_CODE_OAUTH_TOKEN`か、`settings.local.json`の`claudeToken`）。`repo_root`を空にするとユーザー単位の置き場所へ置き、どのリポジトリでも（そのリポジトリの登録が無ければ）使われる |
 | `ApproveSecret` / `RejectSecret` | `plaintext`モード（本物の値がゲストに入る）の秘密の承認。`placeholder`モードは承認が要らない |
 | `ListPrivilegedCommands` / `ApprovePrivilegedCommand` | 特権コマンド（rootの2つ目のVMで動くコマンド）の宣言と承認。承認は宣言のハッシュに結びつき、宣言が変わると`stale`になる。取り消しのRPCは無い（`settings.local.json`から消す） |
 | `ListImages` | `.masuda/images/<entry>/Dockerfile`のあるエントリと、最後のビルドが今もsandbox serviceにあるか |

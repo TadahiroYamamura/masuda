@@ -24,7 +24,7 @@
 ## すべてのRPCに共通
 
 - ワークスペースのIDを受け取るRPCは、そのIDのワークスペースが無ければ`not_found`。IDとして不正な文字列（空文字列を含む）も`not_found`
-- `repo_root`を受け取るRPC（`Run`・ConfigService・WorkflowService）は、絶対パスでない・gitの作業ツリーでない・作業ツリーのトップでない（サブディレクトリを渡した）なら`invalid_argument`。WorkflowServiceだけは`repo_root`を空にでき、そのときは同梱の定義だけを読む
+- `repo_root`を受け取るRPC（`Run`・ConfigService・WorkflowService）は、絶対パスでない・gitの作業ツリーでない・作業ツリーのトップでない（サブディレクトリを渡した）なら`invalid_argument`。WorkflowServiceは`repo_root`を空にでき、そのときは同梱の定義だけを読む。ConfigServiceの`SetSecret`・`ListSecrets`も空にでき、そのときはユーザー単位の秘密（Claudeのトークン）を扱う
 - ホスト側のファイルの読み書きに失敗すれば`internal`
 
 ## WorkspaceService
@@ -95,7 +95,7 @@
 
 ## ConfigService
 
-すべてのRPCは、最初に`repo_root`の検査と設定の読み込みをする。
+すべてのRPCは、最初に`repo_root`の検査と設定の読み込みをする（`repo_root`が空の`SetSecret`・`ListSecrets`を除く。リポジトリを読まない）。
 
 - `repo_root`が不正なら`invalid_argument`
 - `.masuda/settings.json`・`.masuda/settings.local.json`が読めない（JSONとして壊れている、知らないキーがある）なら`failed_precondition`
@@ -106,7 +106,7 @@
 | `ApproveEgress` | `invalid_argument` | `host`が`settings.json`の`egress`に宣言されていない |
 | `RejectEgress` | `invalid_argument` | `host`が宣言にも承認にも無い（宣言から消えたホストの承認は取り消せる） |
 | `ListSecrets` | | 共通のものだけ |
-| `SetSecret` | `invalid_argument` | `name`が宣言した秘密でもClaudeのトークンの名前でもない。`value`が空 |
+| `SetSecret` | `invalid_argument` | `name`が宣言した秘密でもClaudeのトークンの名前でもない（`repo_root`が空なら、名前の形が不正）。`value`が空 |
 | `ApproveSecret` | `invalid_argument` | `name`が宣言されていない。`placeholder`モードで承認が要らない |
 | `RejectSecret` | `invalid_argument` | `name`が宣言にも承認にも無い。`placeholder`モードで承認の記録も無い |
 | `ListPrivilegedCommands` | | 共通のものだけ |
