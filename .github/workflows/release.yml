@@ -63,6 +63,11 @@ jobs:
           } >../release-notes.md
           cat ../release-notes.md
 
+      # フェイクsandboxは特権コマンドを`unshare -Urm`（非特権のユーザー名前空間）で動かす。
+      # Ubuntu 24.04のランナーはAppArmorがこれを禁じている（uid_mapへの書き込みがEPERM）ので、テストの前に解く。
+      - name: Allow unprivileged user namespaces
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
       - name: Vet and test
         working-directory: masuda
         run: |
