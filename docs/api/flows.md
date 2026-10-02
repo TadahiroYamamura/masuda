@@ -71,6 +71,7 @@ Content-Type: application/connect+json
 - `afterSeq`に最後に受け取った`seq`を渡すと、その続きから受け取れる（再送）。serveが再送用に持つのは直近10000件だけで、それより古い続きを求めると、持っている最も古いものから黙って始まる
 - `afterSeq`が0（新しいものだけ）のときは、最初に対象のワークスペースごとの**今の`status`**を1つずつ送る。この`status`は新しい番号を振らず、`seq`には今の最新の番号が入る。その値を次の`afterSeq`に使えば、取りこぼしも重複も無い
 - `afterSeq`が0でないときは、最初の`status`は送らない（続きのイベントだけ）
+- `afterSeq`が今の最新の`seq`より大きい（serveの再起動で番号が振り直された等）と、ストリームは最初に`out_of_range`で終わる。`afterSeq: 0`で繋ぎ直す
 - `status`は内容が前と変わったときだけ流れる。時刻（`updatedAt`・`activity.lastActivity`）だけの変化では流れないので、「最後の活動から何分」の表示はクライアントが時計で進める
 
 ### `workspaceId`が空のイベント
@@ -92,7 +93,7 @@ function serveNotice(ev) {
 
 ### 再接続
 
-- ストリームが**正常に**終わったら、`masuda serve`が止まった。serveを再起動すると`seq`は1から振り直されるので、戻ってきたら`afterSeq: 0`で繋ぎ直す（最初の`status`で全体が揃う）。古い`afterSeq`のまま繋ぐと、番号がそこを超えるまで何も届かない
+- ストリームが**正常に**終わったら、`masuda serve`が止まった。serveを再起動すると`seq`は1から振り直されるので、戻ってきたら`afterSeq: 0`で繋ぎ直す（最初の`status`で全体が揃う）。古い`afterSeq`のまま繋ぐと、それが新しい最新より大きければ`out_of_range`になる（小さければ黙ってその番号の続きから届くので、serveの再起動が分かっているなら必ず0で繋ぐ）
 - **エラーで**切れた（ネットワーク・プロキシのタイムアウト等）なら、最後の`seq`を`afterSeq`に渡して繋ぎ直す
 - どちらか分からないときは`afterSeq: 0`で繋ぎ直すのが安全。失うのは切れていた間の`http`・`guestHook`・`engine`のイベントだけで、状態は最初の`status`で揃う。実行記録そのものはワークスペースの`records/execution-log.jsonl`に残っている
 - serveを再起動すると、動いていたワークスペースはすべてSTOPPEDになる（自動では再開しない）

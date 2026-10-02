@@ -56,7 +56,8 @@ const claudeTokenPrefix = "sk-ant-oat01-"
 func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, image string) (*bootPlan, error) {
 	cfg, err := config.LoadDir(defsDir)
 	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		// 設定ファイルが読めないのはConfigServiceと同じくFailedPrecondition（契約「エラーコードの約束」）。
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
 	local, err := config.LoadLocal(repoRoot)
 	if err != nil {

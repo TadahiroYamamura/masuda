@@ -1,16 +1,17 @@
 # エラーコード
 
-各RPCが失敗したときに返す[Connectのエラーコード](https://connectrpc.com/docs/protocol/#error-codes)と、その条件。`masuda serve`の実装から洗い出した一覧で、クライアントはこのコードで分岐してよい。メッセージ（`message`）は人間向けの英語で、文言は変わりうるので分岐に使わない。
+各RPCが失敗したときに返す[Connectのエラーコード](https://connectrpc.com/docs/protocol/#error-codes)と、その条件。コードの意味は契約（`docs/design/contracts.md`「エラーコードの約束」）が定め、この一覧はRPCごとの条件をそれに沿って並べたもの。クライアントはこのコードで分岐してよい。メッセージ（`message`）は人間向けの英語で、文言は変わりうるので分岐に使わない。
 
 ## コードの使い分け
 
 | コード | HTTP | 意味 | クライアントがすること |
 |---|---|---|---|
-| `invalid_argument` | 400 | 要求そのものが誤り。何度送っても同じ結果になる | 入力を直す。定義の問題・宣言に無い名前もここ |
-| `not_found` | 404 | 指したもの（ワークスペース・ゲート・質問・rev・パス・ワークフロー）が無い | 一覧を取り直す |
-| `failed_precondition` | 400 | 要求は正しいが、今の状態では受け付けられない | 状態を取り直してから、条件を満たして送り直す（Stopしてから、承認してから、等） |
-| `already_exists` | 409 | 作ろうとしたものが既にある（Runのブランチ） | 別の名前にする |
-| `unimplemented` | 501 | その組み合わせはまだ実装が無い・このsandboxでは提供しない | 機能を出さない・別の手段を案内する |
+| `invalid_argument` | 400 | 要求そのものが誤り。何度送っても同じ結果になる | 入力を直す。定義の読み込み・検査の失敗、宣言に無い名前、未定義のワークフロー名、ゲートの種類に合わない`outcome`もここ |
+| `not_found` | 404 | 指したもの（ワークスペース・ゲート・質問・rev・パス）が無い | 一覧を取り直す |
+| `failed_precondition` | 400 | 要求は正しいが、今の状態では受け付けられない。設定ファイル（`settings.json`・`settings.local.json`）が読めないのもここ | 状態を取り直してから、条件を満たして送り直す（Stopしてから、承認してから、設定ファイルを直してから、等） |
+| `already_exists` | 409 | 作ろうとしたものが既にある（publishするワークフローのRunのブランチ） | 別の名前にする |
+| `out_of_range` | 400 | `Watch`の`after_seq`が最新のseqより大きい（serveの再起動で番号が振り直された等） | `after_seq: 0`で繋ぎ直す |
+| `unimplemented` | 501 | その構成では提供しない（フェイクsandboxの`AttachInfo`） | 機能を出さない・別の手段を案内する |
 | `unavailable` | 503 | `masuda-sandbox serve`に届かない | sandbox serviceの起動を案内する |
 | `canceled` | 499 | 要求が取り消された（クライアントの切断等） | 必要なら送り直す |
 | `internal` | 500 | ホスト側の読み書きの失敗など、masudaの側の問題 | 利用者に見せ、`masuda serve`のログを確かめてもらう |
@@ -30,18 +31,18 @@
 
 | RPC | コード | 条件 |
 |---|---|---|
-| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`settings.json`が読めない・知らないキーがある。ブランチ名が不正。`base`が実リポジトリに無い |
-| | `failed_precondition` | 起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない、`settings.local.json`が読めない・`stallAfter`が不正 |
+| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
+| | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
 | | `internal` | ワークスペース・stagingの作成、engineの開始に失敗した |
 | `Resume` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる）。既に動いている。定義の写しが無い・読み込めない。起動に要るものが足りない（`Run`と同じ） |
-| | `invalid_argument` | 定義の写しの`settings.json`が読めない |
+| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。起動に要るものが足りない（`Run`と同じ） |
 | | `internal` | 実行の窓口の用意・質問の破棄の記録に失敗した |
 | `Get` | `not_found` | ワークスペースが無い |
 | `List` | `internal` | 一覧を読めない。`repo_root`は検査しない（一致するものが無ければ空の一覧） |
 | `Watch` | `not_found` | `id`を指定し、そのワークスペースが無い（ストリームの最初に終わる） |
+| | `out_of_range` | `after_seq`が最新のseqより大きい（ストリームの最初に終わる）。`after_seq: 0`で繋ぎ直す |
 | | （正常な終わり） | `masuda serve`が止まると、エラーでなく正常な終わりでストリームが閉じる |
 | `Stop` | `not_found` | ワークスペースが無い |
 | | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す |
@@ -122,16 +123,7 @@
 | RPC | コード | 条件 |
 |---|---|---|
 | `List` | `invalid_argument` | `repo_root`が不正。定義が読み込めない |
-| `Show` | `invalid_argument` | `workflow`が空。`repo_root`が不正。定義が読み込めない。図にできない |
-| | `not_found` | `workflow`が定義に無い |
-| `Check` | `invalid_argument` | `repo_root`が不正 |
-| | `not_found` | `workflow`を指定し、それが定義に無い |
+| `Show` | `invalid_argument` | `workflow`が空。`repo_root`が不正。定義が読み込めない。図にできない。`workflow`が定義に無い |
+| `Check` | `invalid_argument` | `repo_root`が不正。`workflow`を指定し、それが定義に無い |
 
 `Check`は、定義が読み込めないときもエラーにせず、その理由を`problems`の1つとして返す。
-
-## 揃っていないところ
-
-次は今の実装の振る舞いで、将来揃える可能性がある。クライアントは両方のコードを同じに扱っておくと安全。
-
-- 定義に無いワークフロー: `Run`は`invalid_argument`、`Show`・`Check`は`not_found`
-- 壊れた`settings.json`: `Run`は`invalid_argument`、ConfigServiceは`failed_precondition`

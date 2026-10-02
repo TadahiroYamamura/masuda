@@ -157,4 +157,4 @@ stagingにあるref:
 | `Show` | engineが割り込み（triage・deviation）を描き足したMermaidの図 |
 | `Check` | 定義の問題の一覧。`workflow`が空なら全ワークフローを検査する。定義が読み込めないときもエラーにせず、理由を問題の1つとして返す |
 
-返すコード: 定義に無いワークフローは`not_found`、`repo_root`の誤りは`invalid_argument`。詳細は[エラーコード](errors.md#workflowservice)。
+返すコード: 定義に無いワークフロー・`repo_root`の誤りは`invalid_argument`。詳細は[エラーコード](errors.md#workflowservice)。

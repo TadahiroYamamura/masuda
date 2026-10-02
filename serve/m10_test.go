@@ -89,7 +89,7 @@ func TestWorkflowServiceListShowCheck(t *testing.T) {
 	if err != nil || !strings.Contains(show.Msg.Mermaid, "ask") {
 		t.Fatalf("Show: %v %q", err, show.Msg.GetMermaid())
 	}
-	if _, err := cl.workflows.Show(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/nope"})); connect.CodeOf(err) != connect.CodeNotFound {
+	if _, err := cl.workflows.Show(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/nope"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("Show of an undefined workflow: %v", err)
 	}
 
@@ -350,4 +350,31 @@ func TestTriageGateDecisions(t *testing.T) {
 		t.Fatalf("dismiss: %v %v", err, d)
 	}
 	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+}
+
+func TestErrorCodesAreUnified(t *testing.T) {
+	cl := startClients(t, t.TempDir(), Options{})
+	repo := newSmokeRepo(t)
+	ctx := context.Background()
+	// Watchのafter_seqが最新より先なら、黙って待たずにOutOfRange。
+	st, err := cl.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{AfterSeq: 1 << 40}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for st.Receive() {
+	}
+	if connect.CodeOf(st.Err()) != connect.CodeOutOfRange {
+		t.Fatalf("Watch beyond the latest seq: %v", st.Err())
+	}
+	// 壊れたsettings.jsonはRunでもFailedPrecondition（ConfigServiceと同じ）。
+	writeRepoFile(t, repo, ".masuda/settings.json", "{")
+	_, err = cl.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/x", Inputs: smokeInputs}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+		t.Fatalf("Run with a broken settings.json: %v", err)
+	}
+	// 未定義のワークフローはCheckでもInvalidArgument。
+	_, err = cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{Workflow: "workflows/nope"}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("Check of an undefined workflow: %v", err)
+	}
 }
