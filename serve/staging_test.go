@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -212,4 +213,39 @@ func TestRunBootFailureBlocksWorkspace(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 	t.Fatal("workspace did not become BLOCKED")
+}
+
+// failingFirstCreate は最初のCreateSandboxだけが失敗するsandboxクライアント。
+type failingFirstCreate struct {
+	sandboxv1connect.SandboxServiceClient
+	calls *atomic.Int32
+}
+
+func (f failingFirstCreate) CreateSandbox(ctx context.Context, req *connect.Request[sandboxv1.CreateSandboxRequest]) (*connect.Response[sandboxv1.Sandbox], error) {
+	if f.calls.Add(1) == 1 {
+		return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("no room for another VM"))
+	}
+	return f.SandboxServiceClient.CreateSandbox(ctx, req)
+}
+
+// 起動に失敗してBLOCKEDになったワークスペースは、Stopを挟まずにResumeできる。
+func TestResumeAfterBootFailureWithoutStop(t *testing.T) {
+	var calls atomic.Int32
+	ws, _, repo := newTestAPIWith(t, func(c sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient {
+		return failingFirstCreate{c, &calls}
+	})
+	ctx := context.Background()
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/x", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED)
+	if _, err := ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+		t.Fatalf("Resume of a workspace whose boot failed: %v", err)
+	}
+	got := waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	if got.Reason != "" {
+		t.Fatalf("reason must be cleared after a successful resume: %q", got.Reason)
+	}
 }

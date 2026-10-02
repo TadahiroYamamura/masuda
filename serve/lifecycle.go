@@ -71,8 +71,8 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	if err != nil {
 		return nil, err
 	}
-	if w.State != workspace.StateStopped {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is %s; only a stopped workspace can be resumed", w.ID, w.State))
+	if !resumable(w) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is %s; only a stopped workspace (or one whose sandbox failed to boot) can be resumed", w.ID, w.State))
 	}
 	if b.runFor(w.ID) != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is already running", w.ID))
@@ -89,6 +89,7 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	if err != nil {
 		return nil, err
 	}
+	prevState, prevReason := w.State, w.Reason
 	w.State = workspace.StateStarting
 	w.Reason = ""
 	if err := w.Save(); err != nil {
@@ -96,7 +97,7 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	}
 	c, err := b.newRunCtl(w, set, plan)
 	if err != nil {
-		w.State = workspace.StateStopped
+		w.State, w.Reason = prevState, prevReason
 		_ = w.Save()
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

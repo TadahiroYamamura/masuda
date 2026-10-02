@@ -172,7 +172,7 @@ func (b *backend) boot(c *runCtl, resume bool) {
 		b.destroySandbox(id)
 		c.update(func(w *workspace.Workspace) {
 			w.State = workspace.StateBlocked
-			w.Reason = "sandbox boot failed: " + err.Error()
+			w.Reason = bootFailedReason + err.Error()
 		})
 		return
 	}
@@ -183,6 +183,17 @@ func (b *backend) boot(c *runCtl, resume bool) {
 		return
 	}
 	c.setState(workspace.StateRunning)
+}
+
+// bootFailedReason は起動に失敗してBLOCKEDにしたときのReasonの頭。engineが止めたBLOCKEDと
+// 区別し、Stopを挟まずにResumeできるようにする（sandboxも実行の窓口も既に無く、記録は
+// 起動前のままなので、止めたワークスペースと同じに再開できる）。
+const bootFailedReason = "sandbox boot failed: "
+
+// resumable はwをResumeできる状態か。止めたものと、起動に失敗してBLOCKEDになったもの。
+func resumable(w *workspace.Workspace) bool {
+	return w.State == workspace.StateStopped ||
+		(w.State == workspace.StateBlocked && strings.HasPrefix(w.Reason, bootFailedReason))
 }
 
 func (b *backend) destroySandbox(id string) {
