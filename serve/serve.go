@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // Options は`masuda serve`の起動設定。
@@ -67,7 +68,7 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	s := &Server{
 		opts:     opts,
 		listener: ln,
-		http:     &http.Server{Handler: h2c.NewHandler(newMux(), &http2.Server{})},
+		http:     &http.Server{Handler: h2c.NewHandler(newMux(workspace.NewStore(opts.DataDir)), &http2.Server{})},
 		done:     make(chan struct{}),
 	}
 	go func() {
@@ -117,12 +118,12 @@ func removeStaleSocket(path string) error {
 	return nil
 }
 
-func newMux() *http.ServeMux {
+func newMux(store *workspace.Store) *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{}))
+	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{store: store}))
 	mux.Handle(apiv1connect.NewGateServiceHandler(apiv1connect.UnimplementedGateServiceHandler{}))
 	mux.Handle(apiv1connect.NewQuestionServiceHandler(apiv1connect.UnimplementedQuestionServiceHandler{}))
-	mux.Handle(apiv1connect.NewStagingServiceHandler(apiv1connect.UnimplementedStagingServiceHandler{}))
+	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))
 	mux.Handle(apiv1connect.NewConfigServiceHandler(apiv1connect.UnimplementedConfigServiceHandler{}))
 	mux.Handle(apiv1connect.NewWorkflowServiceHandler(apiv1connect.UnimplementedWorkflowServiceHandler{}))
 	return mux

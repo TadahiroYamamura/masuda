@@ -62,7 +62,7 @@ func (r *Repo) PushRemote(ctx context.Context, remoteURL, branch, commit string)
 		return err
 	}
 	if remoteURL == "" || strings.HasPrefix(remoteURL, "-") {
-		return fmt.Errorf("invalid remote %q", remoteURL)
+		return fmt.Errorf("remote %q: %w", remoteURL, ErrInvalid)
 	}
 	_, err := r.git(ctx, "push", "--quiet", "--", remoteURL, commit+":"+BranchRef(branch))
 	return err
@@ -72,7 +72,7 @@ func (r *Repo) PushRemote(ctx context.Context, remoteURL, branch, commit string)
 // originを外しているので、push先は実リポジトリの設定から引く。
 func RemoteURL(ctx context.Context, repoRoot, name string) (string, error) {
 	if name == "" || strings.HasPrefix(name, "-") {
-		return "", fmt.Errorf("invalid remote name %q", name)
+		return "", fmt.Errorf("remote name %q: %w", name, ErrInvalid)
 	}
 	out, err := runGit(ctx, repoRoot, "remote", "get-url", "--push", name)
 	if err != nil {

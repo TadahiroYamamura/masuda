@@ -27,6 +27,12 @@ func BranchRef(branch string) string { return "refs/heads/" + branch }
 // ErrNotFound はrevやパスがstagingに無いことを表す。
 var ErrNotFound = errors.New("not found")
 
+// ErrInvalid は引数（rev・ブランチ名等）が受け付けられない形であることを表す。
+var ErrInvalid = errors.New("invalid argument")
+
+// ErrBranchExists は作ろうとしたブランチが実リポジトリに既にあることを表す。
+var ErrBranchExists = errors.New("branch already exists")
+
 // Repo は1つのstaging bareリポジトリ。
 type Repo struct {
 	Dir string
@@ -92,7 +98,7 @@ func (r *Repo) git(ctx context.Context, args ...string) (string, error) {
 // 文字列をそのままgitの引数に渡すので、`--output=...`のような値を弾く。
 func validRev(rev string) error {
 	if rev == "" || strings.HasPrefix(rev, "-") {
-		return fmt.Errorf("invalid rev %q", rev)
+		return fmt.Errorf("rev %q: %w", rev, ErrInvalid)
 	}
 	return nil
 }
@@ -141,7 +147,7 @@ type CreateResult struct {
 // 実リポジトリは読むだけで、ブランチもrefも作らない。
 func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 	if _, err := runGit(ctx, o.RepoRoot, "check-ref-format", "--branch", o.Branch); err != nil || strings.HasPrefix(o.Branch, "-") {
-		return CreateResult{}, fmt.Errorf("invalid branch name %q", o.Branch)
+		return CreateResult{}, fmt.Errorf("branch name %q: %w", o.Branch, ErrInvalid)
 	}
 	base := o.Base
 	if base == "" {
@@ -163,7 +169,7 @@ func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
 		base = baseCommit
 	}
 	if _, err := resolve(ctx, o.RepoRoot, BranchRef(o.Branch), "commit"); err == nil {
-		return CreateResult{}, fmt.Errorf("branch %q already exists in %s", o.Branch, o.RepoRoot)
+		return CreateResult{}, fmt.Errorf("%q in %s: %w", o.Branch, o.RepoRoot, ErrBranchExists)
 	}
 
 	if err := Clone(ctx, o.RepoRoot, o.Dir); err != nil {
@@ -202,7 +208,7 @@ func (r *Repo) ImportBundle(ctx context.Context, bundlePath, srcRef, occurrence 
 		return "", err
 	}
 	if occurrence == "" || strings.ContainsAny(occurrence, "/ ") {
-		return "", fmt.Errorf("invalid occurrence %q", occurrence)
+		return "", fmt.Errorf("occurrence %q: %w", occurrence, ErrInvalid)
 	}
 	if _, err := r.git(ctx, "bundle", "verify", "--quiet", "--", bundlePath); err != nil {
 		return "", err
@@ -217,7 +223,7 @@ func (r *Repo) ImportBundle(ctx context.Context, bundlePath, srcRef, occurrence 
 // CreateBundle はrefs（stagingのref名）を含むbundleをoutPathに書く。ゲストへ渡す用。
 func (r *Repo) CreateBundle(ctx context.Context, outPath string, refs ...string) error {
 	if len(refs) == 0 {
-		return errors.New("bundle needs at least one ref")
+		return fmt.Errorf("bundle needs at least one ref: %w", ErrInvalid)
 	}
 	for _, ref := range refs {
 		if err := validRev(ref); err != nil {
@@ -249,4 +255,13 @@ func (r *Repo) ListRefs(ctx context.Context) ([]Ref, error) {
 		refs = append(refs, Ref{Name: name, Commit: commit})
 	}
 	return refs, nil
+}
+
+// TopLevel はdirを含む作業ツリーのトップを返す。gitの作業ツリーでなければErrInvalid。
+func TopLevel(ctx context.Context, dir string) (string, error) {
+	out, err := runGit(ctx, dir, "rev-parse", "--show-toplevel")
+	if err != nil || strings.TrimSpace(out) == "" {
+		return "", fmt.Errorf("%s is not a git work tree: %w", dir, ErrInvalid)
+	}
+	return strings.TrimSpace(out), nil
 }

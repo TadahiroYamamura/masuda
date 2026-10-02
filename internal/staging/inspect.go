@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -121,12 +122,17 @@ type cmdReader struct {
 	io.ReadCloser
 	cmd    *exec.Cmd
 	stderr *bytes.Buffer
+	once   sync.Once
+	err    error
 }
 
+// Close は何度呼んでもよい（2回目以降は1回目の結果を返す）。
 func (c *cmdReader) Close() error {
-	_ = c.ReadCloser.Close()
-	if err := c.cmd.Wait(); err != nil {
-		return fmt.Errorf("git cat-file: %w\n%s", err, c.stderr.String())
-	}
-	return nil
+	c.once.Do(func() {
+		_ = c.ReadCloser.Close()
+		if err := c.cmd.Wait(); err != nil {
+			c.err = fmt.Errorf("git cat-file: %w\n%s", err, c.stderr.String())
+		}
+	})
+	return c.err
 }
