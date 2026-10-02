@@ -1510,11 +1510,24 @@
 <h2 id="1-masuda">1. <code>.masuda/</code>の雛形を置く<a class="headerlink" href="#1-masuda" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>init
 </code></pre></div>
-<div class="highlight"><pre><span></span><code>created .masuda/settings.json
-created .masuda/images/default/Dockerfile
+<div class="highlight"><pre><span></span><code>created .masuda/images/default/Dockerfile
+created .masuda/settings.json
 created .masuda/reviews/comment-history-leakage.md
-...（レビュー観点が14個）
+created .masuda/reviews/dead-code.md
+created .masuda/reviews/error-handling-gaps.md
+created .masuda/reviews/heavy-loop-processing.md
+created .masuda/reviews/implicit-type-conversion.md
+created .masuda/reviews/injection-vulnerability.md
+created .masuda/reviews/input-validation-gaps.md
+created .masuda/reviews/logging-secrets.md
+created .masuda/reviews/missing-tests-guard-clauses.md
+created .masuda/reviews/missing-tests-new-code.md
+created .masuda/reviews/n-plus-one-query.md
+created .masuda/reviews/nil-check-gaps.md
+created .masuda/reviews/resource-leak.md
+created .masuda/reviews/secret-hardcode.md
 created .gitignore (.masuda/settings.local.json)
+note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json
 </code></pre></div>
 <p><code>masuda init</code>は<code>masuda serve</code>無しで動く。既にあるファイルは上書きせず、足りないものだけ足す。<code>.gitignore</code>には利用者ごとの承認を書く<code>.masuda/settings.local.json</code>を足す（<code>.masuda/</code>ごと無視している行があれば足さない）。</p>
 <p><code>.masuda/</code>はコミットしてもしなくてもよい。masudaは実行を始めるときに作業ツリーの<code>.masuda/</code>を読む。チームで共有するならコミットする。</p>
@@ -1568,45 +1581,48 @@ created .gitignore (.masuda/settings.local.json)
 標準ライブラリだけを使うこと。他のファイルは変更しないこと。
 </code></pre></div>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>run<span class="w"> </span>workflows/develop<span class="w"> </span>--branch<span class="w"> </span>feat/triangle<span class="w"> </span>--input<span class="w"> </span><span class="nv">instructions</span><span class="o">=</span>@task.md
-<span class="c1"># 4f1c2a9e8b3d starting</span>
+<span class="c1"># 55a7dbe1b35f starting</span>
 </code></pre></div>
 <ul>
 <li><code>--branch</code>は作るブランチの名前。対象リポジトリに既にある名前は使えない</li>
 <li>分岐元は、今チェックアウトしているブランチ。変えるなら<code>--base main</code>のように渡す</li>
 <li><code>--input instructions=@task.md</code>の<code>@</code>は「ファイルの中身」。<code>instructions=文字列</code>と直接書いてもよい</li>
-<li>出てきた<code>4f1c2a9e8b3d</code>がワークスペースのID。以下<code>&lt;id&gt;</code>と書く</li>
+<li>出てきた<code>55a7dbe1b35f</code>がワークスペースのID。以下<code>&lt;id&gt;</code>と書く</li>
 </ul>
 <p><code>masuda run</code>はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。</p>
 <h2 id="7">7. 様子を見る<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>watch<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
 <p>状態の変化、ワークフローの進み、VMからの通信が1行ずつ流れる。Ctrl-Cで見るのをやめても実行は続く。</p>
-<div class="highlight"><pre><span></span><code>12 10:41:02 4f1c2a9e8b3d status running working
-15 10:41:30 4f1c2a9e8b3d engine enter occ=000001 workflows/develop/investigate
-16 10:41:31 4f1c2a9e8b3d http POST api.anthropic.com/v1/messages ...
+<div class="highlight"><pre><span></span><code>3 01:38:08 55a7dbe1b35f status running working
+27 01:38:12 55a7dbe1b35f engine enter occ=0000001 workflows/develop/investigate
+28 01:38:12 55a7dbe1b35f status running working agent investigator (occ 0000001)
+31 01:38:13 55a7dbe1b35f http POST api.anthropic.com/v1/messages ...
+32 01:38:14 55a7dbe1b35f http POST api.anthropic.com/v1/messages 200 869ms
+33 01:38:14 55a7dbe1b35f hook PostToolUse Read
 ...
 </code></pre></div>
 <p>一覧で見るなら<code>masuda list</code>。</p>
-<div class="highlight"><pre><span></span><code>ID            BRANCH         STATE         ACTIVITY        POSITION                 OPEN
-4f1c2a9e8b3d  feat/triangle  waiting_gate  waiting_gate    ...                      gate:plan
+<div class="highlight"><pre><span></span><code>ID            BRANCH         STATE         ACTIVITY              POSITION                 OPEN
+55a7dbe1b35f  feat/triangle  waiting_gate  waiting_gate 10s ago  gate plan (occ 0000003)  gate:plan
 </code></pre></div>
 <p>各列の意味は<a href="../operations/#list">運用</a>。VMの中のClaude Codeの画面を直接見たければ<code>masuda chat &lt;id&gt;</code>（<code>C-b d</code>で抜ける。抜けても実行は続く）。</p>
 <h2 id="8-plan-gate">8. 計画を承認する（plan gate）<a class="headerlink" href="#8-plan-gate" title="Permanent link">&para;</a></h2>
 <p>調査と計画が終わると、計画の承認待ち（<code>waiting_gate</code>、OPENに<code>gate:plan</code>）で止まる。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>list
 <span class="c1"># WORKSPACE     OCCURRENCE  GATE  TARGET  OPENED</span>
-<span class="c1"># 4f1c2a9e8b3d  000004      plan  plan    10-02 10:47:12</span>
+<span class="c1"># 55a7dbe1b35f  0000003     plan  plan    10-03 01:38:54</span>
 
-masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">000004</span>
+masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span>
 </code></pre></div>
-<p><code>gate show</code>は計画（変更方針と、ステップごとの対象ファイル）と、打てるコマンドを出す。</p>
-<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">000004</span><span class="w"> </span>--hash<span class="w"> </span>&lt;gate<span class="w"> </span>showが出したtarget_hash&gt;
+<p><code>gate show</code>は計画（変更方針と、ステップごとの対象ファイル。<code>summary</code>・<code>steps</code>・<code>expected_byproducts</code>を持つJSONがそのまま1行で出る）と、打てるコマンドを出す。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span><span class="w"> </span>--hash<span class="w"> </span>&lt;gate<span class="w"> </span>showが出したtarget_hash&gt;
 </code></pre></div>
 <ul>
 <li><code>--hash</code>を渡すと、あなたが読んだ内容と同じものだけを承認する。省くと、その時点で開いているゲートの内容を承認する</li>
-<li>直してほしければ<code>masuda gate reject &lt;id&gt; 000004 --comment "ステップ2でテストも書くこと"</code>。計画がコメントを踏まえて書き直され、もう一度このゲートが開く</li>
+<li>直してほしければ<code>masuda gate reject &lt;id&gt; 0000003 --comment "ステップ2でテストも書くこと"</code>。計画がコメントを踏まえて書き直され、もう一度このゲートが開く</li>
 </ul>
-<p>承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→コミット」が進む。途中レビューで直しきれない指摘があったときだけ、途中の承認（<code>interim</code>ゲート）で止まる。</p>
+<p>承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→コミット」が進む。途中レビューで直しきれない指摘があったときだけ、途中の承認（<code>interim</code>ゲート）で止まる。計画に無いファイルが変わっていれば、コミットの前に<code>deviation</code>ゲートでも止まる（gitで追跡している<code>__pycache__</code>等が典型。<a href="../troubleshooting/#deviation">トラブルシューティング</a>）。</p>
 <h2 id="9-review-gate">9. レビュー結果を承認する（review gate）<a class="headerlink" href="#9-review-gate" title="Permanent link">&para;</a></h2>
 <p>全ステップが終わると、全観点でのレビュー・横断的な問題の確認・自動修正が走り、レビューの承認待ち（<code>gate:review</code>）で止まる。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;
@@ -1620,7 +1636,8 @@ masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> <
 <p>却下（<code>reject --comment ...</code>）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。</p>
 <h2 id="10">10. 結果を確かめる<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>list<span class="w"> </span>--all
-<span class="c1"># ... feat/triangle  done  idle  outcome done  -</span>
+<span class="c1"># ID            BRANCH         STATE  ACTIVITY      POSITION      OPEN</span>
+<span class="c1"># 55a7dbe1b35f  feat/triangle  done   idle 59s ago  outcome done  -</span>
 
 git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>main..feat/triangle
 git<span class="w"> </span>switch<span class="w"> </span>feat/triangle
