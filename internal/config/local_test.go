@@ -11,36 +11,8 @@ func TestLoadLocalMissingFileReturnsZeroValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal() error = %v, want nil", err)
 	}
-	if settings.MCPServers != nil {
-		t.Fatalf("MCPServers = %v, want nil", settings.MCPServers)
-	}
-}
-
-func TestSaveLocalRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	want := LocalSettings{
-		MCPServers: map[string]MCPServerApproval{
-			"github": {
-				Approved: true,
-				DeclHash: "abc123",
-				Env:      map[string]string{"GITHUB_TOKEN": "secret"},
-			},
-		},
-	}
-	if err := SaveLocal(dir, want); err != nil {
-		t.Fatalf("SaveLocal() error = %v, want nil", err)
-	}
-
-	got, err := LoadLocal(dir)
-	if err != nil {
-		t.Fatalf("LoadLocal() error = %v, want nil", err)
-	}
-	approval, ok := got.MCPServers["github"]
-	if !ok {
-		t.Fatal("MCPServers[\"github\"] missing after round trip")
-	}
-	if !approval.Approved || approval.DeclHash != "abc123" || approval.Env["GITHUB_TOKEN"] != "secret" {
-		t.Fatalf("approval = %+v, want Approved=true DeclHash=abc123 Env[GITHUB_TOKEN]=secret", approval)
+	if settings.PrivilegedCommands != nil {
+		t.Fatalf("PrivilegedCommands = %v, want nil", settings.PrivilegedCommands)
 	}
 }
 

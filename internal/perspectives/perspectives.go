@@ -1,31 +1,22 @@
-// Package perspectives holds masuda's built-in review perspectives — the
-// same 14 checks that used to live hardcoded in
-// orchestrator/perspectives/config.py — as the canonical source CI zips
-// into a GitHub Release asset (ADR-0033; internal/selfupdate.SyncReviews
-// fetches and extracts it) for `masuda init`/`masuda update` to materialize
-// into a target repository's .masuda/reviews/ (ADR-0024). Each file is
-// Markdown with YAML frontmatter (name — ADR-0025 dropped category/severity,
-// both unused dead data; trigger — ADR-0027's natural language condition
-// for whether phase 4's lightweight interim review should run this
-// perspective against a single implementation step, in the same style as a
-// Claude Skill's description field; enable — ADR-0033's opt-out flag,
-// defaults to true) plus a free-text body that becomes the perspective's
-// review_prompt verbatim; the filename (minus extension) is the
-// perspective's stable ID.
+// Package perspectives は同梱のレビュー観点を持つ。各ファイルはYAML frontmatter
+// （name・trigger・enable）付きのMarkdownで、本文がそのまま観点のプロンプトになり、
+// ファイル名（拡張子を除く）が観点のIDになる。`masuda init`が対象リポジトリの
+// `.masuda/reviews/`へ書き出し、同じパスのファイルがあればそちらが丸ごと優先される。
 package perspectives
 
 import (
-	"path/filepath"
-
-	"github.com/TadahiroYamamura/masuda/internal/config"
+	"embed"
+	"io/fs"
 )
 
-// ReviewsDirName is the subdirectory of config.DirName that holds
-// perspective files.
-const ReviewsDirName = "reviews"
+//go:embed builtin/*.md
+var builtin embed.FS
 
-// ReviewsDir returns the absolute path to repoRoot's perspective directory
-// (<repoRoot>/.masuda/reviews).
-func ReviewsDir(repoRoot string) string {
-	return filepath.Join(repoRoot, config.DirName, ReviewsDirName)
+// Builtin は同梱の観点ファイルを`<id>.md`の名前で並べたFSを返す。
+func Builtin() fs.FS {
+	sub, err := fs.Sub(builtin, "builtin")
+	if err != nil {
+		panic(err)
+	}
+	return sub
 }

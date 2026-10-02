@@ -1,9 +1,3 @@
-// local.go handles .masuda/settings.local.json: the per-user, gitignored
-// counterpart to settings.json. Where settings.json is a project's
-// committed *declaration* of what it wants (Issue #19: blindly trusted,
-// must never carry secrets), this file is the *user's* explicit approval
-// of those declarations plus the real secret values they need -- see
-// MCPServerDecl's doc comment.
 package config
 
 import (
@@ -13,67 +7,29 @@ import (
 	"path/filepath"
 )
 
-// SettingsLocalFileName is the user-local settings file's name within
-// DirName.
+// SettingsLocalFileName はDirName内のユーザーごとの承認ファイルの名前。
 const SettingsLocalFileName = "settings.local.json"
 
-// SettingsLocalPath returns the absolute path to repoRoot's user-local
-// settings file.
+// SettingsLocalPath はrepoRootの承認ファイルの絶対パスを返す。
 func SettingsLocalPath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, SettingsLocalFileName)
 }
 
-// LocalSettings is the on-disk shape of .masuda/settings.local.json.
+// LocalSettings は`.masuda/settings.local.json`の形。
 type LocalSettings struct {
-	// MCPServers maps a server name (matching a Config.MCPServers key) to
-	// this user's approval of it. A name absent here, or present with
-	// Approved: false, means the daemon must never start that server --
-	// see internal/statedaemon/mcpaggregator.
-	MCPServers map[string]MCPServerApproval `json:"mcpServers,omitempty"`
-
-	// EgressAllowlist is this user's approved subset of
-	// Config.EgressAllowlist (Issue #11 M4). A hostname the sandbox VM
-	// may reach is one that appears in *both* lists -- declared by the
-	// repo and approved by the user -- see internal/sandbox's
-	// resolveEgressAllowlist. Unlike MCPServers, this is a plain list,
-	// not a map: there is no per-entry payload (env values, a decl hash)
-	// to carry alongside the approval, just the hostname itself.
-	EgressAllowlist []string `json:"egressAllowlist,omitempty"`
-
-	// PrivilegedCommands maps a command name (matching a
-	// Config.PrivilegedCommands key) to this user's approval of it
-	// (ADR-0053). A name absent here, or present with Approved: false,
-	// means no disposable VM is ever started for it.
+	// EgressAllowlist はConfig.EgressAllowlistのうちユーザーが承認したもの。
+	// 両方にあるホストだけが許可される。
+	EgressAllowlist    []string                             `json:"egressAllowlist,omitempty"`
 	PrivilegedCommands map[string]PrivilegedCommandApproval `json:"privilegedCommands,omitempty"`
 }
 
-// MCPServerApproval is one user's decision about one declared MCP server.
-type MCPServerApproval struct {
-	Approved bool `json:"approved"`
-	// DeclHash pins this approval to the exact Config.MCPServers[name]
-	// declaration it was granted against (see DeclHash).
-	DeclHash string `json:"declHash,omitempty"`
-	// Env supplies real values for the names Config.MCPServers[name].Env
-	// lists. This is the one place in masuda's config surface expected to
-	// carry real credentials -- see SaveLocal's permissions.
-	Env map[string]string `json:"env,omitempty"`
-}
-
-// PrivilegedCommandApproval is one user's decision about one declared
-// privileged command. Unlike MCPServerApproval it carries no Env: the
-// disposable VM gets none of the session's long-lived assets, so this
-// approval has no secret values to supply (see PrivilegedCommandDecl).
+// PrivilegedCommandApproval は宣言された特権コマンド1つへのユーザーの判断。
 type PrivilegedCommandApproval struct {
-	Approved bool `json:"approved"`
-	// DeclHash pins this approval to the exact
-	// Config.PrivilegedCommands[name] declaration it was granted against
-	// (see DeclHash).
+	Approved bool   `json:"approved"`
 	DeclHash string `json:"declHash,omitempty"`
 }
 
-// LoadLocal reads repoRoot's .masuda/settings.local.json. A missing file
-// is not an error -- zero value means "nothing approved yet," mirroring
-// Load's treatment of a missing settings.json.
+// LoadLocal はrepoRootの承認ファイルを読む。無ければ「まだ何も承認していない」ゼロ値。
 func LoadLocal(repoRoot string) (LocalSettings, error) {
 	path := SettingsLocalPath(repoRoot)
 	data, err := os.ReadFile(path)
@@ -90,13 +46,9 @@ func LoadLocal(repoRoot string) (LocalSettings, error) {
 	return s, nil
 }
 
-// SaveLocal atomically writes settings to repoRoot's
-// .masuda/settings.local.json with 0600 permissions -- unlike
-// settings.json's 0644, this file routinely carries real secret values
-// (LocalSettings.MCPServers[*].Env), so it's locked to the owning user
-// regardless of umask. Temp-file-plus-rename (same directory) so a crash
-// mid-write never leaves a truncated file and a concurrent `masuda mcp
-// approve` from two terminals never interleaves.
+// SaveLocal は承認ファイルを0600で原子的に書く。同じディレクトリの一時ファイルから
+// renameするので、途中で落ちても切り詰められたファイルは残らず、2つの端末から
+// 同時に承認しても内容が混ざらない。
 func SaveLocal(repoRoot string, settings LocalSettings) error {
 	dir := filepath.Join(repoRoot, DirName)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
