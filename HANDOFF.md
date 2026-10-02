@@ -1,38 +1,47 @@
 # HANDOFF
 ## 作業項目
-M11a（サイトの土台とdesignの反映）。M11b・M11cの本文は書いていない。
-- `80a7213` サイトの土台
-  - `mkdocs.yml`: Material、`language: ja`、検索（`lang: ja`）、`pymdownx.superfences`のmermaidフェンス、mikeのバージョン選択（`extra.version.provider: mike`、既定`latest`）。navは「ホーム」「利用者向け」`user/`・「統合開発者向け」`api/`・「開発者向け」`design/`（`guest-protocol.md`を含む）
-  - `exclude_docs`で`work-orders.md`・`research/`・`CONTRIBUTING.md`・`INSTALLATION.md`をサイトから外した
-  - `requirements-docs.txt`: `mkdocs>=1.6,<2`（MkDocs 2.0はMaterialが動かないので固定）・`mkdocs-material`・`mike`・`pymdown-extensions`
-  - `docs/index.md`（3行の説明と3系統の入口）、`docs/user/index.md`・`docs/api/index.md`（「準備中」と予定の項目）
-  - `scripts/docs-prepare.sh`: `buf generate --template buf.gen.docs.yaml`で`docs/api/reference.md`を生成し、`$MASUDA_ENGINE_DIR`（既定`../masuda-engine`）の`docs/workflow-schema.md`を`docs/user/reference/workflow-schema.md`へ注記（admonition）付きで写す。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest`
-  - `buf.gen.docs.yaml`: プラグインはBSRの`buf.build/community/pseudomuto-doc`（指示にあった`pseudomuto-protoc-gen-doc`はBSRに無い名前だった）、`opt: markdown,reference.md`
-  - `.gitignore`: 生成物2つ、`/site/`、`/.venv-docs/`
-  - `.github/workflows/docs.yml`: push（main・develop・タグ`v*`）と`workflow_dispatch`。engineは`path: masuda-engine`にcheckoutして`MASUDA_ENGINE_DIR`で渡す。バージョンは、手動実行→`dev`（どのrefから起動しても）、タグ`vX.Y.Z`→`X.Y`+`latest`、main→`main`、develop→`dev`。タグのpushのときだけ`mike set-default --push latest`。`permissions: contents: write`、`concurrency: docs-deploy`（取り消さず直列）
-- `2bc9d8d` designの反映
-  - `overview.md`: HANDOFF（M10）の「docs/design/へ反映すべき事項」とM11aの列挙をすべて現在形で書いた（第3・4・5・6・8・9章）
-  - `README.md`: 「触る対象から引く」表を新設（`cmd/masuda`・`serve/`・`internal/*`10個・`contract/`・`live/`・proto・サイト）。リポジトリへのリンクをGitHubのURLに
-  - `contracts.md`: 変更の手続きに「契約を変えたら`docs/user/`・`docs/api/`の該当箇所も同じコミットで直す」
+M11c（統合開発者向け`docs/api/`とTypeScriptクライアント）。
+- `2cc8354` `clients/ts/`: `@masuda/api-client`（private、公開しない）。`buf.gen.yaml`はnode_modulesの`protoc-gen-es`（v2.16、package-lock.jsonで固定）で`target=js+dts`・`import_extension=js`を`gen/`へ。生成物と`package-lock.json`をコミット。依存は`@bufbuild/protobuf`、peerに`@connectrpc/connect`。`npm run generate`・`npm run check`（tscで生成物と`examples/`を型検査）。`examples/node-uds.ts`（connect-nodeでUDSへ`nodeOptions.socketPath`）、`examples/browser.ts`（connect-web、再接続つきWatch）。READMEに入れ方・`createClient(WorkspaceService, createConnectTransport({baseUrl, httpVersion: "1.1"}))`・ストリーム・エラー・型の注意
+- `03afd37` `docs/api/`: `index.md`（入口・読む順）、`connect.md`（UDS/`listen`、認証が無いことと共用マシン・リモートの注意、Connect/gRPC/gRPC-Web、JSONの形、`fetch`の単発とサーバーストリーミングのエンベロープの読み方、curl、TS/Goの生成）、`services.md`（6サービスの各RPCの目的・前後関係・状態遷移図・stagingのref一覧）、`flows.md`（起動とWatch・seq/afterSeq/初回status/空のworkspace_id/再接続、ゲートのsubject・target_hash・staging_commit・deviationのapproved_files・triage、差分ビュー、質問、Activityの表示指針、Stop/Resume/Remove、設定の画面の順）、`errors.md`（RPCごとのコードと条件）。`mkdocs.yml`のnavは`api`セクションだけ変更
+- `.github/workflows/docs.yml`は変更不要（clients/tsは生成物をコミット済みで、サイトのビルドに関係しない）
 ## 完了した契約テスト
-契約テスト・契約ファイル（両proto、`docs/guest-protocol.md`）は触っていない。`go build ./...`・`go vet ./...`は通る。ローカルで`.venv-docs/`に入れて`scripts/docs-prepare.sh`→`mkdocs build --strict`が通る（INFOが1件: 生成した`reference.md`の`#google-protobuf-Timestamp`へのアンカーが無い。strictでは失敗しない）。`mike deploy`・`mike set-default`は使い捨ての複製で動作を確かめた（push無し）
+契約テスト・契約ファイル・`serve/`等の実装・`docs/user/`は触っていない。`scripts/docs-prepare.sh && mkdocs build --strict`は通る（`.venv-docs/`を新規作成。INFOは既知の`#google-protobuf-Timestamp`の1件だけ）。fake sandboxの`masuda serve`（worktreeでは`go.mod`の`replace ../masuda-engine`が解決できないので、絶対パスに直したgo.modを`-modfile`で渡してscratchpadにビルド）に対して、エラーコード・JSONの形・Watchのエンベロープ・fetchの例・TSクライアント（examples/node-uds.tsと、`npm pack`したtarballを別プロジェクトへ入れたもの）を実際に動かして確かめた
 ## 未完と理由
-- `workflow_dispatch`で`dev`が公開されることは未確認。pushしておらず、Pagesも未有効化のため
-- GitHub Pagesの有効化はユーザーが行う（下記）
+- ブラウザからの例（connect.mdの`fetch`、clients/tsのbrowser.ts）はループバックの待ち受けが前提で、`listen`はM12で入るまで実装に無い。文書は指示どおり「listenを設定したときだけループバックでも待ち受ける。既定はUDSのみ」と書いた
+- QuestionService・BuildImage・特権コマンドの承認のエラーは実装の読み取りだけで、実際に投げてはいない
 ## 次の一手
-1. ユーザー: `redesign`をpushし、Actionsの「docs」を`workflow_dispatch`で実行する。成功するとgh-pagesブランチができる
-2. ユーザー: リポジトリのSettings → Pages → Build and deployment で、Source: **Deploy from a branch**、Branch: **`gh-pages`**、フォルダ: **`/ (root)`** を選んで保存する。`https://tadahiroyamamura.github.io/masuda/dev/`で見られる（タグを打つまで`latest`が無いので、ルートはmikeの既定が無く404になりうる。必要なら一度だけ`mike set-default --push dev`）
-3. M11b（`docs/user/`）、M11c（`docs/api/`）
+1. 監督: 下の「契約への提案」のエラーコード一覧をprotoのコメントへ反映するか判断する。反映したら`docs/api/errors.md`と揃える
+2. M12: `listen`の実装と同じコミットで、`docs/api/connect.md`のCORSの記述（「同じホストで開いたページのオリジンを許す」）を実装に合わせて直す。`ServeNotice`で`disk-warning`を流すようにしたら、`docs/api/flows.md`「workspaceIdが空のイベント」の「今のserveはengineで流す」を消す
 ## 注意点
-- 生成物（`docs/api/reference.md`・`docs/user/reference/workflow-schema.md`）はコミットしない。`mkdocs serve`・`mkdocs build`の前に必ず`scripts/docs-prepare.sh`を走らせる。navが両方を参照しているので、走らせ忘れると`--strict`で落ちる
-- M11b: `user/index.md`の予定の項目を本文のページに置き換え、navの「利用者向け」に足す。`docs/INSTALLATION.md`・`CONTRIBUTING.md`は今はサイトから外している（`exclude_docs`）ので、中身を`user/`へ移したら`exclude_docs`から消すか削除する。`README.md`・`CONTRIBUTING.md`からのリンクも追従させる
-- M11b: 表の中で`|`を使うと、GitHubとPython-Markdownでエスケープの扱いが違う（コード内の`\|`がMkDocsでは`\|`のまま出る）。表のセルにパイプを書かない
-- M11c: `reference.md`は`pseudomuto-doc`の既定テンプレートの英語出力。気になるなら`opt`でテンプレートを渡せる（`markdown`の代わりに`<tmpl>,reference.md`）。BSRのリモートプラグインは版を固定していない
-- design/overview.mdに書いた「ServeNoticeはまだ出さない（disk-warningはEngineEventで流す）」と「`settings.local.json`の`stallAfter`・`diskWarnBytes`」は、M12で変わる。M12の実装と同じコミットでoverview.mdの第6章（設定ファイル）・第8章（無活動のしきい値・ディスク使用量）・第9章（Watch）を直す
-- `docs/design/contracts.md`の「通信の前提」は「設定で有効にしたときだけ`127.0.0.1:<port>`」と書いているが、実装はUDSだけ。overview.mdは実装どおりに書き、contracts.mdは契約の記述なので変えていない
-- design/overview.md第13章（マイルストーン）はwork-orders.mdのM番号と一致しない古い表のまま残している
-## docs/design/へ反映すべき事項
-- なし（M10までの事項はすべて反映済み）。反映しきれなかったもの: contracts.mdの待ち受けの記述と実装のずれ（上記）
+- `clients/ts`は`masuda.proto`を変えたら`cd clients/ts && npm ci && npm run generate && npm run check`で作り直してコミットする。CIでの差分検査は無い
+- 文書中のリポジトリ内ファイルへのリンク（clients/ts、proto）はGitHubの`main`ブランチのURL。`redesign`が`main`に入るまでは404になる
+- `docs/api/`の見出しへのリンクは`{#id}`の明示idを使う（日本語だけの見出しは自動idが空になる）
+- 実機で気づいた点: 出現IDは7桁（`"0000001"`）。HTTP+JSONで`FailedPrecondition`と`InvalidArgument`はどちらも400なので、文書では`code`で分岐するよう書いた
 ## 契約への提案
-- `contracts.md`「通信の前提」のループバック待ち受けは未実装。実装するか、記述を「UDSのみ（ループバックは将来）」にするかの判断（M11cの「接続」の章の前提になる）
-- 前回からの持ち越し（判断状況はこちらでは未確認）: serve全体の設定の置き場所（M12で予定）、sandboxの応答前に切られたHTTPリクエストに終わりのイベントが無い、sandboxのExecの既定環境、engineのfixerに「直せない」終わり方が無い
+### RPCごとのエラーコード（protoのコメントへの反映案。詳細の条件は`docs/api/errors.md`）
+- 共通: ワークスペースIDが無い・不正→NotFound。`repo_root`が絶対パスでない・作業ツリーのトップでない→InvalidArgument。ホストのI/O失敗→Internal
+- Workspace.Run: InvalidArgument（必須欠落、定義の読み込み・検査の失敗、未定義のworkflow、inputs不足、settings.jsonが壊れている、ブランチ名不正、baseが無い）／FailedPrecondition（秘密・トークンの値、plaintextの承認、Dockerfile、vars、checks、settings.local.jsonの不備。`; `区切りでまとめる）／AlreadyExists（ブランチが実リポジトリにある）／Canceled。起動失敗はエラーでなくBLOCKED（reason`sandbox boot failed: `）
+- Workspace.Resume: NotFound／FailedPrecondition（再開できない状態、実行中、定義の写しが無い・読めない、前提不足）／InvalidArgument（写しのsettings.jsonが壊れている）
+- Workspace.Get: NotFound。List: Internalのみ（repo_rootは検査しない）
+- Workspace.Watch: NotFound（指定idが無い。ストリームのエラー）。serveの停止は正常な終わり
+- Workspace.Stop: NotFound／FailedPrecondition（DONE）。STOPPEDは冪等に成功
+- Workspace.Remove: NotFound／FailedPrecondition（動いていてforce無し）
+- Workspace.AttachInfo: NotFound／FailedPrecondition（sandbox無し・起動中）／Unimplemented（SSH非提供）／その他はsandboxのコードを透過、届かなければUnavailable
+- Gate.ListOpen・Get: NotFound（ワークスペース、その出現のゲート）
+- Gate.Decide: InvalidArgument（outcome空）／NotFound／FailedPrecondition（判断済み、approvedのtarget_hash不一致、ワークスペースが動いていない、今待っているゲートでない、ゲートの種類に合わないoutcome、approved_filesにゲートが挙げていないファイル）／Unimplemented（deviationにapproved・rejected以外）
+- Question.ListOpen: NotFound。Answer: NotFound（開いた質問が無い）／InvalidArgument（答えの過不足・選択肢外）／FailedPrecondition（動いていない、engineが拒否）
+- Staging: GetCommit・Diff・GetBlob・ListComments・AddCommentはrevが空（Diffのto、AddCommentのcommit、GetCommit・GetBlobのrev）・`-`始まり→InvalidArgument、解決できない→NotFound。GetBlobはパスがファイルでない→NotFound。AddCommentのbody空→InvalidArgument
+- Config: 共通でsettings.json・settings.local.jsonが読めない→FailedPrecondition。宣言に無いhost・name、placeholderへの承認・取り消し、空のvalue、壊れた特権コマンドの宣言→InvalidArgument。BuildImageのentry不正→InvalidArgument、Dockerfile無し→NotFound。ListImages・BuildImageのsandboxの失敗はsandboxのコードを透過（記録の失敗はUnknown）
+- Workflow: List・Showは定義の読み込み失敗→InvalidArgument。Show・Checkは未定義のworkflow→NotFound。Checkは読み込み失敗を問題の1つとして返す
+### コードの揃え方の提案
+- 未定義のworkflow: RunはInvalidArgument、Show・CheckはNotFound。どちらかに揃える
+- 壊れたsettings.json: RunはInvalidArgument、ConfigServiceはFailedPrecondition。どちらかに揃える
+- ゲートの種類に合わないoutcome（未知の文字列を含む）: deviationはUnimplemented、他はFailedPrecondition。serve側でゲートの種類を見てInvalidArgumentに揃えるのが妥当
+### 実装と文書（契約）の食い違い
+- `Gate.staging_commit`のprotoコメントは「diffを計算したstagingのコミット/tree」だが、`target=diff`の`subject`は`refs/masuda/base`から作業ツリー（`refs/masuda/worktree`）までの差分で、`staging_commit`はブランチ先端。deviationで加えなかったファイルは`subject`に出るがpublishされない（fakeで確認: subjectにnotes.txt、staging_commitはb.goのみ）。人間が見て承認する内容とpublishされる内容がずれる。subjectをbase..staging_commitにするか、コメントを直すかの判断
+- triageの`dismiss`・`redo`で割り込まれた出現が入り直すと、元の出現のゲートの記録が未判断のまま残り、`ListOpen`・`Workspace.open_gates`に出続ける（DONE後も）。それへのDecideはFailedPrecondition。入り直したときに古いゲートを閉じる（理由付き）べき
+- Watchの`after_seq`: 再送バッファ（10000件）より古い続きを求めても、serve再起動で番号が振り直された後に古い番号を渡しても、黙って続く（後者は番号が追いつくまで何も届かない）。OutOfRangeを返すか、初回statusを送り直すかの判断
+- `Stop`はengineが止めたBLOCKEDもSTOPPEDにするので、その後`Resume`が通り、VMを起動してからまたBLOCKEDになる。overview.mdの「engineが止めたBLOCKEDは再開できない」と食い違う。Stopを断るか、Resumeで弾くか
+- `StagingService`のprotoコメントは「agent findings and human notes share this model」だが、今コメントを書くのは`AddComment`（author `human`）だけで、エージェントの所見（findings）はコメントにならない。`severity`は常に空
+- 既知の持ち越し: `ServeNotice`は出さず`EngineEvent{kind: "disk-warning"}`で流す（M12）。`contracts.md`のループバック待ち受けは未実装（M12）
+- 前回からの持ち越し（判断状況はこちらでは未確認）: sandboxの応答前に切られたHTTPリクエストに終わりのイベントが無い、sandboxのExecの既定環境、engineのfixerに「直せない」終わり方が無い
