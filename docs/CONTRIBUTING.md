@@ -1,19 +1,18 @@
 # masuda自体の開発に参加する
 
-これはmasudaを**使う**ための手順（`docs/INSTALLATION.md`）ではなく、masuda自身のコード・ドキュメントに変更を加える人向けの手順。全体アーキテクチャは`docs/design/pipeline.md`（詳細は`docs/design/`配下の各ファイル）、用語は`docs/glossary.md`、個々の設計判断は`docs/adr/README.md`（索引）を参照。
+masudaを**使う**手順は[INSTALLATION.md](INSTALLATION.md)。全体設計は[design/overview.md](design/overview.md)、作業単位は[work-orders.md](work-orders.md)。
 
 ## 開発環境
 
-`docs/INSTALLATION.md`の「前提条件」に加え、以下が必要。
+- Go 1.26以上。`go build ./...`・`go vet ./...`・`go test ./...`
+- `../masuda-engine`に[masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)をチェックアウトしておく（`go.mod`の`replace`で参照する）
+- protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく
+- GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使う。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
 
-- Python: `venv/`に依存関係インストール済み（`requirements.txt`）。テスト: `pytest orchestrator/tests/`
-- Go: `go build ./...`・`go vet ./...`・`go test ./...`（標準の`go`ツールチェーンのみ、追加セットアップ不要）
-- GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使うこと。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
+## 契約と契約テスト
 
-## VM実行基盤（Issue #31）を扱う開発上の注意
+部品の間の契約（`proto/`、`docs/guest-protocol.md`、他リポジトリの契約）と変更の手続きは[design/contracts.md](design/contracts.md)。各作業単位の完了は`contract/`の契約テストが緑であることで判定する。
 
-VM実行基盤そのもののセットアップ手順（Cloud Hypervisor・virtiofsd配置、`scripts/setup-vm-host.sh`、VMゲストSSH鍵、VMゲストのClaude認証）は利用者向け手順として`docs/INSTALLATION.md`「VM実行基盤のセットアップ」節に統合済み——masudaを使うだけなら、このリポジトリの開発に参加していなくても必要になるため。以下は`internal/sandbox`・`internal/rootfs`・`cmd/masuda-net-helper`等、masuda自身のGoコードを変更する開発者だけが意識すればよい注意点。
-
-- `masuda-net-helper`は`CAP_NET_ADMIN`をsetcapで単体付与している（masuda本体には付与しない）。**バイナリを再ビルドするとcapabilityは失われるため、`go build`のたびに`setcap`のやり直しが必要**（`bash scripts/setup-vm-host.sh`を再実行すればよい、冪等）。このときは`--runtime-only`ではなくフル実行が要る（ADR-0056）
-- `internal/rootfs.Build`を変更した場合、`internal/rootfs/build_test.go`（実docker daemonが必要、無ければ自動skip）で確認すること
-- `internal/sandbox/vmbackend.go`を変更した場合の実機検証は、`masuda-loop:latest`イメージの再ビルド（`docker build -t masuda-loop:latest .`）を忘れないこと——Dockerfile自体は変更していなくても、`runtime/`配下のファイル（`entrypoint.sh`等）はCOPYで焼き込まれているため
+```sh
+go test ./contract/ -run TestCM1
+```

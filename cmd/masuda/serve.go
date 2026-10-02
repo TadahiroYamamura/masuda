@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -19,6 +20,9 @@ func runServe(args []string) error {
 	fake := fs.Bool("fake-sandbox", false, "sandbox serviceの代わりにプロセス内のフェイクを使う（開発・テスト用）")
 	sandboxSocket := fs.String("sandbox-socket", filepath.Join(runtimeDir(), "masuda-sandbox.sock"), "masuda-sandbox serveのUDSのパス")
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return nil
+		}
 		return err
 	}
 
