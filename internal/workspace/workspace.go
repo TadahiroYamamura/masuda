@@ -34,18 +34,20 @@ const (
 
 // Meta はワークスペースについて永続化するもの（`<id>/workspace.json`）。
 type Meta struct {
-	ID         string    `json:"id"`
-	RepoRoot   string    `json:"repoRoot"`
-	Branch     string    `json:"branch"`
-	Base       string    `json:"base"`       // 分岐元の名前（"main"等）
-	BaseCommit string    `json:"baseCommit"` // refs/masuda/baseが指すコミット
-	Workflow   string    `json:"workflow"`
-	Image      string    `json:"image,omitempty"`
-	State      State     `json:"state"`
-	Outcome    string    `json:"outcome,omitempty"`
-	Reason     string    `json:"reason,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID         string `json:"id"`
+	RepoRoot   string `json:"repoRoot"`
+	Branch     string `json:"branch"`
+	Base       string `json:"base"`       // 分岐元の名前（"main"等）
+	BaseCommit string `json:"baseCommit"` // refs/masuda/baseが指すコミット
+	Workflow   string `json:"workflow"`
+	Image      string `json:"image,omitempty"`
+	State      State  `json:"state"`
+	Outcome    string `json:"outcome,omitempty"`
+	Reason     string `json:"reason,omitempty"`
+	// Position はengineの現在位置の人間向けの表記（"agent planner (occ 0042)"）。
+	Position  string    `json:"position,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // Workspace は1つのワークスペースのディレクトリとMeta。
@@ -58,6 +60,10 @@ func (w *Workspace) StagingDir() string { return filepath.Join(w.Dir, "staging.g
 func (w *Workspace) DataDir() string    { return filepath.Join(w.Dir, "data") }
 func (w *Workspace) RecordsDir() string { return filepath.Join(w.Dir, "records") }
 func (w *Workspace) ExportsDir() string { return filepath.Join(w.Dir, "exports") }
+
+// DefinitionsDir は実行開始時に写した対象リポジトリの`.masuda/`。再開やserveの再起動の後も、
+// 実行中に作業ツリーの定義が書き換わっていても、始めたときと同じ定義でengineを組み直すため。
+func (w *Workspace) DefinitionsDir() string { return filepath.Join(w.RecordsDir(), "definitions") }
 
 func (w *Workspace) metaPath() string { return filepath.Join(w.Dir, "workspace.json") }
 
@@ -219,4 +225,33 @@ func (s *Store) Remove(id string) error {
 		return fmt.Errorf("%q: %w", id, ErrNotFound)
 	}
 	return os.RemoveAll(dir)
+}
+
+// RemoveKeepExports はワークスペースのディレクトリのうち`exports/`以外を消す。
+// workspace.jsonが無くなるのでGet・Listからは見えなくなり、exportsだけが
+// `<DataDir>/workspaces/<id>/exports/`に残る。
+func (s *Store) RemoveKeepExports(id string) error {
+	if !ValidID(id) {
+		return fmt.Errorf("%q: %w", id, ErrNotFound)
+	}
+	dir := filepath.Join(s.root, id)
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%q: %w", id, ErrNotFound)
+	} else if err != nil {
+		return err
+	}
+	// workspace.jsonを最初に消し、途中で失敗しても一覧に半端な状態で現れないようにする。
+	if err := os.Remove(filepath.Join(dir, "workspace.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for _, e := range entries {
+		if e.Name() == "exports" || e.Name() == "workspace.json" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil {
+			return err
+		}
+	}
+	return nil
 }

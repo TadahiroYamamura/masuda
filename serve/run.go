@@ -9,12 +9,14 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
 	"github.com/TadahiroYamamura/masuda/internal/runner"
+	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -33,6 +35,16 @@ type runCtl struct {
 	eng    *engine.Engine
 	runner *runner.Runner
 	mcp    *mcp.Server
+	author staging.Identity
+
+	// ctx はこの実行の寿命。Stop・Remove・serveの停止で取り消され、ブロック中のnext_task・
+	// ask_human、起動の途中、engineの進行を止める。
+	ctx    context.Context
+	cancel context.CancelFunc
+	// bootDone はbootが戻ったら閉じる。Stopはこれを待ってから状態を書く。
+	bootDone chan struct{}
+	// booted はsandboxとゲストの用意が済んだこと（Execでの生存確認はこの後だけ行う）。
+	booted atomic.Bool
 
 	mu sync.Mutex // engineの呼び出し
 
@@ -59,18 +71,21 @@ func (c *runCtl) notify() {
 	c.changed = make(chan struct{})
 }
 
+func (c *runCtl) isBooted() bool { return c.booted.Load() }
+
 func (c *runCtl) close() {
+	c.cancel()
 	if c.mcp != nil {
 		c.mcp.Close()
 	}
 }
 
 // advance はengineを進め、その結果をワークスペースの状態に写す。リクエストのctxではなく
-// backendのctxで進めるのは、ゲストやAPIクライアントが切断しても、commit・publishのような
-// ホストのノードを途中で止めないため。
+// 実行のctxで進めるのは、ゲストやAPIクライアントが切断しても、commit・publishのような
+// ホストのノードを途中で止めないため（止めるのはStopとserveの停止だけ）。
 func (c *runCtl) advance() (engine.Status, error) {
 	c.mu.Lock()
-	st, err := c.eng.Advance(c.b.ctx, c.run())
+	st, err := c.eng.Advance(c.ctx, c.run())
 	c.mu.Unlock()
 	c.reflect(st, err)
 	return st, err
@@ -84,50 +99,81 @@ func (c *runCtl) status(ctx context.Context) (engine.Status, error) {
 
 // reflect はengineの状態をワークスペースの状態（公開APIのWorkspaceState）に写す。
 func (c *runCtl) reflect(st engine.Status, err error) {
-	c.stateMu.Lock()
-	defer c.stateMu.Unlock()
-	w, gerr := c.b.store.Get(c.id)
-	if gerr != nil {
-		return
+	if err != nil && c.ctx.Err() != nil {
+		return // Stop・serveの停止で取り消されただけ
 	}
-	if err != nil {
-		if c.b.ctx.Err() != nil {
-			return // serveの停止で取り消されただけ
-		}
-		w.State = workspace.StateBlocked
-		w.Reason = "engine: " + err.Error()
-		_ = w.Save()
-		return
-	}
-	switch st.Kind {
-	case engine.StatusAgent:
-		w.State, w.Reason = workspace.StateRunning, ""
-	case engine.StatusGate:
-		w.State, w.Reason = workspace.StateWaitingGate, ""
-	case engine.StatusQuestion:
-		w.State, w.Reason = workspace.StateWaitingQuestion, ""
-	case engine.StatusDone:
-		w.State, w.Outcome, w.Reason = workspace.StateDone, st.Outcome, ""
+	if err == nil && (st.Kind == engine.StatusDone || st.Kind == engine.StatusBlocked) {
 		// publishの時点の書き出しには、その後のfinish・endの行が入らないので写し直す。
 		_ = c.runner.ExportLog()
+	}
+	c.update(func(w *workspace.Workspace) {
+		if err != nil {
+			w.State = workspace.StateBlocked
+			w.Reason = "engine: " + err.Error()
+			return
+		}
+		switch st.Kind {
+		case engine.StatusAgent:
+			w.State, w.Reason = workspace.StateRunning, ""
+		case engine.StatusGate:
+			w.State, w.Reason = workspace.StateWaitingGate, ""
+		case engine.StatusQuestion:
+			w.State, w.Reason = workspace.StateWaitingQuestion, ""
+		case engine.StatusDone:
+			w.State, w.Outcome, w.Reason = workspace.StateDone, st.Outcome, ""
+		case engine.StatusBlocked:
+			w.State, w.Reason = workspace.StateBlocked, st.Reason
+		default:
+			return
+		}
+		w.Position = positionOf(st)
+	})
+}
+
+// positionOf はengineの位置を人間向けに書く（"agent planner (occ 0042)"）。
+func positionOf(st engine.Status) string {
+	switch st.Kind {
+	case engine.StatusAgent:
+		if st.Task != nil && st.Task.Agent != nil {
+			return fmt.Sprintf("agent %s (occ %s)", st.Task.Agent.Name, st.Occurrence)
+		}
+	case engine.StatusGate:
+		if st.Gate != nil {
+			return fmt.Sprintf("gate %s (occ %s)", st.Gate.Gate, st.Occurrence)
+		}
+	case engine.StatusQuestion:
+		return fmt.Sprintf("question (occ %s)", st.Occurrence)
+	case engine.StatusDone:
+		return "done"
 	case engine.StatusBlocked:
-		w.State, w.Reason = workspace.StateBlocked, st.Reason
-		_ = c.runner.ExportLog()
-	default:
+		return "blocked"
+	}
+	return string(st.Kind)
+}
+
+// update はworkspace.jsonを読み直してfで書き換え、保存してstatusイベントを流す。
+func (c *runCtl) update(f func(*workspace.Workspace)) {
+	c.stateMu.Lock()
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		c.stateMu.Unlock()
 		return
 	}
+	f(w)
 	w.UpdatedAt = time.Now().UTC()
 	_ = w.Save()
+	c.stateMu.Unlock()
+	c.b.statusChanged(c.id)
 }
 
 func (c *runCtl) setState(s workspace.State) {
-	c.stateMu.Lock()
-	defer c.stateMu.Unlock()
-	if w, err := c.b.store.Get(c.id); err == nil {
-		w.State = s
-		w.UpdatedAt = time.Now().UTC()
-		_ = w.Save()
-	}
+	c.update(func(w *workspace.Workspace) { w.State = s })
+}
+
+// touch はゲストからMCPの呼び出しがあったことを活動として記録する。
+func (c *runCtl) touch(tool string) {
+	c.b.acts.update(c.id, func(a *activity) { a.touch("mcp " + tool) })
+	c.b.statusChanged(c.id)
 }
 
 // waitingAgent はoccの出現がエージェントのタスクとして待たれているなら、その状態を返す。
@@ -147,6 +193,7 @@ func (c *runCtl) waitingAgent(ctx context.Context, occ string) (engine.Status, s
 // ---------------------------------------------------------------------------
 
 func (c *runCtl) NextTask(ctx context.Context) (any, error) {
+	c.touch("next_task")
 	ctx, cancel := context.WithTimeout(ctx, maxBlock)
 	defer cancel()
 	for {
@@ -171,13 +218,14 @@ func (c *runCtl) NextTask(ctx context.Context) (any, error) {
 		case <-ch:
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		case <-c.b.ctx.Done():
-			return nil, errors.New("masuda serve is stopping")
+		case <-c.ctx.Done():
+			return nil, errors.New("the workspace is stopping")
 		}
 	}
 }
 
 func (c *runCtl) WriteOutput(ctx context.Context, occ, name, content string) (any, error) {
+	c.touch("write_output")
 	c.mu.Lock()
 	st, reason := c.waitingAgent(ctx, occ)
 	c.mu.Unlock()
@@ -200,6 +248,7 @@ func (c *runCtl) WriteOutput(ctx context.Context, occ, name, content string) (an
 }
 
 func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ string) (any, error) {
+	c.touch("report_result")
 	reject := func(reason string) (any, error) {
 		return map[string]any{"accepted": false, "reason": reason}, nil
 	}
@@ -228,7 +277,7 @@ func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ str
 			return reject(fmt.Sprintf("outputs not written yet: %v (use write_output)", missing))
 		}
 	}
-	err := c.eng.ReportResult(c.b.ctx, c.run(), occ, outcome, feedback)
+	err := c.eng.ReportResult(c.ctx, c.run(), occ, outcome, feedback)
 	c.mu.Unlock()
 	if err != nil {
 		return reject(err.Error())
@@ -240,8 +289,9 @@ func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ str
 }
 
 func (c *runCtl) ReportConcern(ctx context.Context, occ, text string) (any, error) {
+	c.touch("report_concern")
 	c.mu.Lock()
-	err := c.eng.ReportConcern(c.b.ctx, c.run(), occ, text)
+	err := c.eng.ReportConcern(c.ctx, c.run(), occ, text)
 	c.mu.Unlock()
 	if err != nil {
 		return nil, err
@@ -254,6 +304,7 @@ func (c *runCtl) ReportConcern(ctx context.Context, occ, text string) (any, erro
 // AskHuman は質問を記録して答えを待つ。答えは公開APIのQuestionService.Answer（M5）が
 // engine.Answerへ渡したうえで記録に書き、notifyで知らせる。
 func (c *runCtl) AskHuman(ctx context.Context, occ string, questions []mcp.Question) (any, error) {
+	c.touch("ask_human")
 	if len(questions) == 0 {
 		return nil, errors.New("questions is empty")
 	}
@@ -296,6 +347,8 @@ func (c *runCtl) AskHuman(ctx context.Context, occ string, questions []mcp.Quest
 		case <-ch:
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		case <-c.ctx.Done():
+			return nil, errors.New("the workspace is stopping")
 		}
 	}
 }
@@ -314,9 +367,10 @@ func (c *runCtl) RunPrivilegedCommand(context.Context, string) (any, error) {
 	return nil, fmt.Errorf("run_privileged_command: %w (privileged commands arrive with M7)", mcp.ErrNotImplemented)
 }
 
-// Hook はゲストのClaude Codeフックの入力JSONを`records/hooks.jsonl`へ受け取った時刻と共に残す。
-// 活動の判定（M5）はこの記録を読む。
+// Hook はゲストのClaude Codeフックの入力JSONを`records/hooks.jsonl`へ受け取った時刻と共に残し、
+// 活動に反映してguest_hookイベントを流す。
 func (c *runCtl) Hook(body []byte) {
+	defer c.b.observeHook(c.id, body)
 	w, err := c.b.store.Get(c.id)
 	if err != nil {
 		return
@@ -353,7 +407,7 @@ var errDecision = errors.New("decision refused")
 // decide はrecのゲートへの判断をengineへ渡し、記録して、次の待ちまで進める。
 func (c *runCtl) decide(rec *workspace.GateRecord, d engine.Decision) error {
 	c.mu.Lock()
-	err := c.eng.Decide(c.b.ctx, c.run(), rec.Occurrence, d)
+	err := c.eng.Decide(c.ctx, c.run(), rec.Occurrence, d)
 	c.mu.Unlock()
 	if err != nil {
 		if errors.Is(err, engine.ErrNotImplemented) {
@@ -376,5 +430,38 @@ func (c *runCtl) decide(rec *workspace.GateRecord, d engine.Decision) error {
 	// 判断の後の位置（次のゲート、publish等）まで進めてから返す。呼び出し側が戻りの直後に
 	// 状態やゲートの一覧を見たとき、判断が反映されているようにするため。
 	_, _ = c.advance()
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// Questions
+// ---------------------------------------------------------------------------
+
+// answer はrecの質問への答えをengineへ渡し、記録に書いて、待っている側（ask_human・
+// next_task）を起こし、次の待ちまで進める。engineを先に呼ぶのは、engineが受け付けなかった
+// 答えを記録に残さないため（ゲートの判断と同じ順）。
+func (c *runCtl) answer(rec *workspace.QuestionRecord, answers map[string]string) error {
+	c.mu.Lock()
+	err := c.eng.Answer(c.ctx, c.run(), rec.Occurrence, engine.Answer{Answers: answers})
+	c.mu.Unlock()
+	if err != nil {
+		if errors.Is(err, engine.ErrNotImplemented) {
+			return err
+		}
+		return fmt.Errorf("%w: %v", errDecision, err)
+	}
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	rec.Answers = answers
+	rec.AnsweredAt = &now
+	if err := w.SaveQuestion(rec); err != nil {
+		return err
+	}
+	c.notify()
+	_, _ = c.advance()
+	c.b.statusChanged(c.id)
 	return nil
 }

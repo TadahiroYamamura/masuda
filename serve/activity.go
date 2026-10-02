@@ -1,0 +1,291 @@
+package serve
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+	"time"
+
+	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
+	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
+)
+
+// DefaultStallAfter は無活動がこれだけ続いたらSTALLEDとみなす既定のしきい値。
+const DefaultStallAfter = 10 * time.Minute
+
+// activity は1ワークスペースの活動の観測（docs/design/overview.md「活動の観測と停止の検知」）。
+// メモリにだけ持つ。serveを再起動したワークスペースはSTOPPED（活動はIDLE）になり、
+// Resumeで観測をやり直すので、持ち越す意味が無い。
+type activity struct {
+	last time.Time
+	// inflight はsandboxが観測した進行中のHTTPリクエスト（request_id → 要約）。
+	inflight map[uint64]*apiv1.HttpActivity
+	// inputWait はゲストのNotificationフックが言う待ち（"idle"・"permission"・"question"）。
+	// その後に活動（HTTP・ツール・MCP）があれば消す。
+	inputWait string
+	detail    string
+	// dead はclaude（tmuxのセッション）が無いと分かったこと。SessionEndフック、sandboxの
+	// 停止・失敗、Execでの生存確認のどれかで立つ。
+	dead bool
+}
+
+type activities struct {
+	mu sync.Mutex
+	m  map[string]*activity
+}
+
+func newActivities() *activities { return &activities{m: map[string]*activity{}} }
+
+// reset はidの観測を始め直す（実行の開始・再開のとき）。
+func (a *activities) reset(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.m[id] = &activity{last: time.Now().UTC(), inflight: map[uint64]*apiv1.HttpActivity{}}
+}
+
+func (a *activities) drop(id string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.m, id)
+}
+
+func (a *activities) update(id string, f func(*activity)) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	act := a.m[id]
+	if act == nil {
+		return
+	}
+	f(act)
+}
+
+// touch は活動があったことを記録する。待ちの表示は活動で上書きされる。
+func (act *activity) touch(detail string) {
+	act.last = time.Now().UTC()
+	act.inputWait = ""
+	if detail != "" {
+		act.detail = detail
+	}
+}
+
+// compute はワークスペースの状態と観測からActivityを決める。優先順は、実行の状態
+// （終わった・止めた・人間の判断待ち）→プロセスの死→進行中のAPIリクエスト→ゲストの言う待ち→
+// 無活動の長さ、の順。APIリクエストを入力待ちより先に見るのは、フックはゲストの協力が前提の
+// 補助情報で、ホストが観測したリクエストの方が確かなため。
+func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, now time.Time) *apiv1.Activity {
+	a.mu.Lock()
+	act := a.m[w.ID]
+	var cp activity
+	inflight := 0
+	if act != nil {
+		cp = *act
+		inflight = len(act.inflight)
+	}
+	a.mu.Unlock()
+
+	out := &apiv1.Activity{}
+	if act != nil && !cp.last.IsZero() {
+		out.LastActivity = timestamppb.New(cp.last)
+	}
+	switch w.State {
+	case workspace.StateDone, workspace.StateStopped, workspace.StateBlocked:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
+		return out
+	case workspace.StateWaitingGate:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WAITING_GATE
+		return out
+	case workspace.StateWaitingQuestion:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WAITING_QUESTION
+		return out
+	}
+	if act == nil {
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
+		return out
+	}
+	out.InputWait = cp.inputWait
+	out.Detail = cp.detail
+	switch {
+	case cp.dead:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_DEAD
+	case inflight > 0:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WORKING
+	case cp.inputWait != "":
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT
+	case w.State == workspace.StateRunning && stallAfter > 0 && now.Sub(cp.last) > stallAfter:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_STALLED
+	default:
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WORKING
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// 情報源: ゲストのフック
+// ---------------------------------------------------------------------------
+
+// hookInput はClaude Codeのフック入力JSONのうち活動の判定に使う項目。
+type hookInput struct {
+	Event            string `json:"hook_event_name"`
+	NotificationType string `json:"notification_type"`
+	Message          string `json:"message"`
+	ToolName         string `json:"tool_name"`
+}
+
+// notificationWait はNotificationフックのnotification_typeを公開APIのinput_waitへ写す。
+// 載っていない種類（auth_success等）は待ちではないので写さない。
+var notificationWait = map[string]string{
+	"idle_prompt":        "idle",
+	"permission_prompt":  "permission",
+	"elicitation_dialog": "question",
+}
+
+// observeHook はフック1件を活動に反映し、guest_hookイベントを流す。
+func (b *backend) observeHook(id string, body []byte) {
+	var in hookInput
+	_ = json.Unmarshal(body, &in)
+	detail := ""
+	switch in.Event {
+	case "Notification":
+		detail = in.NotificationType
+		wait := notificationWait[in.NotificationType]
+		b.acts.update(id, func(act *activity) {
+			if wait != "" {
+				act.inputWait = wait
+			}
+			if in.Message != "" {
+				act.detail = in.Message
+			}
+		})
+	case "PostToolUse":
+		detail = in.ToolName
+		b.acts.update(id, func(act *activity) { act.touch("tool " + in.ToolName) })
+	case "Stop", "SubagentStop":
+		b.acts.update(id, func(act *activity) {
+			act.last = time.Now().UTC()
+			act.detail = "turn ended (" + in.Event + ")"
+		})
+	case "SessionEnd":
+		b.acts.update(id, func(act *activity) {
+			act.dead = true
+			act.detail = "claude session ended"
+		})
+	}
+	b.events.publish(&apiv1.WorkspaceEvent{
+		WorkspaceId: id,
+		Event:       &apiv1.WorkspaceEvent_GuestHook{GuestHook: &apiv1.GuestHookEvent{Hook: in.Event, Detail: detail}},
+	})
+	b.statusChanged(id)
+}
+
+// ---------------------------------------------------------------------------
+// 情報源: sandboxが観測したHTTP
+// ---------------------------------------------------------------------------
+
+// watchSandbox はsandboxのWatchEventsを読み、HTTPの開始・完了・拒否を活動とhttpイベントに、
+// sandboxの停止・失敗をDEADに写す。ctxが終わるか、sandboxが壊されてストリームが終わるまで続く。
+func (b *backend) watchSandbox(ctx context.Context, id string) {
+	st, err := b.sandbox.WatchEvents(ctx, connect.NewRequest(&sandboxv1.WatchEventsRequest{Id: id}))
+	if err != nil {
+		return
+	}
+	defer st.Close()
+	for st.Receive() {
+		ev := st.Msg()
+		var http *apiv1.HttpActivity
+		switch e := ev.Event.(type) {
+		case *sandboxv1.SandboxEvent_HttpStarted:
+			http = &apiv1.HttpActivity{Method: e.HttpStarted.Method, Host: e.HttpStarted.Host, Path: e.HttpStarted.Path}
+			b.acts.update(id, func(act *activity) {
+				act.inflight[e.HttpStarted.RequestId] = http
+				act.touch("")
+			})
+		case *sandboxv1.SandboxEvent_HttpFinished:
+			http = &apiv1.HttpActivity{Status: e.HttpFinished.Status, DurationMs: e.HttpFinished.DurationMs}
+			b.acts.update(id, func(act *activity) {
+				if started := act.inflight[e.HttpFinished.RequestId]; started != nil {
+					http.Method, http.Host, http.Path = started.Method, started.Host, started.Path
+				}
+				delete(act.inflight, e.HttpFinished.RequestId)
+				act.touch("")
+			})
+		case *sandboxv1.SandboxEvent_HttpDenied:
+			http = &apiv1.HttpActivity{Host: e.HttpDenied.Host, Denied: true}
+			b.acts.update(id, func(act *activity) { act.detail = "denied " + e.HttpDenied.Host + ": " + e.HttpDenied.Reason })
+		case *sandboxv1.SandboxEvent_StateChanged_:
+			switch e.StateChanged.State {
+			case sandboxv1.SandboxState_SANDBOX_STATE_STOPPED, sandboxv1.SandboxState_SANDBOX_STATE_FAILED:
+				if ctx.Err() == nil {
+					b.acts.update(id, func(act *activity) {
+						act.dead = true
+						act.detail = "sandbox " + e.StateChanged.State.String() + " " + e.StateChanged.Detail
+					})
+					b.statusChanged(id)
+				}
+			}
+			continue
+		default:
+			continue
+		}
+		b.events.publish(&apiv1.WorkspaceEvent{WorkspaceId: id, Time: ev.Time, Event: &apiv1.WorkspaceEvent_Http{Http: http}})
+		b.statusChanged(id)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 定期の見回り: 無活動（STALLED）とプロセスの生存（DEAD）
+// ---------------------------------------------------------------------------
+
+// livenessEvery はExecでtmuxのセッションを確かめる間隔。
+const livenessEvery = 30 * time.Second
+
+// patrol は動いているワークスペースを定期的に見て、時間の経過だけで変わる活動
+// （STALLED）と、Execで分かるプロセスの死（DEAD）をstatusイベントに反映する。
+func (b *backend) patrol(ctx context.Context) {
+	tick := min(max(b.stallAfter/4, time.Second), livenessEvery)
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	lastLiveness := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+		checkLiveness := !b.fake && time.Since(lastLiveness) >= livenessEvery
+		if checkLiveness {
+			lastLiveness = time.Now()
+		}
+		for _, c := range b.allRuns() {
+			if checkLiveness && c.isBooted() && !b.alive(ctx, c.id) {
+				b.acts.update(c.id, func(act *activity) {
+					act.dead = true
+					act.detail = "tmux session " + guest.TmuxSession + " is gone"
+				})
+			}
+			b.statusChanged(c.id)
+		}
+	}
+}
+
+// alive はゲストでメインセッションのtmuxが生きているかを確かめる。claudeはtmuxの
+// セッションのコマンドとして直接起動している（guest.Launch）ので、claudeが終わると
+// セッションも消える。プロセス名で探さないのは、Claude Codeの入れ方（ネイティブ・npm）で
+// プロセス名が変わるため。確認そのものに失敗したときは生きているとみなす（DEADは確かなときだけ）。
+func (b *backend) alive(ctx context.Context, id string) bool {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	res, err := guest.Exec(ctx, b.sandbox, &sandboxv1.ExecRequest{
+		Id:   id,
+		Argv: []string{"/usr/bin/tmux", "has-session", "-t", guest.TmuxSession},
+		Cwd:  "/",
+	})
+	if err != nil {
+		return true
+	}
+	return res.ExitCode == 0
+}

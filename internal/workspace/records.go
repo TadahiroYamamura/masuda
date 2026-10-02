@@ -197,6 +197,21 @@ func (w *Workspace) questionsLocked() ([]*QuestionRecord, error) {
 	return out, nil
 }
 
+// OpenQuestions は答えがまだ無い質問を返す。
+func (w *Workspace) OpenQuestions() ([]*QuestionRecord, error) {
+	qs, err := w.Questions()
+	if err != nil {
+		return nil, err
+	}
+	var out []*QuestionRecord
+	for _, q := range qs {
+		if q.Answers == nil {
+			out = append(out, q)
+		}
+	}
+	return out, nil
+}
+
 func writeJSON(dir, name string, v any) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err

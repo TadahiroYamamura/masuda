@@ -49,6 +49,8 @@ type Options struct {
 	// AlwaysHosts・AlwaysSecrets は、どのノードの方針にも足すもの（Claude APIへの経路）。
 	AlwaysHosts   []string
 	AlwaysSecrets []string
+	// OnLog は実行記録を1行書くたびに呼ばれる（公開APIのWatchへ流す）。nilなら呼ばない。
+	OnLog func(engine.Event)
 }
 
 // Runner は1つのワークスペースのengine.Runner。
@@ -827,8 +829,11 @@ func (r *Runner) Log(e engine.Event) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
 	_, _ = f.Write(append(b, '\n'))
+	f.Close()
+	if r.o.OnLog != nil {
+		r.o.OnLog(e)
+	}
 }
 
 func shellQuote(s string) string {

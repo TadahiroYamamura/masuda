@@ -31,6 +31,8 @@ type Options struct {
 	FakeSandbox bool
 	// SandboxSocket は`masuda-sandbox serve`のUDSのパス。FakeSandboxのときは使わない。
 	SandboxSocket string
+	// StallAfter は無活動がこれだけ続いたら活動をSTALLEDにするしきい値。0なら既定（10分）。
+	StallAfter time.Duration
 }
 
 // Server は起動中の`masuda serve`。
@@ -63,14 +65,36 @@ type backend struct {
 	runsMu sync.Mutex
 	runs   map[string]*runCtl // ワークスペースID → 動いている実行
 	hookMu sync.Mutex
+	// lifeMu はRun・Resume・Stop・Removeを直列にする。「動いている実行が無いことを確かめて
+	// 作る」「止めてから消す」の間に別の操作が割り込まないようにするため。
+	lifeMu sync.Mutex
+
+	events     *eventBus
+	acts       *activities
+	stallAfter time.Duration
 }
 
 func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func(), opts Options) *backend {
 	ctx, cancel := context.WithCancel(context.Background())
+	stall := opts.StallAfter
+	if stall <= 0 {
+		stall = DefaultStallAfter
+	}
 	return &backend{
 		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox,
 		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
+		events: newEventBus(), acts: newActivities(), stallAfter: stall,
 	}
+}
+
+func (b *backend) allRuns() []*runCtl {
+	b.runsMu.Lock()
+	defer b.runsMu.Unlock()
+	out := make([]*runCtl, 0, len(b.runs))
+	for _, c := range b.runs {
+		out = append(out, c)
+	}
+	return out
 }
 
 func (b *backend) runFor(id string) *runCtl {
@@ -147,6 +171,12 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 		return nil, fmt.Errorf("serve: listening on %s: %w", opts.Socket, err)
 	}
 	b := newBackend(workspace.NewStore(opts.DataDir), sb, closeSandbox, opts)
+	if err := b.recoverInterrupted(); err != nil {
+		ln.Close()
+		closeSandbox()
+		return nil, err
+	}
+	b.goBackground(b.patrol)
 
 	// UDS上ではTLSが無いので、クライアント・サーバー両方向のストリーミングに要る
 	// HTTP/2を平文（h2c）で受ける。HTTP/1.1のHTTP+JSONも同じハンドラで受ける。
@@ -212,7 +242,7 @@ func newMux(b *backend) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewGateServiceHandler(&gateService{store: store, backend: b}))
-	mux.Handle(apiv1connect.NewQuestionServiceHandler(apiv1connect.UnimplementedQuestionServiceHandler{}))
+	mux.Handle(apiv1connect.NewQuestionServiceHandler(&questionService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))
 	mux.Handle(apiv1connect.NewConfigServiceHandler(apiv1connect.UnimplementedConfigServiceHandler{}))
 	mux.Handle(apiv1connect.NewWorkflowServiceHandler(apiv1connect.UnimplementedWorkflowServiceHandler{}))
