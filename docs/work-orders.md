@@ -133,6 +133,10 @@ M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の�
 - **GitHub Actions `release.yml`**: タグ`v*`で`linux/amd64`・`darwin/arm64`（darwinは「実験的」。macOSの検証はM5）をクロスビルドし、`masuda_X.Y.Z_<os>_<arch>.tar.gz`とSHA-256をGitHub Releaseに添付。`clients/ts`の`npm pack`のtgzも添付。**CI `ci.yml`**: `main`/`develop`へのpushとPRで`go build`・`go vet`・`go test ./...`（契約テストはフェイクで回るのでCIで回す。liveはskip）
 - **リリース手順書** `docs/design/release.md`: (1) 3リポジトリの契約テストが緑、liveテストが完走していること、(2) `redesign`→`develop`（初回のみ: `git branch -f develop redesign && git push -f origin develop`、旧developはタグ`v1-frozen-develop`。`v1-frozen-*`の3タグもpush）、(3) `main`を`develop`に合わせる、(4) sandbox→masudaの順にタグ`vX.Y.Z`を打つ（masudaのリリースノートに対応するsandboxのバージョンを書く）、(5) docsワークフローが`X.Y`と`latest`を公開することの確認、(6) Releaseの添付物でインストール手順（`docs/user/install.md`）を1回なぞる
 - `docs/user/install.md`を「ソースからビルド」から「Releaseのtarballを入れる」中心に書き直し、ソースからの手順は開発者向け（`design/README.md`）へ
+- **3リポジトリに同じタグ**（ユーザーの指示）: masudaのリリース`vX.Y.Z`は、依存するengineとsandboxのコミットにも同じタグ`vX.Y.Z`を打つ。順序はengine→sandbox→masuda。masudaのリリースノートに両方のコミットハッシュを書く。リリース手順書に明記する
+- **engineの依存をタグで固定**: `go.mod`の`replace => ../masuda-engine`をやめ、`require github.com/TadahiroYamamura/masuda-engine vX.Y.Z`にする（リリースのたびに上げる）。開発中の隣接ディレクトリ参照はgitignoreした`go.work`（`go work use . ../masuda-engine`）で行い、`CLAUDE.md`にその手順を書く。CIとreleaseは`GOFLAGS=-mod=mod`無しで、タグ付きのengineを取る
+- **`guest.BaseEnv`のPATH上書きをやめる**: sandboxはS10/S12で既定PATH（`$HOME/.local/bin`を先頭に足す、イメージのENVを引き継ぐ）を保証するので、masudaがPATHを上書きする必要が無くなった。フェイクsandboxは同じ既定を模倣する
+- **E11後**: 同梱`build-step`の`approve-interim`が`target: step-diff`になるので、`gate show`とUI向けの`subject`の扱い、`docs/user/concepts.md`のinterimの説明、findingsのコメント取り込み（interimでは`staging_commit`がHEADで行番号は作業ツリー基準）を合わせる
 - 契約テスト: C-M1〜C-M8が緑のまま
 
 ## 契約テストの対応表
