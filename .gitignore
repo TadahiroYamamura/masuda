@@ -27,3 +27,9 @@ test_fizzbuzz.py
 # now lives in the VM's own work directory), and this stays as the backstop
 # for any future process whose identity isn't an absolute path.
 *.pid
+
+# ドキュメントサイト（scripts/docs-prepare.shの生成物・mkdocsの出力・ビルド用venv）
+/docs/api/reference.md
+/docs/user/reference/workflow-schema.md
+/site/
+/.venv-docs/

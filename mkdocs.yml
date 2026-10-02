@@ -1,0 +1,83 @@
+site_name: masuda
+site_description: ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール
+site_url: https://tadahiroyamamura.github.io/masuda/
+repo_url: https://github.com/TadahiroYamamura/masuda
+repo_name: TadahiroYamamura/masuda
+edit_uri: edit/develop/docs/
+docs_dir: docs
+site_dir: site
+
+# docs/はリポジトリ内の作業用文書（作業指示書・調査メモ）も置く場所なので、サイトに載せるものだけを選ぶ。
+exclude_docs: |
+  /work-orders.md
+  /research/
+  /CONTRIBUTING.md
+  /INSTALLATION.md
+
+theme:
+  name: material
+  language: ja
+  features:
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  icon:
+    logo: material/cube-outline
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: grey
+      accent: grey
+      toggle:
+        icon: material/weather-night
+        name: ダークモードへ
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: grey
+      accent: grey
+      toggle:
+        icon: material/weather-sunny
+        name: ライトモードへ
+
+plugins:
+  - search:
+      lang: ja
+
+extra:
+  version:
+    provider: mike
+    default: latest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+nav:
+  - ホーム: index.md
+  - 利用者向け:
+      - user/index.md
+      - ワークフロー定義の仕様: user/reference/workflow-schema.md
+  - 統合開発者向け:
+      - api/index.md
+      - APIリファレンス: api/reference.md
+  - 開発者向け:
+      - design/README.md
+      - 全体設計: design/overview.md
+      - 契約: design/contracts.md
+      - ゲストプロトコル: guest-protocol.md
+      - 再設計の経緯: design/redesign-background.md

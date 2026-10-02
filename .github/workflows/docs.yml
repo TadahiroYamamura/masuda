@@ -1,0 +1,85 @@
+name: docs
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# mikeはgh-pagesブランチへコミットしてpushする。並行に走るとpushが競合するので1本ずつにする。
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # mikeが既存のgh-pagesに積み増すので、全履歴とブランチが要る。
+          fetch-depth: 0
+
+      - name: Checkout masuda-engine
+        uses: actions/checkout@v4
+        with:
+          repository: TadahiroYamamura/masuda-engine
+          path: masuda-engine
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - run: pip install -r requirements-docs.txt
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Prepare generated pages
+        run: scripts/docs-prepare.sh
+        env:
+          MASUDA_ENGINE_DIR: ${{ github.workspace }}/masuda-engine
+
+      - name: Decide version
+        id: version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # 手動実行は作業ブランチから試すためのもの。どのrefから起動してもdevに置く。
+            echo "version=dev" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$GITHUB_REF" in
+            refs/tags/v*)
+              tag=${GITHUB_REF#refs/tags/v}
+              echo "version=$(echo "$tag" | cut -d. -f1,2)" >>"$GITHUB_OUTPUT"
+              echo "alias=latest" >>"$GITHUB_OUTPUT"
+              ;;
+            refs/heads/main)
+              echo "version=main" >>"$GITHUB_OUTPUT"
+              ;;
+            refs/heads/develop)
+              echo "version=dev" >>"$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "unexpected ref $GITHUB_REF" >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Configure git identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+      - name: Deploy
+        run: mike deploy --push --update-aliases "${{ steps.version.outputs.version }}" ${{ steps.version.outputs.alias }}
+
+      - name: Set default version
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        run: mike set-default --push latest

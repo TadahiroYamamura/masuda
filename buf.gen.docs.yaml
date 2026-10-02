@@ -1,0 +1,10 @@
+version: v2
+# ドキュメントサイト用。masuda.protoからAPIリファレンス（Markdown）をdocs/api/reference.mdへ生成する。
+# 生成物はコミットしない（scripts/docs-prepare.shがビルドのたびに作る）。
+inputs:
+  - directory: proto
+plugins:
+  - remote: buf.build/community/pseudomuto-doc
+    out: docs/api
+    opt:
+      - markdown,reference.md
