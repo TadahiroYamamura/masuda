@@ -79,6 +79,9 @@ nav:
       - ワークフロー: user/workflows.md
       - ワークフロー定義の仕様: user/reference/workflow-schema.md
       - レビュー観点: user/reviews.md
+      - 秘密・egress・特権コマンド: user/secrets-and-egress.md
+      - 運用: user/operations.md
+      - トラブルシューティング: user/troubleshooting.md
   - 統合開発者向け:
       - api/index.md
       - APIリファレンス: api/reference.md
