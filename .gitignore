@@ -2,11 +2,7 @@
 .env
 
 # Python
-__pycache__/
-*.pyc
 *.pyo
-.pytest_cache/
-venv/
 
 # Claude loop outputs (generated at runtime)
 TASK.md

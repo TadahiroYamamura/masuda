@@ -49,6 +49,7 @@
 
 - `internal/config`: `.masuda/settings.json`（`image`、`egress`、`secrets`、`envFiles`、`privilegedCommands`、`checks`、`claudeSettings`）と`.masuda/settings.local.json`（`egressApproved`、`secretsApproved`（plaintext用）、`privilegedCommandsApproved`、`claudeToken`）。宣言ハッシュで承認の失効を判定
 - `internal/secrets`: `$XDG_DATA_HOME/masuda/secrets/<repo-hash>/<NAME>`（0600）。Claudeトークンも同じ仕組み（`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`。旧`masuda claude set-token`は無い）
+- イメージの再ビルド判定: Gondolinの`build_id`は同じDockerイメージからでもビルドのたびに変わり、1回約390MBの資産が溜まる。sandboxの`ListImages`に同じ`oci_digest`（`docker build`の結果）の資産があれば再ビルドせずそれを使う。資産の削除はsandbox APIに将来`DeleteImage`を足して対処する（今は無い）
 - `ConfigService`とCLI（`egress`・`secret`・`privileged-command`・`image`）、`masuda init`（`.masuda/`の雛形、既定の`egress`に`api.anthropic.com`、`images/default/Dockerfile`の雛形）
 - 契約テスト: C-M6
 
