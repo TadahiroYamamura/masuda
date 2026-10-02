@@ -133,16 +133,23 @@ func newTable(w io.Writer) *tabwriter.Writer { return tabwriter.NewWriter(w, 0, 
 // ---------------------------------------------------------------------------
 
 func runRun(args []string) error {
-	c := newCommand("run", "run --workflow <path> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...")
+	c := newCommand("run", "run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...")
 	repo := c.fs.String("repo", ".", "対象リポジトリ（作業ツリーのトップ）")
-	workflow := c.fs.String("workflow", "", "ワークフロー（例: workflows/develop）")
+	workflow := c.fs.String("workflow", "", "ワークフロー（例: workflows/develop）。位置引数でも渡せる")
 	branch := c.fs.String("branch", "", "作るブランチ")
 	base := c.fs.String("base", "", "分岐元（空ならリポジトリの既定のブランチ）")
 	image := c.fs.String("image", "", "イメージのエントリ（空ならsettings.jsonの既定）")
 	var inputs multiFlag
 	c.fs.Var(&inputs, "input", "入力。name=value、またはname=@file でファイルの中身（繰り返し可）")
-	if _, err := c.parse(args, 0, 0); err != nil {
+	pos, err := c.parse(args, 0, 1)
+	if err != nil {
 		return err
+	}
+	if len(pos) == 1 {
+		if *workflow != "" && *workflow != pos[0] {
+			return fmt.Errorf("workflow given twice: %q and --workflow %q", pos[0], *workflow)
+		}
+		*workflow = pos[0]
 	}
 	if *workflow == "" || *branch == "" {
 		c.fs.Usage()
