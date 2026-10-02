@@ -13,9 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -33,7 +31,6 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
-	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -46,8 +43,9 @@ type Options struct {
 	SandboxID string
 	// Author はstagingのコミットとゲストのWIPスナップショットの作者。
 	Author staging.Identity
-	// Reviews は対象リポジトリの`.masuda/reviews`（無ければnil）。同じ名前の同梱観点を置き換える。
-	Reviews fs.FS
+	// Reviews は実行開始時に固定した観点（`<id>.md`→中身、perspectives.Snapshot）。
+	// 観点の一覧はこれだけから作る（ゲストの`/masuda/reviews/`と同じもの）。
+	Reviews map[string][]byte
 	// AlwaysHosts・AlwaysSecrets は、どのノードの方針にも足すもの（Claude APIへの経路）。
 	AlwaysHosts   []string
 	AlwaysSecrets []string
@@ -627,30 +625,11 @@ func (r *Runner) findingItems(ctx context.Context, run engine.RunID, from engine
 }
 
 // perspectiveItems は観点を項目にする。idsがnilなら全観点、そうでなければその順に。
-// 対象リポジトリの`.masuda/reviews/<id>.md`は同じidの同梱観点を丸ごと置き換える。
+// 観点は実行開始時の写し（Options.Reviews）だけから引く。
 func (r *Runner) perspectiveItems(ids []string) ([]engine.Item, error) {
 	all := map[string][]byte{}
-	for _, src := range []fs.FS{perspectives.Builtin(), r.o.Reviews} {
-		if src == nil {
-			continue
-		}
-		entries, err := fs.ReadDir(src, ".")
-		if err != nil {
-			if errors.Is(err, fs.ErrNotExist) {
-				continue
-			}
-			return nil, err
-		}
-		for _, e := range entries {
-			if e.IsDir() || path.Ext(e.Name()) != ".md" {
-				continue
-			}
-			b, err := fs.ReadFile(src, e.Name())
-			if err != nil {
-				return nil, err
-			}
-			all[strings.TrimSuffix(e.Name(), ".md")] = b
-		}
+	for name, b := range r.o.Reviews {
+		all[strings.TrimSuffix(name, ".md")] = b
 	}
 	if ids == nil {
 		for id := range all {

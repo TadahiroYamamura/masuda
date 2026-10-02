@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -53,7 +52,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	if err := copyDefinitions(repoRoot, defs); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reading .masuda: %w", err))
 	}
-	set, reviews, err := checkDefinitions(defs, m.Workflow, m.Inputs)
+	set, err := checkDefinitions(defs, m.Workflow, m.Inputs)
 	if err != nil {
 		return nil, err
 	}
@@ -99,12 +98,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 		_ = s.store.Remove(w.ID)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	// reviewsは写した後の場所から読み直す（tmpのdefsはもう無い）。
-	if _, reviews, err = loadDefinitions(w.DefinitionsDir()); err != nil {
-		_ = s.store.Remove(w.ID)
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	c, err := s.backend.newRunCtl(w, set, reviews, plan)
+	c, err := s.backend.newRunCtl(w, set, plan)
 	if err != nil {
 		_ = s.store.Remove(w.ID)
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -140,14 +134,14 @@ func startEngine(ctx context.Context, c *runCtl, inputs map[string][]byte, workf
 
 // checkDefinitions は定義を読み込み、workflowをrootとして検査する。問題があれば
 // ワークスペースを作る前に、問題の一覧をInvalidArgumentで返す。
-func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.Set, fs.FS, error) {
-	set, reviews, err := loadDefinitions(dir)
+func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.Set, error) {
+	set, err := loadDefinitions(dir)
 	if err != nil {
-		return nil, nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("loading definitions: %w", err))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("loading definitions: %w", err))
 	}
 	wf := set.Workflows[workflow]
 	if wf == nil {
-		return nil, nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", workflow))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", workflow))
 	}
 	if problems := set.Check(workflow); len(problems) > 0 {
 		var lines []string
@@ -158,7 +152,7 @@ func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.S
 			}
 			lines = append(lines, loc+": "+p.Message)
 		}
-		return nil, nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s has problems:\n%s", workflow, strings.Join(lines, "\n")))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s has problems:\n%s", workflow, strings.Join(lines, "\n")))
 	}
 	var missing []string
 	for _, in := range wf.Inputs {
@@ -167,9 +161,9 @@ func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.S
 		}
 	}
 	if len(missing) > 0 {
-		return nil, nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v", workflow, missing))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v", workflow, missing))
 	}
-	return set, reviews, nil
+	return set, nil
 }
 
 // repoTop はrepo_rootが作業ツリーのトップそのものであることを確かめ、正規化したパスを返す。

@@ -38,6 +38,8 @@ type runCtl struct {
 	author staging.Identity
 	// plan はsandboxとゲストの組み立て方（Run・Resumeの受け付け時に設定から作ったもの）。
 	plan *bootPlan
+	// reviews は実行開始時に固定した観点（`<id>.md`→中身）。ゲストの`/masuda/reviews/`へ置く。
+	reviews map[string][]byte
 
 	// ctx はこの実行の寿命。Stop・Remove・serveの停止で取り消され、ブロック中のnext_task・
 	// ask_human、起動の途中、engineの進行を止める。

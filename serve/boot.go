@@ -19,6 +19,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/runner"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -28,17 +29,28 @@ import (
 const claudeAPIHost = "api.anthropic.com"
 
 // loadDefinitions はdir（対象リポジトリの`.masuda/`か、その写し）と同梱の定義を読み込む。
-// reviewsはdirの`reviews/`（無ければnil）。
-func loadDefinitions(dir string) (set *engine.Set, reviews fs.FS, err error) {
+func loadDefinitions(dir string) (*engine.Set, error) {
 	var repo fs.FS
 	if entries, err := os.ReadDir(dir); err == nil && len(entries) > 0 {
 		repo = os.DirFS(dir)
-		if st, err := os.Stat(filepath.Join(dir, "reviews")); err == nil && st.IsDir() {
-			reviews = os.DirFS(filepath.Join(dir, "reviews"))
-		}
 	}
-	set, err = engine.Load(repo, engine.Bundled())
-	return set, reviews, err
+	return engine.Load(repo, engine.Bundled())
+}
+
+// snapshotReviews はwの観点の写し（ReviewsDir）を、無ければ定義の写しの`reviews/`と同梱の観点から
+// 作って読む。ゲストのcloneの`.masuda/reviews/`を使わないのは、`.masuda/`をコミットしていない
+// リポジトリでも観点が揃うようにするため（docs/guest-protocol.md）。写しが既にあれば
+// 作り直さないので、再開しても実行開始時と同じ観点で続く。
+func snapshotReviews(w *workspace.Workspace) (map[string][]byte, error) {
+	var repo fs.FS
+	dir := filepath.Join(w.DefinitionsDir(), "reviews")
+	if st, err := os.Stat(dir); err == nil && st.IsDir() {
+		repo = os.DirFS(dir)
+	}
+	if err := perspectives.Snapshot(repo, w.ReviewsDir()); err != nil {
+		return nil, fmt.Errorf("snapshotting review perspectives: %w", err)
+	}
+	return perspectives.Load(w.ReviewsDir())
 }
 
 // copyDefinitions は対象リポジトリの`.masuda/`をdstへ写す（無ければ空のdstを作る）。
@@ -87,8 +99,12 @@ func copyDefinitions(repoRoot, dst string) error {
 //
 // MCPはsandboxより先に待ち受ける。tcp_mapsに渡すポートが要るのと、ゲストのclaudeが
 // 起動直後に呼んでも、フックが起動の途中で届いても受けられるようにするため。
-func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, reviews fs.FS, plan *bootPlan) (*runCtl, error) {
+func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootPlan) (*runCtl, error) {
 	id := w.ID
+	reviews, err := snapshotReviews(w)
+	if err != nil {
+		return nil, err
+	}
 	store, err := runner.OpenFileStore(filepath.Join(w.RecordsDir(), "engine.json"))
 	if err != nil {
 		return nil, err
@@ -109,7 +125,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, reviews fs.
 	})
 	ctx, cancel := context.WithCancel(b.ctx)
 	c := &runCtl{
-		b: b, id: id, set: set, runner: r, author: author, plan: plan,
+		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews,
 		changed: make(chan struct{}), ctx: ctx, cancel: cancel, bootDone: make(chan struct{}),
 	}
 	c.eng = engine.New(set, store, r, engine.Options{})
@@ -199,7 +215,7 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 	}()
 	env := c.plan.guestEnv(sb.Placeholders)
 	c.runner.SetGuestEnv(env)
-	if err := b.prepareGuest(ctx, w, c.set, c.plan, sb.Placeholders); err != nil {
+	if err := b.prepareGuest(ctx, w, c, sb.Placeholders); err != nil {
 		return err
 	}
 	if b.fake {
@@ -254,8 +270,9 @@ func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcp
 }
 
 // prepareGuest はstagingのブランチをゲストへcloneさせ、ループ規約・サブエージェント定義・
-// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェックを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
-func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, set *engine.Set, plan *bootPlan, placeholders map[string]string) error {
+// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
+func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *runCtl, placeholders map[string]string) error {
+	set, plan := c.set, c.plan
 	repo := staging.Open(w.StagingDir())
 	// 毎回別のディレクトリに作る。Stopで取り消されたgitが`.lock`を残しても、再開を妨げないように。
 	tmp, err := os.MkdirTemp(w.Dir, ".bootstrap-")
@@ -291,6 +308,7 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, set 
 		ClaudeSettings: plan.claudeSettings,
 		EnvFiles:       plan.guestEnvFiles(placeholders),
 		Checks:         plan.checks,
+		Reviews:        c.reviews,
 	})
 }
 

@@ -87,6 +87,8 @@ type Layout struct {
 	EnvFiles []EnvFile
 	// Checks はチェック名→シェルコマンド。`/masuda/checks/<名前>`に実行可能スクリプトとして置く。
 	Checks map[string]string
+	// Reviews はレビュー観点の写し（`<id>.md`→中身）。ReviewsDirへ置く。
+	Reviews map[string][]byte
 }
 
 // EnvFile は作業ツリーに生成するdotenv形式のファイル1つ。
@@ -100,6 +102,9 @@ type EnvVar struct{ Name, Value string }
 
 // ChecksDir はチェックのスクリプトを置くゲストのディレクトリ。
 const ChecksDir = "/masuda/checks"
+
+// ReviewsDir はレビュー観点を置くゲストのディレクトリ。trigger-matcherはここを読む。
+const ReviewsDir = "/masuda/reviews"
 
 // bundleGuestPath はbundleを置くゲストのパス。cloneが終わったら消す。
 const bundleGuestPath = "/masuda/bootstrap.bundle"
@@ -148,7 +153,28 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 	if err := writeEnvFiles(ctx, c, l.SandboxID, l.EnvFiles); err != nil {
 		return err
 	}
-	return writeChecks(ctx, c, l.SandboxID, l.Checks)
+	if err := writeChecks(ctx, c, l.SandboxID, l.Checks); err != nil {
+		return err
+	}
+	return writeReviews(ctx, c, l.SandboxID, l.Reviews)
+}
+
+// writeReviews は観点の写しをゲストのReviewsDirへ置く。
+func writeReviews(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, reviews map[string][]byte) error {
+	names := make([]string, 0, len(reviews))
+	for name := range reviews {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if name != path.Base(name) || strings.HasPrefix(name, ".") || path.Ext(name) != ".md" {
+			return fmt.Errorf("invalid review perspective file name %q", name)
+		}
+		if err := WriteBytes(ctx, c, id, ReviewsDir+"/"+name, reviews[name], 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // writeEnvFiles は生成したファイルを作業ツリーへ置き、ゲストの`.git/info/exclude`に足す。

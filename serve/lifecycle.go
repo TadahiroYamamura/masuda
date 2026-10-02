@@ -80,7 +80,7 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	if _, err := os.Stat(w.DefinitionsDir()); err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s has no snapshot of its definitions: %w", w.ID, err))
 	}
-	set, reviews, err := loadDefinitions(w.DefinitionsDir())
+	set, err := loadDefinitions(w.DefinitionsDir())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("loading the workspace's definitions: %w", err))
 	}
@@ -94,7 +94,7 @@ func (s *workspaceService) Resume(_ context.Context, req *connect.Request[apiv1.
 	if err := w.Save(); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	c, err := b.newRunCtl(w, set, reviews, plan)
+	c, err := b.newRunCtl(w, set, plan)
 	if err != nil {
 		w.State = workspace.StateStopped
 		_ = w.Save()
