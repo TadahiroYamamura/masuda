@@ -285,6 +285,10 @@ service ConfigService {
   rpc ListSecrets(RepoRequest) returns (ListSecretsResponse);
   // Stores the value locally (never echoed back).
   rpc SetSecret(SetSecretRequest) returns (ListSecretsResponse);
+  // Approves / revokes a secret that needs approval (mode plaintext: the real
+  // value enters the guest). Placeholder secrets need no approval.
+  rpc ApproveSecret(NameRequest) returns (ListSecretsResponse);
+  rpc RejectSecret(NameRequest) returns (ListSecretsResponse);
   rpc ListPrivilegedCommands(RepoRequest) returns (ListPrivilegedCommandsResponse);
   rpc ApprovePrivilegedCommand(NameRequest) returns (ListPrivilegedCommandsResponse);
   rpc ListImages(RepoRequest) returns (ListImagesResponse);
@@ -298,13 +302,22 @@ message NameRequest { string repo_root = 1; string name = 2; }
 message ListEgressResponse { repeated EgressEntry entries = 1; }
 message EgressEntry { string host = 1; bool approved = 2; }
 
-message ListSecretsResponse { repeated SecretEntry entries = 1; }
+message ListSecretsResponse {
+  repeated SecretEntry entries = 1;
+  // Whether the Claude token this repository uses (settings.local.json
+  // claudeToken, default CLAUDE_CODE_OAUTH_TOKEN) has a value stored. The
+  // token is not listed among entries.
+  bool claude_token_set = 2;
+}
 message SecretEntry {
   string name = 1;
   repeated string hosts = 2;
   string mode = 3;        // placeholder | plaintext
   bool value_set = 4;
-  bool approved = 5;      // plaintext needs approval
+  // approval_required is true for mode plaintext. approved is meaningful
+  // only then; for placeholder secrets it is always true.
+  bool approval_required = 6;
+  bool approved = 5;
 }
 
 message SetSecretRequest { string repo_root = 1; string name = 2; string value = 3; }
