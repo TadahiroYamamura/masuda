@@ -1,24 +1,34 @@
 # HANDOFF
 ## 作業項目
-M1（旧コードの削除と骨組み）完了。コミット: `283bb6f`（削除と流用部分の写し）、`6b5729b`（buf generate・go.mod・`package serve`・`cmd/masuda`）、`5411913`（README・INSTALLATION・CONTRIBUTING）
-- 残したもの: `docs/`、`scripts/gh.sh`、`proto/`、`buf.*`、`CLAUDE.md`、`HANDOFF.md`、`.gitignore`、`.claude/`、`contract/`
-- 写したもの: `internal/staging`（旧`internal/worktree`の`clone --bare --local`と`FastForward`だけ）、`internal/perspectives`（14観点を`go:embed`、`Builtin()`）、`internal/config`（宣言/承認の形: `DeclHash`・`Load`・`LoadLocal`・`SaveLocal`。MCPサーバー宣言・images・Baseは削除）
-- `gen/`: masuda.protoとsandbox.proto（`../masuda-sandbox/proto`から。`buf.gen.yaml`のMオプションで`gen/masuda/sandbox/v1;sandboxv1`へ）
-- `serve`: `Start`/`Stop`/`Done`。全6サービスを登録し、`WorkspaceService.List`（空）・`Get`（NotFound）以外はUnimplemented。`Options.FakeSandbox`・`SandboxSocket`は受け取るだけでまだ使っていない
-- `cmd/masuda`: `serve`（`--socket`・`--data-dir`・`--fake-sandbox`・`--sandbox-socket`）、`version`。標準`flag`で、cobraは入れていない
+M2（ワークスペースとstaging）完了。コミット: `5896eef`（internal/staging）、`cfc3df7`（internal/workspace・StagingService・Run）、このHANDOFFの更新
+- `internal/staging`（`Repo`）
+  - `Create(ctx, CreateOptions{RepoRoot, Dir, Branch, Base})`: `clone --bare --local`、cloneが残す`origin`を削除、`refs/masuda/base`と`refs/heads/<branch>`を分岐元へ。`Base`が空なら実リポジトリのHEADが指すブランチ（detachedならそのコミット）。実リポジトリに同名ブランチがあれば`ErrBranchExists`
+  - `ImportBundle(ctx, bundlePath, srcRef, occ)`→`refs/masuda/wip/<occ>`（同じoccは上書き）、`CreateBundle(ctx, out, refs...)`
+  - `Commit(ctx, CommitOptions{Branch, WIP, Allowed, Byproducts, Message, Author})`: WIPのtreeとブランチ先頭の差分を取り、Allowed/Byproducts外の変更があれば何も書かず`Deviations`を返す。なければ先頭のtreeにAllowedのパスだけを重ね（使い捨てGIT_INDEX_FILE）、`commit-tree`→旧値付き`update-ref`。パターンは完全一致か`path.Match`
+  - `PublishLocal(ctx, repoRoot, branch, commit)`（fetch→FETCH_HEADが承認済みハッシュと一致を確認→チェックアウト中なら`merge --ff-only`、そうでなければ祖先検査＋旧値付き`update-ref`）、`PushRemote(ctx, url, branch, commit)`（非強制）、`RemoteURL(ctx, repoRoot, name)`
+  - 閲覧: `ListRefs`・`GetCommit`・`Diff`（`diff-tree -p`）・`Blob`・`ResolveCommit`・`TopLevel`
+  - エラー: `ErrNotFound`・`ErrInvalid`・`ErrBranchExists`
+- `internal/workspace`: `Store`（`NewStore(dataDir)`・`Create`・`Get`・`List(repoRoot)`・`Remove`）、`Workspace`（`StagingDir/DataDir/RecordsDir/ExportsDir`・`Save`・`AddComment`・`Comments`）。メタは`<id>/workspace.json`、コメントは`<id>/records/comments.jsonl`。IDは12桁16進
+- `serve`: `WorkspaceService.Run`（検査→ワークスペース作成→staging作成→STARTINGのWorkspaceを返す。失敗したらディレクトリごと消す）、`Get`/`List`はStoreから。`StagingService`全RPC（ListRefs/GetCommit/Diff/GetBlob（64KiBチャンク）/ListComments/AddComment）
+- テスト: `internal/staging/staging_test.go`、`internal/workspace/workspace_test.go`、`serve/staging_test.go`
 ## 完了した契約テスト
-C-M1（`go test ./contract/ -run TestCM1`が緑。`go build ./...`・`go vet ./...`も通る）。C-M2〜C-M7は想定どおり赤
+C-M1・C-M2（`go test -count=1 ./contract/ -run 'TestCM1|TestCM2'`が緑。`go build ./...`・`go vet ./...`も通る）。C-M3〜C-M7は想定どおり赤
 ## 未完と理由
-- ローカルの追跡外ファイル`venv/`・`__pycache__/`・`masuda`（旧バイナリ）は残っている。`rm -rf`が自動承認されなかったため。ユーザーが消す。消したら`.gitignore`のPython関連の行も落とせる
-- `CLAUDE.md`の「開発環境」がまだ旧設計（venv・pytest・rootfsビルド・`orchestrator/`/`runtime/`）を書いている。M1の範囲外なので触っていない
-- `.claude/skills/`（adr-author・doc-placement）は削除済みの`docs/adr/`を前提にしている。残す指示どおり触っていない
+- `RunRequest.inputs`はまだ保存していない（`image`はメタに保存済み）。engine.Startへ渡すところ（M4/M5）で扱う
+- `WorkspaceService.Remove`は未接続。`Store.Remove`はあるが、sandboxの停止と組にするM5で繋ぐ
+- 前セッションから引き継いだ未完（`venv/`等の追跡外ファイル、`CLAUDE.md`の旧「開発環境」、`.claude/skills/`）はそのまま
 ## 次の一手
-`docs/work-orders.md`のM2
+`docs/work-orders.md`のM3（フェイクsandbox）
 ## 注意点
-- 契約ファイルは変えない
-- `go.mod`の`masuda-engine`のrequireはまだimportが無いので`go mod tidy`で消える。tidyした後は手で戻す（M4でimportすれば不要になる）
-- `golang.org/x/net` v0.59.0では`http2/h2c`がDeprecated（`http.Server.Protocols`で`SetUnencryptedHTTP2(true)`が推奨）。作業指示どおりh2cを使っている。置き換えるなら`serve.Start`の1か所
-- 旧`config.PrivilegedCommandHash`（承認を宣言だけでなくイメージの中身のダイジェストにも結びつける）はimages.goと一緒に消した。M7で同じ考え方が要る
-- 作業中、`docs/design/contracts.md`にこのセッション以外からの未コミットの変更（TypeScriptの生成プラグインの記述）が入っていた。触らず、コミットにも含めていない
+- 契約テストのハーネスはフェイクのパスを`<DataDir>/fake/<wsID>/`で引く（`mcp.port`・`root/`）。sandbox IDをワークスペースIDと同じにするのが一番素直
+- ゲスト→ホストのWIPは「コミットを指すref」をbundleに入れる前提にした（bundleはコミットしか運べない）。M4のSnapshotはゲストで`git add -A`→`commit-tree`（親はHEAD）→そのコミットを任意のrefに置いて`git bundle create`し、`ImportBundle`の`srcRef`にそのref名を渡す。`Commit`の`WIP`には`refs/masuda/wip/<occ>`を渡せばよい（`^{tree}`で解く）
+- ホスト→ゲストのcloneは`CreateBundle(out, "refs/heads/<branch>")`→ゲストで`git clone -b <branch> <bundle> /workspace`で通ることを`staging_test.go`で確認済み
+- `Commit`はAllowedに当たる変更が無いと新しいコミットを作らず、元の先頭を`Commit`として返す。エンジン側が「変更なし」を別扱いしたいならRunner側で判定する
+- deviationで承認されなかったファイルを外すのはエンジン側の仕事（`Byproducts`に回す想定）。stagingは`Allowed`/`Byproducts`外が1つでもあれば何も書かない
+- Allowed/Byproductsのグロブは`**`を解釈しない。計画の`files`や`expected_byproducts`が`**`を使うならM4で合わせる
+- stagingのコミットの作者は`Author`が空なら`masuda <masuda@localhost>`。実リポジトリの`user.name`/`user.email`を使うかはM4で決める
+- stagingには実リポジトリの全ブランチとタグも入っている（`ListRefs`にも出る）。UIで邪魔なら絞る
+- `go mod tidy`後の`masuda-engine`のrequireの扱いはM1の注意点のまま
+- 作業開始時点で`docs/design/contracts.md`等にこのセッション外の未コミット変更は無かった
 ## 契約への提案
 なし
