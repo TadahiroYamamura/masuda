@@ -1,40 +1,36 @@
 # HANDOFF
 ## 作業項目
-M8（実機で1周）。実際のsandbox service（QEMU VM）・本物のClaude Code（サブスクリプション）で、同梱`develop`を2回通した。どちらもplan gate→review gate→publishまで到達。
-- 段階1（scratchpadの使い捨てPythonリポジトリ`repo1`、`feat/m8`）: 本走は19:36:43→19:55:05の約18分。ゲートはplan 1回・review 1回（deviationなし）。着地: `baabc38 add triangle shape module`・`2360202 add triangle tests`（review gateで承認したコミットと一致、テスト通過）。exportsに`execution-log.jsonl`・`report`。VMは破棄済み。ここに至るまでに4回やり直した（下の不具合）
-- 段階2（このリポジトリ、base `redesign`→新ブランチ`m8/version-go`）: 20:07:10→20:20:01の約13分。ゲートはplan 1回・review 1回。着地: `1c9685c feat(cli): masuda versionにビルドしたGoのバージョンを併記する`（`dev (go1.26.3)`、`go test ./cmd/masuda/`通過）。`redesign`には混ぜず、ブランチのまま残した
-- 直したmasudaの不具合
-  - `015f892` tmuxをargvの相対名で起動していた（sandboxはargv[0]の絶対パスを要求）。DockerfileのENVがゲストに引き継がれず`claude`が見つからない→tmuxをshell（`/bin/sh -lc`）で起こす。`~/.claude.json`に`/workspace`の信頼と`bypassPermissionsModeAccepted`を足す
-  - `85c6d9d` `masuda run`がワークフローを位置引数で受け付けなかった（設計の例どおりに打てない）
-  - `d2f83c5` サブエージェント定義の`tools`にmasudaのMCPツールが無く、`write_output`/`report_result`をメインセッションが代筆していた→`guest.SubagentMCPTools`（next_task以外）を足す
-  - `2e0c4a8` 内蔵観点`missing-tests-new-code`・`missing-tests-guard-clauses`がステップ1の途中レビューで選ばれ、「テストが後のステップ」の計画で直せない指摘になって止まった→`trigger`を外し最終レビューだけで使う
-  - `e35892d` execノードで`go: not found`（Gondolinの既定PATHに/usr/local/binが無い）と`/tmp/.cache`へ書けない（sandboxの既定`XDG_CACHE_HOME=/tmp/.cache`がroot所有）→`guest.BaseEnv`（PATH・XDG_*_HOME）をguestEnvに入れ、チェックのスクリプトを`#!/bin/sh -el`に
+M9のうち「M8の実機1周で見つかったもの（優先）」の6項目と、「元から残っていたもの」のResumeのWIP復元。
+- `83e6459` **disk_mib**: `buf generate`で`CreateSandboxRequest.disk_mib`を取り込み、`.masuda/settings.json`の`images: {<entry>: {diskMiB}}`（既定4096）をメインVM・特権VMの`CreateSandbox`に渡す。置き場所はsettings.json側を選んだ（egress・secrets・privilegedCommandsと同じく宣言を1ファイルに集め、厳格デコードと検査に載せるため。`.masuda/images/<entry>/settings.json`は宣言が2か所に分かれるので採らなかった）
+- `589ea1a` **観点の置き場所**: 起動時に同梱14観点へ定義の写しの`reviews/*.md`を重ねて`records/reviews/`にスナップショット（一度作ったら作り直さない。写しの無い既存ワークスペースは再開時に作る）。ゲストの`/masuda/reviews/`へ`WriteFile`し、`Runner.Items(perspectives)`・`perspectives(from=…)`もこの写しだけから返す。重ね方は従来どおり「同じidは丸ごと置き換え、新しいidは足す」（`masuda init`で全観点を書き出したリポジトリでは実リポジトリのものだけになる）
+- `faae24f` **活動の判定**: 原因はフックではなく、sandboxが`http_started`だけを出して`http_finished`を出さなかったリクエストが進行中のまま残ったこと（下の調査結果）。2分経っても終わらないリクエストは進行中に数えず、`idle_prompt`が来たら60秒より前に始まった未完了のものを捨てる。ループ規約（`internal/guest/loop-claude.md`）に「会話で問いかけて待たない」「人間に聞くのは`ask_human`（questionタスクのサブエージェントだけ）、それ以外は宣言済みoutcome＋`feedback`」「`next_task`が返るまで他のことをしない」を足した
+- `69b39f6` 起動失敗（Reasonが`sandbox boot failed: `）でBLOCKEDになったワークスペースを`stop`なしで`resume`できる。engineが止めたBLOCKEDは対象外（従来どおりstop→resume）
+- `4cc9190` `masuda init`は`.gitignore`に`.masuda`・`.masuda/`・`.masuda/*`・`.masuda/**`（先頭`/`付きも）があれば行を足さない。雛形Dockerfileのコメントに、キャッシュを/tmpへ向ける案内（DockerfileのENVはゲストに引き継がれないので、settings.jsonの`checks`のコマンドと`claudeSettings.env`で渡す）と`-modcacherw`の注意を書いた
+- `1dd8eb0` `live/`: `TestDevelopLapOnPythonRepo`（M8段階1の自動化）。**実行はしていない**
+- `54218b6` **ResumeのWIP復元**: 再cloneの後、`refs/masuda/wip/*`のうちコミット日時が最新のもの（同秒は出現IDの大きい方）を`<wip> ^<branch>`のbundleでゲストへ渡し、`git read-tree -m -u HEAD FETCH_HEAD`。HEADはブランチのまま、変更はindexに載った未コミットの状態で戻る。再開前に開いていたask_humanの質問（engineがStatusQuestionで待っていないもの）は`discardedAt`・`discardReason: "再開で破棄"`を記録して閉じ、OpenQuestions・Answerの対象から外す。再開後はengineが同じ出現のタスクを渡し直す
+
+### フックが届いていたかの調査結果
+- 届いていた。`b7bd968ccd00`の`records/hooks.jsonl`は354行（PostToolUse 272、SubagentStop 41、Stop 38、Notification/idle_prompt 3）、`6020d80e8259`は317行。設定（マッチャー無し、`curl -s -X POST … -d @-`）は変えていない
+- `idle_prompt`はメインセッションがターンを終えてから約60秒後に1回出ていた（例 10:40:56 Stop→10:41:53）。バックグラウンドのサブエージェントが動いている間にも出る（その後の活動で消えるので正しい）
+- input_waitにならなかった原因: scratchpad `m8/watch2.log`（fixerで止まった回）と`watch4.log`で、`http_started`に対応する`http_finished`が1件ずつ欠けていた（watch2は19:22:16、SubagentStop直後のPOST /v1/messages）。sandboxの`egress.ts`はレスポンスを受けた時だけ`httpFinished`を出すので、応答前に切られたリクエストは進行中のまま残り、`inflight > 0`が`inputWait`より優先されて`working(idle)`に張り付いた。`http_finished`は応答ヘッダーの時点で出るため、実機の最長は約20秒（M8の全ログ）
+
 ## 完了した契約テスト
-C-M1〜C-M7は緑のまま（`go test -count=1 ./contract/`）。`go build ./...`・`go vet ./...`・`go test ./...`も通る。契約ファイル・契約テストのassertionは変えていない
+C-M1〜C-M7は緑のまま（`go test -count=1 ./contract/`）。`go build ./...`・`go vet ./...`・`go test ./...`も通る。契約ファイル（両proto、`docs/guest-protocol.md`）と契約テストのassertionは変えていない（`gen/`は`buf generate`で作り直しただけ）
 ## 未完と理由
-- `MASUDA_LIVE_TEST=1 go test ./live/`は作っていない（`live/`は無い）。今回はCLIで手動に回した。自動化するなら、下の「注意点」の環境（GOCACHE等）をテスト側で用意する必要がある
-- 特権コマンドは実機で通していない（M7の注意点のまま）
-- masuda側で気づいたが直していないもの
-  - 活動の判定: メインセッションがターンを終えて人間に問いかけたまま4分以上止まっていても`working(idle)`のままで、`input_wait`にならなかった。バックグラウンドのサブエージェントが動いている間も`working(idle)`と出る。原因は未調査
-  - 起動に失敗してBLOCKEDになったワークスペースは`resume`できず、`stop`してから`resume`する必要がある（契約は「stoppedを再開」なので仕様どおりだが使いにくい）
-  - `masuda init`は`.gitignore`に`.masuda/`があっても`.masuda/settings.local.json`を足す
-  - `docs/design/`への反映（ゲストのPATH・XDG、チェックのログインシェル、サブエージェントへのMCPツール付与）はしていない
+- `live/`は書いただけで実行していない（指示どおり。実行は監督）
+- M9の残り（`masuda chat`・`WorkflowService`・exports・`docs/design/`への反映等）は次のセッションの範囲
+- `docs/design/`への反映はしていない: 観点の写し（`records/reviews/`）、`images.<entry>.diskMiB`、活動の判定の打ち切り（2分・idle_prompt）、BLOCKEDからの再開、WIP復元と質問の破棄。`docs/design/overview.md`の「定義の置き場所」表や「活動の観測」はまだ旧い記述のまま
+- 活動の判定は単体テスト（`TestActivityKinds`）とM8のログの読み合わせでしか確かめていない。実機で「問いかけで止まる→60秒後にwaiting_input」になるかはliveテストでは見ていない（ゲートでは止めないため）
 ## 次の一手
-1. 下の「契約への提案」の判断（sandboxのディスク容量・XDG既定、engineのfixerの終わり方・trigger-matcherの観点の置き場所）
-2. `live/`の自動テスト化（段階2の手順をそのままAPIで）
-3. 実機で特権コマンドを1回通す
+1. `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`を実機で回す（sandboxのS10が入っていればdisk_mibも効く）
+2. 下の「契約への提案」の判断
+3. M9の残り（`masuda chat`、`WorkflowService`、docs/design/への反映）
 ## 注意点
-- 実機で動かした手順: `node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox.sock`（masuda-sandbox）→`masuda serve --sandbox-socket ...`→対象リポジトリで`masuda init`・Dockerfile編集・`egress approve api.anthropic.com`・`image build default`→`masuda run workflows/develop --branch ... --input instructions=@task.md`。ゲストを見るのはAPIの`AttachInfo`（`curl --unix-socket $XDG_RUNTIME_DIR/masuda.sock -H 'Content-Type: application/json' -d '{"id":"<id>"}' http://localhost/masuda.api.v1.WorkspaceService/AttachInfo`）で得たsshに`tmux capture-pane -p -t claude-work`。`masuda attach`というCLIは無い
-- masuda自身を対象にするときのイメージ（使ったものは`scratchpad/m8/dotmasuda-m8/`に退避。リポジトリの`.masuda/`は元からある旧設計のもので、実行後に戻した）
-  - go.modの`replace ../masuda-engine`のため、engineのソースをビルドコンテキストへ写して`/masuda-engine`にCOPYする（`/workspace/../masuda-engine`）
-  - モジュールはイメージで`go mod download -modcacherw all`しておく（実行中のegressはAPIだけ）。`-modcacherw`が無いとGondolinのビルドが失敗する（下の提案）
-  - VMのルートFSの空きは約200MBしかない。`checks.test`を`GOCACHE=/tmp/go-cache go test ./...`、`claudeSettings.env.GOCACHE=/tmp/go-cache`にして、ビルドキャッシュをtmpfs（2GB）へ逃がした
-- engineの読み取り専用エージェントが作業ツリーを変えると（追跡済みの`__pycache__/*.pyc`をテストで書き換えた等）deviationゲートが開き、拒否すると実行全体がBLOCKEDになる。対象リポジトリ側でバイト列のキャッシュを追跡しないことが前提
-- ゲストのclaudeは`NODE_EXTRA_CA_CERTS=/etc/gondolin/mitm/ca.crt`を読めないと警告するが、システムのCAバンドルで通信はできている
-- 残したもの: ブランチ`m8/version-go`（このリポジトリ）。`~/.local/share/masuda/workspaces/`に完了2件（`b7bd968ccd00`・`6020d80e8259`）と、removeしたワークスペースのexports。Gondolinイメージ2つ（repo1用`411234b3-...`、masuda用`e9d1cfc3-...`）とそのdockerタグ。scratchpad `m8/`に`repo1`・ログ・やり直し前のrecordsの写し。プロセス・VMは残していない（QEMUは親の12244のみ。`118151`のフェイクserveは以前からあったもので触っていない）
+- liveテストの前提: `masuda-sandbox serve`が`$XDG_RUNTIME_DIR/masuda-sandbox.sock`（`MASUDA_SANDBOX_SOCKET`で上書き）、トークンは`MASUDA_LIVE_CLAUDE_TOKEN`か`~/.local/share/masuda/claude-oauth-token`。一時データディレクトリ（`/tmp/masuda-live-data-*`）と対象リポジトリ（`/tmp/masuda-live-repo-*`）は失敗時に残る。承認するゲートはplan・review・interimだけで、deviation・triage・質問が開いたら失敗にする。go testの締め切りが45分未満なら即失敗する（`-timeout 60m`が要る）
+- 観点の写しは一度作ったら作り直さない。実行中に`.masuda/reviews/`を直しても、その実行には効かない（定義の写しと同じ）
+- WIP復元は「最新のWIP」をコミット日時（ゲストの時計）で選ぶ。特権コマンド直前の`refs/masuda/wip/privileged-<run-id>`も候補に入る
+- 起動失敗からの再開は、bootの失敗を`Reason`の頭（`bootFailedReason`）で見分けている。Reasonの文言を変えるときは定数を使うこと
+- engineの不具合と思われる挙動には当たらなかった
 ## 契約への提案
-- **sandbox: ディスク容量を指定できない**。Gondolinはrootfsを「中身+20%+64MiB」で作り、`CreateSandboxRequest`にも`BuildImageRequest`にも容量の項目が無い。Go入りのイメージで`/`は1.1G中空き200M、`go test ./...`のビルドキャッシュで`No space left on device`になり、スナップショット（git）も失敗してBLOCKEDになった。再現: Goツールチェーン入りのイメージで`checks.test: go test ./...`のexecノードを1つ持つワークフローを回す。`disk_mib`（または`free_disk_mib`）を契約に足す提案
-- **sandbox: 読み取り専用ディレクトリを含むイメージのビルドが失敗する**。再現: Dockerfileで非rootの`go mod download`（モジュールキャッシュは0555）→`masuda image build`→`Build failed: EACCES, Permission denied: /tmp/gondolin-build-XXXX`。一時ディレクトリが残り、`chmod -R u+w`しないと消せない
-- **sandbox: Execの既定環境**。`XDG_CACHE_HOME=/tmp/.cache`等を渡し、そのディレクトリをroot所有で作るため既定ユーザー（ubuntu）が書けない。PATHは`/usr/sbin:/usr/bin:/sbin:/bin`で/usr/local/binを含まず、DockerfileのENVも引き継がない。masudaは`Exec.env`で上書きして回避した（`guest.BaseEnv`）。sandbox側で直すか、契約に「既定環境はこれ」と書くかの判断を
-- **engine: fixerに「直せない」終わり方が無い**。`agents/fixer`のoutcomeは`done`だけで、指摘のファイル以外を変えられない制約と合わさると、正直に報告する手段が無い（`cannot_fix`はundeclared outcomeで拒否）。メインセッションは人間への問いかけでターンを終え、実行が止まる。`cannot_fix`→`end:unresolved`のような出口の提案
-- **engine/masudaの境界: 途中レビューの観点の置き場所**。`agents/trigger-matcher`はゲストの`/workspace/.masuda/reviews/*.md`を読むが、最終レビューはホスト側（内蔵観点+対象リポジトリの`.masuda/reviews`）から渡す。`.masuda/reviews`をコミットしていないリポジトリ（段階2）では途中レビューの観点が0件になる。masudaが観点の一覧をゲストの別の場所（例 `/masuda/reviews/`）へ置き、trigger-matcherがそこを読む形にする提案
+- **sandbox: 応答前に切られたHTTPリクエストに終わりのイベントが無い**。`src/egress.ts`の`onResponse`だけが`httpFinished`を出すので、クライアントが応答前に切った（エラーになった）リクエストは`http_started`だけで終わる。masudaは2分の打ち切りで回避した（`serve/activity.go`の`inflightStale`）。再現: M8のscratchpad `m8/watch2.log`（19:22:16のPOST /v1/messages）・`watch4.log`（19:37:30）。`http_finished`に`status=0`（または`aborted`）を出すか、`HttpRequestAborted`を足す提案
+- 前回からの持ち越し（判断状況はこちらでは未確認）: sandboxのExecの既定環境（PATHに/usr/local/binが無い、`XDG_CACHE_HOME=/tmp/.cache`がroot所有）、engineのfixerに「直せない」終わり方が無い（`cannot_fix`→`end:unresolved`のような出口）
