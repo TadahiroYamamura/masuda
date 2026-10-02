@@ -35,5 +35,6 @@ test_fizzbuzz.py
 # ドキュメントサイト（scripts/docs-prepare.shの生成物・mkdocsの出力・ビルド用venv）
 /docs/api/reference.md
 /docs/user/reference/workflow-schema.md
+/docs/design/release.md
 /site/
 /.venv-docs/

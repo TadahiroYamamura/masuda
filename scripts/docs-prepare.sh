@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# mkdocs build・mike deployの前に走らせ、正が別の場所にある2つのページを作る。
+# mkdocs build・mike deployの前に走らせ、正が別の場所にある3つのページを作る。
 #   docs/api/reference.md                 masuda.protoから生成（buf.gen.docs.yaml）
 #   docs/user/reference/workflow-schema.md masuda-engineのdocs/workflow-schema.mdの写し
-# どちらも.gitignore対象。
+#   docs/design/release.md                .claude/skills/release/SKILL.mdの本文（frontmatterを除く）
+# いずれも.gitignore対象。
 #
 # MASUDA_ENGINE_DIR: masuda-engineのチェックアウト（既定は隣の../masuda-engine）。
 # GitHub Actionsはワークスペースの外にcheckoutできないので、ここで場所を渡す。
@@ -33,4 +34,13 @@ mkdir -p "$(dirname "$dst")"
   printf '!!! note "取り込んだ文書"\n'
   printf '    この文書は[masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)リポジトリの`docs/workflow-schema.md`から取り込んだもの。編集は向こうで行う。\n\n'
   cat "$src"
+} >"$dst"
+
+# リリース手順の正はSkill（エージェントも人間も同じ文面を読む）。サイトにはfrontmatterを落として載せる。
+src=.claude/skills/release/SKILL.md
+dst=docs/design/release.md
+{
+  printf '!!! note "取り込んだ文書"\n'
+  printf '    この文書はリポジトリの`.claude/skills/release/SKILL.md`から取り込んだもの。編集はそちらで行う。\n\n'
+  awk 'BEGIN { fm = 0 } NR == 1 && $0 == "---" { fm = 1; next } fm == 1 { if ($0 == "---") fm = 2; next } { print }' "$src"
 } >"$dst"

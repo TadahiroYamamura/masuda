@@ -10,6 +10,7 @@ AIとの協同開発を、ローカルPC上のVMで無人実行するための�
 - **契約**: `docs/design/contracts.md`。このリポジトリが所有するのは`proto/masuda/api/v1/masuda.proto`と`docs/guest-protocol.md`
 - **再設計の経緯とスパイク**: `docs/design/redesign-background.md`、検証スクリプトは`docs/research/spike-gondolin/`
 - **作業単位**: `docs/work-orders.md`
+- **リリース手順**: `.claude/skills/release/SKILL.md`（Skill `release`。人間もこれを読む。サイトの`design/release.md`はビルド時の写し）
 - 判断の理由はコミットメッセージ（`## 意図`・`## 設計上の考慮点`）。ADRは書かない
 
 ## 開発
