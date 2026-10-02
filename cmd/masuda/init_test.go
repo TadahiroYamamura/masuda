@@ -58,3 +58,20 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 		t.Fatalf("existing settings.json was overwritten: %s", b)
 	}
 }
+
+// `.masuda/`ごと無視しているリポジトリには、settings.local.jsonの行を重ねて足さない。
+func TestInitDoesNotDuplicateIgnoreWhenDirIsIgnored(t *testing.T) {
+	for _, line := range []string{".masuda/", "/.masuda", ".masuda/*", ".masuda/settings.local.json"} {
+		root := t.TempDir()
+		want := "node_modules\n" + line + "\n"
+		if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(want), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := initRepo(root); err != nil {
+			t.Fatal(err)
+		}
+		if got, _ := os.ReadFile(filepath.Join(root, ".gitignore")); string(got) != want {
+			t.Errorf("%s: .gitignore = %q", line, got)
+		}
+	}
+}

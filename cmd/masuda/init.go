@@ -93,7 +93,7 @@ func initRepo(root string) ([]string, error) {
 			return created, err
 		}
 	}
-	added, err := ensureIgnored(filepath.Join(root, ".gitignore"), localIgnore)
+	added, err := ensureIgnored(filepath.Join(root, ".gitignore"), localIgnore, config.DirName)
 	if err != nil {
 		return created, err
 	}
@@ -103,16 +103,24 @@ func initRepo(root string) ([]string, error) {
 	return created, nil
 }
 
-// ensureIgnored はgitignoreにlineが無ければ末尾に足す。同じパターンを先頭`/`付きで書いた行も
-// 既にあるものとみなす。
-func ensureIgnored(path, line string) (bool, error) {
+// ensureIgnored はgitignoreにlineが無ければ末尾に足す。同じパターンを先頭`/`付きで書いた行と、
+// lineを含むディレクトリparent（`.masuda`・`.masuda/`・`.masuda/*`、先頭`/`付きも）を
+// 無視する行も既にあるものとみなす。gitignoreの規則をすべて解釈するのではなく、
+// 利用者が`.masuda/`ごと無視している（M8の段階2）ときに重複した行を足さないためのもの。
+// `git check-ignore`に頼らないのは、利用者のグローバルな除外設定に左右されず、
+// リポジトリの.gitignoreに書いてあるかだけで決めたいため（チームメイトの環境には無い）。
+func ensureIgnored(path, line, parent string) (bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}
+	covering := map[string]bool{line: true}
+	for _, p := range []string{parent, parent + "/", parent + "/*", parent + "/**"} {
+		covering[p] = true
+	}
 	for _, l := range strings.Split(string(data), "\n") {
-		l = strings.TrimSpace(l)
-		if l == line || l == "/"+line {
+		l = strings.TrimPrefix(strings.TrimSpace(l), "/")
+		if covering[l] {
 			return false, nil
 		}
 	}
