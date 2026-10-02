@@ -2,6 +2,8 @@
 package main
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 )
@@ -12,8 +14,19 @@ var version = "dev"
 const usage = `usage: masuda <command> [flags]
 
 commands:
-  serve     公開APIを待ち受ける常駐プロセスを起動する
-  version   バージョンを表示する
+  serve                     公開APIを待ち受ける常駐プロセスを起動する
+  run                       ワークフローを新しいワークスペースで始める
+  resume <id>               止めたワークスペースを記録から再開する
+  list                      ワークスペースの一覧
+  watch [<id>]              状態とイベントを流し続ける
+  gate list|show|approve|reject
+                            ゲートの一覧・内容・判断
+  question list|answer      質問の一覧・回答
+  stop <id>                 sandboxを止める（記録は残す）
+  remove <id>               ワークスペースを消す（exportsは残す）
+  version                   バージョンを表示する
+
+serve以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -25,12 +38,34 @@ func main() {
 	switch os.Args[1] {
 	case "serve":
 		err = runServe(os.Args[2:])
+	case "run":
+		err = runRun(os.Args[2:])
+	case "resume":
+		err = runResume(os.Args[2:])
+	case "list":
+		err = runList(os.Args[2:])
+	case "watch":
+		err = runWatch(os.Args[2:])
+	case "gate":
+		err = runGate(os.Args[2:])
+	case "question":
+		err = runQuestion(os.Args[2:])
+	case "stop":
+		err = runStop(os.Args[2:])
+	case "remove":
+		err = runRemove(os.Args[2:])
 	case "version", "--version":
 		fmt.Println(version)
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
 		fmt.Fprintf(os.Stderr, "masuda: unknown command %q\n\n%s", os.Args[1], usage)
+		os.Exit(2)
+	}
+	if errors.Is(err, flag.ErrHelp) {
+		return
+	}
+	if errors.Is(err, errUsage) {
 		os.Exit(2)
 	}
 	if err != nil {

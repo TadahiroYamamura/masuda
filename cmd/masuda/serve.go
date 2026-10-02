@@ -19,6 +19,7 @@ func runServe(args []string) error {
 	dataDir := fs.String("data-dir", defaultDataDir(), "状態を置くディレクトリ")
 	fake := fs.Bool("fake-sandbox", false, "sandbox serviceの代わりにプロセス内のフェイクを使う（開発・テスト用）")
 	sandboxSocket := fs.String("sandbox-socket", filepath.Join(runtimeDir(), "masuda-sandbox.sock"), "masuda-sandbox serveのUDSのパス")
+	stallAfter := fs.Duration("stall-after", serve.DefaultStallAfter, "無活動がこれだけ続いたら活動をstalledにする")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -33,6 +34,7 @@ func runServe(args []string) error {
 		DataDir:       *dataDir,
 		FakeSandbox:   *fake,
 		SandboxSocket: *sandboxSocket,
+		StallAfter:    *stallAfter,
 	})
 	if err != nil {
 		return err
