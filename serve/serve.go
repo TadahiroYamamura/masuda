@@ -17,6 +17,7 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -37,8 +38,46 @@ type Server struct {
 	opts     Options
 	listener net.Listener
 	http     *http.Server
+	backend  *backend
+	// served はhttp.Serveが戻ったら閉じる。doneはStopの後始末まで終わったら閉じる。
+	served   chan struct{}
 	done     chan struct{}
 	stopOnce sync.Once
+}
+
+// backend はAPIハンドラが共有するものと、リクエストより長生きする処理（sandboxの
+// 起動等）の寿命。Stopでctxを取り消し、wgで終わりを待つ。
+type backend struct {
+	store   *workspace.Store
+	sandbox sandboxv1connect.SandboxServiceClient
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	// closeSandbox はsandboxクライアントの後始末（フェイクならプロセス内サーバーの停止）。
+	closeSandbox func()
+}
+
+func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient, closeSandbox func()) *backend {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &backend{store: store, sandbox: sb, ctx: ctx, cancel: cancel, closeSandbox: closeSandbox}
+}
+
+// goBackground はfをリクエストと切り離して動かす。fに渡すctxはStopで取り消される。
+func (b *backend) goBackground(f func(ctx context.Context)) {
+	b.wg.Add(1)
+	go func() {
+		defer b.wg.Done()
+		f(b.ctx)
+	}()
+}
+
+// close はバックグラウンド処理を取り消して待ち、sandboxクライアントを閉じる。
+func (b *backend) close() {
+	b.cancel()
+	b.wg.Wait()
+	if b.closeSandbox != nil {
+		b.closeSandbox()
+	}
 }
 
 // Start はOptions.Socketで待ち受けを始めて戻る。ctxが終わるとStopする。
@@ -58,29 +97,37 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	if err := removeStaleSocket(opts.Socket); err != nil {
 		return nil, err
 	}
+	sb, closeSandbox, err := connectSandbox(opts)
+	if err != nil {
+		return nil, err
+	}
 	ln, err := net.Listen("unix", opts.Socket)
 	if err != nil {
+		closeSandbox()
 		return nil, fmt.Errorf("serve: listening on %s: %w", opts.Socket, err)
 	}
+	b := newBackend(workspace.NewStore(opts.DataDir), sb, closeSandbox)
 
 	// UDS上ではTLSが無いので、クライアント・サーバー両方向のストリーミングに要る
 	// HTTP/2を平文（h2c）で受ける。HTTP/1.1のHTTP+JSONも同じハンドラで受ける。
 	s := &Server{
 		opts:     opts,
 		listener: ln,
-		http:     &http.Server{Handler: h2c.NewHandler(newMux(workspace.NewStore(opts.DataDir)), &http2.Server{})},
+		http:     &http.Server{Handler: h2c.NewHandler(newMux(b), &http2.Server{})},
+		backend:  b,
+		served:   make(chan struct{}),
 		done:     make(chan struct{}),
 	}
 	go func() {
-		defer close(s.done)
+		defer close(s.served)
 		_ = s.http.Serve(ln)
 	}()
 	go func() {
 		select {
 		case <-ctx.Done():
-			s.Stop()
-		case <-s.done:
+		case <-s.served:
 		}
+		s.Stop()
 	}()
 	return s, nil
 }
@@ -93,12 +140,14 @@ func (s *Server) Stop() {
 		if err := s.http.Shutdown(ctx); err != nil {
 			_ = s.http.Close()
 		}
-		<-s.done
+		<-s.served
+		s.backend.close()
 		_ = os.Remove(s.opts.Socket)
+		close(s.done)
 	})
 }
 
-// Done は待ち受けが終わったら閉じる。
+// Done は待ち受けが終わり、Stopの後始末まで済んだら閉じる。
 func (s *Server) Done() <-chan struct{} { return s.done }
 
 // removeStaleSocket は前回のプロセスが残したソケットファイルを消す。誰かが
@@ -118,9 +167,10 @@ func removeStaleSocket(path string) error {
 	return nil
 }
 
-func newMux(store *workspace.Store) *http.ServeMux {
+func newMux(b *backend) *http.ServeMux {
+	store := b.store
 	mux := http.NewServeMux()
-	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{store: store}))
+	mux.Handle(apiv1connect.NewWorkspaceServiceHandler(&workspaceService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewGateServiceHandler(apiv1connect.UnimplementedGateServiceHandler{}))
 	mux.Handle(apiv1connect.NewQuestionServiceHandler(apiv1connect.UnimplementedQuestionServiceHandler{}))
 	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))

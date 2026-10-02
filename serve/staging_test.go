@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"connectrpc.com/connect"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/fakesandbox"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -37,8 +39,14 @@ func newTestAPI(t *testing.T) (apiv1connect.WorkspaceServiceClient, apiv1connect
 	}
 	gitT(t, repo, "add", "-A")
 	gitT(t, repo, "commit", "-qm", "init")
-	srv := httptest.NewServer(newMux(workspace.NewStore(t.TempDir())))
-	t.Cleanup(srv.Close)
+	dataDir := t.TempDir()
+	fake := fakesandbox.StartInProcess(FakeDir(dataDir))
+	b := newBackend(workspace.NewStore(dataDir), fake.Client, fake.Close)
+	srv := httptest.NewServer(newMux(b))
+	t.Cleanup(func() {
+		srv.Close()
+		b.close()
+	})
 	return apiv1connect.NewWorkspaceServiceClient(srv.Client(), srv.URL),
 		apiv1connect.NewStagingServiceClient(srv.Client(), srv.URL), repo
 }
@@ -138,4 +146,34 @@ func TestStagingRPCs(t *testing.T) {
 	if _, err := st.AddComment(ctx, connect.NewRequest(&apiv1.AddCommentRequest{WorkspaceId: id, Commit: "refs/masuda/base"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("empty comment: %v", err)
 	}
+}
+
+func TestRunBootFailureBlocksWorkspace(t *testing.T) {
+	ws, _, repo := newTestAPI(t)
+	ctx := context.Background()
+	_ = os.MkdirAll(filepath.Join(repo, ".masuda/agents"), 0o755)
+	if err := os.WriteFile(filepath.Join(repo, ".masuda/agents/.hidden.md"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitT(t, repo, "add", "-A")
+	gitT(t, repo, "commit", "-qm", "bad agent")
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "w", Branch: "feat/x"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		got, err := ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: res.Msg.Id}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Msg.State == apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED {
+			if !strings.Contains(got.Msg.Reason, ".hidden.md") {
+				t.Fatalf("reason %q", got.Msg.Reason)
+			}
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatal("workspace did not become BLOCKED")
 }

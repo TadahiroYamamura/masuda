@@ -284,3 +284,22 @@ func TestPushRemote(t *testing.T) {
 		t.Fatal("remote push touched the local branch")
 	}
 }
+
+func TestListBlobs(t *testing.T) {
+	ctx := context.Background()
+	repo := newRepo(t)
+	write(t, repo, ".masuda/agents/a.md", "a")
+	write(t, repo, ".masuda/agents/b.md", "b")
+	write(t, repo, ".masuda/agents/sub/c.md", "c")
+	git(t, repo, "add", "-A")
+	git(t, repo, "commit", "-qm", "agents")
+	s, _ := newStaging(t, repo, "feat/x")
+	got, err := s.ListBlobs(ctx, "refs/heads/feat/x", ".masuda/agents")
+	if err != nil || strings.Join(got, ",") != ".masuda/agents/a.md,.masuda/agents/b.md" {
+		t.Fatalf("ListBlobs: %v %q", err, got)
+	}
+	got, err = s.ListBlobs(ctx, "refs/heads/feat/x", "nope")
+	if err != nil || len(got) != 0 {
+		t.Fatalf("ListBlobs(missing): %v %q", err, got)
+	}
+}

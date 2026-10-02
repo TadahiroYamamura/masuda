@@ -15,11 +15,13 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// workspaceService はWorkspaceServiceの実装。M2時点のRunはワークスペースとstagingを
-// 作るところまでで、定義の読み込み・sandboxの起動・engineの開始はまだしない。
+// workspaceService はWorkspaceServiceの実装。M3時点のRunはワークスペースとstagingを
+// 作り、sandboxを起動してゲストの初期配置をするところまで。定義の読み込み・engineの
+// 開始・メインセッションの起動はまだしない。
 type workspaceService struct {
 	apiv1connect.UnimplementedWorkspaceServiceHandler
-	store *workspace.Store
+	store   *workspace.Store
+	backend *backend
 }
 
 func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.RunRequest]) (*connect.Response[apiv1.Workspace], error) {
@@ -66,6 +68,10 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 		_ = s.store.Remove(w.ID)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	// VMの起動は秒単位かかるので、RunはSTARTINGで先に返し、起動はリクエストと
+	// 切り離して進める。結果は状態（RUNNING/BLOCKED）としてGetに現れる。
+	id := w.ID
+	s.backend.goBackground(func(ctx context.Context) { s.backend.boot(ctx, id) })
 	return connect.NewResponse(toProto(w)), nil
 }
 

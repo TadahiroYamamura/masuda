@@ -136,3 +136,28 @@ func (c *cmdReader) Close() error {
 	})
 	return c.err
 }
+
+// ListBlobs はrevの時点でdir直下にあるファイル（blob）のパスを返す。サブディレクトリと
+// submoduleは含めない。dirが無ければ空。
+func (r *Repo) ListBlobs(ctx context.Context, rev, dir string) ([]string, error) {
+	commit, err := r.ResolveCommit(ctx, rev)
+	if err != nil {
+		return nil, err
+	}
+	dir = strings.Trim(dir, "/")
+	out, err := r.git(ctx, "--literal-pathspecs", "ls-tree", "-z", "--full-tree", commit, "--", dir+"/")
+	if err != nil {
+		return nil, err
+	}
+	var paths []string
+	for _, entry := range strings.Split(out, "\x00") {
+		meta, p, ok := strings.Cut(entry, "\t")
+		if !ok {
+			continue
+		}
+		if f := strings.Fields(meta); len(f) == 3 && f[1] == "blob" {
+			paths = append(paths, p)
+		}
+	}
+	return paths, nil
+}
