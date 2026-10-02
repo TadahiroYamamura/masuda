@@ -28,6 +28,7 @@ type clients struct {
 	ws        apiv1connect.WorkspaceServiceClient
 	gates     apiv1connect.GateServiceClient
 	questions apiv1connect.QuestionServiceClient
+	config    apiv1connect.ConfigServiceClient
 }
 
 func dial(socket string) *clients {
@@ -42,6 +43,7 @@ func dial(socket string) *clients {
 		ws:        apiv1connect.NewWorkspaceServiceClient(httpc, base, connect.WithGRPC()),
 		gates:     apiv1connect.NewGateServiceClient(httpc, base, connect.WithGRPC()),
 		questions: apiv1connect.NewQuestionServiceClient(httpc, base, connect.WithGRPC()),
+		config:    apiv1connect.NewConfigServiceClient(httpc, base, connect.WithGRPC()),
 	}
 }
 

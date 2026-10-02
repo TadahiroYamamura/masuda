@@ -1,0 +1,10 @@
+{
+  "image": "default",
+  "egress": ["api.anthropic.com"],
+  "secrets": [],
+  "envFiles": [],
+  "checks": {
+    "test": "echo 'checks.test is not configured yet: write the test command in .masuda/settings.json' >&2; exit 1"
+  },
+  "claudeSettings": {}
+}

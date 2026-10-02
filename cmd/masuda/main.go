@@ -24,9 +24,16 @@ commands:
   question list|answer      質問の一覧・回答
   stop <id>                 sandboxを止める（記録は残す）
   remove <id>               ワークスペースを消す（exportsは残す）
+  init                      対象リポジトリに.masuda/の雛形を置く（serve不要）
+  egress list|approve|reject
+                            egressの宣言と承認
+  secret list|set           秘密の一覧・値の登録（値は標準入力から）
+  privileged-command list|approve
+                            特権コマンドの一覧・承認
+  image list|build          ゲストイメージの一覧・ビルド
   version                   バージョンを表示する
 
-serve以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -54,6 +61,16 @@ func main() {
 		err = runStop(os.Args[2:])
 	case "remove":
 		err = runRemove(os.Args[2:])
+	case "init":
+		err = runInit(os.Args[2:])
+	case "egress":
+		err = runEgress(os.Args[2:])
+	case "secret":
+		err = runSecret(os.Args[2:])
+	case "privileged-command":
+		err = runPrivilegedCommand(os.Args[2:])
+	case "image":
+		err = runImage(os.Args[2:])
 	case "version", "--version":
 		fmt.Println(version)
 	case "help", "-h", "--help":
