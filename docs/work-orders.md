@@ -141,3 +141,4 @@ M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の�
 | C-M5 | M5 |
 | C-M6 | M6 |
 | C-M7 | M7 |
+| C-M8 | M12（既存ブランチでの publish 無しワークフロー、エラーコード） |

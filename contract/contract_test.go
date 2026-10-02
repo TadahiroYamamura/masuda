@@ -432,6 +432,15 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	if rg.StagingCommit != c.Msg.Hash {
 		t.Fatalf("review gate must point at the staging commit it reviews: %s vs %s", rg.StagingCommit, c.Msg.Hash)
 	}
+	// The subject is what publish will land (base..branch head), with the
+	// uncommitted leftovers listed separately, never mixed into the diff.
+	subj := string(rg.Subject)
+	if !strings.Contains(subj, "package b") || !strings.Contains(subj, "publishされない") || !strings.Contains(subj, "notes.txt") {
+		t.Fatalf("review subject must show the committed diff and list notes.txt as not published:\n%s", subj)
+	}
+	if i := strings.Index(subj, "publishされない"); strings.Contains(subj[:i], "scratch") {
+		t.Fatalf("uncommitted content leaked into the committed diff part of the subject")
+	}
 	if git(t, h.repo, "branch", "--list", "feat/smoke") != "" {
 		t.Fatalf("real repo touched before publish")
 	}
@@ -625,5 +634,65 @@ func TestCM7_PrivilegedCommandRunsInSecondSandbox(t *testing.T) {
 	// The main guest's worktree was not written by the privileged run.
 	if _, err := os.Stat(filepath.Join(root, "workspace", "uid.txt")); err == nil {
 		t.Fatalf("privileged command must not write into the main worktree")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C-M8: a workflow without publish may run on an existing branch
+// ---------------------------------------------------------------------------
+
+const inspectWorkflow = `version: 1
+inputs: [instructions]
+start: look
+nodes:
+  look: {type: agent, role: agents/smoke-planner, inputs: [instructions], outputs: [plan], next: finish}
+  finish: {type: discard, export: [plan], next: end}
+`
+
+func TestCM8_PublishLessWorkflowRunsOnExistingBranch(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/workflows/inspect.yaml"] = inspectWorkflow
+	h := start(t, files)
+	ctx := context.Background()
+	// An existing branch with one commit beyond main.
+	git(t, h.repo, "checkout", "-q", "-b", "feat/existing")
+	if err := os.WriteFile(filepath.Join(h.repo, "existing.go"), []byte("package x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, h.repo, "add", "-A")
+	git(t, h.repo, "commit", "-qm", "existing work")
+	want := git(t, h.repo, "rev-parse", "HEAD")
+	git(t, h.repo, "checkout", "-q", "main")
+
+	// develop publishes, so it must refuse an existing branch.
+	_, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/existing", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if connect.CodeOf(err) != connect.CodeAlreadyExists {
+		t.Fatalf("publishing workflow on an existing branch: %v, want AlreadyExists", err)
+	}
+	// inspect does not publish, so it may.
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/inspect", Branch: "feat/existing", Inputs: map[string][]byte{"instructions": []byte("look")}}))
+	if err != nil {
+		t.Fatalf("Run(inspect on existing branch): %v", err)
+	}
+	ws := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	refs, _ := h.staging.ListRefs(ctx, connect.NewRequest(&apiv1.ListRefsRequest{WorkspaceId: ws.Id}))
+	got := map[string]string{}
+	for _, r := range refs.Msg.Refs {
+		got[r.Name] = r.Commit
+	}
+	if got["refs/heads/feat/existing"] != want {
+		t.Fatalf("staging branch must be the existing branch head %s, got %s", want, got["refs/heads/feat/existing"])
+	}
+	if got["refs/masuda/base"] == want {
+		t.Fatalf("base must be the repository's default branch, not the branch itself")
+	}
+	diff, err := h.staging.Diff(ctx, connect.NewRequest(&apiv1.DiffRequest{WorkspaceId: ws.Id, From: "refs/masuda/base", To: "refs/heads/feat/existing"}))
+	if err != nil || !strings.Contains(diff.Msg.Unified, "existing.go") {
+		t.Fatalf("the existing changes must be visible as the branch diff: %v %q", err, diff.Msg.GetUnified())
+	}
+	// Unknown workflow names are InvalidArgument on Run (unified codes).
+	_, err = h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/nope", Branch: "feat/z", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("unknown workflow: %v, want InvalidArgument", err)
 	}
 }
