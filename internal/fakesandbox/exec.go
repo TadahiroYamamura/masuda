@@ -40,8 +40,8 @@ func (w *streamWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-// Exec はコマンドをホストで動かす。userは見ず、どのユーザー指定でもこのプロセスと
-// 同じホストユーザーで動く。HOMEとcwdだけをゲストroot下へ写像する。
+// Exec はコマンドをホストで動かす。root以外のユーザー指定はこのプロセスと同じホストユーザーで
+// 動き、HOMEとcwdだけをゲストroot下へ写像する。rootはasRootでゲストrootへchrootして動かす。
 func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecRequest], stream *connect.ServerStream[sandboxv1.ExecEvent]) error {
 	m := req.Msg
 	root, defaultUser, sbEnv, err := s.sandboxFor(m.Id)
@@ -79,6 +79,18 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
 		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cwd %q is not a directory in the guest", m.Cwd))
 	}
+	env := execEnv(home, user, sbEnv, m.Env)
+	if user == "root" {
+		guestCwd := homeOf(user)
+		if m.Cwd != "" {
+			guestCwd = m.Cwd
+		}
+		if argv, err = asRoot(root, guestCwd, argv); err != nil {
+			return err
+		}
+		cwd = root
+		env = execEnv(homeOf(user), user, sbEnv, m.Env)
+	}
 
 	runCtx := ctx
 	if m.TimeoutMs > 0 {
@@ -88,7 +100,7 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	}
 	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
 	cmd.Dir = cwd
-	cmd.Env = execEnv(home, user, sbEnv, m.Env)
+	cmd.Env = env
 	// sh -cの子孫まで止めるため、プロセスグループごとkillする。
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
@@ -167,4 +179,39 @@ func signalName(sig syscall.Signal) string {
 	default:
 		return fmt.Sprintf("signal %d", int(sig))
 	}
+}
+
+// rootExecScript はユーザー名前空間・マウント名前空間の中で、ホストの/usr・/etc等をゲストrootへ
+// bindしてからchrootし、ゲストのcwdでargvを動かす。$1がゲストroot、$2がゲストのcwd。
+//
+// rootの指定（特権サンドボックス）だけをこう動かすのは、特権コマンドが宣言のコマンド文字列に
+// `/workspace/...`のような絶対パスを書き、`id -u`が0であることを期待するため。cwdの写像だけでは
+// どちらも満たせない。ゲストrootの下に作るマウントポイント（空のディレクトリ・シンボリックリンク）は
+// 名前空間が消えれば中身が見えなくなるだけで、ホストに残っても害は無い。
+const rootExecScript = `set -e
+r="$1"; cwd="$2"; shift 2
+for n in usr etc dev opt var run; do
+  [ -d "/$n" ] || continue
+  mkdir -p "$r/$n"
+  mount --rbind "/$n" "$r/$n"
+done
+for n in bin sbin lib lib32 lib64 libx32; do
+  if [ -L "/$n" ]; then
+    [ -e "$r/$n" ] || [ -L "$r/$n" ] || ln -s "$(readlink "/$n")" "$r/$n"
+  elif [ -d "/$n" ]; then
+    mkdir -p "$r/$n"
+    mount --rbind "/$n" "$r/$n"
+  fi
+done
+exec chroot "$r" /bin/sh -c 'cd "$1" && shift && exec "$@"' sh "$cwd" "$@"
+`
+
+// asRoot はargvを`unshare -Urm`（名前空間の中でuid 0）経由でゲストrootにchrootして動かす形にする。
+// unshareが無い・非特権のユーザー名前空間が禁止されているホストでは、実行時にエラーになる。
+func asRoot(root, guestCwd string, argv []string) ([]string, error) {
+	unshare, err := exec.LookPath("unshare")
+	if err != nil {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("fake sandbox: running as root needs unshare(1): %w", err))
+	}
+	return append([]string{unshare, "-Urm", "/bin/sh", "-c", rootExecScript, "sh", root, guestCwd}, argv...), nil
 }

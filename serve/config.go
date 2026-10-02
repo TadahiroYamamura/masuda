@@ -15,6 +15,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/secrets"
 )
 
@@ -280,7 +281,8 @@ func (s *configService) ListPrivilegedCommands(ctx context.Context, req *connect
 }
 
 // ApprovePrivilegedCommand は今の宣言のハッシュで承認を記録する。宣言が変われば一覧でstaleになり、
-// 承認し直すまで使えない。宣言の中身の検証はM7で足す。
+// 承認し直すまで使えない。形の壊れた宣言（空のコマンド、無いイメージ、/workspaceの外を指す
+// inputs・outputs）は承認させない。
 func (s *configService) ApprovePrivilegedCommand(ctx context.Context, req *connect.Request[apiv1.NameRequest]) (*connect.Response[apiv1.ListPrivilegedCommandsResponse], error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -291,6 +293,9 @@ func (s *configService) ApprovePrivilegedCommand(ctx context.Context, req *conne
 	d, ok := cfg.PrivilegedCommands[req.Msg.Name]
 	if !ok {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q is not declared in .masuda/settings.json", req.Msg.Name))
+	}
+	if err := privileged.Validate(d, imageExistsIn(filepath.Join(root, config.DirName))); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q: %w", req.Msg.Name, err))
 	}
 	hash, err := config.DeclHash(d)
 	if err != nil {

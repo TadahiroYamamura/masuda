@@ -98,7 +98,7 @@ type EnvFile struct {
 }
 
 // PrivilegedCommandDecl は特権コマンド1つの宣言。エージェントが渡せるのは名前だけで、
-// 実際に動くものは常にこの宣言から来る。宣言の検証と実行はM7で入れる。
+// 実際に動くものは常にこの宣言から来る。宣言の検証と実行はinternal/privileged。
 type PrivilegedCommandDecl struct {
 	Command        string   `json:"command"`
 	Image          string   `json:"image"`
@@ -123,22 +123,6 @@ func DeclHash[T PinnedDecl](decl T) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
-}
-
-// ValidateOutputPath は特権コマンドのOutputsの1項目が/workspaceの外を指さないか確かめる。
-// 承認時と回収時の両方で同じ判定を使うためここに置く。
-func ValidateOutputPath(out string) error {
-	if strings.TrimSpace(out) == "" {
-		return errors.New(`"outputs" contains an empty path`)
-	}
-	if filepath.IsAbs(out) {
-		return fmt.Errorf(`"outputs" entry %q must be relative to /workspace`, out)
-	}
-	clean := filepath.Clean(out)
-	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Errorf(`"outputs" entry %q escapes the workspace`, out)
-	}
-	return nil
 }
 
 // Load はrepoRootの宣言ファイルを読む。ファイルが無いのはエラーでなく、ゼロ値を返す。

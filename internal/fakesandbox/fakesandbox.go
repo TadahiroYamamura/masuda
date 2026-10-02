@@ -3,7 +3,8 @@
 //
 // ゲストのrootは`<Dir>/<sandbox-id>/root/`で、ゲストの`/workspace`は`root/workspace`、
 // `/home/ubuntu`は`root/home/ubuntu`に写る。Execはホストでそのまま動くので隔離は無い。
-// ゲストへ渡すコマンドは、cwdを写像するだけでコマンド文字列中の絶対パスは写像しない。
+// ゲストへ渡すコマンドは、cwdを写像するだけでコマンド文字列中の絶対パスは写像しない。ただしroot
+// 指定のExec（特権sandbox）はゲストrootへchrootして動かすので、絶対パスもゲストのものになる（exec.go）。
 package fakesandbox
 
 import (

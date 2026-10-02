@@ -172,3 +172,28 @@ func TestFilesDoNotFollowSymlinks(t *testing.T) {
 		t.Fatalf("big file round trip: %v len=%d", err, len(got))
 	}
 }
+
+// rootでのExecは、ゲストrootをchrootした中でuid 0として動き、絶対パスがゲストのものになる。
+func TestExecAsRootSeesGuestPaths(t *testing.T) {
+	c, root := newFake(t)
+	if err := os.MkdirAll(filepath.Join(root, "workspace"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := guest.Exec(context.Background(), c, &sandboxv1.ExecRequest{
+		Id: "sb1", User: "root", Cwd: "/workspace",
+		Shell: `id -u > /workspace/uid.txt; pwd; echo "$HOME"`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 0 {
+		t.Skipf("unprivileged user namespaces unavailable here: %s", res.Stderr)
+	}
+	if got := strings.TrimSpace(string(res.Stdout)); got != "/workspace\n/root" {
+		t.Fatalf("stdout %q", got)
+	}
+	uid, _ := os.ReadFile(filepath.Join(root, "workspace", "uid.txt"))
+	if strings.TrimSpace(string(uid)) != "0" {
+		t.Fatalf("uid %q", uid)
+	}
+}

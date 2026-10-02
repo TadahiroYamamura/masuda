@@ -465,6 +465,22 @@ func (r *Runner) Snapshot(ctx context.Context, _ engine.RunID, occ string) (engi
 	return engine.SnapshotRef(c), nil
 }
 
+// Staging はワークスペースのstaging。
+func (r *Runner) Staging() *staging.Repo { return r.repo }
+
+// SnapshotNamed はノード境界と関係なく今の作業ツリーを`refs/masuda/wip/<name>`へ取り込み、
+// そのrefを返す。特権コマンドが「呼ばれた時点」の作業ツリーを特権VMへ渡すのに使う。
+func (r *Runner) SnapshotNamed(ctx context.Context, name string) (string, error) {
+	if err := checkOcc(name); err != nil {
+		return "", err
+	}
+	ref := staging.WIPRef(name)
+	if _, err := r.capture(ctx, name, ref); err != nil {
+		return "", err
+	}
+	return ref, nil
+}
+
 // current は今のゲストの作業ツリーを取り込む。ChangedSince・Diff・Commitは直近の
 // 境界のスナップショットではなくこれを見る。engineは書き込めないエージェントの終了時に
 // スナップショットより先にChangedSinceを呼ぶので、境界のものを使うと変更を見落とす。

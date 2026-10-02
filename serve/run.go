@@ -49,6 +49,8 @@ type runCtl struct {
 	booted atomic.Bool
 
 	mu sync.Mutex // engineの呼び出し
+	// privMu は特権コマンドを1つずつ動かす（serve/privileged.go）。
+	privMu sync.Mutex
 
 	chMu sync.Mutex
 	// changed は人間の判断・エージェントの報告で記録が変わったら閉じて作り直す。
@@ -363,10 +365,6 @@ func (c *runCtl) node(t *engine.AgentTask) *engine.Node {
 		return wf.Nodes[t.Node]
 	}
 	return nil
-}
-
-func (c *runCtl) RunPrivilegedCommand(context.Context, string) (any, error) {
-	return nil, fmt.Errorf("run_privileged_command: %w (privileged commands arrive with M7)", mcp.ErrNotImplemented)
 }
 
 // Hook はゲストのClaude Codeフックの入力JSONを`records/hooks.jsonl`へ受け取った時刻と共に残し、
