@@ -38,7 +38,7 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 | 触る対象 | パッケージ・ファイル | 読む節 |
 |---|---|---|
 | CLIのサブコマンド・表示 | `cmd/masuda/`（`main.go`が一覧、`client.go`がAPIを叩く各コマンド、`chat.go`・`workflow.go`・`init.go`・`config.go`・`serve.go`、`templates/`が`masuda init`の雛形） | [overview.md](overview.md)「9. 公開API」のCLI |
-| 公開APIの実装（Connectのハンドラ）、実行の組み立てと起動、活動・Watch・ディスク監視 | `serve/`（`serve.go`・`sandbox.go`・`workspace.go`・`run.go`・`boot.go`・`lifecycle.go`・`gates.go`・`questions.go`・`staging.go`・`config.go`・`settings.go`・`images.go`・`privileged.go`・`workflows.go`・`activity.go`・`events.go`・`disk.go`） | 「8. 活動の観測と停止の検知」「9. 公開API」「4. 再開」 |
+| 公開APIの実装（Connectのハンドラ）、実行の組み立てと起動、活動・Watch・ディスク監視 | `serve/`（`serve.go`・`sandbox.go`・`workspace.go`・`run.go`・`boot.go`・`lifecycle.go`・`gates.go`・`questions.go`・`staging.go`・`config.go`・`settings.go`・`images.go`・`privileged.go`・`workflows.go`・`activity.go`・`events.go`・`disk.go`・`listen.go`（ループバックの待ち受けとCORS）） | 「8. 活動の観測と停止の検知」「9. 公開API」「4. 再開」 |
 | `engine.Runner`の実装（ゲストとのやり取り・データ・ゲートの記録・実行ログ・exports・WIP復元） | `internal/runner/` | 「3. 1つのタスクの流れ」「4. exports」 |
 | staging bareリポジトリ（clone・WIP取り込み・commit・publish・差分の表示） | `internal/staging/` | 「4. ワークスペースとstaging」 |
 | ワークスペースのディレクトリ・`workspace.json`・`records/`のゲート・質問・コメント | `internal/workspace/` | 「4. ホスト側のディレクトリ」 |
@@ -46,7 +46,7 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 | 起動時にゲストへ置くもの・ループ規約・メインセッションの起動 | `internal/guest/`（`loop-claude.md`がループ規約） | [guest-protocol.md](../guest-protocol.md) |
 | VM無しのsandbox（契約テスト・`--fake-sandbox`） | `internal/fakesandbox/` | 「6. サンドボックス」 |
 | 特権コマンドの実行手順 | `internal/privileged/`（宣言の読み込みと承認の確認は`serve/privileged.go`） | 「6. 特権コマンド」 |
-| `settings.json`・`settings.local.json`の形と検査 | `internal/config/` | 「6. 設定ファイル」 |
+| `settings.json`・`settings.local.json`・serve全体の`config.json`の形と検査 | `internal/config/`（`config.json`は`serve.go`） | 「6. 設定ファイル」 |
 | 秘密の値の保存 | `internal/secrets/` | 「6. 秘密」 |
 | 同梱のレビュー観点とスナップショット | `internal/perspectives/`（`builtin/`が同梱の観点） | 「5. 定義の置き場所」 |
 | 契約テスト（完了の定義） | `contract/` | [contracts.md](contracts.md) |

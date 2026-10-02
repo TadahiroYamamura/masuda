@@ -123,13 +123,6 @@ M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の�
 - 細かい点: `run --base`のヘルプを実装に合わせる（今チェックアウトしているブランチ）、`init`の雛形から意味の無い`egress: ["api.anthropic.com"]`を外しコメントで「Claude APIは常に許可」と書く、雛形DockerfileのコメントをS10以降の実態（イメージのENVは引き継がれる、PATHには`~/.local/bin`が足される、`-modcacherw`は不要）に直す、publishの`target: remote`の送り先を`settings.json`の`publish.remote`（既定`origin`）で設定できるようにしoverviewを合わせる、`overview.md`のCLI表に`list --repo`を足す
 - 契約テスト: C-M1〜C-M7が緑のまま。`contract/`に「publishを含まないワークフローは既存ブランチで`Run`できる」「review gateの`subject`が未コミットの変更を分けて載せる」ケースを**監督が足す**ので、着手時に確認
 
-### M12（旧）設定の整理（M10の提案）
-
-- サーバー全体の設定`$XDG_CONFIG_HOME/masuda/config.json`（`diskWarnBytes`・`stallAfter`の既定・`sandboxSocket`）を設け、`settings.local.json`の`stallAfter`はリポジトリごとの上書きに、`diskWarnBytes`は`config.json`だけにする
-- `ServeNotice`（契約に追加済み）で`disk-warning`を流す。`EngineEvent`の流用をやめる
-- `--stall-after`の既定`0`（設定に従う）はそのまま
-- **ループバックの待ち受け**: `config.json`の`listen`（例: `"127.0.0.1:7788"`）があるときだけ、UDSに加えてそのアドレスでもConnectを待ち受ける（`contracts.md`「通信の前提」どおり）。ブラウザのGUIはUDSに繋げないので、これが無いとAPIを使えない。CORSは同一ホストの任意オリジンを許す（ローカル前提）。実装と同じコミットで`overview.md`第9章を直す
-
 ## M13. 配布（v0.1.0に向けて）
 
 決定（ユーザー）: npm公開はv1.0以降でそれまではtarball。macOSは「実験的」と明記。v0.1.0は今の機能で出し、互換性の保証はv1.0以降。
