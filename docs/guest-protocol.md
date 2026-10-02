@@ -41,7 +41,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | 宣言外のoutcome、未出力のoutputがあれば拒否 |
 | `report_concern` | `occurrence`, `text` | `{recorded: true}` | triageゲートを開く。以後`next_task`は人間の判断までブロック |
 | `ask_human` | `occurrence`, `questions: [{id, text, options?}]` | `{answers: {id: answer}}` | `question`ノードのエージェントだけが使う。答えが来るまでブロック |
-| `run_privileged_command` | `name` | `{exit_code, log, truncated, results_dir, outputs, timed_out}` | 宣言済み・承認済みの名前のみ。`results_dir`は`/masuda/privileged/<run-id>/` |
+| `run_privileged_command` | `name` | `{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}` | 宣言済み・承認済みの名前のみ。`results_dir`は`/masuda/privileged/<run-id>/`。`outputs_error`は宣言した`outputs`のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は`outputs`に返る |
 
 ツールは`occurrence`で今のタスクを指す。現在待っている出現と一致しない呼び出しは拒否する。
 
