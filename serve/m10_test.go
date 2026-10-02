@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -281,7 +282,7 @@ func TestDiskWarning(t *testing.T) {
 		all, _, _ := b.events.since(head, id)
 		var out []*apiv1.WorkspaceEvent
 		for _, ev := range all {
-			if ev.GetEngine().GetKind() == diskWarningKind {
+			if ev.GetNotice().GetKind() == diskWarningKind {
 				out = append(out, ev)
 			}
 		}
@@ -291,10 +292,10 @@ func TestDiskWarning(t *testing.T) {
 	if evs := warnings(id); len(evs) != 0 {
 		t.Fatalf("under the default threshold nothing is reported: %v", evs)
 	}
-	writeRepoFile(t, repo, ".masuda/settings.local.json", `{"diskWarnBytes":1024}`)
+	b.diskWarn = 1024 // config.jsonのdiskWarnBytes
 	b.checkDisk()
 	evs := warnings(id)
-	if len(evs) != 1 || evs[0].GetEngine().GetKind() != diskWarningKind || evs[0].WorkspaceId != "" || !strings.Contains(evs[0].GetEngine().GetDetail(), "exports") {
+	if len(evs) != 1 || evs[0].WorkspaceId != "" || !strings.Contains(evs[0].GetNotice().GetDetail(), "exports") || evs[0].GetNotice().GetValue() < 4096 {
 		t.Fatalf("disk warning (delivered to a per-workspace watcher too): %v", evs)
 	}
 	b.checkDisk()
@@ -420,5 +421,55 @@ func TestEngineBlockedCannotBeResumedAfterStop(t *testing.T) {
 	}
 	if _, err := cl.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("Resume after Stop of an engine-blocked workspace: %v", err)
+	}
+}
+
+// config.jsonのlistenがあれば、ループバックでもHTTP+JSONで呼べて、CORSは任意のオリジンを許す。
+func TestLoopbackListenWithCORS(t *testing.T) {
+	cl := startClients(t, t.TempDir(), Options{Listen: "127.0.0.1:0"})
+	addr := cl.srv.ListenAddr()
+	if addr == "" {
+		t.Fatal("no loopback listener")
+	}
+	url := "http://" + addr + "/masuda.api.v1.WorkflowService/List"
+	pre, _ := http.NewRequest(http.MethodOptions, url, nil)
+	pre.Header.Set("Origin", "http://localhost:5173")
+	pre.Header.Set("Access-Control-Request-Method", "POST")
+	pre.Header.Set("Access-Control-Request-Headers", "content-type,connect-protocol-version")
+	res, err := http.DefaultClient.Do(pre)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent || res.Header.Get("Access-Control-Allow-Origin") != "http://localhost:5173" ||
+		!strings.Contains(res.Header.Get("Access-Control-Allow-Headers"), "connect-protocol-version") {
+		t.Fatalf("preflight: %d %v", res.StatusCode, res.Header)
+	}
+	req, _ := http.NewRequest(http.MethodPost, url, strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://localhost:5173")
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK || !strings.Contains(string(body), "workflows/develop") || res.Header.Get("Access-Control-Allow-Origin") == "" {
+		t.Fatalf("List over loopback: %d %s", res.StatusCode, body)
+	}
+	// DNS rebindingで別の名前から来た要求は断る。
+	req, _ = http.NewRequest(http.MethodPost, url, strings.NewReader("{}"))
+	req.Header.Set("Content-Type", "application/json")
+	req.Host = "evil.example:80"
+	res, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Fatalf("non-loopback Host: %d", res.StatusCode)
+	}
+	if _, err := Start(context.Background(), Options{Socket: filepath.Join(t.TempDir(), "s.sock"), DataDir: t.TempDir(), FakeSandbox: true, Listen: "0.0.0.0:0"}); err == nil {
+		t.Fatal("a non-loopback listen address must be refused")
 	}
 }

@@ -39,7 +39,7 @@ masuda <command> [flags]
 ## serve
 
 ```text
-masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--stall-after <duration>] [--fake-sandbox]
+masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--stall-after <duration>] [--config <path>] [--fake-sandbox]
 ```
 
 常駐プロセス。Ctrl-C（SIGINT）かSIGTERMで止まる。止めると動いていたワークスペースは`stopped`になる。
@@ -48,8 +48,9 @@ masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--s
 |---|---|---|
 | `--socket` | `$XDG_RUNTIME_DIR/masuda.sock` | 公開APIを待ち受けるUnixソケット |
 | `--data-dir` | `$XDG_DATA_HOME/masuda`（未設定なら`~/.local/share/masuda`） | ワークスペース・秘密・イメージの記録を置く場所 |
-| `--sandbox-socket` | `$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット |
-| `--stall-after` | `0` | 無活動がこれだけ続いたら活動を`stalled`にする（例 `15m`）。0なら各リポジトリの`settings.local.json`の`stallAfter`（既定`10m`）に従い、0以外なら全ワークスペースでこちらが勝つ |
+| `--sandbox-socket` | `config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット |
+| `--stall-after` | `0` | 無活動がこれだけ続いたら活動を`stalled`にする（例 `15m`）。0なら各リポジトリの`settings.local.json`の`stallAfter`、無ければ`config.json`の`stallAfter`（既定`10m`）に従い、0以外なら全ワークスペースでこちらが勝つ |
+| `--config` | `$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`） | serve全体の設定ファイル（[設定ファイル](settings.md#serve-config)）。無ければすべて既定 |
 | `--fake-sandbox` | `false` | VMを使わず、プロセス内のフェイクで動かす（開発・テスト用。エージェントは動かない） |
 
 ## run

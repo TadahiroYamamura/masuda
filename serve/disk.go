@@ -12,14 +12,13 @@ import (
 	"time"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
-	"github.com/TadahiroYamamura/masuda/internal/config"
 )
 
 // diskCheckEvery はワークスペース置き場の使用量を測る間隔。
 const diskCheckEvery = 60 * time.Second
 
-// diskWarningKind はディスク使用量の警告をWatchへ流すときのEngineEvent.kind。公開APIに
-// 専用のイベントが無いので、実行記録の行の形を借りる（workspace_idは空、全ワークスペース宛て）。
+// diskWarningKind はディスク使用量の警告をWatchへ流すときのServeNotice.kind
+// （workspace_idは空、全ワークスペース宛て）。
 const diskWarningKind = "disk-warning"
 
 // diskUsage は1回の計測結果。exportsはworkspacesの内数（`workspaces/<id>/exports/`の合計）。
@@ -48,7 +47,7 @@ func (b *backend) watchDisk(ctx context.Context) {
 // 警告は下回っていた状態から超えたときにだけ出す。60秒ごとに同じ警告を流し続けるとWatchの
 // 再送バッファを埋めてしまうため。
 func (b *backend) checkDisk() {
-	limit := b.diskWarnThreshold()
+	limit := b.diskWarn
 	u, err := measureDisk(filepath.Join(b.dataDir, "workspaces"))
 	if err != nil {
 		log.Printf("masuda: measuring disk usage: %v", err)
@@ -62,41 +61,16 @@ func (b *backend) checkDisk() {
 	if !warn {
 		return
 	}
-	detail := fmt.Sprintf("%s uses %s (exports %s), over the warning threshold %s (diskWarnBytes in .masuda/settings.local.json); remove finished workspaces with masuda remove",
-		filepath.Join(b.dataDir, "workspaces"), humanBytes(u.workspaces), humanBytes(u.exports), humanBytes(limit))
+	detail := fmt.Sprintf("%s uses %s (exports %s), over the warning threshold %s (diskWarnBytes in %s); remove finished workspaces with masuda remove",
+		filepath.Join(b.dataDir, "workspaces"), humanBytes(u.workspaces), humanBytes(u.exports), humanBytes(limit), configName)
 	log.Printf("masuda: %s", detail)
 	b.events.publish(&apiv1.WorkspaceEvent{
-		Event: &apiv1.WorkspaceEvent_Engine{Engine: &apiv1.EngineEvent{Kind: diskWarningKind, Detail: detail}},
+		Event: &apiv1.WorkspaceEvent_Notice{Notice: &apiv1.ServeNotice{Kind: diskWarningKind, Detail: detail, Value: uint64(u.workspaces)}},
 	})
 }
 
-// diskWarnThreshold は警告のしきい値。置き場はserve全体で1つだが、settings.local.jsonは
-// リポジトリごとにあるので、ワークスペースのあるリポジトリのうち最も小さい値を使う
-// （誰かが低く設定したなら、その人の環境ではそれが限度だということなので）。
-// 読めないsettings.local.jsonは既定として扱う（Run・Resumeが別途エラーにする）。
-func (b *backend) diskWarnThreshold() int64 {
-	limit := config.DefaultDiskWarnBytes
-	ws, err := b.store.List("")
-	if err != nil {
-		return limit
-	}
-	seen := map[string]bool{}
-	first := true
-	for _, w := range ws {
-		if seen[w.RepoRoot] {
-			continue
-		}
-		seen[w.RepoRoot] = true
-		local, err := config.LoadLocal(w.RepoRoot)
-		if err != nil {
-			continue
-		}
-		if v := local.DiskWarnThreshold(); first || v < limit {
-			limit, first = v, false
-		}
-	}
-	return limit
-}
+// configName はメッセージで設定の置き場所を指すときの名前。
+const configName = "$XDG_CONFIG_HOME/masuda/config.json"
 
 // measureDisk はroot以下の通常ファイルの大きさの合計と、そのうち`<id>/exports/`以下の分を返す。
 // 途中で消えたファイル（実行中のワークスペースの一時ファイル等）は数えない。

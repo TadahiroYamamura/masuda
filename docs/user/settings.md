@@ -1,6 +1,6 @@
 # 設定ファイル
 
-対象リポジトリの`.masuda/`に2つ置く。
+対象リポジトリの`.masuda/`に2つ置く。リポジトリに依らない`masuda serve`全体の設定は、別に[`config.json`](#serve-config)に置く。
 
 | ファイル | 誰のものか | コミット | 中身 |
 |---|---|---|---|
@@ -164,8 +164,7 @@ VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`�
   },
   "claudeToken": "CLAUDE_CODE_OAUTH_TOKEN",
   "vars": { "APP_ENV": "development" },
-  "stallAfter": "15m",
-  "diskWarnBytes": 32212254720
+  "stallAfter": "15m"
 }
 ```
 
@@ -176,7 +175,27 @@ VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`�
 | `privilegedCommandsApproved` | オブジェクト（コマンド名→`{"declHash": "..."}`） | 空 | 特権コマンドの承認。承認した時点の宣言の内容のハッシュで、宣言が変わると効かなくなる | `masuda privileged-command approve` |
 | `claudeToken` | 文字列 | `"CLAUDE_CODE_OAUTH_TOKEN"` | Claudeのトークンとして使う秘密の名前。複数のアカウントを使い分けるとき、別の名前で登録したトークンを選ぶ | 手で書く |
 | `vars` | オブジェクト（名前→値） | 空 | `envFiles`の公開値（秘密として宣言していない変数の値）。`envFiles`の変数で、秘密でもなくここにも無いものがあれば`masuda run`が断る | 手で書く |
-| `stallAfter` | 文字列（Goのduration。`10m`・`1h30m`等） | `"10m"` | 無活動がこれだけ続いたら活動を`stalled`と表示する。何分黙れば異常かはマシンの速さやClaudeのプランで変わるので、ここに置く。正でない値・読めない値は`run`・`resume`がエラーにする。`masuda serve --stall-after`があればそちらが勝つ | 手で書く |
-| `diskWarnBytes` | 整数（バイト） | `21474836480`（20GiB） | ワークスペース置き場（`~/.local/share/masuda/workspaces/`）の使用量の警告しきい値。複数のリポジトリで違う値なら一番小さいものを使う | 手で書く |
+| `stallAfter` | 文字列（Goのduration。`10m`・`1h30m`等） | `config.json`の`stallAfter`（それも無ければ`"10m"`） | 無活動がこれだけ続いたら活動を`stalled`と表示する、このリポジトリでの上書き。何分黙れば異常かはマシンの速さやClaudeのプランで変わるので、ここに置ける。正でない値・読めない値は`run`・`resume`がエラーにする。`masuda serve --stall-after`があればそちらが勝つ | 手で書く |
 
 `claudeToken`を変えたら、その名前で`masuda secret set <名前>`して値を登録する。
+
+## config.json {#serve-config}
+
+リポジトリに依らない`masuda serve`全体の設定。置き場所は`$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`）で、`masuda serve --config <path>`で変えられる。無ければすべて既定。読むのは`masuda serve`の起動時だけなので、書き換えたらserveを起動し直す。
+
+```json title="~/.config/masuda/config.json"
+{
+  "listen": "127.0.0.1:7788",
+  "stallAfter": "15m",
+  "diskWarnBytes": 32212254720
+}
+```
+
+| キー | 型 | 既定 | 意味 |
+|---|---|---|---|
+| `listen` | 文字列（`<IP>:<ポート>`） | 空（UDSだけ） | UDSに加えて、このループバックのアドレスでも公開APIを待ち受ける。ブラウザのGUIを使うときに設定する。ループバック以外（`0.0.0.0`等）は書けない。注意点は[接続](../api/connect.md) |
+| `sandboxSocket` | 文字列（パス） | `$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット。`--sandbox-socket`を指定すればそちらが勝つ |
+| `stallAfter` | 文字列（Goのduration） | `"10m"` | 無活動のしきい値の既定。リポジトリの`settings.local.json`の`stallAfter`が上書きする |
+| `diskWarnBytes` | 整数（バイト） | `21474836480`（20GiB） | ワークスペース置き場（`~/.local/share/masuda/workspaces/`）の使用量の警告しきい値 |
+
+知らないキー・読めない値があると`masuda serve`は起動しない。

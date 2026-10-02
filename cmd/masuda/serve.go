@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"syscall"
 
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/serve"
 )
 
@@ -19,27 +20,45 @@ func runServe(args []string) error {
 	dataDir := fs.String("data-dir", defaultDataDir(), "状態を置くディレクトリ")
 	fake := fs.Bool("fake-sandbox", false, "sandbox serviceの代わりにプロセス内のフェイクを使う（開発・テスト用）")
 	sandboxSocket := fs.String("sandbox-socket", filepath.Join(runtimeDir(), "masuda-sandbox.sock"), "masuda-sandbox serveのUDSのパス")
-	stallAfter := fs.Duration("stall-after", 0, "無活動がこれだけ続いたら活動をstalledにする（0なら対象リポジトリのsettings.local.jsonのstallAfter、既定10m）")
+	stallAfter := fs.Duration("stall-after", 0, "無活動がこれだけ続いたら活動をstalledにする（0なら対象リポジトリのsettings.local.jsonのstallAfter、無ければconfig.jsonのstallAfter、既定10m）")
+	configPath := fs.String("config", config.ServeConfigPath(), "serve全体の設定ファイル（listen・sandboxSocket・stallAfter・diskWarnBytes）。無ければすべて既定")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
 		}
 		return err
 	}
+	cfg, err := config.LoadServe(*configPath)
+	if err != nil {
+		return err
+	}
+	set := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	// 明示したフラグはconfig.jsonより優先する。
+	if cfg.SandboxSocket != "" && !set["sandbox-socket"] {
+		*sandboxSocket = cfg.SandboxSocket
+	}
+	defaultStall, _ := cfg.StallAfterDuration() // LoadServeが検査済み
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	srv, err := serve.Start(ctx, serve.Options{
-		Socket:        *socket,
-		DataDir:       *dataDir,
-		FakeSandbox:   *fake,
-		SandboxSocket: *sandboxSocket,
-		StallAfter:    *stallAfter,
+		Socket:            *socket,
+		DataDir:           *dataDir,
+		FakeSandbox:       *fake,
+		SandboxSocket:     *sandboxSocket,
+		StallAfter:        *stallAfter,
+		DefaultStallAfter: defaultStall,
+		DiskWarnBytes:     cfg.DiskWarnBytes,
+		Listen:            cfg.Listen,
 	})
 	if err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "masuda: serving on %s\n", *socket)
+	if a := srv.ListenAddr(); a != "" {
+		fmt.Fprintf(os.Stderr, "masuda: also serving on http://%s (loopback, CORS: any origin)\n", a)
+	}
 	<-srv.Done()
 	return nil
 }

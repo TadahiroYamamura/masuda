@@ -911,6 +911,9 @@ func (x *Activity) GetDetail() string {
 	return ""
 }
 
+// One event on a Watch stream. Events whose workspace_id is empty concern
+// the server as a whole (ServeNotice) and are delivered to every Watch,
+// whatever id it asked for.
 type WorkspaceEvent struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Seq         uint64                 `protobuf:"varint,1,opt,name=seq,proto3" json:"seq,omitempty"`
@@ -922,6 +925,7 @@ type WorkspaceEvent struct {
 	//	*WorkspaceEvent_Engine
 	//	*WorkspaceEvent_GuestHook
 	//	*WorkspaceEvent_Http
+	//	*WorkspaceEvent_Notice
 	Event         isWorkspaceEvent_Event `protobuf_oneof:"event"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1021,6 +1025,15 @@ func (x *WorkspaceEvent) GetHttp() *HttpActivity {
 	return nil
 }
 
+func (x *WorkspaceEvent) GetNotice() *ServeNotice {
+	if x != nil {
+		if x, ok := x.Event.(*WorkspaceEvent_Notice); ok {
+			return x.Notice
+		}
+	}
+	return nil
+}
+
 type isWorkspaceEvent_Event interface {
 	isWorkspaceEvent_Event()
 }
@@ -1041,6 +1054,10 @@ type WorkspaceEvent_Http struct {
 	Http *HttpActivity `protobuf:"bytes,7,opt,name=http,proto3,oneof"` // host-observed API traffic summary
 }
 
+type WorkspaceEvent_Notice struct {
+	Notice *ServeNotice `protobuf:"bytes,8,opt,name=notice,proto3,oneof"` // server-wide: disk usage, shutdown, ...
+}
+
 func (*WorkspaceEvent_Status) isWorkspaceEvent_Event() {}
 
 func (*WorkspaceEvent_Engine) isWorkspaceEvent_Event() {}
@@ -1048,6 +1065,68 @@ func (*WorkspaceEvent_Engine) isWorkspaceEvent_Event() {}
 func (*WorkspaceEvent_GuestHook) isWorkspaceEvent_Event() {}
 
 func (*WorkspaceEvent_Http) isWorkspaceEvent_Event() {}
+
+func (*WorkspaceEvent_Notice) isWorkspaceEvent_Event() {}
+
+type ServeNotice struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`     // "disk-warning", "shutting-down", ...
+	Detail        string                 `protobuf:"bytes,2,opt,name=detail,proto3" json:"detail,omitempty"` // human readable
+	Value         uint64                 `protobuf:"varint,3,opt,name=value,proto3" json:"value,omitempty"`  // kind-specific number (bytes for disk-warning)
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ServeNotice) Reset() {
+	*x = ServeNotice{}
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServeNotice) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServeNotice) ProtoMessage() {}
+
+func (x *ServeNotice) ProtoReflect() protoreflect.Message {
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServeNotice.ProtoReflect.Descriptor instead.
+func (*ServeNotice) Descriptor() ([]byte, []int) {
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *ServeNotice) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *ServeNotice) GetDetail() string {
+	if x != nil {
+		return x.Detail
+	}
+	return ""
+}
+
+func (x *ServeNotice) GetValue() uint64 {
+	if x != nil {
+		return x.Value
+	}
+	return 0
+}
 
 type EngineEvent struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -1063,7 +1142,7 @@ type EngineEvent struct {
 
 func (x *EngineEvent) Reset() {
 	*x = EngineEvent{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[14]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1075,7 +1154,7 @@ func (x *EngineEvent) String() string {
 func (*EngineEvent) ProtoMessage() {}
 
 func (x *EngineEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[14]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1088,7 +1167,7 @@ func (x *EngineEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EngineEvent.ProtoReflect.Descriptor instead.
 func (*EngineEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{14}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *EngineEvent) GetKind() string {
@@ -1143,7 +1222,7 @@ type GuestHookEvent struct {
 
 func (x *GuestHookEvent) Reset() {
 	*x = GuestHookEvent{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[15]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1155,7 +1234,7 @@ func (x *GuestHookEvent) String() string {
 func (*GuestHookEvent) ProtoMessage() {}
 
 func (x *GuestHookEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[15]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1168,7 +1247,7 @@ func (x *GuestHookEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GuestHookEvent.ProtoReflect.Descriptor instead.
 func (*GuestHookEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{15}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *GuestHookEvent) GetHook() string {
@@ -1199,7 +1278,7 @@ type HttpActivity struct {
 
 func (x *HttpActivity) Reset() {
 	*x = HttpActivity{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[16]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1211,7 +1290,7 @@ func (x *HttpActivity) String() string {
 func (*HttpActivity) ProtoMessage() {}
 
 func (x *HttpActivity) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[16]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1224,7 +1303,7 @@ func (x *HttpActivity) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HttpActivity.ProtoReflect.Descriptor instead.
 func (*HttpActivity) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{16}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *HttpActivity) GetMethod() string {
@@ -1278,7 +1357,7 @@ type ListOpenGatesRequest struct {
 
 func (x *ListOpenGatesRequest) Reset() {
 	*x = ListOpenGatesRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[17]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1290,7 +1369,7 @@ func (x *ListOpenGatesRequest) String() string {
 func (*ListOpenGatesRequest) ProtoMessage() {}
 
 func (x *ListOpenGatesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[17]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1303,7 +1382,7 @@ func (x *ListOpenGatesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOpenGatesRequest.ProtoReflect.Descriptor instead.
 func (*ListOpenGatesRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{17}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ListOpenGatesRequest) GetWorkspaceId() string {
@@ -1322,7 +1401,7 @@ type ListOpenGatesResponse struct {
 
 func (x *ListOpenGatesResponse) Reset() {
 	*x = ListOpenGatesResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[18]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1334,7 +1413,7 @@ func (x *ListOpenGatesResponse) String() string {
 func (*ListOpenGatesResponse) ProtoMessage() {}
 
 func (x *ListOpenGatesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[18]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1347,7 +1426,7 @@ func (x *ListOpenGatesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOpenGatesResponse.ProtoReflect.Descriptor instead.
 func (*ListOpenGatesResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{18}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *ListOpenGatesResponse) GetGates() []*Gate {
@@ -1367,7 +1446,7 @@ type GetGateRequest struct {
 
 func (x *GetGateRequest) Reset() {
 	*x = GetGateRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[19]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1379,7 +1458,7 @@ func (x *GetGateRequest) String() string {
 func (*GetGateRequest) ProtoMessage() {}
 
 func (x *GetGateRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[19]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1392,7 +1471,7 @@ func (x *GetGateRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetGateRequest.ProtoReflect.Descriptor instead.
 func (*GetGateRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{19}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *GetGateRequest) GetWorkspaceId() string {
@@ -1427,7 +1506,7 @@ type Gate struct {
 
 func (x *Gate) Reset() {
 	*x = Gate{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[20]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1439,7 +1518,7 @@ func (x *Gate) String() string {
 func (*Gate) ProtoMessage() {}
 
 func (x *Gate) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[20]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1452,7 +1531,7 @@ func (x *Gate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Gate.ProtoReflect.Descriptor instead.
 func (*Gate) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{20}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *Gate) GetWorkspaceId() string {
@@ -1531,7 +1610,7 @@ type Decision struct {
 
 func (x *Decision) Reset() {
 	*x = Decision{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[21]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1543,7 +1622,7 @@ func (x *Decision) String() string {
 func (*Decision) ProtoMessage() {}
 
 func (x *Decision) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[21]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1556,7 +1635,7 @@ func (x *Decision) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Decision.ProtoReflect.Descriptor instead.
 func (*Decision) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{21}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *Decision) GetOutcome() string {
@@ -1605,7 +1684,7 @@ type DecideRequest struct {
 
 func (x *DecideRequest) Reset() {
 	*x = DecideRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[22]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1617,7 +1696,7 @@ func (x *DecideRequest) String() string {
 func (*DecideRequest) ProtoMessage() {}
 
 func (x *DecideRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[22]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1630,7 +1709,7 @@ func (x *DecideRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DecideRequest.ProtoReflect.Descriptor instead.
 func (*DecideRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{22}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *DecideRequest) GetWorkspaceId() string {
@@ -1663,7 +1742,7 @@ type ListOpenQuestionsRequest struct {
 
 func (x *ListOpenQuestionsRequest) Reset() {
 	*x = ListOpenQuestionsRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[23]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1675,7 +1754,7 @@ func (x *ListOpenQuestionsRequest) String() string {
 func (*ListOpenQuestionsRequest) ProtoMessage() {}
 
 func (x *ListOpenQuestionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[23]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1688,7 +1767,7 @@ func (x *ListOpenQuestionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOpenQuestionsRequest.ProtoReflect.Descriptor instead.
 func (*ListOpenQuestionsRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{23}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ListOpenQuestionsRequest) GetWorkspaceId() string {
@@ -1707,7 +1786,7 @@ type ListOpenQuestionsResponse struct {
 
 func (x *ListOpenQuestionsResponse) Reset() {
 	*x = ListOpenQuestionsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[24]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1719,7 +1798,7 @@ func (x *ListOpenQuestionsResponse) String() string {
 func (*ListOpenQuestionsResponse) ProtoMessage() {}
 
 func (x *ListOpenQuestionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[24]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1732,7 +1811,7 @@ func (x *ListOpenQuestionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListOpenQuestionsResponse.ProtoReflect.Descriptor instead.
 func (*ListOpenQuestionsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{24}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *ListOpenQuestionsResponse) GetQuestions() []*OpenQuestion {
@@ -1754,7 +1833,7 @@ type OpenQuestion struct {
 
 func (x *OpenQuestion) Reset() {
 	*x = OpenQuestion{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[25]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1766,7 +1845,7 @@ func (x *OpenQuestion) String() string {
 func (*OpenQuestion) ProtoMessage() {}
 
 func (x *OpenQuestion) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[25]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1779,7 +1858,7 @@ func (x *OpenQuestion) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OpenQuestion.ProtoReflect.Descriptor instead.
 func (*OpenQuestion) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{25}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *OpenQuestion) GetWorkspaceId() string {
@@ -1821,7 +1900,7 @@ type QuestionItem struct {
 
 func (x *QuestionItem) Reset() {
 	*x = QuestionItem{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[26]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1833,7 +1912,7 @@ func (x *QuestionItem) String() string {
 func (*QuestionItem) ProtoMessage() {}
 
 func (x *QuestionItem) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[26]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1846,7 +1925,7 @@ func (x *QuestionItem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionItem.ProtoReflect.Descriptor instead.
 func (*QuestionItem) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{26}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *QuestionItem) GetId() string {
@@ -1881,7 +1960,7 @@ type AnswerRequest struct {
 
 func (x *AnswerRequest) Reset() {
 	*x = AnswerRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[27]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1893,7 +1972,7 @@ func (x *AnswerRequest) String() string {
 func (*AnswerRequest) ProtoMessage() {}
 
 func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[27]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1906,7 +1985,7 @@ func (x *AnswerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerRequest.ProtoReflect.Descriptor instead.
 func (*AnswerRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{27}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *AnswerRequest) GetWorkspaceId() string {
@@ -1938,7 +2017,7 @@ type AnswerResponse struct {
 
 func (x *AnswerResponse) Reset() {
 	*x = AnswerResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[28]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1950,7 +2029,7 @@ func (x *AnswerResponse) String() string {
 func (*AnswerResponse) ProtoMessage() {}
 
 func (x *AnswerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[28]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1963,7 +2042,7 @@ func (x *AnswerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AnswerResponse.ProtoReflect.Descriptor instead.
 func (*AnswerResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{28}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{29}
 }
 
 type ListRefsRequest struct {
@@ -1975,7 +2054,7 @@ type ListRefsRequest struct {
 
 func (x *ListRefsRequest) Reset() {
 	*x = ListRefsRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[29]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1987,7 +2066,7 @@ func (x *ListRefsRequest) String() string {
 func (*ListRefsRequest) ProtoMessage() {}
 
 func (x *ListRefsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[29]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2000,7 +2079,7 @@ func (x *ListRefsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRefsRequest.ProtoReflect.Descriptor instead.
 func (*ListRefsRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{29}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ListRefsRequest) GetWorkspaceId() string {
@@ -2019,7 +2098,7 @@ type ListRefsResponse struct {
 
 func (x *ListRefsResponse) Reset() {
 	*x = ListRefsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[30]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2031,7 +2110,7 @@ func (x *ListRefsResponse) String() string {
 func (*ListRefsResponse) ProtoMessage() {}
 
 func (x *ListRefsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[30]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2044,7 +2123,7 @@ func (x *ListRefsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListRefsResponse.ProtoReflect.Descriptor instead.
 func (*ListRefsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{30}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ListRefsResponse) GetRefs() []*Ref {
@@ -2064,7 +2143,7 @@ type Ref struct {
 
 func (x *Ref) Reset() {
 	*x = Ref{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[31]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2076,7 +2155,7 @@ func (x *Ref) String() string {
 func (*Ref) ProtoMessage() {}
 
 func (x *Ref) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[31]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2089,7 +2168,7 @@ func (x *Ref) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Ref.ProtoReflect.Descriptor instead.
 func (*Ref) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{31}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *Ref) GetName() string {
@@ -2116,7 +2195,7 @@ type GetCommitRequest struct {
 
 func (x *GetCommitRequest) Reset() {
 	*x = GetCommitRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[32]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2128,7 +2207,7 @@ func (x *GetCommitRequest) String() string {
 func (*GetCommitRequest) ProtoMessage() {}
 
 func (x *GetCommitRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[32]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2141,7 +2220,7 @@ func (x *GetCommitRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetCommitRequest.ProtoReflect.Descriptor instead.
 func (*GetCommitRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{32}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *GetCommitRequest) GetWorkspaceId() string {
@@ -2172,7 +2251,7 @@ type Commit struct {
 
 func (x *Commit) Reset() {
 	*x = Commit{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[33]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2184,7 +2263,7 @@ func (x *Commit) String() string {
 func (*Commit) ProtoMessage() {}
 
 func (x *Commit) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[33]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2197,7 +2276,7 @@ func (x *Commit) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Commit.ProtoReflect.Descriptor instead.
 func (*Commit) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{33}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *Commit) GetHash() string {
@@ -2254,7 +2333,7 @@ type DiffRequest struct {
 
 func (x *DiffRequest) Reset() {
 	*x = DiffRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[34]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2266,7 +2345,7 @@ func (x *DiffRequest) String() string {
 func (*DiffRequest) ProtoMessage() {}
 
 func (x *DiffRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[34]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2279,7 +2358,7 @@ func (x *DiffRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffRequest.ProtoReflect.Descriptor instead.
 func (*DiffRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{34}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *DiffRequest) GetWorkspaceId() string {
@@ -2319,7 +2398,7 @@ type DiffResponse struct {
 
 func (x *DiffResponse) Reset() {
 	*x = DiffResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[35]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2331,7 +2410,7 @@ func (x *DiffResponse) String() string {
 func (*DiffResponse) ProtoMessage() {}
 
 func (x *DiffResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[35]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2344,7 +2423,7 @@ func (x *DiffResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DiffResponse.ProtoReflect.Descriptor instead.
 func (*DiffResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{35}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *DiffResponse) GetUnified() string {
@@ -2365,7 +2444,7 @@ type GetBlobRequest struct {
 
 func (x *GetBlobRequest) Reset() {
 	*x = GetBlobRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[36]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2377,7 +2456,7 @@ func (x *GetBlobRequest) String() string {
 func (*GetBlobRequest) ProtoMessage() {}
 
 func (x *GetBlobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[36]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2390,7 +2469,7 @@ func (x *GetBlobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetBlobRequest.ProtoReflect.Descriptor instead.
 func (*GetBlobRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{36}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *GetBlobRequest) GetWorkspaceId() string {
@@ -2423,7 +2502,7 @@ type BlobChunk struct {
 
 func (x *BlobChunk) Reset() {
 	*x = BlobChunk{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[37]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2435,7 +2514,7 @@ func (x *BlobChunk) String() string {
 func (*BlobChunk) ProtoMessage() {}
 
 func (x *BlobChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[37]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2448,7 +2527,7 @@ func (x *BlobChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BlobChunk.ProtoReflect.Descriptor instead.
 func (*BlobChunk) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{37}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *BlobChunk) GetData() []byte {
@@ -2468,7 +2547,7 @@ type ListCommentsRequest struct {
 
 func (x *ListCommentsRequest) Reset() {
 	*x = ListCommentsRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[38]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2480,7 +2559,7 @@ func (x *ListCommentsRequest) String() string {
 func (*ListCommentsRequest) ProtoMessage() {}
 
 func (x *ListCommentsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[38]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2493,7 +2572,7 @@ func (x *ListCommentsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommentsRequest.ProtoReflect.Descriptor instead.
 func (*ListCommentsRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{38}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ListCommentsRequest) GetWorkspaceId() string {
@@ -2519,7 +2598,7 @@ type ListCommentsResponse struct {
 
 func (x *ListCommentsResponse) Reset() {
 	*x = ListCommentsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[39]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2531,7 +2610,7 @@ func (x *ListCommentsResponse) String() string {
 func (*ListCommentsResponse) ProtoMessage() {}
 
 func (x *ListCommentsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[39]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2544,7 +2623,7 @@ func (x *ListCommentsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListCommentsResponse.ProtoReflect.Descriptor instead.
 func (*ListCommentsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{39}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *ListCommentsResponse) GetComments() []*Comment {
@@ -2571,7 +2650,7 @@ type Comment struct {
 
 func (x *Comment) Reset() {
 	*x = Comment{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[40]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2583,7 +2662,7 @@ func (x *Comment) String() string {
 func (*Comment) ProtoMessage() {}
 
 func (x *Comment) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[40]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2596,7 +2675,7 @@ func (x *Comment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Comment.ProtoReflect.Descriptor instead.
 func (*Comment) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{40}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *Comment) GetId() string {
@@ -2675,7 +2754,7 @@ type AddCommentRequest struct {
 
 func (x *AddCommentRequest) Reset() {
 	*x = AddCommentRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[41]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2687,7 +2766,7 @@ func (x *AddCommentRequest) String() string {
 func (*AddCommentRequest) ProtoMessage() {}
 
 func (x *AddCommentRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[41]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2700,7 +2779,7 @@ func (x *AddCommentRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddCommentRequest.ProtoReflect.Descriptor instead.
 func (*AddCommentRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{41}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *AddCommentRequest) GetWorkspaceId() string {
@@ -2747,7 +2826,7 @@ type RepoRequest struct {
 
 func (x *RepoRequest) Reset() {
 	*x = RepoRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[42]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2759,7 +2838,7 @@ func (x *RepoRequest) String() string {
 func (*RepoRequest) ProtoMessage() {}
 
 func (x *RepoRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[42]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2772,7 +2851,7 @@ func (x *RepoRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepoRequest.ProtoReflect.Descriptor instead.
 func (*RepoRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{42}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *RepoRequest) GetRepoRoot() string {
@@ -2792,7 +2871,7 @@ type HostRequest struct {
 
 func (x *HostRequest) Reset() {
 	*x = HostRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[43]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2804,7 +2883,7 @@ func (x *HostRequest) String() string {
 func (*HostRequest) ProtoMessage() {}
 
 func (x *HostRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[43]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2817,7 +2896,7 @@ func (x *HostRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HostRequest.ProtoReflect.Descriptor instead.
 func (*HostRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{43}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *HostRequest) GetRepoRoot() string {
@@ -2844,7 +2923,7 @@ type NameRequest struct {
 
 func (x *NameRequest) Reset() {
 	*x = NameRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[44]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2856,7 +2935,7 @@ func (x *NameRequest) String() string {
 func (*NameRequest) ProtoMessage() {}
 
 func (x *NameRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[44]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2869,7 +2948,7 @@ func (x *NameRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use NameRequest.ProtoReflect.Descriptor instead.
 func (*NameRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{44}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *NameRequest) GetRepoRoot() string {
@@ -2895,7 +2974,7 @@ type ListEgressResponse struct {
 
 func (x *ListEgressResponse) Reset() {
 	*x = ListEgressResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[45]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2907,7 +2986,7 @@ func (x *ListEgressResponse) String() string {
 func (*ListEgressResponse) ProtoMessage() {}
 
 func (x *ListEgressResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[45]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2920,7 +2999,7 @@ func (x *ListEgressResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListEgressResponse.ProtoReflect.Descriptor instead.
 func (*ListEgressResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{45}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *ListEgressResponse) GetEntries() []*EgressEntry {
@@ -2940,7 +3019,7 @@ type EgressEntry struct {
 
 func (x *EgressEntry) Reset() {
 	*x = EgressEntry{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[46]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2952,7 +3031,7 @@ func (x *EgressEntry) String() string {
 func (*EgressEntry) ProtoMessage() {}
 
 func (x *EgressEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[46]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2965,7 +3044,7 @@ func (x *EgressEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EgressEntry.ProtoReflect.Descriptor instead.
 func (*EgressEntry) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{46}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *EgressEntry) GetHost() string {
@@ -2995,7 +3074,7 @@ type ListSecretsResponse struct {
 
 func (x *ListSecretsResponse) Reset() {
 	*x = ListSecretsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[47]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3007,7 +3086,7 @@ func (x *ListSecretsResponse) String() string {
 func (*ListSecretsResponse) ProtoMessage() {}
 
 func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[47]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3020,7 +3099,7 @@ func (x *ListSecretsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSecretsResponse.ProtoReflect.Descriptor instead.
 func (*ListSecretsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{47}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *ListSecretsResponse) GetEntries() []*SecretEntry {
@@ -3053,7 +3132,7 @@ type SecretEntry struct {
 
 func (x *SecretEntry) Reset() {
 	*x = SecretEntry{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[48]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3065,7 +3144,7 @@ func (x *SecretEntry) String() string {
 func (*SecretEntry) ProtoMessage() {}
 
 func (x *SecretEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[48]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3078,7 +3157,7 @@ func (x *SecretEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretEntry.ProtoReflect.Descriptor instead.
 func (*SecretEntry) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{48}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *SecretEntry) GetName() string {
@@ -3134,7 +3213,7 @@ type SetSecretRequest struct {
 
 func (x *SetSecretRequest) Reset() {
 	*x = SetSecretRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[49]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[50]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3146,7 +3225,7 @@ func (x *SetSecretRequest) String() string {
 func (*SetSecretRequest) ProtoMessage() {}
 
 func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[49]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[50]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3159,7 +3238,7 @@ func (x *SetSecretRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetSecretRequest.ProtoReflect.Descriptor instead.
 func (*SetSecretRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{49}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *SetSecretRequest) GetRepoRoot() string {
@@ -3192,7 +3271,7 @@ type ListPrivilegedCommandsResponse struct {
 
 func (x *ListPrivilegedCommandsResponse) Reset() {
 	*x = ListPrivilegedCommandsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[50]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[51]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3204,7 +3283,7 @@ func (x *ListPrivilegedCommandsResponse) String() string {
 func (*ListPrivilegedCommandsResponse) ProtoMessage() {}
 
 func (x *ListPrivilegedCommandsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[50]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[51]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3217,7 +3296,7 @@ func (x *ListPrivilegedCommandsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListPrivilegedCommandsResponse.ProtoReflect.Descriptor instead.
 func (*ListPrivilegedCommandsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{50}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *ListPrivilegedCommandsResponse) GetEntries() []*PrivilegedCommandEntry {
@@ -3240,7 +3319,7 @@ type PrivilegedCommandEntry struct {
 
 func (x *PrivilegedCommandEntry) Reset() {
 	*x = PrivilegedCommandEntry{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[51]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[52]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3252,7 +3331,7 @@ func (x *PrivilegedCommandEntry) String() string {
 func (*PrivilegedCommandEntry) ProtoMessage() {}
 
 func (x *PrivilegedCommandEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[51]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[52]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3265,7 +3344,7 @@ func (x *PrivilegedCommandEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrivilegedCommandEntry.ProtoReflect.Descriptor instead.
 func (*PrivilegedCommandEntry) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{51}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *PrivilegedCommandEntry) GetName() string {
@@ -3312,7 +3391,7 @@ type ListImagesResponse struct {
 
 func (x *ListImagesResponse) Reset() {
 	*x = ListImagesResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[52]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[53]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3324,7 +3403,7 @@ func (x *ListImagesResponse) String() string {
 func (*ListImagesResponse) ProtoMessage() {}
 
 func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[52]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[53]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3337,7 +3416,7 @@ func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{52}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *ListImagesResponse) GetEntries() []*ImageEntry {
@@ -3358,7 +3437,7 @@ type ImageEntry struct {
 
 func (x *ImageEntry) Reset() {
 	*x = ImageEntry{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[53]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[54]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3370,7 +3449,7 @@ func (x *ImageEntry) String() string {
 func (*ImageEntry) ProtoMessage() {}
 
 func (x *ImageEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[53]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[54]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3383,7 +3462,7 @@ func (x *ImageEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ImageEntry.ProtoReflect.Descriptor instead.
 func (*ImageEntry) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{53}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *ImageEntry) GetEntry() string {
@@ -3417,7 +3496,7 @@ type BuildImageRequest struct {
 
 func (x *BuildImageRequest) Reset() {
 	*x = BuildImageRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[54]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[55]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3429,7 +3508,7 @@ func (x *BuildImageRequest) String() string {
 func (*BuildImageRequest) ProtoMessage() {}
 
 func (x *BuildImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[54]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[55]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3442,7 +3521,7 @@ func (x *BuildImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildImageRequest.ProtoReflect.Descriptor instead.
 func (*BuildImageRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{54}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *BuildImageRequest) GetRepoRoot() string {
@@ -3469,7 +3548,7 @@ type BuildImageEvent struct {
 
 func (x *BuildImageEvent) Reset() {
 	*x = BuildImageEvent{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[55]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[56]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3481,7 +3560,7 @@ func (x *BuildImageEvent) String() string {
 func (*BuildImageEvent) ProtoMessage() {}
 
 func (x *BuildImageEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[55]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[56]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3494,7 +3573,7 @@ func (x *BuildImageEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildImageEvent.ProtoReflect.Descriptor instead.
 func (*BuildImageEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{55}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *BuildImageEvent) GetLogLine() string {
@@ -3520,7 +3599,7 @@ type ListWorkflowsResponse struct {
 
 func (x *ListWorkflowsResponse) Reset() {
 	*x = ListWorkflowsResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[56]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[57]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3532,7 +3611,7 @@ func (x *ListWorkflowsResponse) String() string {
 func (*ListWorkflowsResponse) ProtoMessage() {}
 
 func (x *ListWorkflowsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[56]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[57]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3545,7 +3624,7 @@ func (x *ListWorkflowsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListWorkflowsResponse.ProtoReflect.Descriptor instead.
 func (*ListWorkflowsResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{56}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *ListWorkflowsResponse) GetWorkflows() []*WorkflowEntry {
@@ -3566,7 +3645,7 @@ type WorkflowEntry struct {
 
 func (x *WorkflowEntry) Reset() {
 	*x = WorkflowEntry{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[57]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[58]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3578,7 +3657,7 @@ func (x *WorkflowEntry) String() string {
 func (*WorkflowEntry) ProtoMessage() {}
 
 func (x *WorkflowEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[57]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[58]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3591,7 +3670,7 @@ func (x *WorkflowEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkflowEntry.ProtoReflect.Descriptor instead.
 func (*WorkflowEntry) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{57}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *WorkflowEntry) GetPath() string {
@@ -3625,7 +3704,7 @@ type ShowWorkflowRequest struct {
 
 func (x *ShowWorkflowRequest) Reset() {
 	*x = ShowWorkflowRequest{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[58]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[59]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3637,7 +3716,7 @@ func (x *ShowWorkflowRequest) String() string {
 func (*ShowWorkflowRequest) ProtoMessage() {}
 
 func (x *ShowWorkflowRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[58]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[59]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3650,7 +3729,7 @@ func (x *ShowWorkflowRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowWorkflowRequest.ProtoReflect.Descriptor instead.
 func (*ShowWorkflowRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{58}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *ShowWorkflowRequest) GetRepoRoot() string {
@@ -3676,7 +3755,7 @@ type ShowWorkflowResponse struct {
 
 func (x *ShowWorkflowResponse) Reset() {
 	*x = ShowWorkflowResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[59]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[60]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3688,7 +3767,7 @@ func (x *ShowWorkflowResponse) String() string {
 func (*ShowWorkflowResponse) ProtoMessage() {}
 
 func (x *ShowWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[59]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[60]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3701,7 +3780,7 @@ func (x *ShowWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ShowWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*ShowWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{59}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *ShowWorkflowResponse) GetMermaid() string {
@@ -3720,7 +3799,7 @@ type CheckWorkflowResponse struct {
 
 func (x *CheckWorkflowResponse) Reset() {
 	*x = CheckWorkflowResponse{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[60]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[61]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3732,7 +3811,7 @@ func (x *CheckWorkflowResponse) String() string {
 func (*CheckWorkflowResponse) ProtoMessage() {}
 
 func (x *CheckWorkflowResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[60]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[61]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3745,7 +3824,7 @@ func (x *CheckWorkflowResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CheckWorkflowResponse.ProtoReflect.Descriptor instead.
 func (*CheckWorkflowResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{60}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *CheckWorkflowResponse) GetProblems() []*Problem {
@@ -3766,7 +3845,7 @@ type Problem struct {
 
 func (x *Problem) Reset() {
 	*x = Problem{}
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[61]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[62]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -3778,7 +3857,7 @@ func (x *Problem) String() string {
 func (*Problem) ProtoMessage() {}
 
 func (x *Problem) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_api_v1_masuda_proto_msgTypes[61]
+	mi := &file_masuda_api_v1_masuda_proto_msgTypes[62]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -3791,7 +3870,7 @@ func (x *Problem) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Problem.ProtoReflect.Descriptor instead.
 func (*Problem) Descriptor() ([]byte, []int) {
-	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{61}
+	return file_masuda_api_v1_masuda_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Problem) GetPath() string {
@@ -3878,7 +3957,7 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\rlast_activity\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\x12\x1d\n" +
 	"\n" +
 	"input_wait\x18\x03 \x01(\tR\tinputWait\x12\x16\n" +
-	"\x06detail\x18\x04 \x01(\tR\x06detail\"\xdb\x02\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\"\x91\x03\n" +
 	"\x0eWorkspaceEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12.\n" +
 	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12!\n" +
@@ -3887,8 +3966,13 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\x06engine\x18\x05 \x01(\v2\x1a.masuda.api.v1.EngineEventH\x00R\x06engine\x12>\n" +
 	"\n" +
 	"guest_hook\x18\x06 \x01(\v2\x1d.masuda.api.v1.GuestHookEventH\x00R\tguestHook\x121\n" +
-	"\x04http\x18\a \x01(\v2\x1b.masuda.api.v1.HttpActivityH\x00R\x04httpB\a\n" +
-	"\x05event\"\xa3\x01\n" +
+	"\x04http\x18\a \x01(\v2\x1b.masuda.api.v1.HttpActivityH\x00R\x04http\x124\n" +
+	"\x06notice\x18\b \x01(\v2\x1a.masuda.api.v1.ServeNoticeH\x00R\x06noticeB\a\n" +
+	"\x05event\"O\n" +
+	"\vServeNotice\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x16\n" +
+	"\x06detail\x18\x02 \x01(\tR\x06detail\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\x04R\x05value\"\xa3\x01\n" +
 	"\vEngineEvent\x12\x12\n" +
 	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x1e\n" +
 	"\n" +
@@ -4162,7 +4246,7 @@ func file_masuda_api_v1_masuda_proto_rawDescGZIP() []byte {
 }
 
 var file_masuda_api_v1_masuda_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_masuda_api_v1_masuda_proto_msgTypes = make([]protoimpl.MessageInfo, 64)
+var file_masuda_api_v1_masuda_proto_msgTypes = make([]protoimpl.MessageInfo, 65)
 var file_masuda_api_v1_masuda_proto_goTypes = []any{
 	(WorkspaceState)(0),                    // 0: masuda.api.v1.WorkspaceState
 	(ActivityKind)(0),                      // 1: masuda.api.v1.ActivityKind
@@ -4180,162 +4264,164 @@ var file_masuda_api_v1_masuda_proto_goTypes = []any{
 	(*Workspace)(nil),                      // 13: masuda.api.v1.Workspace
 	(*Activity)(nil),                       // 14: masuda.api.v1.Activity
 	(*WorkspaceEvent)(nil),                 // 15: masuda.api.v1.WorkspaceEvent
-	(*EngineEvent)(nil),                    // 16: masuda.api.v1.EngineEvent
-	(*GuestHookEvent)(nil),                 // 17: masuda.api.v1.GuestHookEvent
-	(*HttpActivity)(nil),                   // 18: masuda.api.v1.HttpActivity
-	(*ListOpenGatesRequest)(nil),           // 19: masuda.api.v1.ListOpenGatesRequest
-	(*ListOpenGatesResponse)(nil),          // 20: masuda.api.v1.ListOpenGatesResponse
-	(*GetGateRequest)(nil),                 // 21: masuda.api.v1.GetGateRequest
-	(*Gate)(nil),                           // 22: masuda.api.v1.Gate
-	(*Decision)(nil),                       // 23: masuda.api.v1.Decision
-	(*DecideRequest)(nil),                  // 24: masuda.api.v1.DecideRequest
-	(*ListOpenQuestionsRequest)(nil),       // 25: masuda.api.v1.ListOpenQuestionsRequest
-	(*ListOpenQuestionsResponse)(nil),      // 26: masuda.api.v1.ListOpenQuestionsResponse
-	(*OpenQuestion)(nil),                   // 27: masuda.api.v1.OpenQuestion
-	(*QuestionItem)(nil),                   // 28: masuda.api.v1.QuestionItem
-	(*AnswerRequest)(nil),                  // 29: masuda.api.v1.AnswerRequest
-	(*AnswerResponse)(nil),                 // 30: masuda.api.v1.AnswerResponse
-	(*ListRefsRequest)(nil),                // 31: masuda.api.v1.ListRefsRequest
-	(*ListRefsResponse)(nil),               // 32: masuda.api.v1.ListRefsResponse
-	(*Ref)(nil),                            // 33: masuda.api.v1.Ref
-	(*GetCommitRequest)(nil),               // 34: masuda.api.v1.GetCommitRequest
-	(*Commit)(nil),                         // 35: masuda.api.v1.Commit
-	(*DiffRequest)(nil),                    // 36: masuda.api.v1.DiffRequest
-	(*DiffResponse)(nil),                   // 37: masuda.api.v1.DiffResponse
-	(*GetBlobRequest)(nil),                 // 38: masuda.api.v1.GetBlobRequest
-	(*BlobChunk)(nil),                      // 39: masuda.api.v1.BlobChunk
-	(*ListCommentsRequest)(nil),            // 40: masuda.api.v1.ListCommentsRequest
-	(*ListCommentsResponse)(nil),           // 41: masuda.api.v1.ListCommentsResponse
-	(*Comment)(nil),                        // 42: masuda.api.v1.Comment
-	(*AddCommentRequest)(nil),              // 43: masuda.api.v1.AddCommentRequest
-	(*RepoRequest)(nil),                    // 44: masuda.api.v1.RepoRequest
-	(*HostRequest)(nil),                    // 45: masuda.api.v1.HostRequest
-	(*NameRequest)(nil),                    // 46: masuda.api.v1.NameRequest
-	(*ListEgressResponse)(nil),             // 47: masuda.api.v1.ListEgressResponse
-	(*EgressEntry)(nil),                    // 48: masuda.api.v1.EgressEntry
-	(*ListSecretsResponse)(nil),            // 49: masuda.api.v1.ListSecretsResponse
-	(*SecretEntry)(nil),                    // 50: masuda.api.v1.SecretEntry
-	(*SetSecretRequest)(nil),               // 51: masuda.api.v1.SetSecretRequest
-	(*ListPrivilegedCommandsResponse)(nil), // 52: masuda.api.v1.ListPrivilegedCommandsResponse
-	(*PrivilegedCommandEntry)(nil),         // 53: masuda.api.v1.PrivilegedCommandEntry
-	(*ListImagesResponse)(nil),             // 54: masuda.api.v1.ListImagesResponse
-	(*ImageEntry)(nil),                     // 55: masuda.api.v1.ImageEntry
-	(*BuildImageRequest)(nil),              // 56: masuda.api.v1.BuildImageRequest
-	(*BuildImageEvent)(nil),                // 57: masuda.api.v1.BuildImageEvent
-	(*ListWorkflowsResponse)(nil),          // 58: masuda.api.v1.ListWorkflowsResponse
-	(*WorkflowEntry)(nil),                  // 59: masuda.api.v1.WorkflowEntry
-	(*ShowWorkflowRequest)(nil),            // 60: masuda.api.v1.ShowWorkflowRequest
-	(*ShowWorkflowResponse)(nil),           // 61: masuda.api.v1.ShowWorkflowResponse
-	(*CheckWorkflowResponse)(nil),          // 62: masuda.api.v1.CheckWorkflowResponse
-	(*Problem)(nil),                        // 63: masuda.api.v1.Problem
-	nil,                                    // 64: masuda.api.v1.RunRequest.InputsEntry
-	nil,                                    // 65: masuda.api.v1.AnswerRequest.AnswersEntry
-	(*timestamppb.Timestamp)(nil),          // 66: google.protobuf.Timestamp
+	(*ServeNotice)(nil),                    // 16: masuda.api.v1.ServeNotice
+	(*EngineEvent)(nil),                    // 17: masuda.api.v1.EngineEvent
+	(*GuestHookEvent)(nil),                 // 18: masuda.api.v1.GuestHookEvent
+	(*HttpActivity)(nil),                   // 19: masuda.api.v1.HttpActivity
+	(*ListOpenGatesRequest)(nil),           // 20: masuda.api.v1.ListOpenGatesRequest
+	(*ListOpenGatesResponse)(nil),          // 21: masuda.api.v1.ListOpenGatesResponse
+	(*GetGateRequest)(nil),                 // 22: masuda.api.v1.GetGateRequest
+	(*Gate)(nil),                           // 23: masuda.api.v1.Gate
+	(*Decision)(nil),                       // 24: masuda.api.v1.Decision
+	(*DecideRequest)(nil),                  // 25: masuda.api.v1.DecideRequest
+	(*ListOpenQuestionsRequest)(nil),       // 26: masuda.api.v1.ListOpenQuestionsRequest
+	(*ListOpenQuestionsResponse)(nil),      // 27: masuda.api.v1.ListOpenQuestionsResponse
+	(*OpenQuestion)(nil),                   // 28: masuda.api.v1.OpenQuestion
+	(*QuestionItem)(nil),                   // 29: masuda.api.v1.QuestionItem
+	(*AnswerRequest)(nil),                  // 30: masuda.api.v1.AnswerRequest
+	(*AnswerResponse)(nil),                 // 31: masuda.api.v1.AnswerResponse
+	(*ListRefsRequest)(nil),                // 32: masuda.api.v1.ListRefsRequest
+	(*ListRefsResponse)(nil),               // 33: masuda.api.v1.ListRefsResponse
+	(*Ref)(nil),                            // 34: masuda.api.v1.Ref
+	(*GetCommitRequest)(nil),               // 35: masuda.api.v1.GetCommitRequest
+	(*Commit)(nil),                         // 36: masuda.api.v1.Commit
+	(*DiffRequest)(nil),                    // 37: masuda.api.v1.DiffRequest
+	(*DiffResponse)(nil),                   // 38: masuda.api.v1.DiffResponse
+	(*GetBlobRequest)(nil),                 // 39: masuda.api.v1.GetBlobRequest
+	(*BlobChunk)(nil),                      // 40: masuda.api.v1.BlobChunk
+	(*ListCommentsRequest)(nil),            // 41: masuda.api.v1.ListCommentsRequest
+	(*ListCommentsResponse)(nil),           // 42: masuda.api.v1.ListCommentsResponse
+	(*Comment)(nil),                        // 43: masuda.api.v1.Comment
+	(*AddCommentRequest)(nil),              // 44: masuda.api.v1.AddCommentRequest
+	(*RepoRequest)(nil),                    // 45: masuda.api.v1.RepoRequest
+	(*HostRequest)(nil),                    // 46: masuda.api.v1.HostRequest
+	(*NameRequest)(nil),                    // 47: masuda.api.v1.NameRequest
+	(*ListEgressResponse)(nil),             // 48: masuda.api.v1.ListEgressResponse
+	(*EgressEntry)(nil),                    // 49: masuda.api.v1.EgressEntry
+	(*ListSecretsResponse)(nil),            // 50: masuda.api.v1.ListSecretsResponse
+	(*SecretEntry)(nil),                    // 51: masuda.api.v1.SecretEntry
+	(*SetSecretRequest)(nil),               // 52: masuda.api.v1.SetSecretRequest
+	(*ListPrivilegedCommandsResponse)(nil), // 53: masuda.api.v1.ListPrivilegedCommandsResponse
+	(*PrivilegedCommandEntry)(nil),         // 54: masuda.api.v1.PrivilegedCommandEntry
+	(*ListImagesResponse)(nil),             // 55: masuda.api.v1.ListImagesResponse
+	(*ImageEntry)(nil),                     // 56: masuda.api.v1.ImageEntry
+	(*BuildImageRequest)(nil),              // 57: masuda.api.v1.BuildImageRequest
+	(*BuildImageEvent)(nil),                // 58: masuda.api.v1.BuildImageEvent
+	(*ListWorkflowsResponse)(nil),          // 59: masuda.api.v1.ListWorkflowsResponse
+	(*WorkflowEntry)(nil),                  // 60: masuda.api.v1.WorkflowEntry
+	(*ShowWorkflowRequest)(nil),            // 61: masuda.api.v1.ShowWorkflowRequest
+	(*ShowWorkflowResponse)(nil),           // 62: masuda.api.v1.ShowWorkflowResponse
+	(*CheckWorkflowResponse)(nil),          // 63: masuda.api.v1.CheckWorkflowResponse
+	(*Problem)(nil),                        // 64: masuda.api.v1.Problem
+	nil,                                    // 65: masuda.api.v1.RunRequest.InputsEntry
+	nil,                                    // 66: masuda.api.v1.AnswerRequest.AnswersEntry
+	(*timestamppb.Timestamp)(nil),          // 67: google.protobuf.Timestamp
 }
 var file_masuda_api_v1_masuda_proto_depIdxs = []int32{
-	64, // 0: masuda.api.v1.RunRequest.inputs:type_name -> masuda.api.v1.RunRequest.InputsEntry
+	65, // 0: masuda.api.v1.RunRequest.inputs:type_name -> masuda.api.v1.RunRequest.InputsEntry
 	13, // 1: masuda.api.v1.ListWorkspacesResponse.workspaces:type_name -> masuda.api.v1.Workspace
 	0,  // 2: masuda.api.v1.Workspace.state:type_name -> masuda.api.v1.WorkspaceState
 	14, // 3: masuda.api.v1.Workspace.activity:type_name -> masuda.api.v1.Activity
-	66, // 4: masuda.api.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
-	66, // 5: masuda.api.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
+	67, // 4: masuda.api.v1.Workspace.created_at:type_name -> google.protobuf.Timestamp
+	67, // 5: masuda.api.v1.Workspace.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 6: masuda.api.v1.Activity.kind:type_name -> masuda.api.v1.ActivityKind
-	66, // 7: masuda.api.v1.Activity.last_activity:type_name -> google.protobuf.Timestamp
-	66, // 8: masuda.api.v1.WorkspaceEvent.time:type_name -> google.protobuf.Timestamp
+	67, // 7: masuda.api.v1.Activity.last_activity:type_name -> google.protobuf.Timestamp
+	67, // 8: masuda.api.v1.WorkspaceEvent.time:type_name -> google.protobuf.Timestamp
 	13, // 9: masuda.api.v1.WorkspaceEvent.status:type_name -> masuda.api.v1.Workspace
-	16, // 10: masuda.api.v1.WorkspaceEvent.engine:type_name -> masuda.api.v1.EngineEvent
-	17, // 11: masuda.api.v1.WorkspaceEvent.guest_hook:type_name -> masuda.api.v1.GuestHookEvent
-	18, // 12: masuda.api.v1.WorkspaceEvent.http:type_name -> masuda.api.v1.HttpActivity
-	22, // 13: masuda.api.v1.ListOpenGatesResponse.gates:type_name -> masuda.api.v1.Gate
-	66, // 14: masuda.api.v1.Gate.opened_at:type_name -> google.protobuf.Timestamp
-	23, // 15: masuda.api.v1.Gate.decision:type_name -> masuda.api.v1.Decision
-	66, // 16: masuda.api.v1.Decision.decided_at:type_name -> google.protobuf.Timestamp
-	23, // 17: masuda.api.v1.DecideRequest.decision:type_name -> masuda.api.v1.Decision
-	27, // 18: masuda.api.v1.ListOpenQuestionsResponse.questions:type_name -> masuda.api.v1.OpenQuestion
-	28, // 19: masuda.api.v1.OpenQuestion.items:type_name -> masuda.api.v1.QuestionItem
-	66, // 20: masuda.api.v1.OpenQuestion.opened_at:type_name -> google.protobuf.Timestamp
-	65, // 21: masuda.api.v1.AnswerRequest.answers:type_name -> masuda.api.v1.AnswerRequest.AnswersEntry
-	33, // 22: masuda.api.v1.ListRefsResponse.refs:type_name -> masuda.api.v1.Ref
-	66, // 23: masuda.api.v1.Commit.time:type_name -> google.protobuf.Timestamp
-	42, // 24: masuda.api.v1.ListCommentsResponse.comments:type_name -> masuda.api.v1.Comment
-	66, // 25: masuda.api.v1.Comment.time:type_name -> google.protobuf.Timestamp
-	48, // 26: masuda.api.v1.ListEgressResponse.entries:type_name -> masuda.api.v1.EgressEntry
-	50, // 27: masuda.api.v1.ListSecretsResponse.entries:type_name -> masuda.api.v1.SecretEntry
-	53, // 28: masuda.api.v1.ListPrivilegedCommandsResponse.entries:type_name -> masuda.api.v1.PrivilegedCommandEntry
-	55, // 29: masuda.api.v1.ListImagesResponse.entries:type_name -> masuda.api.v1.ImageEntry
-	59, // 30: masuda.api.v1.ListWorkflowsResponse.workflows:type_name -> masuda.api.v1.WorkflowEntry
-	63, // 31: masuda.api.v1.CheckWorkflowResponse.problems:type_name -> masuda.api.v1.Problem
-	2,  // 32: masuda.api.v1.WorkspaceService.Run:input_type -> masuda.api.v1.RunRequest
-	3,  // 33: masuda.api.v1.WorkspaceService.Resume:input_type -> masuda.api.v1.ResumeRequest
-	4,  // 34: masuda.api.v1.WorkspaceService.Get:input_type -> masuda.api.v1.GetWorkspaceRequest
-	5,  // 35: masuda.api.v1.WorkspaceService.List:input_type -> masuda.api.v1.ListWorkspacesRequest
-	12, // 36: masuda.api.v1.WorkspaceService.Watch:input_type -> masuda.api.v1.WatchRequest
-	7,  // 37: masuda.api.v1.WorkspaceService.Stop:input_type -> masuda.api.v1.StopRequest
-	8,  // 38: masuda.api.v1.WorkspaceService.Remove:input_type -> masuda.api.v1.RemoveRequest
-	10, // 39: masuda.api.v1.WorkspaceService.AttachInfo:input_type -> masuda.api.v1.AttachInfoRequest
-	19, // 40: masuda.api.v1.GateService.ListOpen:input_type -> masuda.api.v1.ListOpenGatesRequest
-	21, // 41: masuda.api.v1.GateService.Get:input_type -> masuda.api.v1.GetGateRequest
-	24, // 42: masuda.api.v1.GateService.Decide:input_type -> masuda.api.v1.DecideRequest
-	25, // 43: masuda.api.v1.QuestionService.ListOpen:input_type -> masuda.api.v1.ListOpenQuestionsRequest
-	29, // 44: masuda.api.v1.QuestionService.Answer:input_type -> masuda.api.v1.AnswerRequest
-	31, // 45: masuda.api.v1.StagingService.ListRefs:input_type -> masuda.api.v1.ListRefsRequest
-	34, // 46: masuda.api.v1.StagingService.GetCommit:input_type -> masuda.api.v1.GetCommitRequest
-	36, // 47: masuda.api.v1.StagingService.Diff:input_type -> masuda.api.v1.DiffRequest
-	38, // 48: masuda.api.v1.StagingService.GetBlob:input_type -> masuda.api.v1.GetBlobRequest
-	40, // 49: masuda.api.v1.StagingService.ListComments:input_type -> masuda.api.v1.ListCommentsRequest
-	43, // 50: masuda.api.v1.StagingService.AddComment:input_type -> masuda.api.v1.AddCommentRequest
-	44, // 51: masuda.api.v1.ConfigService.ListEgress:input_type -> masuda.api.v1.RepoRequest
-	45, // 52: masuda.api.v1.ConfigService.ApproveEgress:input_type -> masuda.api.v1.HostRequest
-	45, // 53: masuda.api.v1.ConfigService.RejectEgress:input_type -> masuda.api.v1.HostRequest
-	44, // 54: masuda.api.v1.ConfigService.ListSecrets:input_type -> masuda.api.v1.RepoRequest
-	51, // 55: masuda.api.v1.ConfigService.SetSecret:input_type -> masuda.api.v1.SetSecretRequest
-	46, // 56: masuda.api.v1.ConfigService.ApproveSecret:input_type -> masuda.api.v1.NameRequest
-	46, // 57: masuda.api.v1.ConfigService.RejectSecret:input_type -> masuda.api.v1.NameRequest
-	44, // 58: masuda.api.v1.ConfigService.ListPrivilegedCommands:input_type -> masuda.api.v1.RepoRequest
-	46, // 59: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:input_type -> masuda.api.v1.NameRequest
-	44, // 60: masuda.api.v1.ConfigService.ListImages:input_type -> masuda.api.v1.RepoRequest
-	56, // 61: masuda.api.v1.ConfigService.BuildImage:input_type -> masuda.api.v1.BuildImageRequest
-	44, // 62: masuda.api.v1.WorkflowService.List:input_type -> masuda.api.v1.RepoRequest
-	60, // 63: masuda.api.v1.WorkflowService.Show:input_type -> masuda.api.v1.ShowWorkflowRequest
-	60, // 64: masuda.api.v1.WorkflowService.Check:input_type -> masuda.api.v1.ShowWorkflowRequest
-	13, // 65: masuda.api.v1.WorkspaceService.Run:output_type -> masuda.api.v1.Workspace
-	13, // 66: masuda.api.v1.WorkspaceService.Resume:output_type -> masuda.api.v1.Workspace
-	13, // 67: masuda.api.v1.WorkspaceService.Get:output_type -> masuda.api.v1.Workspace
-	6,  // 68: masuda.api.v1.WorkspaceService.List:output_type -> masuda.api.v1.ListWorkspacesResponse
-	15, // 69: masuda.api.v1.WorkspaceService.Watch:output_type -> masuda.api.v1.WorkspaceEvent
-	13, // 70: masuda.api.v1.WorkspaceService.Stop:output_type -> masuda.api.v1.Workspace
-	9,  // 71: masuda.api.v1.WorkspaceService.Remove:output_type -> masuda.api.v1.RemoveResponse
-	11, // 72: masuda.api.v1.WorkspaceService.AttachInfo:output_type -> masuda.api.v1.AttachInfoResponse
-	20, // 73: masuda.api.v1.GateService.ListOpen:output_type -> masuda.api.v1.ListOpenGatesResponse
-	22, // 74: masuda.api.v1.GateService.Get:output_type -> masuda.api.v1.Gate
-	22, // 75: masuda.api.v1.GateService.Decide:output_type -> masuda.api.v1.Gate
-	26, // 76: masuda.api.v1.QuestionService.ListOpen:output_type -> masuda.api.v1.ListOpenQuestionsResponse
-	30, // 77: masuda.api.v1.QuestionService.Answer:output_type -> masuda.api.v1.AnswerResponse
-	32, // 78: masuda.api.v1.StagingService.ListRefs:output_type -> masuda.api.v1.ListRefsResponse
-	35, // 79: masuda.api.v1.StagingService.GetCommit:output_type -> masuda.api.v1.Commit
-	37, // 80: masuda.api.v1.StagingService.Diff:output_type -> masuda.api.v1.DiffResponse
-	39, // 81: masuda.api.v1.StagingService.GetBlob:output_type -> masuda.api.v1.BlobChunk
-	41, // 82: masuda.api.v1.StagingService.ListComments:output_type -> masuda.api.v1.ListCommentsResponse
-	42, // 83: masuda.api.v1.StagingService.AddComment:output_type -> masuda.api.v1.Comment
-	47, // 84: masuda.api.v1.ConfigService.ListEgress:output_type -> masuda.api.v1.ListEgressResponse
-	47, // 85: masuda.api.v1.ConfigService.ApproveEgress:output_type -> masuda.api.v1.ListEgressResponse
-	47, // 86: masuda.api.v1.ConfigService.RejectEgress:output_type -> masuda.api.v1.ListEgressResponse
-	49, // 87: masuda.api.v1.ConfigService.ListSecrets:output_type -> masuda.api.v1.ListSecretsResponse
-	49, // 88: masuda.api.v1.ConfigService.SetSecret:output_type -> masuda.api.v1.ListSecretsResponse
-	49, // 89: masuda.api.v1.ConfigService.ApproveSecret:output_type -> masuda.api.v1.ListSecretsResponse
-	49, // 90: masuda.api.v1.ConfigService.RejectSecret:output_type -> masuda.api.v1.ListSecretsResponse
-	52, // 91: masuda.api.v1.ConfigService.ListPrivilegedCommands:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
-	52, // 92: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
-	54, // 93: masuda.api.v1.ConfigService.ListImages:output_type -> masuda.api.v1.ListImagesResponse
-	57, // 94: masuda.api.v1.ConfigService.BuildImage:output_type -> masuda.api.v1.BuildImageEvent
-	58, // 95: masuda.api.v1.WorkflowService.List:output_type -> masuda.api.v1.ListWorkflowsResponse
-	61, // 96: masuda.api.v1.WorkflowService.Show:output_type -> masuda.api.v1.ShowWorkflowResponse
-	62, // 97: masuda.api.v1.WorkflowService.Check:output_type -> masuda.api.v1.CheckWorkflowResponse
-	65, // [65:98] is the sub-list for method output_type
-	32, // [32:65] is the sub-list for method input_type
-	32, // [32:32] is the sub-list for extension type_name
-	32, // [32:32] is the sub-list for extension extendee
-	0,  // [0:32] is the sub-list for field type_name
+	17, // 10: masuda.api.v1.WorkspaceEvent.engine:type_name -> masuda.api.v1.EngineEvent
+	18, // 11: masuda.api.v1.WorkspaceEvent.guest_hook:type_name -> masuda.api.v1.GuestHookEvent
+	19, // 12: masuda.api.v1.WorkspaceEvent.http:type_name -> masuda.api.v1.HttpActivity
+	16, // 13: masuda.api.v1.WorkspaceEvent.notice:type_name -> masuda.api.v1.ServeNotice
+	23, // 14: masuda.api.v1.ListOpenGatesResponse.gates:type_name -> masuda.api.v1.Gate
+	67, // 15: masuda.api.v1.Gate.opened_at:type_name -> google.protobuf.Timestamp
+	24, // 16: masuda.api.v1.Gate.decision:type_name -> masuda.api.v1.Decision
+	67, // 17: masuda.api.v1.Decision.decided_at:type_name -> google.protobuf.Timestamp
+	24, // 18: masuda.api.v1.DecideRequest.decision:type_name -> masuda.api.v1.Decision
+	28, // 19: masuda.api.v1.ListOpenQuestionsResponse.questions:type_name -> masuda.api.v1.OpenQuestion
+	29, // 20: masuda.api.v1.OpenQuestion.items:type_name -> masuda.api.v1.QuestionItem
+	67, // 21: masuda.api.v1.OpenQuestion.opened_at:type_name -> google.protobuf.Timestamp
+	66, // 22: masuda.api.v1.AnswerRequest.answers:type_name -> masuda.api.v1.AnswerRequest.AnswersEntry
+	34, // 23: masuda.api.v1.ListRefsResponse.refs:type_name -> masuda.api.v1.Ref
+	67, // 24: masuda.api.v1.Commit.time:type_name -> google.protobuf.Timestamp
+	43, // 25: masuda.api.v1.ListCommentsResponse.comments:type_name -> masuda.api.v1.Comment
+	67, // 26: masuda.api.v1.Comment.time:type_name -> google.protobuf.Timestamp
+	49, // 27: masuda.api.v1.ListEgressResponse.entries:type_name -> masuda.api.v1.EgressEntry
+	51, // 28: masuda.api.v1.ListSecretsResponse.entries:type_name -> masuda.api.v1.SecretEntry
+	54, // 29: masuda.api.v1.ListPrivilegedCommandsResponse.entries:type_name -> masuda.api.v1.PrivilegedCommandEntry
+	56, // 30: masuda.api.v1.ListImagesResponse.entries:type_name -> masuda.api.v1.ImageEntry
+	60, // 31: masuda.api.v1.ListWorkflowsResponse.workflows:type_name -> masuda.api.v1.WorkflowEntry
+	64, // 32: masuda.api.v1.CheckWorkflowResponse.problems:type_name -> masuda.api.v1.Problem
+	2,  // 33: masuda.api.v1.WorkspaceService.Run:input_type -> masuda.api.v1.RunRequest
+	3,  // 34: masuda.api.v1.WorkspaceService.Resume:input_type -> masuda.api.v1.ResumeRequest
+	4,  // 35: masuda.api.v1.WorkspaceService.Get:input_type -> masuda.api.v1.GetWorkspaceRequest
+	5,  // 36: masuda.api.v1.WorkspaceService.List:input_type -> masuda.api.v1.ListWorkspacesRequest
+	12, // 37: masuda.api.v1.WorkspaceService.Watch:input_type -> masuda.api.v1.WatchRequest
+	7,  // 38: masuda.api.v1.WorkspaceService.Stop:input_type -> masuda.api.v1.StopRequest
+	8,  // 39: masuda.api.v1.WorkspaceService.Remove:input_type -> masuda.api.v1.RemoveRequest
+	10, // 40: masuda.api.v1.WorkspaceService.AttachInfo:input_type -> masuda.api.v1.AttachInfoRequest
+	20, // 41: masuda.api.v1.GateService.ListOpen:input_type -> masuda.api.v1.ListOpenGatesRequest
+	22, // 42: masuda.api.v1.GateService.Get:input_type -> masuda.api.v1.GetGateRequest
+	25, // 43: masuda.api.v1.GateService.Decide:input_type -> masuda.api.v1.DecideRequest
+	26, // 44: masuda.api.v1.QuestionService.ListOpen:input_type -> masuda.api.v1.ListOpenQuestionsRequest
+	30, // 45: masuda.api.v1.QuestionService.Answer:input_type -> masuda.api.v1.AnswerRequest
+	32, // 46: masuda.api.v1.StagingService.ListRefs:input_type -> masuda.api.v1.ListRefsRequest
+	35, // 47: masuda.api.v1.StagingService.GetCommit:input_type -> masuda.api.v1.GetCommitRequest
+	37, // 48: masuda.api.v1.StagingService.Diff:input_type -> masuda.api.v1.DiffRequest
+	39, // 49: masuda.api.v1.StagingService.GetBlob:input_type -> masuda.api.v1.GetBlobRequest
+	41, // 50: masuda.api.v1.StagingService.ListComments:input_type -> masuda.api.v1.ListCommentsRequest
+	44, // 51: masuda.api.v1.StagingService.AddComment:input_type -> masuda.api.v1.AddCommentRequest
+	45, // 52: masuda.api.v1.ConfigService.ListEgress:input_type -> masuda.api.v1.RepoRequest
+	46, // 53: masuda.api.v1.ConfigService.ApproveEgress:input_type -> masuda.api.v1.HostRequest
+	46, // 54: masuda.api.v1.ConfigService.RejectEgress:input_type -> masuda.api.v1.HostRequest
+	45, // 55: masuda.api.v1.ConfigService.ListSecrets:input_type -> masuda.api.v1.RepoRequest
+	52, // 56: masuda.api.v1.ConfigService.SetSecret:input_type -> masuda.api.v1.SetSecretRequest
+	47, // 57: masuda.api.v1.ConfigService.ApproveSecret:input_type -> masuda.api.v1.NameRequest
+	47, // 58: masuda.api.v1.ConfigService.RejectSecret:input_type -> masuda.api.v1.NameRequest
+	45, // 59: masuda.api.v1.ConfigService.ListPrivilegedCommands:input_type -> masuda.api.v1.RepoRequest
+	47, // 60: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:input_type -> masuda.api.v1.NameRequest
+	45, // 61: masuda.api.v1.ConfigService.ListImages:input_type -> masuda.api.v1.RepoRequest
+	57, // 62: masuda.api.v1.ConfigService.BuildImage:input_type -> masuda.api.v1.BuildImageRequest
+	45, // 63: masuda.api.v1.WorkflowService.List:input_type -> masuda.api.v1.RepoRequest
+	61, // 64: masuda.api.v1.WorkflowService.Show:input_type -> masuda.api.v1.ShowWorkflowRequest
+	61, // 65: masuda.api.v1.WorkflowService.Check:input_type -> masuda.api.v1.ShowWorkflowRequest
+	13, // 66: masuda.api.v1.WorkspaceService.Run:output_type -> masuda.api.v1.Workspace
+	13, // 67: masuda.api.v1.WorkspaceService.Resume:output_type -> masuda.api.v1.Workspace
+	13, // 68: masuda.api.v1.WorkspaceService.Get:output_type -> masuda.api.v1.Workspace
+	6,  // 69: masuda.api.v1.WorkspaceService.List:output_type -> masuda.api.v1.ListWorkspacesResponse
+	15, // 70: masuda.api.v1.WorkspaceService.Watch:output_type -> masuda.api.v1.WorkspaceEvent
+	13, // 71: masuda.api.v1.WorkspaceService.Stop:output_type -> masuda.api.v1.Workspace
+	9,  // 72: masuda.api.v1.WorkspaceService.Remove:output_type -> masuda.api.v1.RemoveResponse
+	11, // 73: masuda.api.v1.WorkspaceService.AttachInfo:output_type -> masuda.api.v1.AttachInfoResponse
+	21, // 74: masuda.api.v1.GateService.ListOpen:output_type -> masuda.api.v1.ListOpenGatesResponse
+	23, // 75: masuda.api.v1.GateService.Get:output_type -> masuda.api.v1.Gate
+	23, // 76: masuda.api.v1.GateService.Decide:output_type -> masuda.api.v1.Gate
+	27, // 77: masuda.api.v1.QuestionService.ListOpen:output_type -> masuda.api.v1.ListOpenQuestionsResponse
+	31, // 78: masuda.api.v1.QuestionService.Answer:output_type -> masuda.api.v1.AnswerResponse
+	33, // 79: masuda.api.v1.StagingService.ListRefs:output_type -> masuda.api.v1.ListRefsResponse
+	36, // 80: masuda.api.v1.StagingService.GetCommit:output_type -> masuda.api.v1.Commit
+	38, // 81: masuda.api.v1.StagingService.Diff:output_type -> masuda.api.v1.DiffResponse
+	40, // 82: masuda.api.v1.StagingService.GetBlob:output_type -> masuda.api.v1.BlobChunk
+	42, // 83: masuda.api.v1.StagingService.ListComments:output_type -> masuda.api.v1.ListCommentsResponse
+	43, // 84: masuda.api.v1.StagingService.AddComment:output_type -> masuda.api.v1.Comment
+	48, // 85: masuda.api.v1.ConfigService.ListEgress:output_type -> masuda.api.v1.ListEgressResponse
+	48, // 86: masuda.api.v1.ConfigService.ApproveEgress:output_type -> masuda.api.v1.ListEgressResponse
+	48, // 87: masuda.api.v1.ConfigService.RejectEgress:output_type -> masuda.api.v1.ListEgressResponse
+	50, // 88: masuda.api.v1.ConfigService.ListSecrets:output_type -> masuda.api.v1.ListSecretsResponse
+	50, // 89: masuda.api.v1.ConfigService.SetSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	50, // 90: masuda.api.v1.ConfigService.ApproveSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	50, // 91: masuda.api.v1.ConfigService.RejectSecret:output_type -> masuda.api.v1.ListSecretsResponse
+	53, // 92: masuda.api.v1.ConfigService.ListPrivilegedCommands:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
+	53, // 93: masuda.api.v1.ConfigService.ApprovePrivilegedCommand:output_type -> masuda.api.v1.ListPrivilegedCommandsResponse
+	55, // 94: masuda.api.v1.ConfigService.ListImages:output_type -> masuda.api.v1.ListImagesResponse
+	58, // 95: masuda.api.v1.ConfigService.BuildImage:output_type -> masuda.api.v1.BuildImageEvent
+	59, // 96: masuda.api.v1.WorkflowService.List:output_type -> masuda.api.v1.ListWorkflowsResponse
+	62, // 97: masuda.api.v1.WorkflowService.Show:output_type -> masuda.api.v1.ShowWorkflowResponse
+	63, // 98: masuda.api.v1.WorkflowService.Check:output_type -> masuda.api.v1.CheckWorkflowResponse
+	66, // [66:99] is the sub-list for method output_type
+	33, // [33:66] is the sub-list for method input_type
+	33, // [33:33] is the sub-list for extension type_name
+	33, // [33:33] is the sub-list for extension extendee
+	0,  // [0:33] is the sub-list for field type_name
 }
 
 func init() { file_masuda_api_v1_masuda_proto_init() }
@@ -4348,6 +4434,7 @@ func file_masuda_api_v1_masuda_proto_init() {
 		(*WorkspaceEvent_Engine)(nil),
 		(*WorkspaceEvent_GuestHook)(nil),
 		(*WorkspaceEvent_Http)(nil),
+		(*WorkspaceEvent_Notice)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -4355,7 +4442,7 @@ func file_masuda_api_v1_masuda_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_masuda_api_v1_masuda_proto_rawDesc), len(file_masuda_api_v1_masuda_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   64,
+			NumMessages:   65,
 			NumExtensions: 0,
 			NumServices:   6,
 		},

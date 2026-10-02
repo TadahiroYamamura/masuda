@@ -42,6 +42,9 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// SandboxServiceGetServerInfoProcedure is the fully-qualified name of the SandboxService's
+	// GetServerInfo RPC.
+	SandboxServiceGetServerInfoProcedure = "/masuda.sandbox.v1.SandboxService/GetServerInfo"
 	// SandboxServiceBuildImageProcedure is the fully-qualified name of the SandboxService's BuildImage
 	// RPC.
 	SandboxServiceBuildImageProcedure = "/masuda.sandbox.v1.SandboxService/BuildImage"
@@ -83,6 +86,10 @@ const (
 
 // SandboxServiceClient is a client for the masuda.sandbox.v1.SandboxService service.
 type SandboxServiceClient interface {
+	// Reports the service's version and the contract it implements, so that a
+	// client can refuse to work with an incompatible service before anything
+	// else happens.
+	GetServerInfo(context.Context, *connect.Request[v1.GetServerInfoRequest]) (*connect.Response[v1.ServerInfo], error)
 	// Builds a guest image from a directory holding a Dockerfile. The service
 	// runs `docker build`, then converts the OCI image to Gondolin assets. The
 	// stream carries build log lines and ends with a Built event.
@@ -133,6 +140,12 @@ func NewSandboxServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 	baseURL = strings.TrimRight(baseURL, "/")
 	sandboxServiceMethods := v1.File_masuda_sandbox_v1_sandbox_proto.Services().ByName("SandboxService").Methods()
 	return &sandboxServiceClient{
+		getServerInfo: connect.NewClient[v1.GetServerInfoRequest, v1.ServerInfo](
+			httpClient,
+			baseURL+SandboxServiceGetServerInfoProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("GetServerInfo")),
+			connect.WithClientOptions(opts...),
+		),
 		buildImage: connect.NewClient[v1.BuildImageRequest, v1.BuildImageEvent](
 			httpClient,
 			baseURL+SandboxServiceBuildImageProcedure,
@@ -216,6 +229,7 @@ func NewSandboxServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 
 // sandboxServiceClient implements SandboxServiceClient.
 type sandboxServiceClient struct {
+	getServerInfo  *connect.Client[v1.GetServerInfoRequest, v1.ServerInfo]
 	buildImage     *connect.Client[v1.BuildImageRequest, v1.BuildImageEvent]
 	listImages     *connect.Client[v1.ListImagesRequest, v1.ListImagesResponse]
 	createSandbox  *connect.Client[v1.CreateSandboxRequest, v1.Sandbox]
@@ -229,6 +243,11 @@ type sandboxServiceClient struct {
 	readFile       *connect.Client[v1.ReadFileRequest, v1.FileChunk]
 	writeFile      *connect.Client[v1.WriteFileRequest, v1.WriteFileResponse]
 	watchEvents    *connect.Client[v1.WatchEventsRequest, v1.SandboxEvent]
+}
+
+// GetServerInfo calls masuda.sandbox.v1.SandboxService.GetServerInfo.
+func (c *sandboxServiceClient) GetServerInfo(ctx context.Context, req *connect.Request[v1.GetServerInfoRequest]) (*connect.Response[v1.ServerInfo], error) {
+	return c.getServerInfo.CallUnary(ctx, req)
 }
 
 // BuildImage calls masuda.sandbox.v1.SandboxService.BuildImage.
@@ -298,6 +317,10 @@ func (c *sandboxServiceClient) WatchEvents(ctx context.Context, req *connect.Req
 
 // SandboxServiceHandler is an implementation of the masuda.sandbox.v1.SandboxService service.
 type SandboxServiceHandler interface {
+	// Reports the service's version and the contract it implements, so that a
+	// client can refuse to work with an incompatible service before anything
+	// else happens.
+	GetServerInfo(context.Context, *connect.Request[v1.GetServerInfoRequest]) (*connect.Response[v1.ServerInfo], error)
 	// Builds a guest image from a directory holding a Dockerfile. The service
 	// runs `docker build`, then converts the OCI image to Gondolin assets. The
 	// stream carries build log lines and ends with a Built event.
@@ -344,6 +367,12 @@ type SandboxServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	sandboxServiceMethods := v1.File_masuda_sandbox_v1_sandbox_proto.Services().ByName("SandboxService").Methods()
+	sandboxServiceGetServerInfoHandler := connect.NewUnaryHandler(
+		SandboxServiceGetServerInfoProcedure,
+		svc.GetServerInfo,
+		connect.WithSchema(sandboxServiceMethods.ByName("GetServerInfo")),
+		connect.WithHandlerOptions(opts...),
+	)
 	sandboxServiceBuildImageHandler := connect.NewServerStreamHandler(
 		SandboxServiceBuildImageProcedure,
 		svc.BuildImage,
@@ -424,6 +453,8 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 	)
 	return "/masuda.sandbox.v1.SandboxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case SandboxServiceGetServerInfoProcedure:
+			sandboxServiceGetServerInfoHandler.ServeHTTP(w, r)
 		case SandboxServiceBuildImageProcedure:
 			sandboxServiceBuildImageHandler.ServeHTTP(w, r)
 		case SandboxServiceListImagesProcedure:
@@ -458,6 +489,10 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 
 // UnimplementedSandboxServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedSandboxServiceHandler struct{}
+
+func (UnimplementedSandboxServiceHandler) GetServerInfo(context.Context, *connect.Request[v1.GetServerInfoRequest]) (*connect.Response[v1.ServerInfo], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.GetServerInfo is not implemented"))
+}
 
 func (UnimplementedSandboxServiceHandler) BuildImage(context.Context, *connect.Request[v1.BuildImageRequest], *connect.ServerStream[v1.BuildImageEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.BuildImage is not implemented"))

@@ -55,7 +55,7 @@ masuda watch --after 1520   # 番号1520より後のイベントから再送
 | フック | `hook <フック名> <詳細>` | VMの中のClaude Codeのフック |
 | 通信 | `http <メソッド> <ホスト><パス> <ステータス> <時間>ms`、進行中は末尾が`...` | VMからの通信 |
 | 拒否 | `http denied <ホスト>` | 許可していないホストへの通信を断った |
-| serve全体 | `<種類> <詳細>`（ワークスペースIDが空） | ディスク使用量の警告（`disk-warning`）等 |
+| serve全体 | `notice <種類> <詳細>`（ワークスペースIDが空） | ディスク使用量の警告（`disk-warning`）等 |
 
 `--after`無しで始めると、まず対象のワークスペースの今の`status`が1行ずつ出る。再送できるのは`masuda serve`のメモリにある直近10000件で、`masuda serve`を再起動するとそれより前は再送できない（実行の記録そのものは`records/execution-log.jsonl`に残る）。
 
@@ -107,7 +107,7 @@ masuda remove <id> --force    # 動いているものを止めてから消す
 
 `~/.local/share/masuda/workspaces/<id>/`のうち`exports/`だけを残して消す。exportsも要らなければ、そのディレクトリを手で消す。
 
-masudaはディスクを自動では消さない。ワークスペース置き場の使用量が`diskWarnBytes`（既定20GiB）を超えたとき、`masuda serve`の標準エラーと`masuda watch`に1回だけ警告を出す。VMのイメージは`masuda-sandbox`側にあり、`masuda-sandbox images prune --dry-run`で消せるものを確かめてから`masuda-sandbox images prune`で消せる。
+masudaはディスクを自動では消さない。ワークスペース置き場の使用量が[`config.json`](settings.md#serve-config)の`diskWarnBytes`（既定20GiB）を超えたとき、`masuda serve`の標準エラーと`masuda watch`に1回だけ警告を出す。VMのイメージは`masuda-sandbox`側にあり、`masuda-sandbox images prune --dry-run`で消せるものを確かめてから`masuda-sandbox images prune`で消せる。
 
 ## 結果を読む（exports） {#exports}
 

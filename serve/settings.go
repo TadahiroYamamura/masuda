@@ -41,7 +41,7 @@ type bootPlan struct {
 	vars           map[string]string
 	checks         map[string]string
 	claudeSettings json.RawMessage
-	// stallAfter は無活動のしきい値（settings.local.jsonのstallAfter、既定10分）。
+	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
 	// serveの--stall-afterが指定されていればそちらが勝つ（backend.stallFor）。
 	stallAfter time.Duration
 }

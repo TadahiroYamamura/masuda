@@ -78,14 +78,12 @@ Content-Type: application/connect+json
 
 `workspaceId`が空のイベントはserve全体についての通知で、`id`を指定したWatchにも届く。
 
-契約はこの通知を`notice`（`ServeNotice{kind, detail, value}`）で流すと定めている。今のserveは、ディスク使用量の警告（`<DataDir>/workspaces/`の合計がしきい値を超えた）を`engine`（`kind: "disk-warning"`、`detail`に人間向けの説明）で流す。両方を受け付けておく。
+この通知は`notice`（`ServeNotice{kind, detail, value}`）で届く。今のserveが出すのは、ディスク使用量の警告（`kind: "disk-warning"`、`<DataDir>/workspaces/`の合計がしきい値を超えた）だけで、`detail`は人間向けの説明、`value`はその時点の使用量（バイト）。知らない`kind`は`detail`をそのまま見せればよい。
 
 ```js
 function serveNotice(ev) {
-  if (ev.workspaceId) return null;
-  if (ev.notice) return { kind: ev.notice.kind, detail: ev.notice.detail };
-  if (ev.engine) return { kind: ev.engine.kind, detail: ev.engine.detail };
-  return null;
+  if (ev.workspaceId || !ev.notice) return null;
+  return { kind: ev.notice.kind, detail: ev.notice.detail, bytes: ev.notice.value };
 }
 ```
 

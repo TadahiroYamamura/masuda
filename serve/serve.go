@@ -3,6 +3,7 @@
 package serve
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -32,8 +34,18 @@ type Options struct {
 	// SandboxSocket は`masuda-sandbox serve`のUDSのパス。FakeSandboxのときは使わない。
 	SandboxSocket string
 	// StallAfter は無活動がこれだけ続いたら活動をSTALLEDにするしきい値。0なら対象リポジトリの
-	// settings.local.jsonのstallAfter（無ければ10分）。0でなければすべてのワークスペースでこれを使う。
+	// settings.local.jsonのstallAfter、それも無ければDefaultStallAfter。0でなければすべての
+	// ワークスペースでこれを使う（`masuda serve --stall-after`）。
 	StallAfter time.Duration
+	// DefaultStallAfter はリポジトリが上書きしないときの無活動のしきい値（config.jsonのstallAfter）。
+	// 0なら10分。
+	DefaultStallAfter time.Duration
+	// DiskWarnBytes はワークスペース置き場の使用量の警告のしきい値（config.jsonのdiskWarnBytes）。
+	// 0なら既定（20GiB）。
+	DiskWarnBytes int64
+	// Listen はUDSに加えてConnectを待ち受けるループバックのアドレス（config.jsonのlisten）。
+	// 空ならUDSだけ。CORSは任意のオリジンを許す（serve/listen.go）。
+	Listen string
 }
 
 // Server は起動中の`masuda serve`。
@@ -41,7 +53,10 @@ type Server struct {
 	opts     Options
 	listener net.Listener
 	http     *http.Server
-	backend  *backend
+	// tcp・tcpLn はconfig.jsonのlistenのループバックの待ち受け（無ければnil）。
+	tcp     *http.Server
+	tcpLn   net.Listener
+	backend *backend
 	// served はhttp.Serveが戻ったら閉じる。doneはStopの後始末まで終わったら閉じる。
 	served   chan struct{}
 	done     chan struct{}
@@ -73,7 +88,11 @@ type backend struct {
 	events *eventBus
 	acts   *activities
 	// stallOverride はserveの--stall-after（0なら各リポジトリのsettings.local.jsonに従う）。
+	// stallDefault はリポジトリが上書きしないときのしきい値（config.json、既定10分）。
 	stallOverride time.Duration
+	stallDefault  time.Duration
+	// diskWarn はディスク使用量の警告のしきい値（config.json、既定20GiB）。
+	diskWarn int64
 
 	// diskOver は前回の計測でしきい値を超えていたか（超えたときにだけ警告するため）。
 	diskMu   sync.Mutex
@@ -86,6 +105,8 @@ func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient
 		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox,
 		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
 		events: newEventBus(), acts: newActivities(), stallOverride: max(opts.StallAfter, 0),
+		stallDefault: cmp.Or(max(opts.DefaultStallAfter, 0), DefaultStallAfter),
+		diskWarn:     cmp.Or(max(opts.DiskWarnBytes, 0), config.DefaultDiskWarnBytes),
 	}
 }
 
@@ -167,14 +188,31 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	var tcpLn net.Listener
+	if opts.Listen != "" {
+		if err := config.CheckLoopback(opts.Listen); err != nil {
+			closeSandbox()
+			return nil, fmt.Errorf("serve: listen: %w", err)
+		}
+		if tcpLn, err = net.Listen("tcp", opts.Listen); err != nil {
+			closeSandbox()
+			return nil, fmt.Errorf("serve: listening on %s: %w", opts.Listen, err)
+		}
+	}
 	ln, err := net.Listen("unix", opts.Socket)
 	if err != nil {
+		if tcpLn != nil {
+			tcpLn.Close()
+		}
 		closeSandbox()
 		return nil, fmt.Errorf("serve: listening on %s: %w", opts.Socket, err)
 	}
 	b := newBackend(workspace.NewStore(opts.DataDir), sb, closeSandbox, opts)
 	if err := b.recoverInterrupted(); err != nil {
 		ln.Close()
+		if tcpLn != nil {
+			tcpLn.Close()
+		}
 		closeSandbox()
 		return nil, err
 	}
@@ -183,13 +221,19 @@ func Start(ctx context.Context, opts Options) (*Server, error) {
 
 	// UDS上ではTLSが無いので、クライアント・サーバー両方向のストリーミングに要る
 	// HTTP/2を平文（h2c）で受ける。HTTP/1.1のHTTP+JSONも同じハンドラで受ける。
+	handler := h2c.NewHandler(newMux(b), &http2.Server{})
 	s := &Server{
 		opts:     opts,
 		listener: ln,
-		http:     &http.Server{Handler: h2c.NewHandler(newMux(b), &http2.Server{})},
+		http:     &http.Server{Handler: handler},
 		backend:  b,
 		served:   make(chan struct{}),
 		done:     make(chan struct{}),
+	}
+	if tcpLn != nil {
+		// ブラウザはHTTP/1.1（HTTP+JSON・gRPC-Web）で来るので、UDSと同じh2cのハンドラで両方を受ける。
+		s.tcp, s.tcpLn = &http.Server{Handler: loopbackHandler(handler)}, tcpLn
+		go func() { _ = s.tcp.Serve(tcpLn) }()
 	}
 	go func() {
 		defer close(s.served)
@@ -210,6 +254,11 @@ func (s *Server) Stop() {
 	s.stopOnce.Do(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+		if s.tcp != nil {
+			if err := s.tcp.Shutdown(ctx); err != nil {
+				_ = s.tcp.Close()
+			}
+		}
 		if err := s.http.Shutdown(ctx); err != nil {
 			_ = s.http.Close()
 		}
@@ -218,6 +267,14 @@ func (s *Server) Stop() {
 		_ = os.Remove(s.opts.Socket)
 		close(s.done)
 	})
+}
+
+// ListenAddr はループバックの待ち受けの実際のアドレス（ポート0を渡したときに使う）。無ければ空。
+func (s *Server) ListenAddr() string {
+	if s.tcpLn == nil {
+		return ""
+	}
+	return s.tcpLn.Addr().String()
 }
 
 // Done は待ち受けが終わり、Stopの後始末まで済んだら閉じる。

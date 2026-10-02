@@ -135,6 +135,124 @@ func (SandboxState) EnumDescriptor() ([]byte, []int) {
 	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{1}
 }
 
+type GetServerInfoRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetServerInfoRequest) Reset() {
+	*x = GetServerInfoRequest{}
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetServerInfoRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetServerInfoRequest) ProtoMessage() {}
+
+func (x *GetServerInfoRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetServerInfoRequest.ProtoReflect.Descriptor instead.
+func (*GetServerInfoRequest) Descriptor() ([]byte, []int) {
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{0}
+}
+
+type ServerInfo struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Service version, e.g. "0.1.0" (the release tag without "v"); "dev" for
+	// unreleased builds.
+	Version string `protobuf:"bytes,1,opt,name=version,proto3" json:"version,omitempty"`
+	// Contract identity: the package name of this proto ("masuda.sandbox.v1")
+	// and the SHA-256 of the proto file the service was built from, so client
+	// and service can tell they share the same contract text.
+	Contract       string `protobuf:"bytes,2,opt,name=contract,proto3" json:"contract,omitempty"`
+	ContractSha256 string `protobuf:"bytes,3,opt,name=contract_sha256,json=contractSha256,proto3" json:"contract_sha256,omitempty"`
+	// Gondolin version in use and the host platform ("linux/amd64", "darwin/arm64").
+	GondolinVersion string `protobuf:"bytes,4,opt,name=gondolin_version,json=gondolinVersion,proto3" json:"gondolin_version,omitempty"`
+	Platform        string `protobuf:"bytes,5,opt,name=platform,proto3" json:"platform,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *ServerInfo) Reset() {
+	*x = ServerInfo{}
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ServerInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ServerInfo) ProtoMessage() {}
+
+func (x *ServerInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ServerInfo.ProtoReflect.Descriptor instead.
+func (*ServerInfo) Descriptor() ([]byte, []int) {
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *ServerInfo) GetVersion() string {
+	if x != nil {
+		return x.Version
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetContract() string {
+	if x != nil {
+		return x.Contract
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetContractSha256() string {
+	if x != nil {
+		return x.ContractSha256
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetGondolinVersion() string {
+	if x != nil {
+		return x.GondolinVersion
+	}
+	return ""
+}
+
+func (x *ServerInfo) GetPlatform() string {
+	if x != nil {
+		return x.Platform
+	}
+	return ""
+}
+
 type BuildImageRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// Host directory containing the Dockerfile; the build context.
@@ -151,7 +269,7 @@ type BuildImageRequest struct {
 
 func (x *BuildImageRequest) Reset() {
 	*x = BuildImageRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[0]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -163,7 +281,7 @@ func (x *BuildImageRequest) String() string {
 func (*BuildImageRequest) ProtoMessage() {}
 
 func (x *BuildImageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[0]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -176,7 +294,7 @@ func (x *BuildImageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildImageRequest.ProtoReflect.Descriptor instead.
 func (*BuildImageRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{0}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *BuildImageRequest) GetContextDir() string {
@@ -220,7 +338,7 @@ type BuildImageEvent struct {
 
 func (x *BuildImageEvent) Reset() {
 	*x = BuildImageEvent{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[1]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -232,7 +350,7 @@ func (x *BuildImageEvent) String() string {
 func (*BuildImageEvent) ProtoMessage() {}
 
 func (x *BuildImageEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[1]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -245,7 +363,7 @@ func (x *BuildImageEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BuildImageEvent.ProtoReflect.Descriptor instead.
 func (*BuildImageEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{1}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *BuildImageEvent) GetEvent() isBuildImageEvent_Event {
@@ -304,7 +422,7 @@ type Image struct {
 
 func (x *Image) Reset() {
 	*x = Image{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[2]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -316,7 +434,7 @@ func (x *Image) String() string {
 func (*Image) ProtoMessage() {}
 
 func (x *Image) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[2]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -329,7 +447,7 @@ func (x *Image) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Image.ProtoReflect.Descriptor instead.
 func (*Image) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{2}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Image) GetBuildId() string {
@@ -375,7 +493,7 @@ type ListImagesRequest struct {
 
 func (x *ListImagesRequest) Reset() {
 	*x = ListImagesRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[3]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +505,7 @@ func (x *ListImagesRequest) String() string {
 func (*ListImagesRequest) ProtoMessage() {}
 
 func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[3]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +518,7 @@ func (x *ListImagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesRequest.ProtoReflect.Descriptor instead.
 func (*ListImagesRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{3}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{5}
 }
 
 type ListImagesResponse struct {
@@ -412,7 +530,7 @@ type ListImagesResponse struct {
 
 func (x *ListImagesResponse) Reset() {
 	*x = ListImagesResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[4]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -424,7 +542,7 @@ func (x *ListImagesResponse) String() string {
 func (*ListImagesResponse) ProtoMessage() {}
 
 func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[4]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -437,7 +555,7 @@ func (x *ListImagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListImagesResponse.ProtoReflect.Descriptor instead.
 func (*ListImagesResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{4}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ListImagesResponse) GetImages() []*Image {
@@ -481,7 +599,7 @@ type CreateSandboxRequest struct {
 
 func (x *CreateSandboxRequest) Reset() {
 	*x = CreateSandboxRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[5]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -493,7 +611,7 @@ func (x *CreateSandboxRequest) String() string {
 func (*CreateSandboxRequest) ProtoMessage() {}
 
 func (x *CreateSandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[5]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -506,7 +624,7 @@ func (x *CreateSandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CreateSandboxRequest.ProtoReflect.Descriptor instead.
 func (*CreateSandboxRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{5}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *CreateSandboxRequest) GetId() string {
@@ -604,7 +722,7 @@ type SecretDecl struct {
 
 func (x *SecretDecl) Reset() {
 	*x = SecretDecl{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[6]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -616,7 +734,7 @@ func (x *SecretDecl) String() string {
 func (*SecretDecl) ProtoMessage() {}
 
 func (x *SecretDecl) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[6]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -629,7 +747,7 @@ func (x *SecretDecl) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SecretDecl.ProtoReflect.Descriptor instead.
 func (*SecretDecl) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{6}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SecretDecl) GetName() string {
@@ -687,7 +805,7 @@ type Policy struct {
 
 func (x *Policy) Reset() {
 	*x = Policy{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[7]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -699,7 +817,7 @@ func (x *Policy) String() string {
 func (*Policy) ProtoMessage() {}
 
 func (x *Policy) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[7]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -712,7 +830,7 @@ func (x *Policy) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Policy.ProtoReflect.Descriptor instead.
 func (*Policy) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{7}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *Policy) GetAllowedHosts() []string {
@@ -740,7 +858,7 @@ type TcpMap struct {
 
 func (x *TcpMap) Reset() {
 	*x = TcpMap{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[8]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -752,7 +870,7 @@ func (x *TcpMap) String() string {
 func (*TcpMap) ProtoMessage() {}
 
 func (x *TcpMap) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[8]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -765,7 +883,7 @@ func (x *TcpMap) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TcpMap.ProtoReflect.Descriptor instead.
 func (*TcpMap) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{8}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *TcpMap) GetHost() string {
@@ -803,7 +921,7 @@ type SshEgress struct {
 
 func (x *SshEgress) Reset() {
 	*x = SshEgress{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[9]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -815,7 +933,7 @@ func (x *SshEgress) String() string {
 func (*SshEgress) ProtoMessage() {}
 
 func (x *SshEgress) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[9]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -828,7 +946,7 @@ func (x *SshEgress) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshEgress.ProtoReflect.Descriptor instead.
 func (*SshEgress) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{9}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *SshEgress) GetAllowedHosts() []string {
@@ -879,7 +997,7 @@ type Sandbox struct {
 
 func (x *Sandbox) Reset() {
 	*x = Sandbox{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[10]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -891,7 +1009,7 @@ func (x *Sandbox) String() string {
 func (*Sandbox) ProtoMessage() {}
 
 func (x *Sandbox) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[10]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -904,7 +1022,7 @@ func (x *Sandbox) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Sandbox.ProtoReflect.Descriptor instead.
 func (*Sandbox) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{10}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *Sandbox) GetId() string {
@@ -979,7 +1097,7 @@ type GetSandboxRequest struct {
 
 func (x *GetSandboxRequest) Reset() {
 	*x = GetSandboxRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[11]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -991,7 +1109,7 @@ func (x *GetSandboxRequest) String() string {
 func (*GetSandboxRequest) ProtoMessage() {}
 
 func (x *GetSandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[11]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1004,7 +1122,7 @@ func (x *GetSandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetSandboxRequest.ProtoReflect.Descriptor instead.
 func (*GetSandboxRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{11}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *GetSandboxRequest) GetId() string {
@@ -1022,7 +1140,7 @@ type ListSandboxesRequest struct {
 
 func (x *ListSandboxesRequest) Reset() {
 	*x = ListSandboxesRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[12]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1034,7 +1152,7 @@ func (x *ListSandboxesRequest) String() string {
 func (*ListSandboxesRequest) ProtoMessage() {}
 
 func (x *ListSandboxesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[12]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1047,7 +1165,7 @@ func (x *ListSandboxesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSandboxesRequest.ProtoReflect.Descriptor instead.
 func (*ListSandboxesRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{12}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{14}
 }
 
 type ListSandboxesResponse struct {
@@ -1059,7 +1177,7 @@ type ListSandboxesResponse struct {
 
 func (x *ListSandboxesResponse) Reset() {
 	*x = ListSandboxesResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[13]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1071,7 +1189,7 @@ func (x *ListSandboxesResponse) String() string {
 func (*ListSandboxesResponse) ProtoMessage() {}
 
 func (x *ListSandboxesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[13]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1084,7 +1202,7 @@ func (x *ListSandboxesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListSandboxesResponse.ProtoReflect.Descriptor instead.
 func (*ListSandboxesResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{13}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListSandboxesResponse) GetSandboxes() []*Sandbox {
@@ -1103,7 +1221,7 @@ type DestroySandboxRequest struct {
 
 func (x *DestroySandboxRequest) Reset() {
 	*x = DestroySandboxRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[14]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1115,7 +1233,7 @@ func (x *DestroySandboxRequest) String() string {
 func (*DestroySandboxRequest) ProtoMessage() {}
 
 func (x *DestroySandboxRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[14]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1128,7 +1246,7 @@ func (x *DestroySandboxRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroySandboxRequest.ProtoReflect.Descriptor instead.
 func (*DestroySandboxRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{14}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *DestroySandboxRequest) GetId() string {
@@ -1146,7 +1264,7 @@ type DestroySandboxResponse struct {
 
 func (x *DestroySandboxResponse) Reset() {
 	*x = DestroySandboxResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[15]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1158,7 +1276,7 @@ func (x *DestroySandboxResponse) String() string {
 func (*DestroySandboxResponse) ProtoMessage() {}
 
 func (x *DestroySandboxResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[15]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1171,7 +1289,7 @@ func (x *DestroySandboxResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DestroySandboxResponse.ProtoReflect.Descriptor instead.
 func (*DestroySandboxResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{15}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{17}
 }
 
 type SetPolicyRequest struct {
@@ -1184,7 +1302,7 @@ type SetPolicyRequest struct {
 
 func (x *SetPolicyRequest) Reset() {
 	*x = SetPolicyRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[16]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1196,7 +1314,7 @@ func (x *SetPolicyRequest) String() string {
 func (*SetPolicyRequest) ProtoMessage() {}
 
 func (x *SetPolicyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[16]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1209,7 +1327,7 @@ func (x *SetPolicyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPolicyRequest.ProtoReflect.Descriptor instead.
 func (*SetPolicyRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{16}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *SetPolicyRequest) GetId() string {
@@ -1234,7 +1352,7 @@ type SetPolicyResponse struct {
 
 func (x *SetPolicyResponse) Reset() {
 	*x = SetPolicyResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[17]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1246,7 +1364,7 @@ func (x *SetPolicyResponse) String() string {
 func (*SetPolicyResponse) ProtoMessage() {}
 
 func (x *SetPolicyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[17]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1259,7 +1377,7 @@ func (x *SetPolicyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetPolicyResponse.ProtoReflect.Descriptor instead.
 func (*SetPolicyResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{17}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{19}
 }
 
 type ExecRequest struct {
@@ -1271,9 +1389,16 @@ type ExecRequest struct {
 	Shell string   `protobuf:"bytes,3,opt,name=shell,proto3" json:"shell,omitempty"`
 	// Guest user; empty = CreateSandboxRequest.default_user. "root" is allowed
 	// and is how privileged sandboxes run.
-	User string            `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
-	Cwd  string            `protobuf:"bytes,5,opt,name=cwd,proto3" json:"cwd,omitempty"`
-	Env  map[string]string `protobuf:"bytes,6,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	User string `protobuf:"bytes,4,opt,name=user,proto3" json:"user,omitempty"`
+	Cwd  string `protobuf:"bytes,5,opt,name=cwd,proto3" json:"cwd,omitempty"`
+	// Overrides, applied last. The service always provides a base environment
+	// the caller may rely on: HOME (the user's home from the guest's passwd),
+	// XDG_CACHE_HOME / XDG_CONFIG_HOME / XDG_DATA_HOME under that HOME, a PATH
+	// covering /usr/local/bin, then the image's ENV on top of those, then
+	// CreateSandboxRequest.env and secret placeholders. Whatever PATH results,
+	// the service prepends $HOME/.local/bin to it (where the native Claude
+	// Code installs), so the image's own PATH never hides it.
+	Env map[string]string `protobuf:"bytes,6,rep,name=env,proto3" json:"env,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Fed to the process's stdin, then stdin is closed. Not for interactive use.
 	Stdin []byte `protobuf:"bytes,7,opt,name=stdin,proto3" json:"stdin,omitempty"`
 	// Allocate a pty (output is then a single merged stream on stdout).
@@ -1286,7 +1411,7 @@ type ExecRequest struct {
 
 func (x *ExecRequest) Reset() {
 	*x = ExecRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[18]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1298,7 +1423,7 @@ func (x *ExecRequest) String() string {
 func (*ExecRequest) ProtoMessage() {}
 
 func (x *ExecRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[18]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1311,7 +1436,7 @@ func (x *ExecRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecRequest.ProtoReflect.Descriptor instead.
 func (*ExecRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{18}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *ExecRequest) GetId() string {
@@ -1392,7 +1517,7 @@ type ExecEvent struct {
 
 func (x *ExecEvent) Reset() {
 	*x = ExecEvent{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[19]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1404,7 +1529,7 @@ func (x *ExecEvent) String() string {
 func (*ExecEvent) ProtoMessage() {}
 
 func (x *ExecEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[19]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1417,7 +1542,7 @@ func (x *ExecEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecEvent.ProtoReflect.Descriptor instead.
 func (*ExecEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{19}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *ExecEvent) GetEvent() isExecEvent_Event {
@@ -1501,7 +1626,7 @@ type EnableSshRequest struct {
 
 func (x *EnableSshRequest) Reset() {
 	*x = EnableSshRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[20]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1513,7 +1638,7 @@ func (x *EnableSshRequest) String() string {
 func (*EnableSshRequest) ProtoMessage() {}
 
 func (x *EnableSshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[20]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1526,7 +1651,7 @@ func (x *EnableSshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EnableSshRequest.ProtoReflect.Descriptor instead.
 func (*EnableSshRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{20}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *EnableSshRequest) GetId() string {
@@ -1560,7 +1685,7 @@ type SshAccess struct {
 
 func (x *SshAccess) Reset() {
 	*x = SshAccess{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[21]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1572,7 +1697,7 @@ func (x *SshAccess) String() string {
 func (*SshAccess) ProtoMessage() {}
 
 func (x *SshAccess) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[21]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1585,7 +1710,7 @@ func (x *SshAccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SshAccess.ProtoReflect.Descriptor instead.
 func (*SshAccess) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{21}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *SshAccess) GetHost() string {
@@ -1633,7 +1758,7 @@ type DisableSshRequest struct {
 
 func (x *DisableSshRequest) Reset() {
 	*x = DisableSshRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[22]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1645,7 +1770,7 @@ func (x *DisableSshRequest) String() string {
 func (*DisableSshRequest) ProtoMessage() {}
 
 func (x *DisableSshRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[22]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1658,7 +1783,7 @@ func (x *DisableSshRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableSshRequest.ProtoReflect.Descriptor instead.
 func (*DisableSshRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{22}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *DisableSshRequest) GetId() string {
@@ -1683,7 +1808,7 @@ type DisableSshResponse struct {
 
 func (x *DisableSshResponse) Reset() {
 	*x = DisableSshResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[23]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1695,7 +1820,7 @@ func (x *DisableSshResponse) String() string {
 func (*DisableSshResponse) ProtoMessage() {}
 
 func (x *DisableSshResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[23]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1708,7 +1833,7 @@ func (x *DisableSshResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DisableSshResponse.ProtoReflect.Descriptor instead.
 func (*DisableSshResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{23}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{25}
 }
 
 type ReadFileRequest struct {
@@ -1723,7 +1848,7 @@ type ReadFileRequest struct {
 
 func (x *ReadFileRequest) Reset() {
 	*x = ReadFileRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[24]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1735,7 +1860,7 @@ func (x *ReadFileRequest) String() string {
 func (*ReadFileRequest) ProtoMessage() {}
 
 func (x *ReadFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[24]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1748,7 +1873,7 @@ func (x *ReadFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadFileRequest.ProtoReflect.Descriptor instead.
 func (*ReadFileRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{24}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ReadFileRequest) GetId() string {
@@ -1781,7 +1906,7 @@ type FileChunk struct {
 
 func (x *FileChunk) Reset() {
 	*x = FileChunk{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[25]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1793,7 +1918,7 @@ func (x *FileChunk) String() string {
 func (*FileChunk) ProtoMessage() {}
 
 func (x *FileChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[25]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1806,7 +1931,7 @@ func (x *FileChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FileChunk.ProtoReflect.Descriptor instead.
 func (*FileChunk) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{25}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *FileChunk) GetData() []byte {
@@ -1829,7 +1954,7 @@ type WriteFileRequest struct {
 
 func (x *WriteFileRequest) Reset() {
 	*x = WriteFileRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[26]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1841,7 +1966,7 @@ func (x *WriteFileRequest) String() string {
 func (*WriteFileRequest) ProtoMessage() {}
 
 func (x *WriteFileRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[26]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1854,7 +1979,7 @@ func (x *WriteFileRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFileRequest.ProtoReflect.Descriptor instead.
 func (*WriteFileRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{26}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *WriteFileRequest) GetMsg() isWriteFileRequest_Msg {
@@ -1907,7 +2032,7 @@ type WriteFileResponse struct {
 
 func (x *WriteFileResponse) Reset() {
 	*x = WriteFileResponse{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[27]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1919,7 +2044,7 @@ func (x *WriteFileResponse) String() string {
 func (*WriteFileResponse) ProtoMessage() {}
 
 func (x *WriteFileResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[27]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1932,7 +2057,7 @@ func (x *WriteFileResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFileResponse.ProtoReflect.Descriptor instead.
 func (*WriteFileResponse) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{27}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *WriteFileResponse) GetBytesWritten() uint64 {
@@ -1954,7 +2079,7 @@ type WatchEventsRequest struct {
 
 func (x *WatchEventsRequest) Reset() {
 	*x = WatchEventsRequest{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[28]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1966,7 +2091,7 @@ func (x *WatchEventsRequest) String() string {
 func (*WatchEventsRequest) ProtoMessage() {}
 
 func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[28]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1979,7 +2104,7 @@ func (x *WatchEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WatchEventsRequest.ProtoReflect.Descriptor instead.
 func (*WatchEventsRequest) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{28}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *WatchEventsRequest) GetId() string {
@@ -2013,7 +2138,7 @@ type SandboxEvent struct {
 
 func (x *SandboxEvent) Reset() {
 	*x = SandboxEvent{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[29]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2025,7 +2150,7 @@ func (x *SandboxEvent) String() string {
 func (*SandboxEvent) ProtoMessage() {}
 
 func (x *SandboxEvent) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[29]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2038,7 +2163,7 @@ func (x *SandboxEvent) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxEvent.ProtoReflect.Descriptor instead.
 func (*SandboxEvent) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SandboxEvent) GetSeq() uint64 {
@@ -2134,7 +2259,7 @@ type ExecEvent_Started struct {
 
 func (x *ExecEvent_Started) Reset() {
 	*x = ExecEvent_Started{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[33]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2146,7 +2271,7 @@ func (x *ExecEvent_Started) String() string {
 func (*ExecEvent_Started) ProtoMessage() {}
 
 func (x *ExecEvent_Started) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[33]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2159,7 +2284,7 @@ func (x *ExecEvent_Started) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecEvent_Started.ProtoReflect.Descriptor instead.
 func (*ExecEvent_Started) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{19, 0}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{21, 0}
 }
 
 type ExecEvent_Exited struct {
@@ -2173,7 +2298,7 @@ type ExecEvent_Exited struct {
 
 func (x *ExecEvent_Exited) Reset() {
 	*x = ExecEvent_Exited{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[34]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2185,7 +2310,7 @@ func (x *ExecEvent_Exited) String() string {
 func (*ExecEvent_Exited) ProtoMessage() {}
 
 func (x *ExecEvent_Exited) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[34]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2198,7 +2323,7 @@ func (x *ExecEvent_Exited) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ExecEvent_Exited.ProtoReflect.Descriptor instead.
 func (*ExecEvent_Exited) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{19, 1}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{21, 1}
 }
 
 func (x *ExecEvent_Exited) GetExitCode() int32 {
@@ -2234,7 +2359,7 @@ type WriteFileRequest_Header struct {
 
 func (x *WriteFileRequest_Header) Reset() {
 	*x = WriteFileRequest_Header{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[35]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2246,7 +2371,7 @@ func (x *WriteFileRequest_Header) String() string {
 func (*WriteFileRequest_Header) ProtoMessage() {}
 
 func (x *WriteFileRequest_Header) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[35]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2259,7 +2384,7 @@ func (x *WriteFileRequest_Header) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteFileRequest_Header.ProtoReflect.Descriptor instead.
 func (*WriteFileRequest_Header) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{26, 0}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{28, 0}
 }
 
 func (x *WriteFileRequest_Header) GetId() string {
@@ -2302,7 +2427,7 @@ type SandboxEvent_HttpRequestStarted struct {
 
 func (x *SandboxEvent_HttpRequestStarted) Reset() {
 	*x = SandboxEvent_HttpRequestStarted{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[36]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2314,7 +2439,7 @@ func (x *SandboxEvent_HttpRequestStarted) String() string {
 func (*SandboxEvent_HttpRequestStarted) ProtoMessage() {}
 
 func (x *SandboxEvent_HttpRequestStarted) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[36]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2327,7 +2452,7 @@ func (x *SandboxEvent_HttpRequestStarted) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxEvent_HttpRequestStarted.ProtoReflect.Descriptor instead.
 func (*SandboxEvent_HttpRequestStarted) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29, 0}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{31, 0}
 }
 
 func (x *SandboxEvent_HttpRequestStarted) GetRequestId() uint64 {
@@ -2359,17 +2484,23 @@ func (x *SandboxEvent_HttpRequestStarted) GetPath() string {
 }
 
 type SandboxEvent_HttpRequestFinished struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RequestId     uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
-	Status        uint32                 `protobuf:"varint,2,opt,name=status,proto3" json:"status,omitempty"`
-	DurationMs    uint32                 `protobuf:"varint,3,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	RequestId uint64                 `protobuf:"varint,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
+	// HTTP status, or 0 when the request ended without a response seen by
+	// the policy layer: the guest closed the connection, upstream failed,
+	// the request was aborted, or the hop was a redirect the host followed
+	// (each hop is its own Started/Finished pair; only the final hop
+	// carries the status). Every HttpRequestStarted is followed by exactly
+	// one HttpRequestFinished.
+	Status        uint32 `protobuf:"varint,2,opt,name=status,proto3" json:"status,omitempty"`
+	DurationMs    uint32 `protobuf:"varint,3,opt,name=duration_ms,json=durationMs,proto3" json:"duration_ms,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SandboxEvent_HttpRequestFinished) Reset() {
 	*x = SandboxEvent_HttpRequestFinished{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[37]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2381,7 +2512,7 @@ func (x *SandboxEvent_HttpRequestFinished) String() string {
 func (*SandboxEvent_HttpRequestFinished) ProtoMessage() {}
 
 func (x *SandboxEvent_HttpRequestFinished) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[37]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2394,7 +2525,7 @@ func (x *SandboxEvent_HttpRequestFinished) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxEvent_HttpRequestFinished.ProtoReflect.Descriptor instead.
 func (*SandboxEvent_HttpRequestFinished) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29, 1}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{31, 1}
 }
 
 func (x *SandboxEvent_HttpRequestFinished) GetRequestId() uint64 {
@@ -2428,7 +2559,7 @@ type SandboxEvent_HttpRequestDenied struct {
 
 func (x *SandboxEvent_HttpRequestDenied) Reset() {
 	*x = SandboxEvent_HttpRequestDenied{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[38]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2440,7 +2571,7 @@ func (x *SandboxEvent_HttpRequestDenied) String() string {
 func (*SandboxEvent_HttpRequestDenied) ProtoMessage() {}
 
 func (x *SandboxEvent_HttpRequestDenied) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[38]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2453,7 +2584,7 @@ func (x *SandboxEvent_HttpRequestDenied) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxEvent_HttpRequestDenied.ProtoReflect.Descriptor instead.
 func (*SandboxEvent_HttpRequestDenied) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29, 2}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{31, 2}
 }
 
 func (x *SandboxEvent_HttpRequestDenied) GetHost() string {
@@ -2480,7 +2611,7 @@ type SandboxEvent_StateChanged struct {
 
 func (x *SandboxEvent_StateChanged) Reset() {
 	*x = SandboxEvent_StateChanged{}
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[39]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2492,7 +2623,7 @@ func (x *SandboxEvent_StateChanged) String() string {
 func (*SandboxEvent_StateChanged) ProtoMessage() {}
 
 func (x *SandboxEvent_StateChanged) ProtoReflect() protoreflect.Message {
-	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[39]
+	mi := &file_masuda_sandbox_v1_sandbox_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2505,7 +2636,7 @@ func (x *SandboxEvent_StateChanged) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SandboxEvent_StateChanged.ProtoReflect.Descriptor instead.
 func (*SandboxEvent_StateChanged) Descriptor() ([]byte, []int) {
-	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{29, 3}
+	return file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP(), []int{31, 3}
 }
 
 func (x *SandboxEvent_StateChanged) GetState() SandboxState {
@@ -2526,7 +2657,15 @@ var File_masuda_sandbox_v1_sandbox_proto protoreflect.FileDescriptor
 
 const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\n" +
-	"\x1fmasuda/sandbox/v1/sandbox.proto\x12\x11masuda.sandbox.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"|\n" +
+	"\x1fmasuda/sandbox/v1/sandbox.proto\x12\x11masuda.sandbox.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\x16\n" +
+	"\x14GetServerInfoRequest\"\xb2\x01\n" +
+	"\n" +
+	"ServerInfo\x12\x18\n" +
+	"\aversion\x18\x01 \x01(\tR\aversion\x12\x1a\n" +
+	"\bcontract\x18\x02 \x01(\tR\bcontract\x12'\n" +
+	"\x0fcontract_sha256\x18\x03 \x01(\tR\x0econtractSha256\x12)\n" +
+	"\x10gondolin_version\x18\x04 \x01(\tR\x0fgondolinVersion\x12\x1a\n" +
+	"\bplatform\x18\x05 \x01(\tR\bplatform\"|\n" +
 	"\x11BuildImageRequest\x12\x1f\n" +
 	"\vcontext_dir\x18\x01 \x01(\tR\n" +
 	"contextDir\x12\x1e\n" +
@@ -2708,8 +2847,9 @@ const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\x16SANDBOX_STATE_STARTING\x10\x01\x12\x19\n" +
 	"\x15SANDBOX_STATE_RUNNING\x10\x02\x12\x19\n" +
 	"\x15SANDBOX_STATE_STOPPED\x10\x03\x12\x18\n" +
-	"\x14SANDBOX_STATE_FAILED\x10\x042\x84\t\n" +
-	"\x0eSandboxService\x12X\n" +
+	"\x14SANDBOX_STATE_FAILED\x10\x042\xdd\t\n" +
+	"\x0eSandboxService\x12W\n" +
+	"\rGetServerInfo\x12'.masuda.sandbox.v1.GetServerInfoRequest\x1a\x1d.masuda.sandbox.v1.ServerInfo\x12X\n" +
 	"\n" +
 	"BuildImage\x12$.masuda.sandbox.v1.BuildImageRequest\x1a\".masuda.sandbox.v1.BuildImageEvent0\x01\x12Y\n" +
 	"\n" +
@@ -2741,107 +2881,111 @@ func file_masuda_sandbox_v1_sandbox_proto_rawDescGZIP() []byte {
 }
 
 var file_masuda_sandbox_v1_sandbox_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_masuda_sandbox_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 40)
+var file_masuda_sandbox_v1_sandbox_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
 var file_masuda_sandbox_v1_sandbox_proto_goTypes = []any{
 	(SubstituteIn)(0),                        // 0: masuda.sandbox.v1.SubstituteIn
 	(SandboxState)(0),                        // 1: masuda.sandbox.v1.SandboxState
-	(*BuildImageRequest)(nil),                // 2: masuda.sandbox.v1.BuildImageRequest
-	(*BuildImageEvent)(nil),                  // 3: masuda.sandbox.v1.BuildImageEvent
-	(*Image)(nil),                            // 4: masuda.sandbox.v1.Image
-	(*ListImagesRequest)(nil),                // 5: masuda.sandbox.v1.ListImagesRequest
-	(*ListImagesResponse)(nil),               // 6: masuda.sandbox.v1.ListImagesResponse
-	(*CreateSandboxRequest)(nil),             // 7: masuda.sandbox.v1.CreateSandboxRequest
-	(*SecretDecl)(nil),                       // 8: masuda.sandbox.v1.SecretDecl
-	(*Policy)(nil),                           // 9: masuda.sandbox.v1.Policy
-	(*TcpMap)(nil),                           // 10: masuda.sandbox.v1.TcpMap
-	(*SshEgress)(nil),                        // 11: masuda.sandbox.v1.SshEgress
-	(*Sandbox)(nil),                          // 12: masuda.sandbox.v1.Sandbox
-	(*GetSandboxRequest)(nil),                // 13: masuda.sandbox.v1.GetSandboxRequest
-	(*ListSandboxesRequest)(nil),             // 14: masuda.sandbox.v1.ListSandboxesRequest
-	(*ListSandboxesResponse)(nil),            // 15: masuda.sandbox.v1.ListSandboxesResponse
-	(*DestroySandboxRequest)(nil),            // 16: masuda.sandbox.v1.DestroySandboxRequest
-	(*DestroySandboxResponse)(nil),           // 17: masuda.sandbox.v1.DestroySandboxResponse
-	(*SetPolicyRequest)(nil),                 // 18: masuda.sandbox.v1.SetPolicyRequest
-	(*SetPolicyResponse)(nil),                // 19: masuda.sandbox.v1.SetPolicyResponse
-	(*ExecRequest)(nil),                      // 20: masuda.sandbox.v1.ExecRequest
-	(*ExecEvent)(nil),                        // 21: masuda.sandbox.v1.ExecEvent
-	(*EnableSshRequest)(nil),                 // 22: masuda.sandbox.v1.EnableSshRequest
-	(*SshAccess)(nil),                        // 23: masuda.sandbox.v1.SshAccess
-	(*DisableSshRequest)(nil),                // 24: masuda.sandbox.v1.DisableSshRequest
-	(*DisableSshResponse)(nil),               // 25: masuda.sandbox.v1.DisableSshResponse
-	(*ReadFileRequest)(nil),                  // 26: masuda.sandbox.v1.ReadFileRequest
-	(*FileChunk)(nil),                        // 27: masuda.sandbox.v1.FileChunk
-	(*WriteFileRequest)(nil),                 // 28: masuda.sandbox.v1.WriteFileRequest
-	(*WriteFileResponse)(nil),                // 29: masuda.sandbox.v1.WriteFileResponse
-	(*WatchEventsRequest)(nil),               // 30: masuda.sandbox.v1.WatchEventsRequest
-	(*SandboxEvent)(nil),                     // 31: masuda.sandbox.v1.SandboxEvent
-	nil,                                      // 32: masuda.sandbox.v1.CreateSandboxRequest.EnvEntry
-	nil,                                      // 33: masuda.sandbox.v1.Sandbox.PlaceholdersEntry
-	nil,                                      // 34: masuda.sandbox.v1.ExecRequest.EnvEntry
-	(*ExecEvent_Started)(nil),                // 35: masuda.sandbox.v1.ExecEvent.Started
-	(*ExecEvent_Exited)(nil),                 // 36: masuda.sandbox.v1.ExecEvent.Exited
-	(*WriteFileRequest_Header)(nil),          // 37: masuda.sandbox.v1.WriteFileRequest.Header
-	(*SandboxEvent_HttpRequestStarted)(nil),  // 38: masuda.sandbox.v1.SandboxEvent.HttpRequestStarted
-	(*SandboxEvent_HttpRequestFinished)(nil), // 39: masuda.sandbox.v1.SandboxEvent.HttpRequestFinished
-	(*SandboxEvent_HttpRequestDenied)(nil),   // 40: masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
-	(*SandboxEvent_StateChanged)(nil),        // 41: masuda.sandbox.v1.SandboxEvent.StateChanged
-	(*timestamppb.Timestamp)(nil),            // 42: google.protobuf.Timestamp
+	(*GetServerInfoRequest)(nil),             // 2: masuda.sandbox.v1.GetServerInfoRequest
+	(*ServerInfo)(nil),                       // 3: masuda.sandbox.v1.ServerInfo
+	(*BuildImageRequest)(nil),                // 4: masuda.sandbox.v1.BuildImageRequest
+	(*BuildImageEvent)(nil),                  // 5: masuda.sandbox.v1.BuildImageEvent
+	(*Image)(nil),                            // 6: masuda.sandbox.v1.Image
+	(*ListImagesRequest)(nil),                // 7: masuda.sandbox.v1.ListImagesRequest
+	(*ListImagesResponse)(nil),               // 8: masuda.sandbox.v1.ListImagesResponse
+	(*CreateSandboxRequest)(nil),             // 9: masuda.sandbox.v1.CreateSandboxRequest
+	(*SecretDecl)(nil),                       // 10: masuda.sandbox.v1.SecretDecl
+	(*Policy)(nil),                           // 11: masuda.sandbox.v1.Policy
+	(*TcpMap)(nil),                           // 12: masuda.sandbox.v1.TcpMap
+	(*SshEgress)(nil),                        // 13: masuda.sandbox.v1.SshEgress
+	(*Sandbox)(nil),                          // 14: masuda.sandbox.v1.Sandbox
+	(*GetSandboxRequest)(nil),                // 15: masuda.sandbox.v1.GetSandboxRequest
+	(*ListSandboxesRequest)(nil),             // 16: masuda.sandbox.v1.ListSandboxesRequest
+	(*ListSandboxesResponse)(nil),            // 17: masuda.sandbox.v1.ListSandboxesResponse
+	(*DestroySandboxRequest)(nil),            // 18: masuda.sandbox.v1.DestroySandboxRequest
+	(*DestroySandboxResponse)(nil),           // 19: masuda.sandbox.v1.DestroySandboxResponse
+	(*SetPolicyRequest)(nil),                 // 20: masuda.sandbox.v1.SetPolicyRequest
+	(*SetPolicyResponse)(nil),                // 21: masuda.sandbox.v1.SetPolicyResponse
+	(*ExecRequest)(nil),                      // 22: masuda.sandbox.v1.ExecRequest
+	(*ExecEvent)(nil),                        // 23: masuda.sandbox.v1.ExecEvent
+	(*EnableSshRequest)(nil),                 // 24: masuda.sandbox.v1.EnableSshRequest
+	(*SshAccess)(nil),                        // 25: masuda.sandbox.v1.SshAccess
+	(*DisableSshRequest)(nil),                // 26: masuda.sandbox.v1.DisableSshRequest
+	(*DisableSshResponse)(nil),               // 27: masuda.sandbox.v1.DisableSshResponse
+	(*ReadFileRequest)(nil),                  // 28: masuda.sandbox.v1.ReadFileRequest
+	(*FileChunk)(nil),                        // 29: masuda.sandbox.v1.FileChunk
+	(*WriteFileRequest)(nil),                 // 30: masuda.sandbox.v1.WriteFileRequest
+	(*WriteFileResponse)(nil),                // 31: masuda.sandbox.v1.WriteFileResponse
+	(*WatchEventsRequest)(nil),               // 32: masuda.sandbox.v1.WatchEventsRequest
+	(*SandboxEvent)(nil),                     // 33: masuda.sandbox.v1.SandboxEvent
+	nil,                                      // 34: masuda.sandbox.v1.CreateSandboxRequest.EnvEntry
+	nil,                                      // 35: masuda.sandbox.v1.Sandbox.PlaceholdersEntry
+	nil,                                      // 36: masuda.sandbox.v1.ExecRequest.EnvEntry
+	(*ExecEvent_Started)(nil),                // 37: masuda.sandbox.v1.ExecEvent.Started
+	(*ExecEvent_Exited)(nil),                 // 38: masuda.sandbox.v1.ExecEvent.Exited
+	(*WriteFileRequest_Header)(nil),          // 39: masuda.sandbox.v1.WriteFileRequest.Header
+	(*SandboxEvent_HttpRequestStarted)(nil),  // 40: masuda.sandbox.v1.SandboxEvent.HttpRequestStarted
+	(*SandboxEvent_HttpRequestFinished)(nil), // 41: masuda.sandbox.v1.SandboxEvent.HttpRequestFinished
+	(*SandboxEvent_HttpRequestDenied)(nil),   // 42: masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
+	(*SandboxEvent_StateChanged)(nil),        // 43: masuda.sandbox.v1.SandboxEvent.StateChanged
+	(*timestamppb.Timestamp)(nil),            // 44: google.protobuf.Timestamp
 }
 var file_masuda_sandbox_v1_sandbox_proto_depIdxs = []int32{
-	4,  // 0: masuda.sandbox.v1.BuildImageEvent.built:type_name -> masuda.sandbox.v1.Image
-	42, // 1: masuda.sandbox.v1.Image.created_at:type_name -> google.protobuf.Timestamp
-	4,  // 2: masuda.sandbox.v1.ListImagesResponse.images:type_name -> masuda.sandbox.v1.Image
-	32, // 3: masuda.sandbox.v1.CreateSandboxRequest.env:type_name -> masuda.sandbox.v1.CreateSandboxRequest.EnvEntry
-	8,  // 4: masuda.sandbox.v1.CreateSandboxRequest.secrets:type_name -> masuda.sandbox.v1.SecretDecl
-	9,  // 5: masuda.sandbox.v1.CreateSandboxRequest.policy:type_name -> masuda.sandbox.v1.Policy
-	10, // 6: masuda.sandbox.v1.CreateSandboxRequest.tcp_maps:type_name -> masuda.sandbox.v1.TcpMap
-	11, // 7: masuda.sandbox.v1.CreateSandboxRequest.ssh_egress:type_name -> masuda.sandbox.v1.SshEgress
+	6,  // 0: masuda.sandbox.v1.BuildImageEvent.built:type_name -> masuda.sandbox.v1.Image
+	44, // 1: masuda.sandbox.v1.Image.created_at:type_name -> google.protobuf.Timestamp
+	6,  // 2: masuda.sandbox.v1.ListImagesResponse.images:type_name -> masuda.sandbox.v1.Image
+	34, // 3: masuda.sandbox.v1.CreateSandboxRequest.env:type_name -> masuda.sandbox.v1.CreateSandboxRequest.EnvEntry
+	10, // 4: masuda.sandbox.v1.CreateSandboxRequest.secrets:type_name -> masuda.sandbox.v1.SecretDecl
+	11, // 5: masuda.sandbox.v1.CreateSandboxRequest.policy:type_name -> masuda.sandbox.v1.Policy
+	12, // 6: masuda.sandbox.v1.CreateSandboxRequest.tcp_maps:type_name -> masuda.sandbox.v1.TcpMap
+	13, // 7: masuda.sandbox.v1.CreateSandboxRequest.ssh_egress:type_name -> masuda.sandbox.v1.SshEgress
 	0,  // 8: masuda.sandbox.v1.SecretDecl.substitute_in:type_name -> masuda.sandbox.v1.SubstituteIn
 	1,  // 9: masuda.sandbox.v1.Sandbox.state:type_name -> masuda.sandbox.v1.SandboxState
-	42, // 10: masuda.sandbox.v1.Sandbox.created_at:type_name -> google.protobuf.Timestamp
-	33, // 11: masuda.sandbox.v1.Sandbox.placeholders:type_name -> masuda.sandbox.v1.Sandbox.PlaceholdersEntry
-	9,  // 12: masuda.sandbox.v1.Sandbox.policy:type_name -> masuda.sandbox.v1.Policy
-	42, // 13: masuda.sandbox.v1.Sandbox.last_http_activity:type_name -> google.protobuf.Timestamp
-	12, // 14: masuda.sandbox.v1.ListSandboxesResponse.sandboxes:type_name -> masuda.sandbox.v1.Sandbox
-	9,  // 15: masuda.sandbox.v1.SetPolicyRequest.policy:type_name -> masuda.sandbox.v1.Policy
-	34, // 16: masuda.sandbox.v1.ExecRequest.env:type_name -> masuda.sandbox.v1.ExecRequest.EnvEntry
-	35, // 17: masuda.sandbox.v1.ExecEvent.started:type_name -> masuda.sandbox.v1.ExecEvent.Started
-	36, // 18: masuda.sandbox.v1.ExecEvent.exited:type_name -> masuda.sandbox.v1.ExecEvent.Exited
-	37, // 19: masuda.sandbox.v1.WriteFileRequest.header:type_name -> masuda.sandbox.v1.WriteFileRequest.Header
-	42, // 20: masuda.sandbox.v1.SandboxEvent.time:type_name -> google.protobuf.Timestamp
-	38, // 21: masuda.sandbox.v1.SandboxEvent.http_started:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestStarted
-	39, // 22: masuda.sandbox.v1.SandboxEvent.http_finished:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestFinished
-	40, // 23: masuda.sandbox.v1.SandboxEvent.http_denied:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
-	41, // 24: masuda.sandbox.v1.SandboxEvent.state_changed:type_name -> masuda.sandbox.v1.SandboxEvent.StateChanged
+	44, // 10: masuda.sandbox.v1.Sandbox.created_at:type_name -> google.protobuf.Timestamp
+	35, // 11: masuda.sandbox.v1.Sandbox.placeholders:type_name -> masuda.sandbox.v1.Sandbox.PlaceholdersEntry
+	11, // 12: masuda.sandbox.v1.Sandbox.policy:type_name -> masuda.sandbox.v1.Policy
+	44, // 13: masuda.sandbox.v1.Sandbox.last_http_activity:type_name -> google.protobuf.Timestamp
+	14, // 14: masuda.sandbox.v1.ListSandboxesResponse.sandboxes:type_name -> masuda.sandbox.v1.Sandbox
+	11, // 15: masuda.sandbox.v1.SetPolicyRequest.policy:type_name -> masuda.sandbox.v1.Policy
+	36, // 16: masuda.sandbox.v1.ExecRequest.env:type_name -> masuda.sandbox.v1.ExecRequest.EnvEntry
+	37, // 17: masuda.sandbox.v1.ExecEvent.started:type_name -> masuda.sandbox.v1.ExecEvent.Started
+	38, // 18: masuda.sandbox.v1.ExecEvent.exited:type_name -> masuda.sandbox.v1.ExecEvent.Exited
+	39, // 19: masuda.sandbox.v1.WriteFileRequest.header:type_name -> masuda.sandbox.v1.WriteFileRequest.Header
+	44, // 20: masuda.sandbox.v1.SandboxEvent.time:type_name -> google.protobuf.Timestamp
+	40, // 21: masuda.sandbox.v1.SandboxEvent.http_started:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestStarted
+	41, // 22: masuda.sandbox.v1.SandboxEvent.http_finished:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestFinished
+	42, // 23: masuda.sandbox.v1.SandboxEvent.http_denied:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
+	43, // 24: masuda.sandbox.v1.SandboxEvent.state_changed:type_name -> masuda.sandbox.v1.SandboxEvent.StateChanged
 	1,  // 25: masuda.sandbox.v1.SandboxEvent.StateChanged.state:type_name -> masuda.sandbox.v1.SandboxState
-	2,  // 26: masuda.sandbox.v1.SandboxService.BuildImage:input_type -> masuda.sandbox.v1.BuildImageRequest
-	5,  // 27: masuda.sandbox.v1.SandboxService.ListImages:input_type -> masuda.sandbox.v1.ListImagesRequest
-	7,  // 28: masuda.sandbox.v1.SandboxService.CreateSandbox:input_type -> masuda.sandbox.v1.CreateSandboxRequest
-	13, // 29: masuda.sandbox.v1.SandboxService.GetSandbox:input_type -> masuda.sandbox.v1.GetSandboxRequest
-	14, // 30: masuda.sandbox.v1.SandboxService.ListSandboxes:input_type -> masuda.sandbox.v1.ListSandboxesRequest
-	16, // 31: masuda.sandbox.v1.SandboxService.DestroySandbox:input_type -> masuda.sandbox.v1.DestroySandboxRequest
-	18, // 32: masuda.sandbox.v1.SandboxService.SetPolicy:input_type -> masuda.sandbox.v1.SetPolicyRequest
-	20, // 33: masuda.sandbox.v1.SandboxService.Exec:input_type -> masuda.sandbox.v1.ExecRequest
-	22, // 34: masuda.sandbox.v1.SandboxService.EnableSsh:input_type -> masuda.sandbox.v1.EnableSshRequest
-	24, // 35: masuda.sandbox.v1.SandboxService.DisableSsh:input_type -> masuda.sandbox.v1.DisableSshRequest
-	26, // 36: masuda.sandbox.v1.SandboxService.ReadFile:input_type -> masuda.sandbox.v1.ReadFileRequest
-	28, // 37: masuda.sandbox.v1.SandboxService.WriteFile:input_type -> masuda.sandbox.v1.WriteFileRequest
-	30, // 38: masuda.sandbox.v1.SandboxService.WatchEvents:input_type -> masuda.sandbox.v1.WatchEventsRequest
-	3,  // 39: masuda.sandbox.v1.SandboxService.BuildImage:output_type -> masuda.sandbox.v1.BuildImageEvent
-	6,  // 40: masuda.sandbox.v1.SandboxService.ListImages:output_type -> masuda.sandbox.v1.ListImagesResponse
-	12, // 41: masuda.sandbox.v1.SandboxService.CreateSandbox:output_type -> masuda.sandbox.v1.Sandbox
-	12, // 42: masuda.sandbox.v1.SandboxService.GetSandbox:output_type -> masuda.sandbox.v1.Sandbox
-	15, // 43: masuda.sandbox.v1.SandboxService.ListSandboxes:output_type -> masuda.sandbox.v1.ListSandboxesResponse
-	17, // 44: masuda.sandbox.v1.SandboxService.DestroySandbox:output_type -> masuda.sandbox.v1.DestroySandboxResponse
-	19, // 45: masuda.sandbox.v1.SandboxService.SetPolicy:output_type -> masuda.sandbox.v1.SetPolicyResponse
-	21, // 46: masuda.sandbox.v1.SandboxService.Exec:output_type -> masuda.sandbox.v1.ExecEvent
-	23, // 47: masuda.sandbox.v1.SandboxService.EnableSsh:output_type -> masuda.sandbox.v1.SshAccess
-	25, // 48: masuda.sandbox.v1.SandboxService.DisableSsh:output_type -> masuda.sandbox.v1.DisableSshResponse
-	27, // 49: masuda.sandbox.v1.SandboxService.ReadFile:output_type -> masuda.sandbox.v1.FileChunk
-	29, // 50: masuda.sandbox.v1.SandboxService.WriteFile:output_type -> masuda.sandbox.v1.WriteFileResponse
-	31, // 51: masuda.sandbox.v1.SandboxService.WatchEvents:output_type -> masuda.sandbox.v1.SandboxEvent
-	39, // [39:52] is the sub-list for method output_type
-	26, // [26:39] is the sub-list for method input_type
+	2,  // 26: masuda.sandbox.v1.SandboxService.GetServerInfo:input_type -> masuda.sandbox.v1.GetServerInfoRequest
+	4,  // 27: masuda.sandbox.v1.SandboxService.BuildImage:input_type -> masuda.sandbox.v1.BuildImageRequest
+	7,  // 28: masuda.sandbox.v1.SandboxService.ListImages:input_type -> masuda.sandbox.v1.ListImagesRequest
+	9,  // 29: masuda.sandbox.v1.SandboxService.CreateSandbox:input_type -> masuda.sandbox.v1.CreateSandboxRequest
+	15, // 30: masuda.sandbox.v1.SandboxService.GetSandbox:input_type -> masuda.sandbox.v1.GetSandboxRequest
+	16, // 31: masuda.sandbox.v1.SandboxService.ListSandboxes:input_type -> masuda.sandbox.v1.ListSandboxesRequest
+	18, // 32: masuda.sandbox.v1.SandboxService.DestroySandbox:input_type -> masuda.sandbox.v1.DestroySandboxRequest
+	20, // 33: masuda.sandbox.v1.SandboxService.SetPolicy:input_type -> masuda.sandbox.v1.SetPolicyRequest
+	22, // 34: masuda.sandbox.v1.SandboxService.Exec:input_type -> masuda.sandbox.v1.ExecRequest
+	24, // 35: masuda.sandbox.v1.SandboxService.EnableSsh:input_type -> masuda.sandbox.v1.EnableSshRequest
+	26, // 36: masuda.sandbox.v1.SandboxService.DisableSsh:input_type -> masuda.sandbox.v1.DisableSshRequest
+	28, // 37: masuda.sandbox.v1.SandboxService.ReadFile:input_type -> masuda.sandbox.v1.ReadFileRequest
+	30, // 38: masuda.sandbox.v1.SandboxService.WriteFile:input_type -> masuda.sandbox.v1.WriteFileRequest
+	32, // 39: masuda.sandbox.v1.SandboxService.WatchEvents:input_type -> masuda.sandbox.v1.WatchEventsRequest
+	3,  // 40: masuda.sandbox.v1.SandboxService.GetServerInfo:output_type -> masuda.sandbox.v1.ServerInfo
+	5,  // 41: masuda.sandbox.v1.SandboxService.BuildImage:output_type -> masuda.sandbox.v1.BuildImageEvent
+	8,  // 42: masuda.sandbox.v1.SandboxService.ListImages:output_type -> masuda.sandbox.v1.ListImagesResponse
+	14, // 43: masuda.sandbox.v1.SandboxService.CreateSandbox:output_type -> masuda.sandbox.v1.Sandbox
+	14, // 44: masuda.sandbox.v1.SandboxService.GetSandbox:output_type -> masuda.sandbox.v1.Sandbox
+	17, // 45: masuda.sandbox.v1.SandboxService.ListSandboxes:output_type -> masuda.sandbox.v1.ListSandboxesResponse
+	19, // 46: masuda.sandbox.v1.SandboxService.DestroySandbox:output_type -> masuda.sandbox.v1.DestroySandboxResponse
+	21, // 47: masuda.sandbox.v1.SandboxService.SetPolicy:output_type -> masuda.sandbox.v1.SetPolicyResponse
+	23, // 48: masuda.sandbox.v1.SandboxService.Exec:output_type -> masuda.sandbox.v1.ExecEvent
+	25, // 49: masuda.sandbox.v1.SandboxService.EnableSsh:output_type -> masuda.sandbox.v1.SshAccess
+	27, // 50: masuda.sandbox.v1.SandboxService.DisableSsh:output_type -> masuda.sandbox.v1.DisableSshResponse
+	29, // 51: masuda.sandbox.v1.SandboxService.ReadFile:output_type -> masuda.sandbox.v1.FileChunk
+	31, // 52: masuda.sandbox.v1.SandboxService.WriteFile:output_type -> masuda.sandbox.v1.WriteFileResponse
+	33, // 53: masuda.sandbox.v1.SandboxService.WatchEvents:output_type -> masuda.sandbox.v1.SandboxEvent
+	40, // [40:54] is the sub-list for method output_type
+	26, // [26:40] is the sub-list for method input_type
 	26, // [26:26] is the sub-list for extension type_name
 	26, // [26:26] is the sub-list for extension extendee
 	0,  // [0:26] is the sub-list for field type_name
@@ -2852,21 +2996,21 @@ func file_masuda_sandbox_v1_sandbox_proto_init() {
 	if File_masuda_sandbox_v1_sandbox_proto != nil {
 		return
 	}
-	file_masuda_sandbox_v1_sandbox_proto_msgTypes[1].OneofWrappers = []any{
+	file_masuda_sandbox_v1_sandbox_proto_msgTypes[3].OneofWrappers = []any{
 		(*BuildImageEvent_LogLine)(nil),
 		(*BuildImageEvent_Built)(nil),
 	}
-	file_masuda_sandbox_v1_sandbox_proto_msgTypes[19].OneofWrappers = []any{
+	file_masuda_sandbox_v1_sandbox_proto_msgTypes[21].OneofWrappers = []any{
 		(*ExecEvent_Started_)(nil),
 		(*ExecEvent_Stdout)(nil),
 		(*ExecEvent_Stderr)(nil),
 		(*ExecEvent_Exited_)(nil),
 	}
-	file_masuda_sandbox_v1_sandbox_proto_msgTypes[26].OneofWrappers = []any{
+	file_masuda_sandbox_v1_sandbox_proto_msgTypes[28].OneofWrappers = []any{
 		(*WriteFileRequest_Header_)(nil),
 		(*WriteFileRequest_Data)(nil),
 	}
-	file_masuda_sandbox_v1_sandbox_proto_msgTypes[29].OneofWrappers = []any{
+	file_masuda_sandbox_v1_sandbox_proto_msgTypes[31].OneofWrappers = []any{
 		(*SandboxEvent_HttpStarted)(nil),
 		(*SandboxEvent_HttpFinished)(nil),
 		(*SandboxEvent_HttpDenied)(nil),
@@ -2878,7 +3022,7 @@ func file_masuda_sandbox_v1_sandbox_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_masuda_sandbox_v1_sandbox_proto_rawDesc), len(file_masuda_sandbox_v1_sandbox_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   40,
+			NumMessages:   42,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

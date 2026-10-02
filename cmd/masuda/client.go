@@ -342,12 +342,11 @@ func formatEvent(ev *apiv1.WorkspaceEvent) string {
 			s += " outcome=" + w.Outcome
 		}
 		return s
+	case *apiv1.WorkspaceEvent_Notice:
+		// serve全体のこと（ディスク使用量の警告等）。workspace_idは空。
+		return fmt.Sprintf("%s notice %s %s", head, e.Notice.Kind, e.Notice.Detail)
 	case *apiv1.WorkspaceEvent_Engine:
 		x := e.Engine
-		if ev.WorkspaceId == "" {
-			// serve全体のこと（ディスク使用量の警告等）。出現もノードも無い。
-			return fmt.Sprintf("%s %s %s", head, x.Kind, x.Detail)
-		}
 		s := fmt.Sprintf("%s engine %s occ=%s %s/%s", head, x.Kind, orDash(x.Occurrence), x.Workflow, x.Node)
 		if x.Outcome != "" {
 			s += " outcome=" + x.Outcome

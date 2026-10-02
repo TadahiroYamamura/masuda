@@ -292,10 +292,18 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `privilegedCommandsApproved.<名前>.declHash` | 特権コマンドの承認。承認した時点の宣言の正準JSONのsha256で、宣言が変われば失効する |
 | `claudeToken` | Claude APIのトークンとして使う秘密ストアの名前。既定`CLAUDE_CODE_OAUTH_TOKEN` |
 | `vars` | `envFiles`の公開値（秘密として宣言していない変数の値） |
-| `stallAfter` | 無活動のしきい値（Goのduration）。既定`10m`（「活動の観測と停止の検知」の節） |
-| `diskWarnBytes` | ワークスペース置き場の使用量の警告しきい値（バイト）。既定20GiB（同上） |
+| `stallAfter` | 無活動のしきい値（Goのduration）のこのリポジトリでの上書き。無ければ`config.json`の値（「活動の観測と停止の検知」の節） |
 
 秘密の値はどちらにも置かない（`<DataDir>/secrets/<repo-hash>/<NAME>`）。
+
+リポジトリに依らない`masuda serve`全体の設定は`$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`。`masuda serve --config`で変えられる）。無ければすべて既定で、知らないキーがあれば`masuda serve`は起動しない。
+
+| キー | 意味 |
+|---|---|
+| `listen` | UDSに加えてConnectを待ち受けるループバックのアドレス（例`"127.0.0.1:7788"`）。ループバック以外は断る。無ければUDSだけ（「9. 公開API」の節） |
+| `sandboxSocket` | `masuda-sandbox serve`のUDS。既定`$XDG_RUNTIME_DIR/masuda-sandbox.sock`。`--sandbox-socket`を明示すればそちらが勝つ |
+| `stallAfter` | 無活動のしきい値の既定（Goのduration）。既定`10m` |
+| `diskWarnBytes` | ワークスペース置き場の使用量の警告しきい値（バイト）。既定20GiB。置き場はserve全体で1つなのでここだけに置く |
 
 ## 7. ゲストとホストの間
 
@@ -344,16 +352,16 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 
 ### 無活動のしきい値
 
-- 対象リポジトリの`settings.local.json`の`stallAfter`（Goのduration、既定`10m`）。何分黙れば異常かは利用者のマシンの速さやClaudeのプランで変わるので、コミットされる`settings.json`には置かない
-- `masuda serve --stall-after`が0でなければ、全ワークスペースでそちらが勝つ。既定は0（settingsに従う）
+- `config.json`の`stallAfter`（Goのduration、既定`10m`）を、対象リポジトリの`settings.local.json`の`stallAfter`が上書きする。何分黙れば異常かは利用者のマシンの速さやClaudeのプランで変わるので、コミットされる`settings.json`には置かない
+- `masuda serve --stall-after`が0でなければ、全ワークスペースでそちらが勝つ。既定は0（設定に従う）
 - 読むのはRun・Resumeで実行を組み立てるとき。読めない値・正でない値はFailedPreconditionで断る。変更はResumeか次のRunから効く
 - 見回りの間隔は最も短いしきい値の1/4（1秒〜30秒）
 
 ### ディスク使用量
 
 - serveは60秒ごとに`<DataDir>/workspaces/`の通常ファイルの合計と、その内数の`<id>/exports/`の合計を測る
-- しきい値は`settings.local.json`の`diskWarnBytes`（既定20GiB）。置き場はserve全体で1つなので、ワークスペースのあるリポジトリの値のうち最も小さいものを使う。読めない`settings.local.json`は既定として扱う
-- 下回っていた状態から超えたときにだけ、標準エラーへのログとWatchのイベント（`workspace_id`が空）を1回出す。超えたままなら繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）
+- しきい値は`config.json`の`diskWarnBytes`（既定20GiB）。置き場はserve全体で1つなので、リポジトリごとの設定には置かない
+- 下回っていた状態から超えたときにだけ、標準エラーへのログとWatchの`ServeNotice{kind: "disk-warning", value: 使用量}`（`workspace_id`が空）を1回出す。超えたままなら繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）
 - 何も消さない。何を残すかは利用者が`masuda remove`で決める
 
 ## 9. 公開API
@@ -367,14 +375,15 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 - Config: `ListEgress`/`ApproveEgress`/`RejectEgress`、`ListSecrets`/`SetSecret`/`ApproveSecret`/`RejectSecret`、`ListPrivilegedCommands`/`ApprovePrivilegedCommand`、`ListImages`/`BuildImage`
 - Workflow: `List`、`Show`（合成した図）、`Check`
 
-認証はローカル利用のみを前提とする。現在の実装は`$XDG_RUNTIME_DIR/masuda.sock`（UDS）だけで待ち受ける。リモートから使う場合はユーザーがリバースプロキシ等で守る。
+認証はローカル利用のみを前提とする。`$XDG_RUNTIME_DIR/masuda.sock`（UDS）で待ち受け、`config.json`に`listen`があるときだけ、そのループバックのアドレスでも同じハンドラで待ち受ける（ブラウザのGUIはUDSに繋げないため）。ループバックの待ち受けはCORSで任意のオリジンを許し、`Host`ヘッダーがループバックの名前でない要求は断る（DNS rebinding対策）。リモートから使う場合はユーザーがリバースプロキシ等で守る。
 
 ### Watch
 
 - イベントの`seq`は全ワークスペースで1本の通し番号。`after_seq`を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは`records/execution-log.jsonl`に残る）
 - `after_seq`が0（新しいものだけ）でも、最初に対象のワークスペースごとの今の`status`を1つずつ送る。この`status`は新しい番号を振らず、`seq`に今の最新の番号を入れる。購読の開始と状態の変化が前後しても、変化を取りこぼしたまま次の変化まで何も見えなくなることがない
 - `status`は内容が前に流したものと変わったときだけ流す。時刻（`updated_at`・`last_activity`）だけの違いでは流さない
-- `workspace_id`が空のイベントはserve全体についての通知で、どのワークスペースを指定したWatchにも届く。契約はこの通知の型として`ServeNotice{kind, detail, value}`を定める。現在の実装はディスク使用量の警告を`EngineEvent{kind: "disk-warning", detail}`として流し、`ServeNotice`はまだ出さない
+- `workspace_id`が空のイベントはserve全体についての通知（`ServeNotice{kind, detail, value}`）で、どのワークスペースを指定したWatchにも届く。今出すのはディスク使用量の警告（`disk-warning`）だけ
+- `after_seq`が最新の`seq`より大きければ`OutOfRange`で終わる（serveの再起動で番号が振り直された後に古い番号で繋いだ等）。クライアントは`after_seq: 0`で繋ぎ直す
 
 ### Gateの判断
 

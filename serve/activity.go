@@ -20,7 +20,8 @@ import (
 const DefaultStallAfter = config.DefaultStallAfter
 
 // stallFor はwの無活動のしきい値。serveの--stall-afterが指定されていればそれ、無ければ
-// 実行を組み立てたときに読んだsettings.local.jsonのstallAfter（既定10分）。
+// 実行を組み立てたときに読んだsettings.local.jsonのstallAfter、それも無ければconfig.jsonの
+// stallAfter（既定10分）。
 func (b *backend) stallFor(w *workspace.Workspace) time.Duration {
 	if b.stallOverride > 0 {
 		return b.stallOverride
@@ -28,13 +29,13 @@ func (b *backend) stallFor(w *workspace.Workspace) time.Duration {
 	if c := b.runFor(w.ID); c != nil && c.plan != nil && c.plan.stallAfter > 0 {
 		return c.plan.stallAfter
 	}
-	return DefaultStallAfter
+	return b.stallDefault
 }
 
 // patrolTick は見回りの間隔。最も短いしきい値の1/4（1秒〜30秒）にして、STALLEDになるのが
 // しきい値からその程度の遅れで済むようにする。
 func (b *backend) patrolTick() time.Duration {
-	shortest := DefaultStallAfter
+	shortest := b.stallDefault
 	if b.stallOverride > 0 {
 		shortest = b.stallOverride
 	} else {
