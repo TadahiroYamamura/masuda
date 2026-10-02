@@ -2,56 +2,251 @@
 // （`$XDG_DATA_HOME/masuda/workspaces/<id>/staging.git`）を扱う。
 // masudaだけが読み書きし、実リポジトリに触るのはpublishだけ
 // （docs/design/overview.md「4. ワークスペースとstaging」）。
-//
-// M1時点では旧internal/worktreeから写した種（bare cloneとfast-forward）だけを置く。
-// refの設計・bundle・commit-treeはM2で足す。
 package staging
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 )
 
-func runGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+// BaseRef は分岐元を指すref。diffの基準になる。
+const BaseRef = "refs/masuda/base"
+
+// WIPRef はノード境界のWIPスナップショットのref名を返す。
+func WIPRef(occurrence string) string { return "refs/masuda/wip/" + occurrence }
+
+// BranchRef はワークスペースのブランチのref名を返す。
+func BranchRef(branch string) string { return "refs/heads/" + branch }
+
+// ErrNotFound はrevやパスがstagingに無いことを表す。
+var ErrNotFound = errors.New("not found")
+
+// Repo は1つのstaging bareリポジトリ。
+type Repo struct {
+	Dir string
+}
+
+// Open は既存のstagingを開く。
+func Open(dir string) *Repo { return &Repo{Dir: dir} }
+
+// repoLocatingEnv は、masuda serve自身がgitのフック等から起動されたときに
+// 引き継いでしまうと、-Cで指定したのとは別のリポジトリを操作させる環境変数。
+// GIT_SSH_COMMAND・GIT_ASKPASS等の認証まわりはpushで要るので落とさない。
+var repoLocatingEnv = []string{
+	"GIT_DIR=", "GIT_WORK_TREE=", "GIT_INDEX_FILE=", "GIT_OBJECT_DIRECTORY=",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES=", "GIT_COMMON_DIR=", "GIT_NAMESPACE=",
+}
+
+func gitEnv(extra []string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra))
+	for _, kv := range os.Environ() {
+		drop := false
+		for _, p := range repoLocatingEnv {
+			if strings.HasPrefix(kv, p) {
+				drop = true
+				break
+			}
+		}
+		if !drop {
+			env = append(env, kv)
+		}
+	}
+	return append(env, extra...)
+}
+
+type gitCmd struct {
+	dir   string
+	args  []string
+	env   []string
+	stdin io.Reader
+}
+
+func (g gitCmd) run(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", g.dir}, g.args...)...)
+	cmd.Env = gitEnv(g.env)
+	cmd.Stdin = g.stdin
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w\n%s", strings.Join(args, " "), err, stderr.String())
+		return "", fmt.Errorf("git %s: %w\n%s", strings.Join(g.args, " "), err, stderr.String())
 	}
 	return stdout.String(), nil
+}
+
+func runGit(ctx context.Context, dir string, args ...string) (string, error) {
+	return gitCmd{dir: dir, args: args}.run(ctx)
+}
+
+func (r *Repo) git(ctx context.Context, args ...string) (string, error) {
+	return runGit(ctx, r.Dir, args...)
+}
+
+// validRev はrevがgitのオプションとして解釈されないことを確かめる。APIから来た
+// 文字列をそのままgitの引数に渡すので、`--output=...`のような値を弾く。
+func validRev(rev string) error {
+	if rev == "" || strings.HasPrefix(rev, "-") {
+		return fmt.Errorf("invalid rev %q", rev)
+	}
+	return nil
+}
+
+// resolve はrevをstaging内のオブジェクトハッシュへ解決する。kindは"commit"・"tree"等。
+// 無ければErrNotFound。
+func resolve(ctx context.Context, dir, rev, kind string) (string, error) {
+	if err := validRev(rev); err != nil {
+		return "", err
+	}
+	out, err := runGit(ctx, dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{"+kind+"}")
+	if err != nil {
+		return "", fmt.Errorf("%s %q: %w", kind, rev, ErrNotFound)
+	}
+	return strings.TrimSpace(out), nil
+}
+
+// ResolveCommit はrevをコミットハッシュへ解決する。
+func (r *Repo) ResolveCommit(ctx context.Context, rev string) (string, error) {
+	return resolve(ctx, r.Dir, rev, "commit")
 }
 
 // Clone は実リポジトリrepoRootからstagingをdirへ作る。
 // --localは同一ファイルシステムならオブジェクトをハードリンクするので、
 // 全履歴のcloneでも安い。
-func Clone(repoRoot, dir string) error {
-	_, err := runGit(repoRoot, "clone", "--bare", "--local", "--quiet", repoRoot, dir)
+func Clone(ctx context.Context, repoRoot, dir string) error {
+	_, err := runGit(ctx, repoRoot, "clone", "--bare", "--local", "--quiet", "--", repoRoot, dir)
 	return err
 }
 
-// FastForward はstagingのbranchを実リポジトリの同名ブランチへfast-forwardで反映する。
-// 分岐した履歴はgit自身が拒否するので（非0終了・部分的な状態は残らない）、
-// 強制的に解決することはない。
-func FastForward(repoRoot, stagingDir, branch string) error {
-	current, err := runGit(repoRoot, "branch", "--show-current")
-	if err != nil {
-		return err
+// CreateOptions はCreateの入力。
+type CreateOptions struct {
+	RepoRoot string // 実リポジトリ（作業ツリーのトップ）
+	Dir      string // 作るstaging.git
+	Branch   string // ワークスペースのブランチ。stagingにだけ作る
+	Base     string // 分岐元のrev。空なら実リポジトリのHEADが指すブランチ
+}
+
+// CreateResult はCreateが決めたもの。
+type CreateResult struct {
+	Base       string // 解決後の分岐元の名前（Baseが空なら既定ブランチ名）
+	BaseCommit string
+}
+
+// Create はstagingを作り、refs/masuda/baseとrefs/heads/<branch>を分岐元に置く。
+// 実リポジトリは読むだけで、ブランチもrefも作らない。
+func Create(ctx context.Context, o CreateOptions) (CreateResult, error) {
+	if _, err := runGit(ctx, o.RepoRoot, "check-ref-format", "--branch", o.Branch); err != nil || strings.HasPrefix(o.Branch, "-") {
+		return CreateResult{}, fmt.Errorf("invalid branch name %q", o.Branch)
 	}
-	if strings.TrimSpace(current) == branch {
-		// チェックアウト中のブランチのrefへは直接fetchできないため、
-		// FETCH_HEAD経由で作業ツリーごとfast-forwardする。
-		if _, err := runGit(repoRoot, "fetch", stagingDir, branch); err != nil {
-			return fmt.Errorf("fetching %s from staging: %w", branch, err)
+	base := o.Base
+	if base == "" {
+		// 実リポジトリにoriginがあってもorigin/HEADは使わない。ローカルの既定ブランチの
+		// 方が利用者の手元の状態に近く、publish先（同名ローカルブランチ）とも揃う。
+		// HEADがdetachedならそのコミットを分岐元にする。
+		out, err := runGit(ctx, o.RepoRoot, "symbolic-ref", "--quiet", "--short", "HEAD")
+		if err == nil {
+			base = strings.TrimSpace(out)
+		} else {
+			base = "HEAD"
 		}
-		_, err := runGit(repoRoot, "merge", "--ff-only", "FETCH_HEAD")
-		return err
 	}
-	// 強制でないrefspecは、無ければ作り、あればfast-forwardし、
-	// fast-forwardでない更新はgit自身が拒否する。
-	_, err = runGit(repoRoot, "fetch", stagingDir, branch+":"+branch)
+	baseCommit, err := resolve(ctx, o.RepoRoot, base, "commit")
+	if err != nil {
+		return CreateResult{}, fmt.Errorf("base: %w", err)
+	}
+	if base == "HEAD" {
+		base = baseCommit
+	}
+	if _, err := resolve(ctx, o.RepoRoot, BranchRef(o.Branch), "commit"); err == nil {
+		return CreateResult{}, fmt.Errorf("branch %q already exists in %s", o.Branch, o.RepoRoot)
+	}
+
+	if err := Clone(ctx, o.RepoRoot, o.Dir); err != nil {
+		return CreateResult{}, err
+	}
+	r := Open(o.Dir)
+	// cloneが残すoriginは実リポジトリを指す。stagingから実リポジトリへ書けるのは
+	// publishだけにしたいので、名前で辿れる経路を残さない。
+	if _, err := r.git(ctx, "remote", "remove", "origin"); err != nil {
+		return CreateResult{}, err
+	}
+	if _, err := r.git(ctx, "cat-file", "-e", baseCommit+"^{commit}"); err != nil {
+		// --localはobjectsディレクトリごと写すので通常ここには来ない。alternates越しで
+		// 届かないなどの例外に備え、分岐元のrefだけを取り直す。
+		full, ferr := runGit(ctx, o.RepoRoot, "rev-parse", "--symbolic-full-name", "--end-of-options", base)
+		if ferr != nil || strings.TrimSpace(full) == "" {
+			return CreateResult{}, fmt.Errorf("base commit %s not in staging", baseCommit)
+		}
+		if _, err := r.git(ctx, "fetch", "--quiet", "--no-tags", "--", o.RepoRoot, strings.TrimSpace(full)); err != nil {
+			return CreateResult{}, err
+		}
+	}
+	if _, err := r.git(ctx, "update-ref", BaseRef, baseCommit, ""); err != nil {
+		return CreateResult{}, err
+	}
+	if _, err := r.git(ctx, "update-ref", BranchRef(o.Branch), baseCommit, ""); err != nil {
+		return CreateResult{}, err
+	}
+	return CreateResult{Base: base, BaseCommit: baseCommit}, nil
+}
+
+// ImportBundle はゲストが作ったbundleからsrcRefを取り込み、refs/masuda/wip/<occurrence>に置く。
+// WIPスナップショットはノード境界ごとに作り直すので、同じ出現IDの再取り込みは上書きする。
+func (r *Repo) ImportBundle(ctx context.Context, bundlePath, srcRef, occurrence string) (string, error) {
+	if err := validRev(srcRef); err != nil {
+		return "", err
+	}
+	if occurrence == "" || strings.ContainsAny(occurrence, "/ ") {
+		return "", fmt.Errorf("invalid occurrence %q", occurrence)
+	}
+	if _, err := r.git(ctx, "bundle", "verify", "--quiet", "--", bundlePath); err != nil {
+		return "", err
+	}
+	ref := WIPRef(occurrence)
+	if _, err := r.git(ctx, "fetch", "--quiet", "--no-tags", "--", bundlePath, "+"+srcRef+":"+ref); err != nil {
+		return "", err
+	}
+	return r.ResolveCommit(ctx, ref)
+}
+
+// CreateBundle はrefs（stagingのref名）を含むbundleをoutPathに書く。ゲストへ渡す用。
+func (r *Repo) CreateBundle(ctx context.Context, outPath string, refs ...string) error {
+	if len(refs) == 0 {
+		return errors.New("bundle needs at least one ref")
+	}
+	for _, ref := range refs {
+		if err := validRev(ref); err != nil {
+			return err
+		}
+	}
+	_, err := r.git(ctx, append([]string{"bundle", "create", "--quiet", outPath}, refs...)...)
 	return err
+}
+
+// Ref は1つのrefとその指すコミット。
+type Ref struct {
+	Name   string
+	Commit string
+}
+
+// ListRefs はstagingのrefをすべて返す。注釈付きタグはコミットへ剥がす。
+func (r *Repo) ListRefs(ctx context.Context) ([]Ref, error) {
+	out, err := r.git(ctx, "for-each-ref", "--format=%(refname) %(if)%(*objectname)%(then)%(*objectname)%(else)%(objectname)%(end)")
+	if err != nil {
+		return nil, err
+	}
+	var refs []Ref
+	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+		name, commit, ok := strings.Cut(line, " ")
+		if !ok {
+			continue
+		}
+		refs = append(refs, Ref{Name: name, Commit: commit})
+	}
+	return refs, nil
 }
