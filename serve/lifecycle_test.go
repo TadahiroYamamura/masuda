@@ -60,6 +60,7 @@ func newSmokeRepo(t *testing.T) string {
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# r\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeDockerfile(t, repo)
 	gitT(t, repo, "add", "-A")
 	gitT(t, repo, "commit", "-qm", "init")
 	return repo

@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
 	"github.com/TadahiroYamamura/masuda/internal/runner"
@@ -24,10 +26,6 @@ import (
 
 // claudeAPIHost はClaude APIのホスト。どのノードの方針でも許可し、トークンの置換先にする。
 const claudeAPIHost = "api.anthropic.com"
-
-// tokenFile はClaude APIのトークンを置くファイル（DataDirの下）。秘密ストア（M6）に
-// 統合するまでの暫定の置き場所。
-const tokenFile = "claude-oauth-token"
 
 // loadDefinitions はdir（対象リポジトリの`.masuda/`か、その写し）と同梱の定義を読み込む。
 // reviewsはdirの`reviews/`（無ければnil）。
@@ -68,6 +66,10 @@ func copyDefinitions(repoRoot, dst string) error {
 		case d.IsDir():
 			return os.MkdirAll(target, 0o700)
 		case d.Type().IsRegular():
+			if rel == config.SettingsLocalFileName {
+				// 利用者ごとの承認は定義ではない。実行のたびに作業ツリーのものを読む。
+				return nil
+			}
 			b, err := os.ReadFile(p)
 			if err != nil {
 				return err
@@ -85,7 +87,7 @@ func copyDefinitions(repoRoot, dst string) error {
 //
 // MCPはsandboxより先に待ち受ける。tcp_mapsに渡すポートが要るのと、ゲストのclaudeが
 // 起動直後に呼んでも、フックが起動の途中で届いても受けられるようにするため。
-func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, reviews fs.FS) (*runCtl, error) {
+func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, reviews fs.FS, plan *bootPlan) (*runCtl, error) {
 	id := w.ID
 	store, err := runner.OpenFileStore(filepath.Join(w.RecordsDir(), "engine.json"))
 	if err != nil {
@@ -100,11 +102,14 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, reviews fs.
 		Reviews:       reviews,
 		AlwaysHosts:   []string{claudeAPIHost},
 		AlwaysSecrets: []string{guest.TokenEnv},
+		Egress:        plan.egress,
+		Secrets:       plan.placeholderNames,
+		Plaintext:     sortedKeys(plan.plaintext),
 		OnLog:         func(e engine.Event) { b.publishEngine(id, e) },
 	})
 	ctx, cancel := context.WithCancel(b.ctx)
 	c := &runCtl{
-		b: b, id: id, set: set, runner: r, author: author,
+		b: b, id: id, set: set, runner: r, author: author, plan: plan,
 		changed: make(chan struct{}), ctx: ctx, cancel: cancel, bootDone: make(chan struct{}),
 	}
 	c.eng = engine.New(set, store, r, engine.Options{})
@@ -179,7 +184,12 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 		// serveの再起動で残ったsandboxがあれば作り直す前に壊す（無ければNotFoundで何もしない）。
 		b.destroySandbox(c.id)
 	}
-	if err := b.createSandbox(ctx, w, c.mcp.Addr()); err != nil {
+	buildID, err := b.buildWorkspaceImage(ctx, w, c.plan.image)
+	if err != nil {
+		return err
+	}
+	sb, err := b.createSandbox(ctx, w, c.mcp.Addr(), c.plan, buildID)
+	if err != nil {
 		return err
 	}
 	b.wg.Add(1)
@@ -187,58 +197,64 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 		defer b.wg.Done()
 		b.watchSandbox(ctx, c.id)
 	}()
-	if err := b.prepareGuest(ctx, w, c.set); err != nil {
+	env := c.plan.guestEnv(sb.Placeholders)
+	c.runner.SetGuestEnv(env)
+	if err := b.prepareGuest(ctx, w, c.set, c.plan, sb.Placeholders); err != nil {
 		return err
 	}
 	if b.fake {
 		return nil
 	}
-	sb, err := b.sandbox.GetSandbox(ctx, connect.NewRequest(&sandboxv1.GetSandboxRequest{Id: c.id}))
-	if err != nil {
-		return err
-	}
 	return guest.Launch(ctx, b.sandbox, guest.LaunchOptions{
 		SandboxID: c.id,
-		Token:     sb.Msg.Placeholders[guest.TokenEnv],
+		Token:     sb.Placeholders[guest.TokenEnv],
 		GitName:   c.author.Name,
 		GitEmail:  c.author.Email,
+		Env:       env,
 	})
 }
 
-// createSandbox はワークスペースのsandboxを作る。Claude APIのトークンだけを秘密として宣言し、
-// 初期の方針でAPIへの経路を開ける。ゲストから`masuda.internal:7000`をMCPのポートへ対応付ける。
-func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcpAddr string) error {
-	token := ""
-	if !b.fake {
-		t, err := os.ReadFile(filepath.Join(b.dataDir, tokenFile))
-		if err != nil {
-			return fmt.Errorf("reading the Claude API token: %w", err)
-		}
-		token = strings.TrimSpace(string(t))
+// buildWorkspaceImage はワークスペースの定義の写しにあるイメージのエントリをビルドし、
+// build_idを返す。ビルドのログは`records/image-build.log`に残す。
+func (b *backend) buildWorkspaceImage(ctx context.Context, w *workspace.Workspace, entry string) (string, error) {
+	logf, err := os.OpenFile(filepath.Join(w.RecordsDir(), "image-build.log"), os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600)
+	if err != nil {
+		return "", err
 	}
-	// build_idはまだ決めない。イメージのビルドと解決（.masuda/images/<entry>）は後の項目で入れる。
-	_, err := b.sandbox.CreateSandbox(ctx, connect.NewRequest(&sandboxv1.CreateSandboxRequest{
+	defer logf.Close()
+	dir := filepath.Join(w.DefinitionsDir(), "images", entry)
+	id, err := b.buildImage(ctx, w.RepoRoot, entry, dir, func(line string) error {
+		_, err := fmt.Fprintln(logf, line)
+		return err
+	})
+	if err != nil {
+		return "", fmt.Errorf("building image %s: %w", entry, err)
+	}
+	return id, nil
+}
+
+// createSandbox はワークスペースのsandboxを作る。宣言した秘密（Claude APIのトークンを含む）を
+// 渡し、初期の方針でAPIへの経路だけを開ける。plaintextの秘密は本物の値をenvで渡す。
+// ゲストから`masuda.internal:7000`をMCPのポートへ対応付ける。
+func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcpAddr string, plan *bootPlan, buildID string) (*sandboxv1.Sandbox, error) {
+	res, err := b.sandbox.CreateSandbox(ctx, connect.NewRequest(&sandboxv1.CreateSandboxRequest{
 		Id:          w.ID,
+		BuildId:     buildID,
 		DefaultUser: guest.User,
-		Secrets: []*sandboxv1.SecretDecl{{
-			Name:              guest.TokenEnv,
-			Value:             token,
-			Hosts:             []string{claudeAPIHost},
-			SubstituteIn:      []sandboxv1.SubstituteIn{sandboxv1.SubstituteIn_SUBSTITUTE_IN_HEADER},
-			PlaceholderPrefix: "sk-ant-oat01-",
-		}},
-		Policy:  &sandboxv1.Policy{AllowedHosts: []string{claudeAPIHost}, EnabledSecrets: []string{guest.TokenEnv}},
-		TcpMaps: []*sandboxv1.TcpMap{{Host: guest.MCPHost, Port: guest.MCPPort, Upstream: mcpAddr}},
+		Env:         plan.plaintext,
+		Secrets:     plan.secrets,
+		Policy:      &sandboxv1.Policy{AllowedHosts: []string{claudeAPIHost}, EnabledSecrets: []string{guest.TokenEnv}},
+		TcpMaps:     []*sandboxv1.TcpMap{{Host: guest.MCPHost, Port: guest.MCPPort, Upstream: mcpAddr}},
 	}))
 	if err != nil {
-		return fmt.Errorf("creating sandbox: %w", err)
+		return nil, fmt.Errorf("creating sandbox: %w", err)
 	}
-	return nil
+	return res.Msg, nil
 }
 
 // prepareGuest はstagingのブランチをゲストへcloneさせ、ループ規約・サブエージェント定義・
-// フック設定を置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
-func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, set *engine.Set) error {
+// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェックを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
+func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, set *engine.Set, plan *bootPlan, placeholders map[string]string) error {
 	repo := staging.Open(w.StagingDir())
 	// 毎回別のディレクトリに作る。Stopで取り消されたgitが`.lock`を残しても、再開を妨げないように。
 	tmp, err := os.MkdirTemp(w.Dir, ".bootstrap-")
@@ -267,10 +283,13 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, set 
 		agents = append(agents, guest.AgentFile(a))
 	}
 	return guest.Prepare(ctx, b.sandbox, guest.Layout{
-		SandboxID: w.ID,
-		Branch:    w.Branch,
-		Bundle:    bundle,
-		Agents:    agents,
+		SandboxID:      w.ID,
+		Branch:         w.Branch,
+		Bundle:         bundle,
+		Agents:         agents,
+		ClaudeSettings: plan.claudeSettings,
+		EnvFiles:       plan.guestEnvFiles(placeholders),
+		Checks:         plan.checks,
 	})
 }
 
@@ -286,4 +305,13 @@ func gitIdentity(ctx context.Context, repoRoot string) staging.Identity {
 		return strings.TrimSpace(string(out))
 	}
 	return staging.Identity{Name: get("user.name"), Email: get("user.email")}
+}
+
+func sortedKeys(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }

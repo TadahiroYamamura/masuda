@@ -57,6 +57,10 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	if err != nil {
 		return nil, err
 	}
+	plan, err := s.backend.planBoot(defs, repoRoot, set, m.Workflow, m.Image)
+	if err != nil {
+		return nil, err
+	}
 
 	s.backend.lifeMu.Lock()
 	defer s.backend.lifeMu.Unlock()
@@ -65,7 +69,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 		Branch:   m.Branch,
 		Base:     m.Base,
 		Workflow: m.Workflow,
-		Image:    m.Image,
+		Image:    plan.image,
 		State:    workspace.StateStarting,
 	})
 	if err != nil {
@@ -100,7 +104,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 		_ = s.store.Remove(w.ID)
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	c, err := s.backend.newRunCtl(w, set, reviews)
+	c, err := s.backend.newRunCtl(w, set, reviews, plan)
 	if err != nil {
 		_ = s.store.Remove(w.ID)
 		return nil, connect.NewError(connect.CodeInternal, err)

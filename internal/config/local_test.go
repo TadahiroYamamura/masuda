@@ -11,14 +11,14 @@ func TestLoadLocalMissingFileReturnsZeroValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal() error = %v, want nil", err)
 	}
-	if settings.PrivilegedCommands != nil {
-		t.Fatalf("PrivilegedCommands = %v, want nil", settings.PrivilegedCommands)
+	if settings.PrivilegedCommandsApproved != nil || settings.ClaudeTokenName() != ReservedSecret {
+		t.Fatalf("zero value expected: %+v", settings)
 	}
 }
 
 func TestSaveLocalRoundTripEgressAllowlist(t *testing.T) {
 	dir := t.TempDir()
-	want := LocalSettings{EgressAllowlist: []string{"github.com"}}
+	want := LocalSettings{EgressApproved: []string{"github.com"}}
 	if err := SaveLocal(dir, want); err != nil {
 		t.Fatalf("SaveLocal() error = %v, want nil", err)
 	}
@@ -27,16 +27,16 @@ func TestSaveLocalRoundTripEgressAllowlist(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal() error = %v, want nil", err)
 	}
-	if len(got.EgressAllowlist) != 1 || got.EgressAllowlist[0] != "github.com" {
-		t.Fatalf("EgressAllowlist = %v, want [github.com]", got.EgressAllowlist)
+	if len(got.EgressApproved) != 1 || got.EgressApproved[0] != "github.com" {
+		t.Fatalf("EgressApproved = %v, want [github.com]", got.EgressApproved)
 	}
 }
 
 func TestSaveLocalRoundTripPrivilegedCommands(t *testing.T) {
 	dir := t.TempDir()
 	want := LocalSettings{
-		PrivilegedCommands: map[string]PrivilegedCommandApproval{
-			"e2e": {Approved: true, DeclHash: "abc123"},
+		PrivilegedCommandsApproved: map[string]PrivilegedCommandApproval{
+			"e2e": {DeclHash: "abc123"},
 		},
 	}
 	if err := SaveLocal(dir, want); err != nil {
@@ -47,12 +47,12 @@ func TestSaveLocalRoundTripPrivilegedCommands(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadLocal() error = %v, want nil", err)
 	}
-	approval, ok := got.PrivilegedCommands["e2e"]
+	approval, ok := got.PrivilegedCommandsApproved["e2e"]
 	if !ok {
 		t.Fatal("PrivilegedCommands[\"e2e\"] missing after round trip")
 	}
-	if !approval.Approved || approval.DeclHash != "abc123" {
-		t.Fatalf("approval = %+v, want Approved=true DeclHash=abc123", approval)
+	if approval.DeclHash != "abc123" {
+		t.Fatalf("approval = %+v, want DeclHash=abc123", approval)
 	}
 }
 

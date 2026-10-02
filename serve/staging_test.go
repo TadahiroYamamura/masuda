@@ -36,6 +36,18 @@ func gitT(t *testing.T, dir string, args ...string) string {
 // smokeInputs は同梱のworkflows/smokeが求める入力。
 var smokeInputs = map[string][]byte{"instructions": []byte("x")}
 
+// writeDockerfile はRunが要るイメージのエントリ（.masuda/images/default/Dockerfile）を置く。
+func writeDockerfile(t *testing.T, repo string) {
+	t.Helper()
+	dir := filepath.Join(repo, ".masuda", "images", "default")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM ubuntu:24.04\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newTestAPI(t *testing.T) (apiv1connect.WorkspaceServiceClient, apiv1connect.StagingServiceClient, string) {
 	t.Helper()
 	return newTestAPIWith(t, nil)
@@ -49,6 +61,7 @@ func newTestAPIWith(t *testing.T, wrap func(sandboxv1connect.SandboxServiceClien
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte(strings.Repeat("line\n", 50000)), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	writeDockerfile(t, repo)
 	gitT(t, repo, "add", "-A")
 	gitT(t, repo, "commit", "-qm", "init")
 	dataDir := t.TempDir()

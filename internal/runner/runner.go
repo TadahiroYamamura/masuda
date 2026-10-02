@@ -18,6 +18,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ import (
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
@@ -49,6 +51,15 @@ type Options struct {
 	// AlwaysHosts・AlwaysSecrets は、どのノードの方針にも足すもの（Claude APIへの経路）。
 	AlwaysHosts   []string
 	AlwaysSecrets []string
+	// Egress はノードの`egress:`が選んでよいホストの上限（settings.jsonの宣言と
+	// settings.local.jsonの承認の積）。外れたノードはSetPolicyの前に止める。
+	Egress []string
+	// Secrets はノードの`secrets:`が選んでよい名前（placeholderモードの宣言）。sandboxへ
+	// 宣言済みで、SetPolicyで有効にするもの。
+	Secrets []string
+	// Plaintext はplaintextモードの秘密の名前。値は作成時のenvで常にゲストにあるので、
+	// ノードが選んでも有効化はしない（選ぶこと自体は許す）。
+	Plaintext []string
 	// OnLog は実行記録を1行書くたびに呼ばれる（公開APIのWatchへ流す）。nilなら呼ばない。
 	OnLog func(engine.Event)
 }
@@ -56,6 +67,8 @@ type Options struct {
 // Runner は1つのワークスペースのengine.Runner。
 type Runner struct {
 	o       Options
+	envMu   sync.Mutex
+	env     map[string]string // SetGuestEnv
 	ws      *workspace.Workspace
 	repo    *staging.Repo
 	logMu   sync.Mutex
@@ -137,15 +150,58 @@ func (r *Runner) shell(ctx context.Context, cwd, script string) (guest.ExecResul
 // Policy
 // ---------------------------------------------------------------------------
 
+// ErrPolicy はノードの方針が設定（宣言と承認）の範囲を外れていること。
+var ErrPolicy = errors.New("node policy outside the repository settings")
+
+// SetPolicy はノードの方針をsandboxへ渡す。ノードのegressがOptions.Egress（とAlwaysHosts）の
+// 部分集合でなければ、sandboxへ渡す前に断る。ワークフロー定義は宣言と別のファイルなので、
+// 定義側だけで許可ホストを広げられないようにするため。
 func (r *Runner) SetPolicy(ctx context.Context, _ engine.RunID, p engine.Policy) error {
+	if err := r.CheckPolicy(p); err != nil {
+		return err
+	}
+	var enabled []string
+	for _, name := range p.Secrets {
+		if slices.Contains(r.o.Secrets, name) {
+			enabled = append(enabled, name)
+		}
+	}
 	_, err := r.o.Sandbox.SetPolicy(ctx, connect.NewRequest(&sandboxv1.SetPolicyRequest{
 		Id: r.o.SandboxID,
 		Policy: &sandboxv1.Policy{
 			AllowedHosts:   union(r.o.AlwaysHosts, p.Egress),
-			EnabledSecrets: union(r.o.AlwaysSecrets, p.Secrets),
+			EnabledSecrets: union(r.o.AlwaysSecrets, enabled),
 		},
 	}))
 	return err
+}
+
+// CheckPolicy はノードの方針が設定の範囲に収まっているかを確かめる。
+func (r *Runner) CheckPolicy(p engine.Policy) error {
+	allowed := append(append([]string(nil), r.o.AlwaysHosts...), r.o.Egress...)
+	var problems []string
+	for _, h := range p.Egress {
+		if !config.HostAllowed(allowed, h) {
+			problems = append(problems, fmt.Sprintf("egress %s is not both declared in .masuda/settings.json and approved (masuda egress approve %s)", h, h))
+		}
+	}
+	for _, name := range p.Secrets {
+		if !slices.Contains(r.o.Secrets, name) && !slices.Contains(r.o.Plaintext, name) && !slices.Contains(r.o.AlwaysSecrets, name) {
+			problems = append(problems, fmt.Sprintf("secret %s is not declared in .masuda/settings.json", name))
+		}
+	}
+	if len(problems) > 0 {
+		return fmt.Errorf("%w: %s", ErrPolicy, strings.Join(problems, "; "))
+	}
+	return nil
+}
+
+// SetGuestEnv はexecノードのコマンドへ渡す環境変数（宣言した秘密のプレースホルダ）を設定する。
+// プレースホルダはsandboxを作るまで分からず、再開で作り直すと変わるので、起動のたびに設定し直す。
+func (r *Runner) SetGuestEnv(env map[string]string) {
+	r.envMu.Lock()
+	defer r.envMu.Unlock()
+	r.env = env
 }
 
 func union(a, b []string) []string {
@@ -309,6 +365,11 @@ func (r *Runner) RunCommand(ctx context.Context, t engine.CommandTask) (engine.C
 		return engine.CommandResult{}, err
 	}
 	env := r.gitEnv()
+	r.envMu.Lock()
+	for k, v := range r.env {
+		env[k] = v
+	}
+	r.envMu.Unlock()
 	env["MASUDA_OCCURRENCE"] = t.Occurrence
 	env["MASUDA_IN"] = InDir(t.Occurrence)
 	env["MASUDA_OUT"] = OutDir(t.Occurrence)

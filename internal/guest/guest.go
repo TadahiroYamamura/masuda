@@ -1,6 +1,5 @@
 // Package guest は、sandboxを作った直後にホストがゲストへ置くもの
 // （docs/guest-protocol.md「起動時にホストがゲストへ置くもの」）と、メインセッションの起動を扱う。
-// .envの生成（envFiles）と対象リポジトリのclaudeSettingsの合成は設定の項目（M6）で足す。
 package guest
 
 import (
@@ -10,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
@@ -59,7 +59,26 @@ type Layout struct {
 	// Bundle はstagingから作ったbundleのホスト側パス。refs/heads/<Branch>を含むこと。
 	Bundle string
 	Agents []Agent
+	// ClaudeSettings は対象リポジトリのclaudeSettings（JSONオブジェクト、無ければnil）。
+	// `~/.claude/settings.json`へフック設定と合成する。
+	ClaudeSettings json.RawMessage
+	// EnvFiles は作業ツリーに生成するファイル。Pathは/workspaceからの相対パス（検査済みであること）。
+	EnvFiles []EnvFile
+	// Checks はチェック名→シェルコマンド。`/masuda/checks/<名前>`に実行可能スクリプトとして置く。
+	Checks map[string]string
 }
+
+// EnvFile は作業ツリーに生成するdotenv形式のファイル1つ。
+type EnvFile struct {
+	Path string
+	Vars []EnvVar
+}
+
+// EnvVar はEnvFileの1行。
+type EnvVar struct{ Name, Value string }
+
+// ChecksDir はチェックのスクリプトを置くゲストのディレクトリ。
+const ChecksDir = "/masuda/checks"
 
 // bundleGuestPath はbundleを置くゲストのパス。cloneが終わったら消す。
 const bundleGuestPath = "/masuda/bootstrap.bundle"
@@ -95,14 +114,91 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 			return err
 		}
 	}
-	settings, err := Settings()
+	settings, err := Settings(l.ClaudeSettings)
 	if err != nil {
 		return err
 	}
 	if err := WriteBytes(ctx, c, l.SandboxID, Home+"/.claude/settings.json", settings, 0o644); err != nil {
 		return err
 	}
-	return WriteBytes(ctx, c, l.SandboxID, Home+"/.claude.json", ClaudeJSON(), 0o600)
+	if err := WriteBytes(ctx, c, l.SandboxID, Home+"/.claude.json", ClaudeJSON(), 0o600); err != nil {
+		return err
+	}
+	if err := writeEnvFiles(ctx, c, l.SandboxID, l.EnvFiles); err != nil {
+		return err
+	}
+	return writeChecks(ctx, c, l.SandboxID, l.Checks)
+}
+
+// writeEnvFiles は生成したファイルを作業ツリーへ置き、ゲストの`.git/info/exclude`に足す。
+// 対象リポジトリが`.env`をgitignoreしていなくても、生成物（プレースホルダ入り）がスナップショットに
+// 入って計画外の変更として現れたり、commitに載ったりしないようにするため。
+func writeEnvFiles(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, files []EnvFile) error {
+	if len(files) == 0 {
+		return nil
+	}
+	var exclude []string
+	for _, f := range files {
+		p := path.Clean(f.Path)
+		if p == "." || path.IsAbs(p) || p == ".." || strings.HasPrefix(p, "../") {
+			return fmt.Errorf("env file path %q escapes /workspace", f.Path)
+		}
+		if err := WriteBytes(ctx, c, id, "/workspace/"+p, DotEnv(f.Vars), 0o600); err != nil {
+			return err
+		}
+		exclude = append(exclude, "/"+p)
+	}
+	script := "printf '%s\\n' " + strings.Join(quoteAll(exclude), " ") + " >> workspace/.git/info/exclude"
+	if res, err := Shell(ctx, c, id, "/", "mkdir -p workspace/.git/info && "+script); err != nil {
+		return fmt.Errorf("excluding env files: %w", err)
+	} else if res.ExitCode != 0 {
+		return fmt.Errorf("excluding env files: exit %d: %s", res.ExitCode, strings.TrimSpace(string(res.Stderr)))
+	}
+	return nil
+}
+
+// writeChecks はチェックをゲストの`/masuda/checks/<名前>`へ実行可能スクリプトとして置く。
+// コマンドはsettings.jsonにシェルの1行として書かれるので、`sh -e`で/workspaceから動かす。
+func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, checks map[string]string) error {
+	names := make([]string, 0, len(checks))
+	for name := range checks {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if name == "" || name != path.Base(name) || strings.HasPrefix(name, ".") {
+			return fmt.Errorf("invalid check name %q", name)
+		}
+		if err := WriteBytes(ctx, c, id, ChecksDir+"/"+name, CheckScript(checks[name]), 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// CheckScript はチェック1つのスクリプトの中身。
+func CheckScript(command string) []byte {
+	return []byte("#!/bin/sh -e\ncd /workspace\n" + strings.TrimRight(command, "\n") + "\n")
+}
+
+// DotEnv はvarsをdotenv形式にする。値は常にダブルクォートで囲み、`\`・`"`・`$`・バッククォートを
+// エスケープする（展開や変数参照をする方言でも値がそのまま読めるように）。改行は`\n`と書く
+// （dotenvの多くは戻すが、shの`.`で読むと2文字のまま残る）。
+func DotEnv(vars []EnvVar) []byte {
+	var b strings.Builder
+	for _, v := range vars {
+		r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "\n", `\n`, "`", "\\`")
+		fmt.Fprintf(&b, "%s=\"%s\"\n", v.Name, r.Replace(v.Value))
+	}
+	return []byte(b.String())
+}
+
+func quoteAll(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = shellQuote(s)
+	}
+	return out
 }
 
 // ClaudeJSON はゲストの`~/.claude.json`。MCPサーバー`masuda`を利用者スコープで登録する。
@@ -152,6 +248,8 @@ type LaunchOptions struct {
 	Token string
 	// GitName・GitEmail はゲストでのコミットの作者。
 	GitName, GitEmail string
+	// Env はそのほかにメインセッションへ渡す環境変数（宣言した秘密のプレースホルダ）。
+	Env map[string]string
 }
 
 // StartPrompt はメインセッションに最初に渡すプロンプト。
@@ -161,7 +259,11 @@ const StartPrompt = "~/.claude/CLAUDE.md のmasudaのループ規約に従い、
 // このExecに渡し、セッション内のclaudeへ継承させる。フェイクsandboxでは呼ばないこと
 // （ExecがホストでそのままtmuxとClaude Codeを起動してしまう）。
 func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o LaunchOptions) error {
-	env := map[string]string{
+	env := map[string]string{}
+	for k, v := range o.Env {
+		env[k] = v
+	}
+	for k, v := range map[string]string{
 		TokenEnv: o.Token,
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
 		// next_taskはゲート・質問の間ブロックするので、MCPのツール呼び出しを7日まで待たせる。
@@ -170,6 +272,8 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 		"GIT_AUTHOR_EMAIL":    o.GitEmail,
 		"GIT_COMMITTER_NAME":  o.GitName,
 		"GIT_COMMITTER_EMAIL": o.GitEmail,
+	} {
+		env[k] = v
 	}
 	cmd := "claude --dangerously-skip-permissions -- " + shellQuote(StartPrompt)
 	res, err := Exec(ctx, c, &sandboxv1.ExecRequest{
@@ -187,16 +291,30 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 	return nil
 }
 
-// Settings はゲストの`~/.claude/settings.json`。フックはいずれもstdinのJSONを
-// そのまま`/hooks`へ送る。対象リポジトリの`claudeSettings`との合成はまだしない。
-func Settings() ([]byte, error) {
+// Settings はゲストの`~/.claude/settings.json`。対象リポジトリのclaudeSettings（nil可）に
+// masudaのフックを重ねる。フックはいずれもstdinのJSONをそのまま`/hooks`へ送る。
+//
+// masudaが使うイベントはmasudaのフックで置き換え、それ以外のイベントのフックは残す。
+// 同じイベントに対象リポジトリのフックを並べて残さないのは、活動の判定（Notification等）に
+// 使う入力の前に別のフックが失敗・遅延して、観測が欠けるのを避けるため。
+func Settings(claudeSettings json.RawMessage) ([]byte, error) {
+	out := map[string]any{}
+	if len(claudeSettings) > 0 {
+		if err := json.Unmarshal(claudeSettings, &out); err != nil || out == nil {
+			return nil, fmt.Errorf("claudeSettings must be a JSON object: %v", err)
+		}
+	}
+	hooks, _ := out["hooks"].(map[string]any)
+	if hooks == nil {
+		hooks = map[string]any{}
+	}
 	cmd := "curl -s -X POST " + HooksURL + " -d @-"
 	hook := []map[string]any{{"hooks": []map[string]any{{"type": "command", "command": cmd}}}}
-	hooks := map[string]any{}
 	for _, ev := range []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd"} {
 		hooks[ev] = hook
 	}
-	b, err := json.MarshalIndent(map[string]any{"hooks": hooks}, "", "  ")
+	out["hooks"] = hooks
+	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
 		return nil, err
 	}

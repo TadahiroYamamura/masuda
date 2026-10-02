@@ -36,6 +36,8 @@ type runCtl struct {
 	runner *runner.Runner
 	mcp    *mcp.Server
 	author staging.Identity
+	// plan はsandboxとゲストの組み立て方（Run・Resumeの受け付け時に設定から作ったもの）。
+	plan *bootPlan
 
 	// ctx はこの実行の寿命。Stop・Remove・serveの停止で取り消され、ブロック中のnext_task・
 	// ask_human、起動の途中、engineの進行を止める。

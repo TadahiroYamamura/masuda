@@ -15,18 +15,33 @@ func SettingsLocalPath(repoRoot string) string {
 	return filepath.Join(repoRoot, DirName, SettingsLocalFileName)
 }
 
-// LocalSettings は`.masuda/settings.local.json`の形。
+// LocalSettings は`.masuda/settings.local.json`の形。利用者ごとの承認と、リポジトリに
+// コミットしない値を置く。秘密の値はここに置かない（internal/secrets）。
 type LocalSettings struct {
-	// EgressAllowlist はConfig.EgressAllowlistのうちユーザーが承認したもの。
-	// 両方にあるホストだけが許可される。
-	EgressAllowlist    []string                             `json:"egressAllowlist,omitempty"`
-	PrivilegedCommands map[string]PrivilegedCommandApproval `json:"privilegedCommands,omitempty"`
+	// EgressApproved はSettings.Egressのうち利用者が承認したもの。両方にあるホストだけが許可される。
+	EgressApproved []string `json:"egressApproved,omitempty"`
+	// SecretsApproved はplaintextモードの秘密のうち、本物の値をゲストへ置いてよいと承認した名前。
+	SecretsApproved []string `json:"secretsApproved,omitempty"`
+	// PrivilegedCommandsApproved は特権コマンドの承認。承認した時点の宣言のハッシュを持つ。
+	PrivilegedCommandsApproved map[string]PrivilegedCommandApproval `json:"privilegedCommandsApproved,omitempty"`
+	// ClaudeToken はClaude APIのトークンとして使う秘密ストアの名前。既定はCLAUDE_CODE_OAUTH_TOKEN。
+	// アカウントを使い分けるとき、別名で登録したトークンを選ぶ。
+	ClaudeToken string `json:"claudeToken,omitempty"`
+	// Vars はenvFilesの公開値（秘密として宣言していない変数）の値。
+	Vars map[string]string `json:"vars,omitempty"`
 }
 
-// PrivilegedCommandApproval は宣言された特権コマンド1つへのユーザーの判断。
+// PrivilegedCommandApproval は宣言された特権コマンド1つへの承認。
 type PrivilegedCommandApproval struct {
-	Approved bool   `json:"approved"`
-	DeclHash string `json:"declHash,omitempty"`
+	DeclHash string `json:"declHash"`
+}
+
+// ClaudeTokenName はClaudeTokenの既定を埋めた値を返す。
+func (l LocalSettings) ClaudeTokenName() string {
+	if l.ClaudeToken == "" {
+		return ReservedSecret
+	}
+	return l.ClaudeToken
 }
 
 // LoadLocal はrepoRootの承認ファイルを読む。無ければ「まだ何も承認していない」ゼロ値。
@@ -40,7 +55,7 @@ func LoadLocal(repoRoot string) (LocalSettings, error) {
 		return LocalSettings{}, err
 	}
 	var s LocalSettings
-	if err := json.Unmarshal(data, &s); err != nil {
+	if err := decodeStrict(data, &s); err != nil {
 		return LocalSettings{}, fmt.Errorf("parsing %s: %w", path, err)
 	}
 	return s, nil
