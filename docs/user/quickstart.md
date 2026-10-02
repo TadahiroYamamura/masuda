@@ -19,11 +19,24 @@ masuda init
 ```
 
 ```text
-created .masuda/settings.json
 created .masuda/images/default/Dockerfile
+created .masuda/settings.json
 created .masuda/reviews/comment-history-leakage.md
-...（レビュー観点が14個）
+created .masuda/reviews/dead-code.md
+created .masuda/reviews/error-handling-gaps.md
+created .masuda/reviews/heavy-loop-processing.md
+created .masuda/reviews/implicit-type-conversion.md
+created .masuda/reviews/injection-vulnerability.md
+created .masuda/reviews/input-validation-gaps.md
+created .masuda/reviews/logging-secrets.md
+created .masuda/reviews/missing-tests-guard-clauses.md
+created .masuda/reviews/missing-tests-new-code.md
+created .masuda/reviews/n-plus-one-query.md
+created .masuda/reviews/nil-check-gaps.md
+created .masuda/reviews/resource-leak.md
+created .masuda/reviews/secret-hardcode.md
 created .gitignore (.masuda/settings.local.json)
+note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json
 ```
 
 `masuda init`は`masuda serve`無しで動く。既にあるファイルは上書きせず、足りないものだけ足す。`.gitignore`には利用者ごとの承認を書く`.masuda/settings.local.json`を足す（`.masuda/`ごと無視している行があれば足さない）。
@@ -104,13 +117,13 @@ masuda image build default
 
 ```sh
 masuda run workflows/develop --branch feat/triangle --input instructions=@task.md
-# 4f1c2a9e8b3d starting
+# 55a7dbe1b35f starting
 ```
 
 - `--branch`は作るブランチの名前。対象リポジトリに既にある名前は使えない
 - 分岐元は、今チェックアウトしているブランチ。変えるなら`--base main`のように渡す
 - `--input instructions=@task.md`の`@`は「ファイルの中身」。`instructions=文字列`と直接書いてもよい
-- 出てきた`4f1c2a9e8b3d`がワークスペースのID。以下`<id>`と書く
+- 出てきた`55a7dbe1b35f`がワークスペースのID。以下`<id>`と書く
 
 `masuda run`はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。
 
@@ -123,17 +136,20 @@ masuda watch <id>
 状態の変化、ワークフローの進み、VMからの通信が1行ずつ流れる。Ctrl-Cで見るのをやめても実行は続く。
 
 ```text
-12 10:41:02 4f1c2a9e8b3d status running working
-15 10:41:30 4f1c2a9e8b3d engine enter occ=000001 workflows/develop/investigate
-16 10:41:31 4f1c2a9e8b3d http POST api.anthropic.com/v1/messages ...
+3 01:38:08 55a7dbe1b35f status running working
+27 01:38:12 55a7dbe1b35f engine enter occ=0000001 workflows/develop/investigate
+28 01:38:12 55a7dbe1b35f status running working agent investigator (occ 0000001)
+31 01:38:13 55a7dbe1b35f http POST api.anthropic.com/v1/messages ...
+32 01:38:14 55a7dbe1b35f http POST api.anthropic.com/v1/messages 200 869ms
+33 01:38:14 55a7dbe1b35f hook PostToolUse Read
 ...
 ```
 
 一覧で見るなら`masuda list`。
 
 ```text
-ID            BRANCH         STATE         ACTIVITY        POSITION                 OPEN
-4f1c2a9e8b3d  feat/triangle  waiting_gate  waiting_gate    ...                      gate:plan
+ID            BRANCH         STATE         ACTIVITY              POSITION                 OPEN
+55a7dbe1b35f  feat/triangle  waiting_gate  waiting_gate 10s ago  gate plan (occ 0000003)  gate:plan
 ```
 
 各列の意味は[運用](operations.md#list)。VMの中のClaude Codeの画面を直接見たければ`masuda chat <id>`（`C-b d`で抜ける。抜けても実行は続く）。
@@ -145,21 +161,21 @@ ID            BRANCH         STATE         ACTIVITY        POSITION             
 ```sh
 masuda gate list
 # WORKSPACE     OCCURRENCE  GATE  TARGET  OPENED
-# 4f1c2a9e8b3d  000004      plan  plan    10-02 10:47:12
+# 55a7dbe1b35f  0000003     plan  plan    10-03 01:38:54
 
-masuda gate show <id> 000004
+masuda gate show <id> 0000003
 ```
 
-`gate show`は計画（変更方針と、ステップごとの対象ファイル）と、打てるコマンドを出す。
+`gate show`は計画（変更方針と、ステップごとの対象ファイル。`summary`・`steps`・`expected_byproducts`を持つJSONがそのまま1行で出る）と、打てるコマンドを出す。
 
 ```sh
-masuda gate approve <id> 000004 --hash <gate showが出したtarget_hash>
+masuda gate approve <id> 0000003 --hash <gate showが出したtarget_hash>
 ```
 
 - `--hash`を渡すと、あなたが読んだ内容と同じものだけを承認する。省くと、その時点で開いているゲートの内容を承認する
-- 直してほしければ`masuda gate reject <id> 000004 --comment "ステップ2でテストも書くこと"`。計画がコメントを踏まえて書き直され、もう一度このゲートが開く
+- 直してほしければ`masuda gate reject <id> 0000003 --comment "ステップ2でテストも書くこと"`。計画がコメントを踏まえて書き直され、もう一度このゲートが開く
 
-承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→コミット」が進む。途中レビューで直しきれない指摘があったときだけ、途中の承認（`interim`ゲート）で止まる。
+承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→コミット」が進む。途中レビューで直しきれない指摘があったときだけ、途中の承認（`interim`ゲート）で止まる。計画に無いファイルが変わっていれば、コミットの前に`deviation`ゲートでも止まる（gitで追跡している`__pycache__`等が典型。[トラブルシューティング](troubleshooting.md#deviation)）。
 
 ## 9. レビュー結果を承認する（review gate）
 
@@ -187,7 +203,8 @@ masuda gate approve <id> <出現ID> --hash <target_hash>
 
 ```sh
 masuda list --all
-# ... feat/triangle  done  idle  outcome done  -
+# ID            BRANCH         STATE  ACTIVITY      POSITION      OPEN
+# 55a7dbe1b35f  feat/triangle  done   idle 59s ago  outcome done  -
 
 git log --oneline main..feat/triangle
 git switch feat/triangle
