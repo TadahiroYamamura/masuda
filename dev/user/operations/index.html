@@ -1596,7 +1596,7 @@ masuda<span class="w"> </span>watch<span class="w"> </span>--after<span class="w
 </tr>
 </tbody>
 </table>
-<p><code>--after</code>無しで始めると、まず対象のワークスペースの今の<code>status</code>が1行ずつ出る。再送できるのは<code>masuda serve</code>のメモリにある直近10000件で、<code>masuda serve</code>を再起動するとそれより前は再送できない（実行の記録そのものは<code>records/execution-log.jsonl</code>に残る）。</p>
+<p><code>--after</code>無しで始めると、まず対象のワークスペースの今の<code>status</code>が1行ずつ出る。再送できるのは<code>masuda serve</code>のメモリにある直近10000件で、<code>masuda serve</code>を再起動するとそれより前は再送できない（実行の記録そのものは<code>records/execution-log.jsonl</code>に残る）。直近10000件より前の番号を<code>--after</code>に渡すとエラーになるので、<code>--after</code>無しで始め直す。</p>
 <h2 id="chat">中を覗く（chat）<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>chat<span class="w"> </span>&lt;id&gt;
 </code></pre></div>

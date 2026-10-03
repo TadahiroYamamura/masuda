@@ -1635,6 +1635,11 @@ outcomes:
 <li><a href="../settings/#claude-dir"><code>.masuda/claude/</code></a>に置いたスキルを使わせるなら、<code>tools</code>に<code>Skill</code>を足す。同梱のエージェントは<code>Skill</code>を持っている</li>
 <li><code>inputs</code>・<code>outputs</code>: 受け取る・書くデータの名前。入力はVMの<code>/masuda/in/&lt;出現ID&gt;/&lt;名前&gt;</code>にファイルとして置かれる</li>
 <li><code>outcomes</code>: 終わり方と、その意味の説明。<code>done</code>は必須。エージェントはこの中から1つを選んで報告する</li>
+<li><code>model</code>・<code>effort</code>（任意）: その役のサブエージェントのモデルと推論の努力量。VMの中のClaude Codeのサブエージェント定義にそのまま渡る</li>
+<li><code>model</code>: <code>sonnet</code>・<code>opus</code>・<code>haiku</code>等の別名、フルのモデルID、<code>inherit</code>。省略するとメインセッションのモデル（<a href="../settings/#claudesettings"><code>claudeSettings</code></a>の<code>model</code>）を継承する</li>
+<li><code>effort</code>: <code>low</code>・<code>medium</code>・<code>high</code>・<code>xhigh</code>・<code>max</code>のいずれか。省略するとセッションの既定を継承する</li>
+<li><code>continues</code>で続きが成立したサブエージェントは、起動時の<code>model</code>・<code>effort</code>のまま動く。続ける側の役の値は、新しく起動したときだけ使われる</li>
+<li>同梱の役のモデルを変えるときは、定義を写さずに設定の<a href="../settings/#agents"><code>agents</code></a>に書く。<code>agents</code>の値はfrontmatterより優先する</li>
 </ul>
 <p>本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（15個）の定義は<a href="https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents">masuda-engineの<code>engine/defaults/agents/</code></a>にあり、書き方の見本になる。</p>
 <h2 id="_3">データとスキーマ<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
@@ -1672,7 +1677,7 @@ outcomes:
 <tr>
 <td><code>workflows/fix</code></td>
 <td><code>instructions</code></td>
-<td>小さな修正向け。調査と計画を1つのセッションで済ませ、途中レビュー・横断チェック・レポートを省いて反映する</td>
+<td>小さな修正向け。調査と計画を1つのセッションで済ませ、横断チェック・レポートを省いて反映する</td>
 </tr>
 <tr>
 <td><code>workflows/review</code></td>
@@ -1682,17 +1687,12 @@ outcomes:
 <tr>
 <td><code>workflows/implement/build-step</code></td>
 <td><code>step</code></td>
-<td><code>develop</code>の部品。計画の1ステップを実装・テスト・途中レビュー・修正・コミットする</td>
+<td><code>develop</code>の部品。計画の1ステップを実装・テスト・コミットする</td>
 </tr>
 <tr>
 <td><code>workflows/fix/build-step</code></td>
 <td><code>step</code></td>
-<td><code>fix</code>の部品。計画の1ステップを実装・テスト・コミットする（途中レビュー無し）</td>
-</tr>
-<tr>
-<td><code>workflows/implement/interim-review</code></td>
-<td><code>diff</code></td>
-<td>部品。ステップの差分を、<code>trigger</code>が当てはまる観点だけで1つのセッションでレビューし、別の役が指摘の正確さを確かめる</td>
+<td><code>fix</code>の部品。計画の1ステップを実装・テスト・コミットする</td>
 </tr>
 <tr>
 <td><code>workflows/review/perspectives</code></td>
@@ -1704,16 +1704,13 @@ outcomes:
 <td><code>diff</code></td>
 <td>部品。観点に分けにくい横断的な問題を探して確かめる</td>
 </tr>
-<tr>
-<td><code>workflows/smoke</code></td>
-<td><code>instructions</code></td>
-<td>疎通確認用。指示をそのまま書き返して終える</td>
-</tr>
 </tbody>
 </table>
+<p>| <code>workflows/smoke</code> | <code>instructions</code> | 疎通確認用。指示をそのまま書き返して終える |</p>
+<p>どちらで始めるかの目安: <strong>まず<code>fix</code>を試す</strong>。<code>develop</code>は、調査から始めたいもの、指示が曖昧で計画への問いと人間への質問を通したいものに使う。<code>develop</code>は調査・計画への問いと手直しの工程と、6役の最終レビュー（横断チェック・レポートを含む）を通るので、同じ変更でも<code>fix</code>より時間とトークンがかかる。ゲートで却下したときは工程を最初からはやり直さず、直前の役が却下理由やコメントに答えて直す（<a href="#develop">develop</a>）が、それでも1往復の待ちは生じるので、指示書の時点で決められることは決めておく。</p>
 <h3 id="develop">develop<a class="headerlink" href="#develop" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>調査 → 計画 → 問い立て → 問いへの回答と計画の手直し →（答えられない問いがあれば）人間への質問 → 回答を受けた手直し
-     → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 修正 → 再確認 → コミット）
+     → [plan gate] → ステップごとに（実装 → テスト → コミット）
      → 全観点レビュー → 横断チェック → 修正 → 再確認 → コミット → レポート → [review gate] → publish
 </code></pre></div>
 <ul>
@@ -1723,10 +1720,11 @@ outcomes:
 <li><code>open</code>の問いが残ると、聞く役（plan-interviewer、<code>ask</code>ノード）が、それらを1つの質問にまとめて人間に聞く。plan gateより前に<code>masuda list</code>の<code>question:&lt;出現ID&gt;</code>として現れるので、<code>masuda question list</code>で読み、<code>masuda question answer</code>で問いのidごとに答える。答えを受けて計画を直す役がもう一度直し（<code>revise-answered</code>ノード）、まだ判断できない問いがあれば再び聞く。手直しが上限（3回）に達したときは、そのままplan gateへ進む</li>
 <li>実装する役（implementer）は計画（<code>plan</code>）に加えて調査結果（<code>investigation</code>）を読み、既存の流儀に合わせ、既にある機能を重複して作らない</li>
 <li>実装する役（implementer）と直す役（fixer）は、追加・変更したコードコメントを<code>comment-manifest</code>に列挙し、どの基準（10行以上の要約・選択の理由・コードから読めない背景・トレードオフ等）を満たすかを書く。基準を言えないコメントは書かない。レビューでは観点<code>comment-criteria</code>がこの一覧と差分を照合する</li>
-<li>ステップの実装は<code>/masuda/checks/test</code>（<code>settings.json</code>の<code>checks.test</code>）が通るまで、最大3回やり直す。直せなければ<code>stuck</code>で計画の承認へ戻る</li>
+<li>ステップの実装は<code>/masuda/checks/test</code>（<code>settings.json</code>の<code>checks.test</code>）が通るまで、最大3回やり直す。直せなければ<code>stuck</code>で計画の承認へ戻る。ステップごとのレビューは無く、レビューは全ステップの後に1回だけ行う</li>
 <li>レビューと修正は役ごとに1つのセッションで行う。レビューする役（reviewer）が観点を順に当てて指摘を台帳（<code>findings</code>）に書き、確かめる役（review-checker）が指摘の正確さを確かめる（不正確ならreviewerへ戻す）。直す役（fixer）は、実装したサブエージェントの続きとして（<code>continues: agents/implementer</code>）自動で直してよい指摘（<code>autofix: true</code>）をまとめて直し、指摘が誤り・計画の判断に反すると判断したものは直さずに反論する。再確認する役（rechecker）が解消を確かめ、反論が妥当なら指摘を取り下げる（未解決ならfixerへ戻す）</li>
-<li>途中レビューは、ステップの差分（<code>step-diff</code>）に対して、reviewerが各観点の<code>trigger</code>を見て当てはまる観点だけで行う（<a href="../reviews/">レビュー観点</a>）。指摘が無ければ（<code>clean</code>）、または直す指摘が無ければ（<code>nothing_to_fix</code>）そのままコミットする。直しきれなければ<code>interim</code>ゲートで止まる</li>
-<li>最後のレビューは全観点で行う。指摘が0件でもreview-checkerが見落としを確かめる。横断チェックの後に修正と再確認をし、直しきれない指摘はレポートに残してコミットへ進む。レポート（<code>report</code>）を書いて<code>review</code>ゲートを開く。却下するとコメントを踏まえて手直し（<code>rework</code>）からやり直す</li>
+<li>最後のレビューは全観点で行う。指摘が0件でもreview-checkerが見落としを確かめる。横断チェックの後に修正と再確認をし、直しきれない指摘はレポートに残してコミットへ進む。レポート（<code>report</code>）を書いて<code>review</code>ゲートを開く</li>
+<li>plan gateで却下すると、計画を直す役（plan-reviser、<code>revise-rejected</code>ノード）が却下理由を最優先の問いとして答え、直前の計画を直してplan gateへ戻す。調査・計画・問い立てはやり直さない。却下理由で人間に聞くことが生じれば質問へ、調査が足りなければ調査へ進む</li>
+<li>review gateで却下すると、実装した役の続き（<code>rework</code>ノード）が行コメントを直し、テスト（<code>rework-test</code>）とコミット（<code>rework-commit</code>）の後に同じ<code>review</code>ゲートへ戻る。最終レビューの段（全観点レビュー・横断チェック・修正・再確認・レポート）はやり直さないので、自分の指摘が直ったかを差分で確かめる</li>
 <li>publishのとき<code>report</code>をexportsに書き出す</li>
 </ul>
 <p><code>masuda workflow show workflows/develop</code>が出す図（部品と、masudaが差し込むゲートを含む。黄色が人間の判断）:</p>
@@ -1740,6 +1738,7 @@ flowchart TD
     w0_revise["revise&lt;br/&gt;type: agent&lt;br/&gt;agents/plan-reviser&lt;br/&gt;max: 3"]
     w0_ask{"ask&lt;br/&gt;type: question&lt;br/&gt;agents/plan-interviewer"}
     w0_revise_answered["revise-answered&lt;br/&gt;type: agent&lt;br/&gt;agents/plan-reviser&lt;br/&gt;max: 3"]
+    w0_revise_rejected["revise-rejected&lt;br/&gt;type: agent&lt;br/&gt;agents/plan-reviser&lt;br/&gt;max: 3"]
     w0_approve_plan{"approve-plan&lt;br/&gt;type: approval&lt;br/&gt;gate: plan, target: plan"}
     w0_implement["implement&lt;br/&gt;type: foreach&lt;br/&gt;over: steps&lt;br/&gt;body: workflows/implement/build-step"]
     w0_review["review&lt;br/&gt;type: workflow&lt;br/&gt;workflows/review/perspectives"]
@@ -1776,16 +1775,21 @@ flowchart TD
   w0_revise_answered --&gt;|"exhausted"| w0_approve_plan
   w0_revise_answered --&gt;|"needs_human"| w0_ask
   w0_revise_answered --&gt;|"needs_more_investigation"| w0_investigate
+  w0_revise_rejected -. "after run" .-&gt; w0_revise_rejected_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w0_revise_rejected --&gt;|"done"| w0_approve_plan
+  w0_revise_rejected --&gt;|"exhausted"| w0_approve_plan
+  w0_revise_rejected --&gt;|"needs_human"| w0_ask
+  w0_revise_rejected --&gt;|"needs_more_investigation"| w0_investigate
   w0_approve_plan --&gt;|"approved"| w0_implement
-  w0_approve_plan --&gt;|"rejected"| w0_plan
+  w0_approve_plan --&gt;|"rejected"| w0_revise_rejected
   w0_implement --&gt;|"done"| w0_review
   w0_implement --&gt;|"stuck"| w0_approve_plan
   w0_implement -. "foreach" .-&gt; w1_implement
   w0_review --&gt;|"clean"| w0_cross_cutting
   w0_review --&gt;|"done"| w0_cross_cutting
-  w0_review -. "workflow" .-&gt; w4_review
+  w0_review -. "workflow" .-&gt; w3_review
   w0_cross_cutting --&gt;|"done"| w0_fix
-  w0_cross_cutting -. "workflow" .-&gt; w3_explore
+  w0_cross_cutting -. "workflow" .-&gt; w2_explore
   w0_fix --&gt;|"cannot_fix"| w0_review_commit
   w0_fix --&gt;|"done"| w0_recheck
   w0_fix --&gt;|"exhausted"| w0_review_commit
@@ -1806,16 +1810,12 @@ flowchart TD
   w0_rework_test --&gt;|"done"| w0_rework_commit
   w0_rework_test --&gt;|"failed"| w0_rework
   w0_rework_commit -. "before commit" .-&gt; w0_rework_commit_deviation{{"deviation gate (engine)&lt;br/&gt;opens if files outside the plan changed"}}
-  w0_rework_commit --&gt;|"done"| w0_review
+  w0_rework_commit --&gt;|"done"| w0_approve_review
   w0_rework_commit --&gt;|"rejected"| w0_rework
   w0_publish --&gt;|"done"| w0_end_done
   subgraph w1_graph["workflows/implement/build-step"]
     w1_implement["implement&lt;br/&gt;type: agent&lt;br/&gt;agents/implementer&lt;br/&gt;max: 3"]
     w1_test["test&lt;br/&gt;type: exec&lt;br/&gt;/masuda/checks/test&lt;br/&gt;max: 3"]
-    w1_review["review&lt;br/&gt;type: workflow&lt;br/&gt;workflows/implement/interim-review"]
-    w1_fix["fix&lt;br/&gt;type: agent&lt;br/&gt;agents/fixer&lt;br/&gt;max: 3"]
-    w1_recheck["recheck&lt;br/&gt;type: agent&lt;br/&gt;agents/rechecker&lt;br/&gt;max: 3"]
-    w1_approve_interim{"approve-interim&lt;br/&gt;type: approval&lt;br/&gt;gate: interim, target: step-diff"}
     w1_commit["commit&lt;br/&gt;type: commit&lt;br/&gt;scope: step"]
     w1_end_done((("end")))
     w1_end_stuck((("end:stuck")))
@@ -1823,62 +1823,35 @@ flowchart TD
   w1_implement --&gt;|"done"| w1_test
   w1_implement --&gt;|"exhausted"| w1_end_stuck
   w1_implement --&gt;|"stuck"| w1_end_stuck
-  w1_test --&gt;|"done"| w1_review
+  w1_test --&gt;|"done"| w1_commit
   w1_test --&gt;|"failed"| w1_implement
-  w1_review --&gt;|"clean"| w1_commit
-  w1_review --&gt;|"done"| w1_fix
-  w1_review -. "workflow" .-&gt; w2_interim_review
-  w1_fix --&gt;|"cannot_fix"| w1_approve_interim
-  w1_fix --&gt;|"done"| w1_recheck
-  w1_fix --&gt;|"exhausted"| w1_approve_interim
-  w1_fix --&gt;|"nothing_to_fix"| w1_commit
-  w1_recheck -. "after run" .-&gt; w1_recheck_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w1_recheck --&gt;|"done"| w1_commit
-  w1_recheck --&gt;|"exhausted"| w1_approve_interim
-  w1_recheck --&gt;|"unresolved"| w1_fix
-  w1_approve_interim --&gt;|"approved"| w1_commit
-  w1_approve_interim --&gt;|"rejected"| w1_implement
   w1_commit -. "before commit" .-&gt; w1_commit_deviation{{"deviation gate (engine)&lt;br/&gt;opens if files outside the plan changed"}}
   w1_commit --&gt;|"done"| w1_end_done
   w1_commit --&gt;|"rejected"| w1_implement
-  subgraph w2_graph["workflows/implement/interim-review"]
-    w2_interim_review["interim-review&lt;br/&gt;type: agent&lt;br/&gt;agents/reviewer&lt;br/&gt;max: 3"]
-    w2_interim_check["interim-check&lt;br/&gt;type: agent&lt;br/&gt;agents/review-checker&lt;br/&gt;max: 3"]
-    w2_end_clean((("end:clean")))
+  subgraph w2_graph["workflows/review/cross-cutting"]
+    w2_explore["explore&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-explorer&lt;br/&gt;max: 3"]
+    w2_verify["verify&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-verifier&lt;br/&gt;max: 3"]
     w2_end_done((("end")))
   end
-  w2_interim_review -. "after run" .-&gt; w2_interim_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w2_interim_review --&gt;|"clean"| w2_end_clean
-  w2_interim_review --&gt;|"done"| w2_interim_check
-  w2_interim_review --&gt;|"exhausted"| w2_end_done
-  w2_interim_check -. "after run" .-&gt; w2_interim_check_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w2_interim_check --&gt;|"clean"| w2_end_clean
-  w2_interim_check --&gt;|"done"| w2_end_done
-  w2_interim_check --&gt;|"inaccurate"| w2_interim_review
-  subgraph w3_graph["workflows/review/cross-cutting"]
-    w3_explore["explore&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-explorer&lt;br/&gt;max: 3"]
-    w3_verify["verify&lt;br/&gt;type: agent&lt;br/&gt;agents/cross-cutting-verifier&lt;br/&gt;max: 3"]
+  w2_explore -. "after run" .-&gt; w2_explore_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w2_explore --&gt;|"done"| w2_verify
+  w2_explore --&gt;|"none_found"| w2_end_done
+  w2_verify -. "after run" .-&gt; w2_verify_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w2_verify --&gt;|"done"| w2_end_done
+  subgraph w3_graph["workflows/review/perspectives"]
+    w3_review["review&lt;br/&gt;type: agent&lt;br/&gt;agents/reviewer&lt;br/&gt;max: 3"]
+    w3_check_review["check-review&lt;br/&gt;type: agent&lt;br/&gt;agents/review-checker&lt;br/&gt;max: 3"]
+    w3_end_clean((("end:clean")))
     w3_end_done((("end")))
   end
-  w3_explore -. "after run" .-&gt; w3_explore_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w3_explore --&gt;|"done"| w3_verify
-  w3_explore --&gt;|"none_found"| w3_end_done
-  w3_verify -. "after run" .-&gt; w3_verify_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w3_verify --&gt;|"done"| w3_end_done
-  subgraph w4_graph["workflows/review/perspectives"]
-    w4_review["review&lt;br/&gt;type: agent&lt;br/&gt;agents/reviewer&lt;br/&gt;max: 3"]
-    w4_check_review["check-review&lt;br/&gt;type: agent&lt;br/&gt;agents/review-checker&lt;br/&gt;max: 3"]
-    w4_end_clean((("end:clean")))
-    w4_end_done((("end")))
-  end
-  w4_review -. "after run" .-&gt; w4_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w4_review --&gt;|"clean"| w4_check_review
-  w4_review --&gt;|"done"| w4_check_review
-  w4_review --&gt;|"exhausted"| w4_end_done
-  w4_check_review -. "after run" .-&gt; w4_check_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
-  w4_check_review --&gt;|"clean"| w4_end_clean
-  w4_check_review --&gt;|"done"| w4_end_done
-  w4_check_review --&gt;|"inaccurate"| w4_review
+  w3_review -. "after run" .-&gt; w3_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w3_review --&gt;|"clean"| w3_check_review
+  w3_review --&gt;|"done"| w3_check_review
+  w3_review --&gt;|"exhausted"| w3_end_done
+  w3_check_review -. "after run" .-&gt; w3_check_review_deviation{{"deviation gate (engine)&lt;br/&gt;opens if this read-only agent changed the tree"}}
+  w3_check_review --&gt;|"clean"| w3_end_clean
+  w3_check_review --&gt;|"done"| w3_end_done
+  w3_check_review --&gt;|"inaccurate"| w3_review
   triage{{"triage gate (engine)&lt;br/&gt;can interrupt any node when an agent reports a concern"}}
   classDef human fill:#fde68a,stroke:#b45309
   classDef engine stroke-dasharray: 4 3
@@ -1890,19 +1863,16 @@ flowchart TD
   class w0_questions_deviation human
   class w0_revise_deviation human
   class w0_revise_answered_deviation human
+  class w0_revise_rejected_deviation human
   class w0_recheck_deviation human
   class w0_review_commit_deviation human
   class w0_report_deviation human
   class w0_rework_commit_deviation human
-  class w1_approve_interim human
-  class w1_recheck_deviation human
   class w1_commit_deviation human
-  class w2_interim_review_deviation human
-  class w2_interim_check_deviation human
-  class w3_explore_deviation human
-  class w3_verify_deviation human
-  class w4_review_deviation human
-  class w4_check_review_deviation human
+  class w2_explore_deviation human
+  class w2_verify_deviation human
+  class w3_review_deviation human
+  class w3_check_review_deviation human
   class triage engine</code></pre>
 <h3 id="fix">fix<a class="headerlink" href="#fix" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code>調査と計画（1セッション） → [plan gate] → ステップごとに（実装 → テスト → コミット）
@@ -1911,7 +1881,7 @@ flowchart TD
 <p>typoの修正や小さなバグの修正のように、計画が1〜2ステップで済む依頼向け。<code>develop</code>との違い:</p>
 <ul>
 <li>調査と計画を1つのセッション（quick-planner）で行う。quick-plannerは読み取り専用で、調査結果（<code>investigation</code>）と計画（<code>plan</code>）を書く。実装する役はどちらも読む</li>
-<li>ステップごとの途中レビューと<code>interim</code>ゲートが無い。ステップは実装→テスト→コミットだけ</li>
+<li>ゲートで却下したときの戻り先が違う。plan gateの却下はquick-plannerが調査と計画をやり直し、review gateの却下は手直し（<code>rework</code>）の後に全観点レビューからやり直す</li>
 <li>最後のレビューは全観点レビュー（reviewer→review-checker）だけで、横断チェックが無い。指摘が無ければ（<code>clean</code>）修正と再確認を飛ばしてコミットへ進む</li>
 <li>レポートを書かない。<code>review</code>ゲートでは差分と、stagingのコメント（指摘）を見て判断する。publishでexportsに書き出すものも無い</li>
 <li>指示が曖昧で計画を立てられなければ、quick-plannerは推測で計画を書かず<code>needs_human</code>で終える。実行は<code>outcome needs_human</code>の<code>done</code>になり、確かめたい疑問が理由として<code>masuda list</code>のPOSITIONに出る（<a href="../operations/#list">運用</a>）。疑問に答える形で指示書を直して<code>run</code>し直す</li>

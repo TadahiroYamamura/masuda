@@ -1397,7 +1397,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </tr>
 <tr>
 <td><code>trigger</code></td>
-<td>途中レビュー（<code>develop</code>のステップごとのレビュー）でこの観点を見るべき変更の条件を、自然文で書く。書かなければ、その観点は途中レビューでも常に当てられる</td>
+<td>途中レビューでこの観点を見るべき変更の条件を、自然文で書く。途中レビューは、自分のワークフローで<code>interim-</code>で始まる名前のノードにreviewerを置いたときのレビューで、同梱の<code>develop</code>・<code>fix</code>・<code>review</code>は最終レビューだけなので全観点を当て、<code>trigger</code>は効かない。書かなければ、その観点は途中レビューでも常に当てられる</td>
 </tr>
 <tr>
 <td><code>enable</code></td>
@@ -1416,12 +1416,12 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </thead>
 <tbody>
 <tr>
-<td><code>develop</code>のステップごとの途中レビュー</td>
-<td>レビューの役（<code>reviewer</code>）が、そのステップの差分を各観点の<code>trigger</code>に照らし、該当しない観点を飛ばす。迷ったら飛ばしてよい（見逃しは最後のレビューで拾う）。<code>trigger</code>の無い観点は飛ばさず常に当てる</td>
+<td><code>develop</code>・<code>fix</code>の最後のレビュー、<code>review</code>ワークフロー</td>
+<td>すべての観点。同梱のワークフローのレビューはこれだけ</td>
 </tr>
 <tr>
-<td><code>develop</code>・<code>fix</code>の最後のレビュー、<code>review</code>ワークフロー</td>
-<td>すべての観点（<code>fix</code>には途中レビューが無い）</td>
+<td>途中レビュー（自分のワークフローで<code>interim-</code>で始まる名前のノードにreviewerを置いたとき）</td>
+<td>レビューの役（<code>reviewer</code>）が、差分を各観点の<code>trigger</code>に照らし、該当しない観点を飛ばす。迷ったら飛ばしてよい（見逃しは最後のレビューで拾う前提）。<code>trigger</code>の無い観点は飛ばさず常に当てる</td>
 </tr>
 </tbody>
 </table>
@@ -1435,7 +1435,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 <tr>
 <th>ID</th>
 <th>名前</th>
-<th><code>trigger</code>（途中レビューで当てる条件）</th>
+<th><code>trigger</code>（途中レビューで当てる条件。同梱のワークフローでは使わない）</th>
 </tr>
 </thead>
 <tbody>
@@ -1487,12 +1487,12 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 <tr>
 <td><code>missing-tests-guard-clauses</code></td>
 <td>ガード処理に対応するテストの漏れ</td>
-<td>なし（途中レビューでも常に当てる）</td>
+<td>なし（途中レビューを置いても常に当てる）</td>
 </tr>
 <tr>
 <td><code>missing-tests-new-code</code></td>
 <td>新規コードへのテスト漏れ</td>
-<td>なし（途中レビューでも常に当てる）</td>
+<td>なし（途中レビューを置いても常に当てる）</td>
 </tr>
 <tr>
 <td><code>n-plus-one-query</code></td>
@@ -1517,7 +1517,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </tbody>
 </table>
 <p><code>comment-criteria</code>は、実装する役・直す役が書いたコメントの一覧（<code>comment-manifest</code>。<a href="../workflows/">ワークフロー</a>）と差分のコメントを照合する。一覧に無いコメント、一覧の基準が実際には成り立たないコメント、テストのヘルパー関数・テスト内の変数へのコメントは、自動で直してよい指摘（削除）になる。<code>nolint</code>は<code>//nolint:xxx // 理由</code>の1行にまとめる。同じファイルの全関数に揃えたgodocは問題にしない。実装する役のいない<code>review</code>ワークフローでは一覧が空で届くので、照合せずに基準だけで判定する。コメントに経緯（過去の実装・却下した案・指摘への応答）が書き残されていないかは<code>comment-history-leakage</code>が見る。</p>
-<p>テストの漏れの2観点には<code>trigger</code>が無いので、途中レビューでも毎回当てられる。「テストは後のステップで書く」という計画では、途中のステップで指摘されても直せないことがある。</p>
+<p>テストの漏れの2観点には<code>trigger</code>が無いので、自分のワークフローに途中レビューを置くと毎回当てられる。「テストは後のステップで書く」という計画では、途中のステップで指摘されても直せないことがある。</p>
 <h2 id="_6">観点を書くときのこつ<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>1つの観点では1種類の問題だけを扱う。広い観点は指摘がぶれる</li>

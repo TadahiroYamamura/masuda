@@ -1726,17 +1726,17 @@
 <tr>
 <td><code>plan</code></td>
 <td><code>develop</code>で計画ができたとき。中身は計画</td>
-<td>承認すると実装へ。却下すると計画をやり直す</td>
+<td>承認すると実装へ。却下すると、計画を直す役が却下理由に答えて計画を直す（<code>fix</code>は計画を立て直す）</td>
 </tr>
 <tr>
 <td><code>interim</code></td>
-<td><code>develop</code>の各ステップで、途中レビューの指摘を直しきれなかったとき。中身は<strong>このステップでこれからコミットされる差分</strong>（ブランチ先頭からの未コミットの変更。<code>target: step-diff</code>）。<code>review</code>の「publishされる差分（コミット済み）」とは違う</td>
+<td>同梱のワークフローでは使わない。自分のワークフローで<code>gate: interim</code>を書いたときに開く（例: ステップごとの途中レビューで直しきれなかったとき）。中身は<strong>このステップでこれからコミットされる差分</strong>（ブランチ先頭からの未コミットの変更。<code>target: step-diff</code>）。<code>review</code>の「publishされる差分（コミット済み）」とは違う</td>
 <td>承認するとそのステップをコミットして次へ。却下するとそのステップの実装をやり直す</td>
 </tr>
 <tr>
 <td><code>review</code></td>
 <td><code>develop</code>の最後。中身は分岐元からの差分</td>
-<td>承認するとpublish。却下すると手直しとレビューをやり直す</td>
+<td>承認するとpublish。却下すると、実装した役の続きが行コメントを直し、テストとコミットの後にこのゲートへ戻る（最終レビューはやり直さない。<code>fix</code>はやり直す）</td>
 </tr>
 <tr>
 <td><code>deviation</code></td>

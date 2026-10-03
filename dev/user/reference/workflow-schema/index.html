@@ -1686,6 +1686,7 @@
 <li>意味: 「このrunでその役が最後に担当した出現（任意のフレーム。agentノードの出現のうち終了済みで出現IDが最大のもの）のサブエージェントに、このタスクを続けて渡す。該当する出現が無ければ通常どおり新しく起動する」</li>
 <li>宛先の出現はノードへの進入時に決まり、<code>AgentTask.Continues</code>で渡る（下の「エンジンが用意するもの」）。エンジンが決めるのは宛先の出現だけで、続きが成立するか（VMの再開後でサブエージェントがいない等）はRunner／ゲストの事情。成立しなければゲストは新しく起動する</li>
 <li><strong>記憶はあれば使う。無くても成立する入力を常に渡す。</strong> 続きのタスクの入力（<code>inputs</code>・feedback・役の本文）は、新しいサブエージェントが単独でこなせる完全なものにする。続けられたサブエージェントには、続きのタスクで役の指示が切り替わる</li>
+<li>続きが成立したサブエージェントは起動時の<code>model</code>・<code>effort</code>のまま動く。続ける側の役の<code>model</code>・<code>effort</code>は使われない（新しく起動したときだけ使われる）</li>
 </ul>
 <h3 id="_5">スナップショットと計画外変更の検出の基準点<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>エンジンは<code>agent</code>・<code>exec</code>の出現が終わるたびに<code>Runner.Snapshot</code>を取る。</p>
@@ -1712,6 +1713,8 @@
 name: planner
 description: 調査結果から変更方針とステップ分解を計画として書く
 tools: Read, Grep, Glob, Bash
+model: sonnet
+effort: low
 inputs: [investigation]
 outputs: [plan]
 outcomes:
@@ -1725,6 +1728,7 @@ outcomes:
 <li><code>outcomes</code>は必須で<code>done</code>を含む。<code>exhausted</code>・<code>blocked</code>・<code>failed</code>は宣言できない</li>
 <li><code>tools</code>は配列かカンマ区切り。省略は全ツール。<code>Write</code>か<code>Edit</code>を持つ（または省略）エージェントが「書き込める」</li>
 <li><code>outputs</code>に<code>diff</code>・<code>step-diff</code>・<code>fix-diff</code>は名乗れない（エンジンが用意する）</li>
+<li><code>model</code>・<code>effort</code>は任意。Runner（masudaではゲストのClaude Codeのサブエージェント定義のfrontmatter）にそのまま渡す。省略はその環境の既定（masudaでは<code>claudeSettings.model</code>のメインセッションのモデルを継承）。<code>effort</code>は<code>low</code>・<code>medium</code>・<code>high</code>・<code>xhigh</code>・<code>max</code></li>
 </ul>
 <h3 id="_7">出力の受け付け<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <p>agentノード（<code>question</code>の<code>role</code>を含む）のタスクが宣言する出力は、ノードの<code>outputs</code>とエージェント定義の<code>outputs</code>を合わせたもの（<code>question</code>ノードの<code>outputs</code>は答えの保存先なので含まない）。エンジンは報告（<code>Engine.ReportResult</code>）を受けたとき、終わり方に応じて次のように扱う。</p>

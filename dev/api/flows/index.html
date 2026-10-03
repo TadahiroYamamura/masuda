@@ -1692,10 +1692,12 @@
 <h3 id="seqafterseq"><code>seq</code>と<code>afterSeq</code><a class="headerlink" href="#seqafterseq" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>seq</code>は<strong>全ワークスペースで1本</strong>の通し番号。<code>id</code>を指定したWatchでも番号は飛び飛びになる</li>
-<li><code>afterSeq</code>に最後に受け取った<code>seq</code>を渡すと、その続きから受け取れる（再送）。serveが再送用に持つのは直近10000件だけで、それより古い続きを求めると、持っている最も古いものから黙って始まる</li>
+<li><code>afterSeq</code>に最後に受け取った<code>seq</code>を渡すと、その続きから受け取れる（再送）。serveが再送用に持つのは直近10000件だけで、それより古い続きを求めると、ストリームは最初に<code>out_of_range</code>で終わる（メッセージに再送できる最古の<code>seq</code>が入る）</li>
 <li><code>afterSeq</code>が0（新しいものだけ）のときは、最初に対象のワークスペースごとの<strong>今の<code>status</code></strong>を1つずつ送る。この<code>status</code>は新しい番号を振らず、<code>seq</code>には今の最新の番号が入る。その値を次の<code>afterSeq</code>に使えば、取りこぼしも重複も無い</li>
 <li><code>afterSeq</code>が0でないときは、最初の<code>status</code>は送らない（続きのイベントだけ）</li>
-<li><code>afterSeq</code>が今の最新の<code>seq</code>より大きい（serveの再起動で番号が振り直された等）と、ストリームは最初に<code>out_of_range</code>で終わる。<code>afterSeq: 0</code>で繋ぎ直す</li>
+<li>次のどちらかのとき、ストリームは最初に<code>out_of_range</code>で終わる。<code>afterSeq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す（<code>afterSeq: 0</code>は常に通る）</li>
+<li><code>afterSeq</code>が今の最新の<code>seq</code>より大きい（serveの再起動で番号が振り直された等）</li>
+<li><code>afterSeq</code>の次のイベントが再送用の直近10000件に残っていない（<code>afterSeq+1</code>が再送できる最古の<code>seq</code>より小さい）</li>
 <li><code>status</code>は内容が前と変わったときだけ流れる。時刻（<code>updatedAt</code>・<code>activity.lastActivity</code>）だけの変化では流れないので、「最後の活動から何分」の表示はクライアントが時計で進める</li>
 </ul>
 <h3 id="workspaceid"><code>workspaceId</code>が空のイベント<a class="headerlink" href="#workspaceid" title="Permanent link">&para;</a></h3>
@@ -1710,7 +1712,7 @@
 <h3 id="_4">再接続<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
 <ul>
 <li>ストリームが<strong>正常に</strong>終わったら、<code>masuda serve</code>が止まった。serveを再起動すると<code>seq</code>は1から振り直されるので、戻ってきたら<code>afterSeq: 0</code>で繋ぎ直す（最初の<code>status</code>で全体が揃う）。古い<code>afterSeq</code>のまま繋ぐと、それが新しい最新より大きければ<code>out_of_range</code>になる（小さければ黙ってその番号の続きから届くので、serveの再起動が分かっているなら必ず0で繋ぐ）</li>
-<li><strong>エラーで</strong>切れた（ネットワーク・プロキシのタイムアウト等）なら、最後の<code>seq</code>を<code>afterSeq</code>に渡して繋ぎ直す</li>
+<li><strong>エラーで</strong>切れた（ネットワーク・プロキシのタイムアウト等）なら、最後の<code>seq</code>を<code>afterSeq</code>に渡して繋ぎ直す。繋ぎ直したストリームが<code>out_of_range</code>で終わったら（切れていた間に10000件より多く流れた等）、<code>afterSeq: 0</code>で繋ぎ直す</li>
 <li>どちらか分からないときは<code>afterSeq: 0</code>で繋ぎ直すのが安全。失うのは切れていた間の<code>http</code>・<code>guestHook</code>・<code>engine</code>のイベントだけで、状態は最初の<code>status</code>で揃う。実行記録そのものはワークスペースの<code>records/execution-log.jsonl</code>に残っている</li>
 <li>serveを再起動すると、動いていたワークスペースはすべてSTOPPEDになる（自動では再開しない）</li>
 </ul>
@@ -1775,7 +1777,7 @@
 </tbody>
 </table>
 <p><code>target: "diff"</code>のゲートには<code>stagingCommit</code>が入る。これはゲートを開いた時点のワークスペースのブランチ（<code>refs/heads/&lt;branch&gt;</code>）の先端で、承認された後にpublishされるのはこのコミット。<code>subject</code>の差分部分は<code>refs/masuda/base..stagingCommit</code>そのもの（<code>targetHash</code>もこの差分だけから計算する）で、コミットされていない変更（deviationで加えなかったファイル等）は差分に混ざらず、見出し<code>## publishされない変更（未コミット）</code>の下にファイル名だけが並ぶ。差分ビューを組むなら、見出しより前を<code>StagingService.Diff</code>（<code>from: "refs/masuda/base"</code>、<code>to: stagingCommit</code>）の結果と同じものとして扱い、見出しより後を「publishされない」一覧として別に見せる。</p>
-<p><code>target: "step-diff"</code>のゲート（同梱の定義では<code>interim</code>）にも<code>stagingCommit</code>が入る。こちらはゲートを開いた時点の作業ツリーのスナップショット（staging上のコミットで、親はその時点のブランチ先頭。<code>refs/masuda/gates/&lt;occurrence&gt;</code>に残る）。ブランチにはまだ載っておらず、承認すると<code>commit</code>ノードが同じ内容をコミットする。<code>subject</code>は<code>StagingService.Diff</code>（<code>to: stagingCommit</code>、<code>from</code>は空＝親との差分）と同じもので、<code>targetHash</code>は<code>subject</code>全体のSHA-256。</p>
+<p><code>target: "step-diff"</code>のゲート（同梱の定義には無い。自分のワークフローで<code>gate: interim</code>等として置く）にも<code>stagingCommit</code>が入る。こちらはゲートを開いた時点の作業ツリーのスナップショット（staging上のコミットで、親はその時点のブランチ先頭。<code>refs/masuda/gates/&lt;occurrence&gt;</code>に残る）。ブランチにはまだ載っておらず、承認すると<code>commit</code>ノードが同じ内容をコミットする。<code>subject</code>は<code>StagingService.Diff</code>（<code>to: stagingCommit</code>、<code>from</code>は空＝親との差分）と同じもので、<code>targetHash</code>は<code>subject</code>全体のSHA-256。</p>
 <table>
 <thead>
 <tr>

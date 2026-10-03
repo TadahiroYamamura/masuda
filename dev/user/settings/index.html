@@ -667,6 +667,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#publish" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1496,6 +1507,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#agents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        agents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#publish" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1591,7 +1613,7 @@
 <td><code>settings.json</code></td>
 <td>チーム</td>
 <td>する</td>
-<td><strong>宣言</strong>。使うイメージ、通信先、秘密の名前と送り先、生成する<code>.env</code>、特権コマンド、チェック、Claude Codeの設定</td>
+<td><strong>宣言</strong>。使うイメージ、通信先、秘密の名前と送り先、生成する<code>.env</code>、特権コマンド、チェック、Claude Codeの設定、役ごとのモデル</td>
 </tr>
 <tr>
 <td><code>settings.local.json</code></td>
@@ -1639,7 +1661,12 @@
 <span class="w">    </span><span class="nt">"lint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"go vet ./..."</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sonnet"</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOCACHE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/go-cache"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"agents"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"reviewer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opus"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"implementer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"effort"</span><span class="p">:</span><span class="w"> </span><span class="s2">"high"</span><span class="w"> </span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"publish"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"remote"</span><span class="p">:</span><span class="w"> </span><span class="s2">"origin"</span><span class="w"> </span><span class="p">}</span>
 <span class="p">}</span>
@@ -1903,6 +1930,60 @@
 </tbody>
 </table>
 <p>VMの中のClaude Codeの<code>~/.claude/settings.json</code>へ合成する内容。<code>env</code>（エージェントのプロセスに渡す環境変数）や<code>permissions</code>などを書ける。<code>hooks</code>はmasudaが自分のものを置くので、masudaのものが優先される。</p>
+<p><code>model</code>を書くと、メインセッションと、<code>model</code>を書いていない役（<a href="../workflows/#write-agent">エージェントの書き方</a>）のモデルになる。役のサブエージェントはメインセッションのモデルを継承するため。役ごとに変えるなら<a href="#agents"><code>agents</code></a>に書く。</p>
+<h3 id="agents">agents<a class="headerlink" href="#agents" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>型</th>
+<th>既定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>オブジェクト（役の名前→<code>{"model": ..., "effort": ...}</code>）</td>
+<td>空</td>
+</tr>
+</tbody>
+</table>
+<p>役ごとのモデルと推論の努力量の上書き。同梱の役（<code>reviewer</code>等）にも<code>.masuda/agents/</code>の役にも効く。同梱の役を定義ごと<code>.masuda/agents/</code>へ写して<code>model</code>を書き足すと、masudaを上げても本文の更新が届かなくなるので、モデルだけ変えたいときはここに書く。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sonnet"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"agents"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"reviewer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opus"</span><span class="w"> </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">"implementer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opus"</span><span class="p">,</span><span class="w"> </span><span class="nt">"effort"</span><span class="p">:</span><span class="w"> </span><span class="s2">"high"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>この例では、メインセッションと上書きの無い役はSonnet、<code>reviewer</code>はOpus、<code>implementer</code>はOpusでeffort <code>high</code>で動く。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>型</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>model</code></td>
+<td>文字列（空不可）</td>
+<td>役定義のfrontmatterの<code>model</code>と同じ値（<code>sonnet</code>・<code>opus</code>・<code>haiku</code>等の別名、フルのモデルID、<code>inherit</code>）</td>
+</tr>
+<tr>
+<td><code>effort</code></td>
+<td><code>low</code>・<code>medium</code>・<code>high</code>・<code>xhigh</code>・<code>max</code>のいずれか</td>
+<td>役定義のfrontmatterの<code>effort</code>と同じ</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>どちらも任意だが、少なくとも一方を書く（<code>{}</code>は断る）。書かなかった方は役定義のままになる</li>
+<li>優先順位は「<code>agents</code>の値 ＞ 役定義のfrontmatterの<code>model</code>・<code>effort</code> ＞ 省略時（<code>model</code>はメインセッションのモデル＝<code>claudeSettings</code>の<code>model</code>、<code>effort</code>はセッションの既定）」</li>
+<li>キーは役の名前（エージェント定義の<code>name</code>）。<code>reviewer</code>と書き、<code>agents/reviewer</code>とは書かない。名前は<code>masuda workflow show &lt;ワークフロー&gt;</code>の図の<code>agents/&lt;名前&gt;</code>、または同梱のエージェントの一覧（<a href="https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents">masuda-engineの<code>engine/defaults/agents/</code></a>のファイル名）で分かる</li>
+<li>定義に無い名前があると、打ち間違いを黙って無視しないよう、<code>masuda run</code>が始める前に断り（知っている役の名前を並べる）、<code>masuda workflow check</code>も問題として出す</li>
+<li>効くのはVMの中のサブエージェントの定義だけで、ワークフローの検査や<code>continues</code>の判定は役定義のままで行う。<code>continues</code>で続きが成立したサブエージェントは、起動時の値のまま動く</li>
+</ul>
 <h3 id="publish">publish<a class="headerlink" href="#publish" title="Permanent link">&para;</a></h3>
 <table>
 <thead>

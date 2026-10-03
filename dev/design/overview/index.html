@@ -2728,6 +2728,10 @@ masuda
 <td>ゲストの<code>~/.claude/settings.json</code>へ合成するオブジェクト（フックはmasudaのものが優先）</td>
 </tr>
 <tr>
+<td><code>agents</code></td>
+<td>役の名前→<code>model</code>・<code>effort</code>の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は<code>run</code>・<code>resume</code>・<code>workflow check</code>が断る</td>
+</tr>
+<tr>
 <td><code>publish.remote</code></td>
 <td><code>target: remote</code>のpublishがpushする実リポジトリのremoteの名前。既定<code>origin</code></td>
 </tr>
@@ -2905,11 +2909,11 @@ masuda
 <p>認証はローカル利用のみを前提とする。<code>$XDG_RUNTIME_DIR/masuda.sock</code>（UDS）で待ち受け、<code>config.json</code>に<code>listen</code>があるときだけ、そのループバックのアドレスでも同じハンドラで待ち受ける（ブラウザのGUIはUDSに繋げないため）。ループバックの待ち受けはCORSで任意のオリジンを許し、<code>Host</code>ヘッダーがループバックの名前でない要求は断る（DNS rebinding対策）。リモートから使う場合はユーザーがリバースプロキシ等で守る。</p>
 <h3 id="watch">Watch<a class="headerlink" href="#watch" title="Permanent link">&para;</a></h3>
 <ul>
-<li>イベントの<code>seq</code>は全ワークスペースで1本の通し番号。<code>after_seq</code>を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは<code>records/execution-log.jsonl</code>に残る）</li>
+<li>イベントの<code>seq</code>は全ワークスペースで1本の通し番号。<code>after_seq</code>を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、<code>after_seq</code>の次のイベントがそこに残っていなければ<code>OutOfRange</code>で終わる（黙って最古から続けると、取りこぼしにクライアントが気づけない）。serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは<code>records/execution-log.jsonl</code>に残る）</li>
 <li><code>after_seq</code>が0（新しいものだけ）でも、最初に対象のワークスペースごとの今の<code>status</code>を1つずつ送る。この<code>status</code>は新しい番号を振らず、<code>seq</code>に今の最新の番号を入れる。購読の開始と状態の変化が前後しても、変化を取りこぼしたまま次の変化まで何も見えなくなることがない</li>
 <li><code>status</code>は内容が前に流したものと変わったときだけ流す。時刻（<code>updated_at</code>・<code>last_activity</code>）だけの違いでは流さない</li>
 <li><code>workspace_id</code>が空のイベントはserve全体についての通知（<code>ServeNotice{kind, detail, value}</code>）で、どのワークスペースを指定したWatchにも届く。今出すのはディスク使用量の警告（<code>disk-warning</code>）だけ</li>
-<li><code>after_seq</code>が最新の<code>seq</code>より大きければ<code>OutOfRange</code>で終わる（serveの再起動で番号が振り直された後に古い番号で繋いだ等）。クライアントは<code>after_seq: 0</code>で繋ぎ直す</li>
+<li><code>after_seq</code>が最新の<code>seq</code>より大きい（serveの再起動で番号が振り直された後に古い番号で繋いだ等）か、<code>after_seq+1</code>が再送できる最古の<code>seq</code>より小さければ<code>OutOfRange</code>で終わる。後者の理由には再送できる最古の<code>seq</code>を入れる。クライアントは<code>after_seq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す。<code>after_seq: 0</code>は常に通る</li>
 </ul>
 <h3 id="gate">Gateの判断<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h3>
 <ul>
