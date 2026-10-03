@@ -122,8 +122,15 @@ func (c *runCtl) reflect(st engine.Status, err error) {
 	if err != nil && c.ctx.Err() != nil {
 		return // Stop・serveの停止で取り消されただけ
 	}
-	if err == nil && (st.Kind == engine.StatusDone || st.Kind == engine.StatusBlocked) {
-		// publishの時点の書き出しには、その後のfinish・endの行が入らないので写し直す。
+	switch {
+	case err == nil && st.Kind == engine.StatusDone:
+		// endで終わった実行（publish・discardを通らない）はVMが残り、DONEにはStopが効かないので、
+		// ここで書き出して壊す。DONEのVMは再開にも使わない（Resumeは新しいVMを作る）。
+		// publish・discardが壊した後なら、その後のend等の行を含めて実行ログを写し直すだけになる。
+		// 状態をDONEに書く前に行うのは、DONEが見えた時点で書き出しが揃っているようにするため。
+		_ = c.runner.Cleanup(c.ctx, nil)
+	case err == nil && st.Kind == engine.StatusBlocked:
+		// BLOCKEDはVMを残す（Stop・Resumeできる）。実行ログだけ写し直す。
 		_ = c.runner.ExportLog()
 	}
 	c.update(func(w *workspace.Workspace) {

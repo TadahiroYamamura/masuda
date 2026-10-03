@@ -153,6 +153,7 @@ func TestEngineContinuationKeepsMemory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertCleanedUpAtDone(t, sandboxSocket(), id, wsDir)
 	t.Logf("finished in %v: outcome %q", time.Since(start).Round(time.Second), final.Outcome)
 	token, recall := strings.TrimSpace(findFile(filepath.Join(wsDir, "data"), "token")), strings.TrimSpace(findFile(filepath.Join(wsDir, "data"), "recall"))
 	t.Logf("token %q, recall %q", token, recall)

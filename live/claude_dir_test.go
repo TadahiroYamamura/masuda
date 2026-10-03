@@ -124,6 +124,7 @@ func TestClaudeDirReachesSubagent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	assertCleanedUpAtDone(t, sbSock, id, wsDir)
 	probe := findFile(filepath.Join(wsDir, "data"), "probe")
 	t.Logf("finished in %v: outcome %q; probe:\n%s", time.Since(start).Round(time.Second), final.Outcome, probe)
 	for name, mark := range map[string]string{"rules/marker.md": ruleMark, "skills/echo-mark": skillMark, "claude.local/CLAUDE.md": localMark} {

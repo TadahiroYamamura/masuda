@@ -36,6 +36,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -137,9 +138,10 @@ func keepOnFailure(t *testing.T, pattern string) string {
 }
 
 // destroyVMOnCleanup は、テストがどう終わっても（失敗・タイムアウト・MASUDA_LIVE_KEEP=1でも）
-// ワークスペースのVMを後始末で壊す。publish・discardを通らず`end`で終わるワークフローではVMが
-// 残り、DONEにはStopも効かない。データを残さないときはRemove（VMも壊す）を呼ぶ。データを残す
-// ときはRemoveが記録を消してしまうので、Stopに加えてsandbox serviceへ直接DestroySandboxする。
+// ワークスペースのVMを後始末で壊す。DONEになればserveが壊すが、途中で失敗・タイムアウトした
+// テストではVMが残る。データを残さないときはRemove（VMも壊す）を呼ぶ。データを残すときは
+// Removeが記録を消してしまうので、Stopに加えてsandbox serviceへ直接DestroySandboxする。
+// DONEで既に壊れていれば、Stop（DONEには効かない）とDestroyのNotFoundは失敗にしない。
 // serveとそのctxより先に動くよう、それらもt.Cleanupで、これより前に登録すること。
 func destroyVMOnCleanup(t *testing.T, api clients, sbSock, id string) {
 	t.Helper()
@@ -152,17 +154,39 @@ func destroyVMOnCleanup(t *testing.T, api clients, sbSock, id string) {
 			return
 		}
 		_, _ = api.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id}))
-		httpc := &http.Client{Transport: &http2.Transport{
-			AllowHTTP: true,
-			DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
-				return (&net.Dialer{}).DialContext(ctx, "unix", sbSock)
-			},
-		}}
-		sb := sandboxv1connect.NewSandboxServiceClient(httpc, "http://masuda-sandbox")
-		if _, err := sb.DestroySandbox(ctx, connect.NewRequest(&sandboxv1.DestroySandboxRequest{Id: id})); err != nil && connect.CodeOf(err) != connect.CodeNotFound {
+		if _, err := sandboxClient(sbSock).DestroySandbox(ctx, connect.NewRequest(&sandboxv1.DestroySandboxRequest{Id: id})); err != nil && connect.CodeOf(err) != connect.CodeNotFound {
 			t.Errorf("destroying the sandbox of %s: %v", id, err)
 		}
 	})
+}
+
+func sandboxClient(sbSock string) sandboxv1connect.SandboxServiceClient {
+	httpc := &http.Client{Transport: &http2.Transport{
+		AllowHTTP: true,
+		DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sbSock)
+		},
+	}}
+	return sandboxv1connect.NewSandboxServiceClient(httpc, "http://masuda-sandbox")
+}
+
+func assertCleanedUpAtDone(t *testing.T, sbSock, id, wsDir string) {
+	t.Helper()
+	_, err := sandboxClient(sbSock).GetSandbox(context.Background(), connect.NewRequest(&sandboxv1.GetSandboxRequest{Id: id}))
+	if connect.CodeOf(err) != connect.CodeNotFound {
+		t.Errorf("the sandbox of a done workspace must be destroyed: %v", err)
+	}
+	var transcripts []string
+	_ = filepath.WalkDir(filepath.Join(wsDir, "exports", "transcripts"), func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasSuffix(p, ".jsonl") {
+			transcripts = append(transcripts, p)
+		}
+		return nil
+	})
+	if len(transcripts) == 0 {
+		t.Errorf("no transcripts in exports/transcripts of a done workspace")
+	}
+	t.Logf("exported transcripts: %d", len(transcripts))
 }
 
 // newPythonRepo はM8の段階1と同じ使い捨てのリポジトリを作る。`.masuda/`はsettings.jsonと

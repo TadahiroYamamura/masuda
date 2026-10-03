@@ -78,6 +78,9 @@ type Runner struct {
 	// 承認対象がどのスナップショットから作られたかをここから引く。
 	stepMu    sync.Mutex
 	stepDiffs map[string]string
+	// destroyed はCleanupがsandboxを壊したこと。publishの後のDONEの反映で二重に書き出さない。
+	cleanMu   sync.Mutex
+	destroyed bool
 }
 
 var _ engine.Runner = (*Runner)(nil)
@@ -968,25 +971,46 @@ func (r *Runner) Publish(ctx context.Context, p engine.PublishRequest) error {
 	default:
 		return fmt.Errorf("publish target %q is not supported", p.Target)
 	}
-	return r.finish(ctx, p.Export)
+	return r.Cleanup(ctx, p.Export)
 }
 
 func (r *Runner) Discard(ctx context.Context, _ engine.RunID, export []string) error {
-	return r.finish(ctx, export)
+	return r.Cleanup(ctx, export)
 }
 
-// finish はexportsを書き出してからsandboxを壊す。VMを先に壊すと、書き出しに失敗したときに
-// 調べる手がかりが残らないため。
-func (r *Runner) finish(ctx context.Context, export []string) error {
-	r.ExportTranscripts(ctx)
+// Cleanup はsandboxがまだあれば、会話ログ・exports・実行ログの順に書き出してから壊す。
+// 無ければ（壊した後・起動に失敗した後）実行ログだけを書き出す。publish・discardのノード、
+// endで終わった実行（serveのDONEの反映）、Stop・Removeの全部がここを通るので、どの終わり方でも
+// 止まった原因を調べる材料が`exports/`に残る。VMを先に壊さないのは、書き出しに失敗したときに
+// 調べる手がかりが残らないため。何度呼んでもよく、壊した後は実行ログを写し直すだけになる。
+func (r *Runner) Cleanup(ctx context.Context, export []string) error {
+	r.cleanMu.Lock()
+	defer r.cleanMu.Unlock()
+	present := !r.destroyed && r.sandboxExists(ctx)
+	if present {
+		r.ExportTranscripts(ctx)
+	}
 	if err := r.WriteExports(export); err != nil {
 		return err
+	}
+	if !present {
+		return nil
 	}
 	_, err := r.o.Sandbox.DestroySandbox(ctx, connect.NewRequest(&sandboxv1.DestroySandboxRequest{Id: r.o.SandboxID}))
 	if connect.CodeOf(err) == connect.CodeNotFound {
 		err = nil
 	}
+	if err == nil {
+		r.destroyed = true
+	}
 	return err
+}
+
+// sandboxExists はsandboxがあるか。確かめられないときはあるとみなす（書き出しを試み、
+// 壊すのも試みる方が、材料もVMも残さないより害が小さい）。
+func (r *Runner) sandboxExists(ctx context.Context) bool {
+	_, err := r.o.Sandbox.GetSandbox(ctx, connect.NewRequest(&sandboxv1.GetSandboxRequest{Id: r.o.SandboxID}))
+	return connect.CodeOf(err) != connect.CodeNotFound
 }
 
 // WriteExports は`exports/`へexportで指定されたデータ（最新の値）と実行ログを書き出す。

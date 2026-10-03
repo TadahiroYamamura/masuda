@@ -15,6 +15,7 @@ import (
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/runner"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -27,14 +28,28 @@ func active(s workspace.State) bool {
 	return false
 }
 
-// stopRun はidの実行を止める。起動の途中なら取り消して戻りを待ち、MCPを閉じ、sandboxを壊す。
+// stopRun はidの実行を止める。起動の途中なら取り消して戻りを待ち、MCPを閉じ、会話ログと
+// 実行ログを`exports/`へ書き出してからsandboxを壊す（無ければ実行ログだけ）。
 // 記録（engine.json等）とstagingには触らない。lifeMuを持って呼ぶ。
 func (b *backend) stopRun(id string) {
+	var r *runner.Runner
 	if c := b.runFor(id); c != nil {
 		c.cancel()
 		<-c.bootDone
 		b.removeRun(id)
+		r = c.runner
 	}
+	if w, err := b.store.Get(id); err == nil {
+		if r == nil {
+			// serveを起こし直した後のBLOCKED等は実行の窓口が無い。書き出しに要るのは
+			// ワークスペースとsandboxだけなので、その場で作る。
+			r = runner.New(runner.Options{Workspace: w, Sandbox: b.sandbox, SandboxID: id})
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), stopExportTimeout)
+		_ = r.Cleanup(ctx, nil)
+		cancel()
+	}
+	// Cleanupが壊せなかったとき（書き出しの失敗・時間切れ）もVMは残さない。
 	b.destroySandbox(id)
 	b.acts.drop(id)
 	// sandboxと共に使えなくなる鍵を残さない。
@@ -42,6 +57,10 @@ func (b *backend) stopRun(id string) {
 		_ = os.RemoveAll(filepath.Dir(sshKeyFile(w)))
 	}
 }
+
+// stopExportTimeout はStop・Removeで会話ログを書き出す時間の上限。Stopは利用者が待っている
+// 操作なので、ゲストが応えないときに止まり続けないようにする。
+const stopExportTimeout = 2 * time.Minute
 
 func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.StopRequest]) (*connect.Response[apiv1.Workspace], error) {
 	b := s.backend
@@ -55,7 +74,7 @@ func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.St
 	case workspace.StateStopped:
 		return connect.NewResponse(b.toProto(w)), nil
 	case workspace.StateDone:
-		// publish・discardで終わった実行はsandboxも既に無い。止めるものが無い。
+		// 終わった実行はsandboxも既に無い（DONEの反映で壊す）。止めるものが無い。
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done", w.ID))
 	}
 	engineBlocked := w.State == workspace.StateBlocked && !resumable(w)
@@ -161,6 +180,10 @@ func (s *workspaceService) AttachInfo(ctx context.Context, req *connect.Request[
 	w, err := s.lookup(req.Msg.Id)
 	if err != nil {
 		return nil, err
+	}
+	if w.State == workspace.StateDone {
+		// DONEのsandboxは壊してある。窓口（runCtl）は残っているので、状態で断る。
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done and its sandbox was destroyed; read the transcripts in exports/%s", w.ID, runner.TranscriptsDir))
 	}
 	c := s.backend.runFor(w.ID)
 	if c == nil {
