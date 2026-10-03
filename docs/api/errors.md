@@ -10,7 +10,7 @@
 | `not_found` | 404 | 指したもの（ワークスペース・ゲート・質問・rev・パス）が無い | 一覧を取り直す |
 | `failed_precondition` | 400 | 要求は正しいが、今の状態では受け付けられない。設定ファイル（`settings.json`・`settings.local.json`）が読めないのもここ | 状態を取り直してから、条件を満たして送り直す（Stopしてから、承認してから、設定ファイルを直してから、等） |
 | `already_exists` | 409 | 作ろうとしたものが既にある（publishするワークフローのRunのブランチ） | 別の名前にする |
-| `out_of_range` | 400 | `Watch`の`after_seq`が最新のseqより大きい（serveの再起動で番号が振り直された等） | `after_seq: 0`で繋ぎ直す |
+| `out_of_range` | 400 | `Watch`の`after_seq`が最新のseqより大きい（serveの再起動で番号が振り直された等）、または`after_seq`の次のイベントが再送用に持つ直近10000件に残っていない | `after_seq: 0`で繋ぎ直し、最初の`status`で状態を組み立て直す（`after_seq: 0`は常に通る） |
 | `unimplemented` | 501 | その構成では提供しない（フェイクsandboxの`AttachInfo`） | 機能を出さない・別の手段を案内する |
 | `unavailable` | 503 | `masuda-sandbox serve`に届かない | sandbox serviceの起動を案内する（`masuda doctor`） |
 | `canceled` | 499 | 要求が取り消された（クライアントの切断等） | 必要なら送り直す |
@@ -44,7 +44,7 @@
 | `Get` | `not_found` | ワークスペースが無い |
 | `List` | `internal` | 一覧を読めない。`repo_root`は検査しない（一致するものが無ければ空の一覧） |
 | `Watch` | `not_found` | `id`を指定し、そのワークスペースが無い（ストリームの最初に終わる） |
-| | `out_of_range` | `after_seq`が最新のseqより大きい（ストリームの最初に終わる）。`after_seq: 0`で繋ぎ直す |
+| | `out_of_range` | `after_seq`が最新のseqより大きい、または`after_seq+1`が再送できる最古のseqより小さい（続きが再送用の直近10000件に残っていない。メッセージに再送できる最古のseqが入る）。どちらもストリームの最初に終わる。`after_seq: 0`で繋ぎ直す |
 | | （正常な終わり） | `masuda serve`が止まると、エラーでなく正常な終わりでストリームが閉じる |
 | `Stop` | `not_found` | ワークスペースが無い |
 | | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す。engineが止めたBLOCKEDへの`Stop`はVMを片付けてBLOCKEDのまま返す |
