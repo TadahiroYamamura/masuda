@@ -164,3 +164,38 @@ func TestNodeEgressWithinApprovalRuns(t *testing.T) {
 		t.Fatalf("approved egress must pass: %v", err)
 	}
 }
+
+func TestUnknownAgentOverrideRefusesRunAndShowsInCheck(t *testing.T) {
+	dataDir := t.TempDir()
+	cl := startClients(t, dataDir, Options{})
+	repo := newSmokeRepo(t)
+	writeRepoFile(t, repo, ".masuda/settings.json", `{"agents": {"echo": {"model": "opus"}, "agents/reviewer": {"model": "opus"}}}`)
+	ctx := context.Background()
+
+	t.Run("定義に無い役の名前があればRunはInvalidArgumentで断り、知っている役の名前を並べる", func(t *testing.T) {
+		_, err := cl.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/agents", Inputs: smokeInputs}))
+		if connect.CodeOf(err) != connect.CodeInvalidArgument || !strings.Contains(err.Error(), "agents.agents/reviewer") ||
+			!strings.Contains(err.Error(), "reviewer, ") || strings.Contains(err.Error(), "agents.echo ") {
+			t.Fatalf("Run: %v", err)
+		}
+		if entries, _ := os.ReadDir(filepath.Join(dataDir, "workspaces")); len(entries) != 0 {
+			t.Fatalf("no workspace must be created: %v", entries)
+		}
+	})
+	t.Run("workflow checkは同じ食い違いをsettings.jsonの問題として出す", func(t *testing.T) {
+		check, err := cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/smoke"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(check.Msg.Problems) != 1 || check.Msg.Problems[0].Path != "settings.json" || !strings.Contains(check.Msg.Problems[0].Message, "agents.agents/reviewer") {
+			t.Fatalf("problems: %v", check.Msg.Problems)
+		}
+	})
+	t.Run("役の名前がすべて定義にあればworkflow checkは問題を出さない", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"agents": {"echo": {"model": "opus"}, "reviewer": {"effort": "high"}}}`)
+		check, err := cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/smoke"}))
+		if err != nil || len(check.Msg.Problems) != 0 {
+			t.Fatalf("problems: %v %v", check.Msg.Problems, err)
+		}
+	})
+}

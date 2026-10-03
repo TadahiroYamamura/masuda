@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -65,7 +66,22 @@ type Settings struct {
 	Images map[string]ImageDecl `json:"images,omitempty"`
 	// Publish はpublishノードの送り先の設定。
 	Publish PublishDecl `json:"publish,omitzero"`
+	// Agents は役の名前（エージェント定義のname）→その役のmodel・effortの上書き。役定義の
+	// frontmatterより優先する。同梱の役を定義ごと`.masuda/agents/`へ写すと本文の更新に
+	// 追従できなくなるので、名前だけ指して変えられるようにしている。
+	Agents map[string]AgentOverride `json:"agents,omitempty"`
 }
+
+// AgentOverride は役1つのmodel・effortの上書き。nilは上書きしない。空文字列を
+// 「上書きしない」と区別して拒否するためにポインタにしている。
+type AgentOverride struct {
+	Model  *string `json:"model,omitempty"`
+	Effort *string `json:"effort,omitempty"`
+}
+
+// Efforts はAgentOverride.Effortに書ける値。Claude Codeがサブエージェントのeffortとして
+// 受け付けるもので、engineが役定義のfrontmatterに許す値と同じ。
+var Efforts = []string{"low", "medium", "high", "xhigh", "max"}
 
 // PublishDecl はpublishの設定。
 type PublishDecl struct {
@@ -286,6 +302,17 @@ func (s Settings) Validate() error {
 	}
 	if r := s.Publish.Remote; r != "" && (!remoteNameRe.MatchString(r) || strings.Contains(r, "..")) {
 		add("publish.remote %q is not a remote name", r)
+	}
+	for name, o := range s.Agents {
+		if o.Model == nil && o.Effort == nil {
+			add("agents.%s: needs model or effort", name)
+		}
+		if o.Model != nil && strings.TrimSpace(*o.Model) == "" {
+			add("agents.%s: model must not be empty", name)
+		}
+		if o.Effort != nil && !slices.Contains(Efforts, *o.Effort) {
+			add("agents.%s: effort %q must be one of %s", name, *o.Effort, strings.Join(Efforts, ", "))
+		}
 	}
 	if len(s.ClaudeSettings) > 0 {
 		var obj map[string]json.RawMessage

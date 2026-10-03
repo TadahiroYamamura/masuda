@@ -128,6 +128,7 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 		}
 	}
 	out.Problems = append(out.Problems, pitfallProblems(ctx, req.Msg.RepoRoot)...)
+	out.Problems = append(out.Problems, settingsProblems(ctx, req.Msg.RepoRoot, set)...)
 	return connect.NewResponse(out), nil
 }
 
@@ -159,6 +160,27 @@ func pitfallProblems(ctx context.Context, repoRoot string) []*apiv1.Problem {
 		return out
 	}
 	return []*apiv1.Problem{{Path: pitfalls.FileName, Message: err.Error()}}
+}
+
+// settingsProblems はrepoRootの`.masuda/settings.json`を読み、Runが始める前に断るのと同じ
+// `agents`の役の名前の食い違いを問題として返す。読めなければその理由を問題の1つにする。
+func settingsProblems(ctx context.Context, repoRoot string, set *engine.Set) []*apiv1.Problem {
+	if repoRoot == "" {
+		return nil
+	}
+	root, err := repoTop(ctx, repoRoot)
+	if err != nil {
+		return nil // definitionsForが同じ誤りを返している
+	}
+	cfg, err := config.Load(root)
+	if err != nil {
+		return []*apiv1.Problem{{Path: config.SettingsFileName, Message: err.Error()}}
+	}
+	var out []*apiv1.Problem
+	for _, msg := range unknownAgentOverrides(set, cfg.Agents) {
+		out = append(out, &apiv1.Problem{Path: config.SettingsFileName, Message: msg})
+	}
+	return out
 }
 
 // rootWorkflows は他のどのワークフローからも辿れないワークフロー（engineの仕様でのroot）。

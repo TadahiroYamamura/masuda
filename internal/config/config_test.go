@@ -146,3 +146,53 @@ func TestPublishRemote(t *testing.T) {
 		t.Fatalf("publish.remote: %v %q", err, s.PublishRemote())
 	}
 }
+
+func TestAgentOverrides(t *testing.T) {
+	t.Run("役ごとのmodelとeffortを読み、書かなかった方はnilのまま", func(t *testing.T) {
+		dir := t.TempDir()
+		write(t, dir, `{"agents": {"reviewer": {"model": "opus"}, "implementer": {"model": "sonnet", "effort": "high"}, "echo": {"effort": "max"}}}`)
+		cfg, err := Load(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r, i, e := cfg.Agents["reviewer"], cfg.Agents["implementer"], cfg.Agents["echo"]
+		if r.Model == nil || *r.Model != "opus" || r.Effort != nil {
+			t.Errorf("reviewer = %+v", r)
+		}
+		if i.Model == nil || *i.Model != "sonnet" || i.Effort == nil || *i.Effort != "high" {
+			t.Errorf("implementer = %+v", i)
+		}
+		if e.Model != nil || e.Effort == nil || *e.Effort != "max" {
+			t.Errorf("echo = %+v", e)
+		}
+	})
+	t.Run("effortはlow・medium・high・xhigh・maxのどれでも読める", func(t *testing.T) {
+		for _, effort := range []string{"low", "medium", "high", "xhigh", "max"} {
+			dir := t.TempDir()
+			write(t, dir, `{"agents": {"reviewer": {"effort": "`+effort+`"}}}`)
+			if _, err := Load(dir); err != nil {
+				t.Errorf("effort %s: %v", effort, err)
+			}
+		}
+	})
+	for name, content := range map[string]string{
+		"一覧に無いeffortは拒否する":             `{"agents": {"reviewer": {"effort": "ultra"}}}`,
+		"effortの大文字小文字の違いも拒否する":        `{"agents": {"reviewer": {"effort": "High"}}}`,
+		"空のmodelは拒否する":                 `{"agents": {"reviewer": {"model": " "}}}`,
+		"役の値の知らないキーは拒否する":              `{"agents": {"reviewer": {"model": "opus", "tools": "Read"}}}`,
+		"modelもeffortも無い空のオブジェクトは拒否する": `{"agents": {"reviewer": {}}}`,
+		"役の値がnullのときも空のオブジェクトと同じく拒否する": `{"agents": {"reviewer": null}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			write(t, dir, content)
+			_, err := Load(dir)
+			if err == nil {
+				t.Fatal("Load() error = nil")
+			}
+			if !strings.Contains(err.Error(), "reviewer") && !strings.Contains(err.Error(), "unknown field") {
+				t.Errorf("error should name the agent: %v", err)
+			}
+		})
+	}
+}

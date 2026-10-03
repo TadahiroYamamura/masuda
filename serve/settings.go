@@ -61,6 +61,10 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		// 設定ファイルが読めないのはConfigServiceと同じくFailedPrecondition（契約「エラーコードの約束」）。
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
+	// 他の不足と違い定義と設定の食い違いなので、workflow checkの問題と同じくInvalidArgumentで返す。
+	if problems := unknownAgentOverrides(set, cfg.Agents); len(problems) > 0 {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(strings.Join(problems, "; ")))
+	}
 	local, err := config.LoadLocal(repoRoot)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
@@ -239,4 +243,30 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// unknownAgentOverrides はsettings.jsonの`agents`のうち、読み込んだ定義（同梱＋`.masuda/agents/`）に
+// 無い役の名前ごとに問題の文を返す。打ち間違えた上書きが黙って効かないままにならないように、
+// 知っている役の名前を並べる。
+func unknownAgentOverrides(set *engine.Set, overrides map[string]config.AgentOverride) []string {
+	var unknown []string
+	for name := range overrides {
+		if set.Agents[name] == nil {
+			unknown = append(unknown, name)
+		}
+	}
+	if len(unknown) == 0 {
+		return nil
+	}
+	sort.Strings(unknown)
+	known := make([]string, 0, len(set.Agents))
+	for name := range set.Agents {
+		known = append(known, name)
+	}
+	sort.Strings(known)
+	out := make([]string, 0, len(unknown))
+	for _, name := range unknown {
+		out = append(out, fmt.Sprintf("agents.%s in .masuda/settings.json is not a defined agent (defined: %s)", name, strings.Join(known, ", ")))
+	}
+	return out
 }
