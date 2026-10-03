@@ -1,22 +1,28 @@
 # HANDOFF
 ## 作業項目
-M14b（`docs/work-orders.md`。#69、契約変更・ユーザー承認2026-10-03）: 役定義の`model`・`effort`をゲストのサブエージェント定義に写す。develop `b9a363b`〜（**未push**）。
-- `b9a363b` `internal/guest.AgentFile`: `a.Model`・`a.Effort`が空でなければfrontmatterに`model:`・`effort:`を`yamlString`で書く。関数コメントを直した。`guest_test.go`に`TestAgentFileModelAndEffort`（サブテスト名は日本語の文）。契約`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行に「あれば`model`・`effort`を写す」
-- `256bd0a` `docs/user/workflows.md`「エージェントの書き方」に`model`・`effort`（値、省略時の継承、`continues`では起動時の設定のまま）。`docs/user/settings.md`の`claudeSettings`に「`model`はメインセッションと`model`を書いていない役のモデルになる」。`docs/user/reference/workflow-schema.md`（写し）は触っていない
-- `b5f419a` `live/claude_dir_test.go`: `TestClaudeDirReachesSubagent`を2ノード（prober→echoer）にし、proberに`model: sonnet`・`effort: low`、echoerは無し、`.masuda/settings.json`に`claudeSettings: {"model": "opus"}`（pythonRepoFilesの写しをやめ、`checks`も外した）。予算9分→12分。`exports/transcripts/**/subagents/*.jsonl`の応答から役ごとに`message.model`・`effort`を集めて検査
+M14e（`docs/work-orders.md`。#69の続き、ユーザー決定2026-10-03）: `.masuda/settings.json`の`agents`で役ごとの`model`・`effort`を上書きする。develop `80f4dc1`〜`89782be`（**未push**）。
+- `80f4dc1` `internal/config`: `Settings.Agents map[string]AgentOverride`（`Model`・`Effort`は`*string`）、`config.Efforts`。検査は「modelもeffortも無い（`{}`・`null`）」「空白だけのmodel」「一覧外のeffort」を拒否、知らないキーは既存の`DisallowUnknownFields`。`serve/settings.go`の`unknownAgentOverrides`で、定義（`set.Agents`＝同梱＋`.masuda/agents/`のすべて。到達可能な役に限らない）に無い名前を`planBoot`の冒頭でInvalidArgument（知っている役の名前を列挙）。`serve/workflows.go`の`Check`に`settingsProblems`（作業ツリーのsettings.jsonを読み、同じ文を`Path: settings.json`の問題に。読めなければその理由を問題に）
+- `45494c2` `serve/boot.go`の`prepareGuest`: `withOverride`でengine.Agentの写しに`plan.agents[name]`を重ねてから`guest.AgentFile`。engineの`Set`は書き換えない。`bootPlan.agents`は実行開始時の写しのsettings.jsonから
+- `5cd0dac` docs: `docs/user/settings.md`に`### agents`（例・優先順位・名前の調べ方・`continues`）、冒頭の表と全体例に追加、`claudeSettings`から参照。`docs/user/workflows.md`の`model`・`effort`の箇条から参照
+- `89782be` `.masuda/settings.json`: `claudeSettings.model`を`sonnet`、`agents`で`reviewer`・`cross-cutting-explorer`・`cross-cutting-verifier`を`{"model": "opus"}`
 ## 完了した契約テスト
-- `go build ./... && go vet ./... && go test -count=1 ./...`（**`go.work`有効**、engineは隣の`../masuda-engine` `9c39140`）緑。契約テストC-M1〜C-M10は無修正で緑
-- `TestAgentFileModelAndEffort`: `Model`の条件の反転・`Effort`の行を書かない・`Model`の行を常に書く、の3通りで落ちることを確かめて戻した
-- liveの判定関数（`subagentModels`・`checkSubagentModel`）は過去のliveの会話ログ（`/tmp/masuda-live-data-3942533590`、sonnet・medium）で、model接頭辞の検査・effortの検査・役が無いときの検査・`assistant`の絞り込みをそれぞれ壊すと落ちることを一時テストで確かめた（一時テストは消した）
-- live `MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestClaudeDirReachesSubagent ./live/`: **PASS（51秒）**。会話ログの記録: prober `claude-sonnet-5-5`×5・effort `low`×5、echoer `claude-opus-5-5`×6・effort `medium`×6。**ゲストのClaude Code 2.1.287でもfrontmatterの`effort`は効いた**。終了後`pgrep -af qemu-system`は自分の分なし
+- `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...` 緑（HEAD `89782be`）。契約テストC-M1〜C-M10は無修正で緑
+- 新しいテスト（名前は日本語の文）: `internal/config`の`TestAgentOverrides`（効く値・effort全5値・不正effort・大文字違い・空model・知らないキー・`{}`・`null`）、`serve`の`TestRunAppliesAgentOverridesToGuestAgents`（同梱のechoにmodel・effortの行が出る／`.masuda/agents/echo.md`のfrontmatter `model: sonnet`・`effort: low`に対し設定`opus`が勝ちeffortはlowのまま／設定無しなら行が出ない）、`TestUnknownAgentOverrideRefusesRunAndShowsInCheck`（`agents/reviewer`と書いた名前でRunがInvalidArgument・ワークスペースを作らない・checkに出る・正しい名前なら問題0）
+- 分岐を壊して落ちることを確認して戻した: configの3検査とeffort一覧から`xhigh`を抜く、`withOverride`のModel・Effortの各分岐と`*o.Model`→`a.Model`、`unknownAgentOverrides`の判定、planBootの呼び出し、エラーコード（FailedPreconditionに変える）、Checkへの`settingsProblems`の追加
+- 一時のフェイクserve（scratchpadの一時data-dir・一意なソケット、終了済み）で、このリポジトリに`masuda workflow check`（全root）と`workflows/develop`・`fix`・`review`がいずれも`ok`。打ち間違い（`reviwer`）の一時リポジトリでは問題1件・終了コード1
 ## 未完と理由
-- `go.mod`のengineの固定は未（engineのE13がpush前のため。監督が行う）。今のコミットは`GOWORK=off`ではビルドできない（`engine.Agent`に`Model`・`Effort`が無い）
+- 実機（live）では確かめていない（作業指示の検証に含まれない）。frontmatterに`model`・`effort`があればゲストのClaude Codeが従うことはM14bのliveで確認済みで、今回はその書き出しの手前で値を差し替えるだけ
 - `comment-criteria`・`comment-manifest`の実機1周、`ask_human`の実機、記憶の無いサブエージェントへの課題（前回から持ち越し）
 ## 次の一手
-1. engineのE13をpushし、`go get github.com/TadahiroYamamura/masuda-engine@main && go mod tidy`（古ければ`GOPROXY=direct`）→`GOWORK=off go test ./...`
-2. **#68の後半**: 開発版serveで`workflows/fix`の予行（M14c）
+1. 開発版serve（`masuda-dev`）をM14e入りでビルドし直してから、このリポジトリを対象にrunを始める（下の注意点）
+2. 予行でSonnet化の効果（時間・キャッシュ読出）を測る
 3. **#70**・**#61の残り**・v0.2.0のリリース
 ## 注意点
+- **`.masuda/settings.json`に`agents`が入ったので、M14eより前のビルドのmasuda（公開済みv0.1.0、それより古い開発版serve）はこのリポジトリのsettings.jsonを知らないキーとして断る**。HANDOFFの「masuda自身の`.masuda/`は入っているハーネスの版で読める範囲に留める」には反するが、指示書（ユーザー決定）どおりにした。ハーネスの導入はv0.2.0公開後なので、v0.2.0に入れば解消する
+- 監督のscratchpadの`masuda`（バイナリ）を今回のビルドで上書きした（`masuda-dev`と`devserve.pid`・動いている開発版serveには触れていない）。`serve.pid`も自分の一時serveのPIDで上書きした
+- `agents`の照合先はそのrunで読み込んだ定義すべて。ワークフローが使わない役の名前（例: `develop`に無い`synthesizer`）を書いても拒否しない。同じsettings.jsonを全ワークフローで共有するため
+- `settings.json`が読めない（壊れたJSON等）とき、`workflow check`はこれまで何も出さなかったが、今回から`settings.json`の問題として出る
+- `docs/user/concepts.md`の「エージェントへの指示をどこに書くか」の表は指示の置き場所なので行を足していない
 - echoer（`effort`を書かない役）の記録は`medium`。セッションの既定がそのまま継承された値で、`claudeSettings`に`effortLevel`等は書いていない
 - 役の見分けは応答の`attributionAgent`（サブエージェント定義の`name`）。2.1.287の会話ログには`agentType`が無く、`records/subagents.json`はDONEに至った最後のタスク（今回はechoerの`0000002`）のIDを持たない
 - メインセッション（`claudeSettings.model: opus`）の会話ログの値は、成功時にliveのdata-dirが消えるため確かめていない（サブエージェントのechoerがopusなので継承元はopusのはず）
@@ -68,4 +74,4 @@ M14b（`docs/work-orders.md`。#69、契約変更・ユーザー承認2026-10-03
 - 旧スキーマの計画はstepに`title`が無いので、ステップの見出しは`  1.`だけになる
 - `serve`の`TestStallAfterFromLocalSettings`は`./...`一括実行で稀に落ちる（5秒以内にSTALLEDにならない）。単体と再実行では緑。今回は一括でも緑
 ## 契約への提案
-- M14bで`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行に`model`・`effort`を足した（承認済み、`b9a363b`）。ほかの提案はなし
+- なし（M14eでは契約を変えていない）
