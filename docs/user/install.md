@@ -103,6 +103,10 @@ masuda doctor
 
 QEMU・KVM（macOSはHVF）・Node・Docker・gitと、`masuda-sandbox serve`への到達、Claudeのトークンを1項目ずつ確かめ、足りないものに直し方を添える。この時点では`masuda-sandbox`（まだ起動していない）とClaudeトークン（まだ登録していない）がNGになる。次の「起動」と「Claudeのトークンを登録する」のあとでもう一度打ち、すべて`ok`になることを確かめる（[CLIリファレンス](cli.md#doctor)）。
 
+### 補完を有効にする
+
+シェルの起動ファイルに`source <(masuda completion bash)`（zshは`source <(masuda completion zsh)`）を書くと、コマンド・フラグ・ワークスペースIDなどをTabで補完できる。ワークスペースIDなどの候補は`masuda serve`が動いているときだけ出る（[CLIリファレンス](cli.md#completion)）。
+
 ## 起動
 
 ターミナルを2つ使う（またはtmux等で両方を常駐させる）。先に`masuda-sandbox serve`を起動する。
