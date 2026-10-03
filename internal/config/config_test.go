@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
+
+	"github.com/TadahiroYamamura/masuda-engine/engine"
 )
 
 func TestLoadMissingFileReturnsZeroValue(t *testing.T) {
@@ -195,4 +198,27 @@ func TestAgentOverrides(t *testing.T) {
 			}
 		})
 	}
+}
+
+func agentRepoWithEffort(effort string) fstest.MapFS {
+	return fstest.MapFS{
+		"agents/probe.md": {Data: []byte("---\nname: probe\ndescription: effortの検証用\neffort: " + effort + "\noutcomes:\n  done: 終えた\n---\n本文\n")},
+	}
+}
+
+// settings.jsonに書けるのにengineが拒否する値（Efforts側が多いずれ）はここで検出できる。
+// 逆に、engineが許すのにEffortsに無い値は、Efforts以外の値を試さないので検出できない。
+func TestEffortsAreAcceptedByEngine(t *testing.T) {
+	t.Run("config.Effortsの全ての値を役定義のfrontmatterのeffortに書いた定義をengineが読み込める", func(t *testing.T) {
+		for _, effort := range Efforts {
+			if _, err := engine.Load(agentRepoWithEffort(effort), engine.Bundled()); err != nil {
+				t.Errorf("effort %s: %v", effort, err)
+			}
+		}
+	})
+	t.Run("effortにEffortsに無い値を書いた定義はengineが拒否する", func(t *testing.T) {
+		if _, err := engine.Load(agentRepoWithEffort("ultra"), engine.Bundled()); err == nil {
+			t.Fatal("engine.Load() error = nil")
+		}
+	})
 }
