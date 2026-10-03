@@ -83,6 +83,10 @@ outcomes:
   - [`.masuda/claude/`](settings.md#claude-dir)に置いたスキルを使わせるなら、`tools`に`Skill`を足す。同梱のエージェントは`Skill`を持っている
 - `inputs`・`outputs`: 受け取る・書くデータの名前。入力はVMの`/masuda/in/<出現ID>/<名前>`にファイルとして置かれる
 - `outcomes`: 終わり方と、その意味の説明。`done`は必須。エージェントはこの中から1つを選んで報告する
+- `model`・`effort`（任意）: その役のサブエージェントのモデルと推論の努力量。VMの中のClaude Codeのサブエージェント定義にそのまま渡る
+  - `model`: `sonnet`・`opus`・`haiku`等の別名、フルのモデルID、`inherit`。省略するとメインセッションのモデル（[`claudeSettings`](settings.md#claudesettings)の`model`）を継承する
+  - `effort`: `low`・`medium`・`high`・`xhigh`・`max`のいずれか。省略するとセッションの既定を継承する
+  - `continues`で続きが成立したサブエージェントは、起動時の`model`・`effort`のまま動く。続ける側の役の値は、新しく起動したときだけ使われる
 
 本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（15個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
 

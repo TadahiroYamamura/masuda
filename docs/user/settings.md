@@ -164,6 +164,8 @@ VMの中に`/masuda/checks/<チェック名>`という実行可能スクリプ�
 
 VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`（エージェントのプロセスに渡す環境変数）や`permissions`などを書ける。`hooks`はmasudaが自分のものを置くので、masudaのものが優先される。
 
+`model`を書くと、メインセッションと、`model`を書いていない役（[エージェントの書き方](workflows.md#write-agent)）のモデルになる。役のサブエージェントはメインセッションのモデルを継承するため。
+
 ### publish
 
 | キー | 型 | 既定 | 意味 |
