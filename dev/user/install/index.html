@@ -1633,7 +1633,7 @@ id<span class="w"> </span>-nG<span class="w"> </span><span class="p">|</span><sp
 <p><code>/dev/kvm</code>が無ければ、BIOSの仮想化支援（Intel VT-x・AMD-V）か、WSL2の入れ子の仮想化が無効になっている。自分が<code>kvm</code>グループに入っていなければ<code>sudo usermod -aG kvm "$USER"</code>のあとログインし直す。</p>
 <h2 id="_3">入れる<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="_4">かんたんな入れ方<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/v0.2.0/masuda_installer.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/v0.2.1/masuda_installer.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
 </code></pre></div>
 <p>別のバージョンを入れるときは、<code>MASUDA_VERSION=X.Y.Z</code>（先頭の<code>v</code>は付けない）を<code>sh</code>の前に付ける（<code>... | MASUDA_VERSION=X.Y.Z sh</code>）。</p>
 <ul>
@@ -1644,7 +1644,7 @@ id<span class="w"> </span>-nG<span class="w"> </span><span class="p">|</span><sp
 <p>curl・tar・npm・sha256sum（macOSはshasum）が要る。</p>
 <h3 id="_5">手で入れる<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>以下では入れるバージョンを<code>VERSION</code>に置く（<a href="https://github.com/TadahiroYamamura/masuda/releases">Releaseの一覧</a>の最新。先頭の<code>v</code>は付けない）。</p>
-<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.0
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.1
 </code></pre></div>
 <h4 id="masuda-sandbox">masuda-sandbox<a class="headerlink" href="#masuda-sandbox" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span>

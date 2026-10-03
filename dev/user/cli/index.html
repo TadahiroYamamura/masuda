@@ -2094,10 +2094,10 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <div class="highlight"><pre><span></span><code>masuda version [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;]
 </code></pre></div>
 <p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（<code>masuda init</code>の雛形が入れる版）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
-<div class="highlight"><pre><span></span><code>masuda 0.2.0 (go1.26.3 linux/amd64)
+<div class="highlight"><pre><span></span><code>masuda 0.2.1 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
   claude code: 2.1.287 (guest, verified)
-masuda-sandbox 0.2.0 (linux/amd64, gondolin 0.12.0)
+masuda-sandbox 0.2.1 (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok
 </code></pre></div>
