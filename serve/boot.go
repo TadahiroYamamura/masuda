@@ -17,6 +17,7 @@ import (
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/internal/claudedir"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
@@ -75,7 +76,8 @@ func loadPitfalls(dir string) ([]byte, error) {
 // copyDefinitions は対象リポジトリの`.masuda/`をdstへ写す（無ければ空のdstを作る）。
 // 実行は写しの定義で進めるので、実行中に作業ツリーの定義を書き換えても、再開やserveの
 // 再起動の後に別の定義で組み直されることがない。シンボリックリンクは写さない
-// （リポジトリの外を指していても読まないため）。
+// （リポジトリの外を指していても読まないため）。`claude/`と`claude.local/`はそのまま写さず、
+// 重ねた結果を`claude/`に置く（無視したものは標準エラーに1行で伝える）。
 func copyDefinitions(repoRoot, dst string) error {
 	src := filepath.Join(repoRoot, ".masuda")
 	if err := os.MkdirAll(dst, 0o700); err != nil {
@@ -84,7 +86,7 @@ func copyDefinitions(repoRoot, dst string) error {
 	if st, err := os.Stat(src); err != nil || !st.IsDir() {
 		return nil
 	}
-	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+	err := filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -94,6 +96,8 @@ func copyDefinitions(repoRoot, dst string) error {
 		}
 		target := filepath.Join(dst, rel)
 		switch {
+		case d.IsDir() && (rel == claudedir.SharedDir || rel == claudedir.LocalDir):
+			return filepath.SkipDir
 		case d.IsDir():
 			return os.MkdirAll(target, 0o700)
 		case d.Type().IsRegular():
@@ -110,6 +114,17 @@ func copyDefinitions(repoRoot, dst string) error {
 			return nil
 		}
 	})
+	if err != nil {
+		return err
+	}
+	files, ignored, err := claudedir.Merge(src)
+	if err != nil {
+		return err
+	}
+	if w := claudedir.Warning(ignored); w != "" {
+		fmt.Fprintln(os.Stderr, w)
+	}
+	return claudedir.Write(filepath.Join(dst, claudedir.SharedDir), files)
 }
 
 // newRunCtl はワークスペースwの実行の窓口（engine・Runner・MCPサーバー）を組み立てて登録する。
@@ -125,6 +140,10 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 		return nil, err
 	}
 	pits, err := loadPitfalls(w.DefinitionsDir())
+	if err != nil {
+		return nil, err
+	}
+	claude, err := claudedir.Load(filepath.Join(w.DefinitionsDir(), claudedir.SharedDir))
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +168,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 	})
 	ctx, cancel := context.WithCancel(b.ctx)
 	c := &runCtl{
-		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews, pitfalls: pits,
+		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews, pitfalls: pits, claude: claude,
 		changed: make(chan struct{}), ctx: ctx, cancel: cancel, bootDone: make(chan struct{}),
 	}
 	c.eng = engine.New(set, store, r, engine.Options{})
@@ -310,7 +329,8 @@ func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcp
 }
 
 // prepareGuest はstagingのブランチをゲストへcloneさせ、ループ規約・サブエージェント定義・
-// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点と落とし穴の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
+// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点と落とし穴と
+// `.masuda/claude/`の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
 func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *runCtl, placeholders map[string]string) error {
 	set, plan := c.set, c.plan
 	repo := staging.Open(w.StagingDir())
@@ -350,6 +370,7 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		Checks:         plan.checks,
 		Reviews:        c.reviews,
 		Pitfalls:       c.pitfalls,
+		Claude:         c.claude,
 	})
 }
 

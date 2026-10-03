@@ -19,7 +19,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created) != 2+14+1 {
+	if len(created) != 2+14+2 {
 		t.Fatalf("created %d files: %v", len(created), created)
 	}
 	cfg, err := config.Load(root)
@@ -31,7 +31,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 		t.Fatalf("settings template: %+v", cfg)
 	}
 	ignore, _ := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if string(ignore) != "node_modules\n.masuda/settings.local.json\n" {
+	if string(ignore) != "node_modules\n.masuda/settings.local.json\n.masuda/claude.local/\n" {
 		t.Fatalf(".gitignore = %q", ignore)
 	}
 	docker, _ := os.ReadFile(filepath.Join(root, ".masuda/images/default/Dockerfile"))
@@ -70,7 +70,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 
 // `.masuda/`ごと無視しているリポジトリには、settings.local.jsonの行を重ねて足さない。
 func TestInitDoesNotDuplicateIgnoreWhenDirIsIgnored(t *testing.T) {
-	for _, line := range []string{".masuda/", "/.masuda", ".masuda/*", ".masuda/settings.local.json"} {
+	for _, line := range []string{".masuda/", "/.masuda", ".masuda/*", ".masuda/settings.local.json\n.masuda/claude.local"} {
 		root := t.TempDir()
 		want := "node_modules\n" + line + "\n"
 		if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte(want), 0o644); err != nil {

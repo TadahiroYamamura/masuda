@@ -78,6 +78,9 @@ type Layout struct {
 	Reviews map[string][]byte
 	// Pitfalls は落とし穴（検査済みのJSON Lines）。空でなければPitfallsPathへ置く。
 	Pitfalls []byte
+	// Claude は`.masuda/claude/`に`.local`を重ねたもの（相対パス→中身）。`CLAUDE.md`は
+	// ループ規約の後ろに連結し、`rules/`・`skills/`の下は`~/.claude/`の同じ相対パスへ置く。
+	Claude map[string][]byte
 }
 
 // EnvFile は作業ツリーに生成するdotenv形式のファイル1つ。
@@ -121,7 +124,10 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 		return fmt.Errorf("cloning into /workspace: %w", err)
 	}
 
-	if err := WriteBytes(ctx, c, l.SandboxID, Home+"/.claude/CLAUDE.md", loopRules, 0o644); err != nil {
+	if err := WriteBytes(ctx, c, l.SandboxID, Home+"/.claude/CLAUDE.md", ClaudeMD(l.Claude["CLAUDE.md"]), 0o644); err != nil {
+		return err
+	}
+	if err := writeClaudeDir(ctx, c, l.SandboxID, l.Claude); err != nil {
 		return err
 	}
 	for _, a := range l.Agents {
@@ -153,6 +159,52 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 	}
 	if len(l.Pitfalls) > 0 {
 		return WriteBytes(ctx, c, l.SandboxID, PitfallsPath, l.Pitfalls, 0o644)
+	}
+	return nil
+}
+
+// ProjectRulesHeading はループ規約の後ろに連結する`.masuda/claude/CLAUDE.md`の見出し。
+const ProjectRulesHeading = "# プロジェクトのルール（.masuda/claude）"
+
+// ClaudeMD はゲストの`~/.claude/CLAUDE.md`。ループ規約の後ろに対象リポジトリのCLAUDE.md
+// （空なら無し）を連結する。別ファイル（`~/.claude/rules/`）にしないのは、利用者が書いた
+// 見出しや順序をそのまま1つの文書として読ませ、ループ規約との優先順位を先頭の1行で示すため。
+func ClaudeMD(project []byte) []byte {
+	if len(strings.TrimSpace(string(project))) == 0 {
+		return loopRules
+	}
+	var b strings.Builder
+	b.Write(loopRules)
+	if !strings.HasSuffix(string(loopRules), "\n") {
+		b.WriteString("\n")
+	}
+	b.WriteString("\n" + ProjectRulesHeading + "\n\n")
+	b.WriteString("上のmasudaのループ規約と矛盾するときは、ループ規約が優先する。\n\n")
+	b.Write(project)
+	if !strings.HasSuffix(string(project), "\n") {
+		b.WriteString("\n")
+	}
+	return []byte(b.String())
+}
+
+// writeClaudeDir は`.masuda/claude/`のrules・skillsをゲストの`~/.claude/`へ置く。
+func writeClaudeDir(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, files map[string][]byte) error {
+	rels := make([]string, 0, len(files))
+	for rel := range files {
+		rels = append(rels, rel)
+	}
+	sort.Strings(rels)
+	for _, rel := range rels {
+		if rel == "CLAUDE.md" {
+			continue
+		}
+		clean := path.Clean(rel)
+		if clean != rel || !(strings.HasPrefix(rel, "rules/") || strings.HasPrefix(rel, "skills/")) || strings.Contains("/"+rel+"/", "/../") {
+			return fmt.Errorf("invalid .masuda/claude path %q", rel)
+		}
+		if err := WriteBytes(ctx, c, id, Home+"/.claude/"+rel, files[rel], 0o644); err != nil {
+			return err
+		}
 	}
 	return nil
 }

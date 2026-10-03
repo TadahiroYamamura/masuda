@@ -44,3 +44,21 @@ func TestLoopRulesDescribeContinuation(t *testing.T) {
 		}
 	}
 }
+
+// 対象リポジトリのCLAUDE.mdはループ規約の後ろに、見出しと優先順位の1行を挟んで連結する。
+func TestClaudeMDAppendsProjectRulesAfterLoopRules(t *testing.T) {
+	got := string(ClaudeMD([]byte("日本語で書く")))
+	if !strings.HasPrefix(got, string(loopRules)) {
+		t.Fatalf("loop rules must come first:\n%s", got)
+	}
+	rest := got[len(loopRules):]
+	heading := strings.Index(rest, ProjectRulesHeading)
+	priority := strings.Index(rest, "ループ規約が優先")
+	body := strings.Index(rest, "日本語で書く")
+	if heading < 0 || priority < heading || body < priority || !strings.HasSuffix(got, "\n") {
+		t.Fatalf("project rules section:\n%s", rest)
+	}
+	if string(ClaudeMD(nil)) != string(loopRules) || string(ClaudeMD([]byte(" \n"))) != string(loopRules) {
+		t.Fatal("without a project CLAUDE.md the loop rules are placed as they are")
+	}
+}

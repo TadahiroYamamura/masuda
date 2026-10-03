@@ -42,6 +42,8 @@ type runCtl struct {
 	reviews map[string][]byte
 	// pitfalls は実行開始時に写した落とし穴（検査済み、注釈の行を除いたもの）。空ならゲストに置かない。
 	pitfalls []byte
+	// claude は実行開始時に写した`.masuda/claude/`（`.local`を重ねたもの）。相対パス→中身。
+	claude map[string][]byte
 
 	// ctx はこの実行の寿命。Stop・Remove・serveの停止で取り消され、ブロック中のnext_task・
 	// ask_human、起動の途中、engineの進行を止める。

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/TadahiroYamamura/masuda/internal/claudedir"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
@@ -17,8 +18,12 @@ import (
 //go:embed templates/Dockerfile templates/settings.json
 var templates embed.FS
 
-// localIgnore は対象リポジトリの.gitignoreに足す行。利用者ごとの承認をコミットさせない。
-const localIgnore = config.DirName + "/" + config.SettingsLocalFileName
+// localIgnores は対象リポジトリの.gitignoreに足す行。利用者ごとの承認と、個人用の
+// `~/.claude/`の中身（`.masuda/claude.local/`）をコミットさせない。
+var localIgnores = []string{
+	config.DirName + "/" + config.SettingsLocalFileName,
+	config.DirName + "/" + claudedir.LocalDir + "/",
+}
 
 // runInit は対象リポジトリに`.masuda/`の雛形を置く。serveを介さずローカルで書く
 // （公開APIにinitは無く、書く先は利用者の作業ツリーだけのため）。既にあるファイルは上書きせず、
@@ -98,12 +103,14 @@ func initRepo(root string) ([]string, error) {
 			return created, err
 		}
 	}
-	added, err := ensureIgnored(filepath.Join(root, ".gitignore"), localIgnore, config.DirName)
-	if err != nil {
-		return created, err
-	}
-	if added {
-		created = append(created, ".gitignore ("+localIgnore+")")
+	for _, line := range localIgnores {
+		added, err := ensureIgnored(filepath.Join(root, ".gitignore"), line, config.DirName)
+		if err != nil {
+			return created, err
+		}
+		if added {
+			created = append(created, ".gitignore ("+line+")")
+		}
 	}
 	return created, nil
 }
@@ -128,7 +135,7 @@ func ensureIgnored(path, line, parent string) (bool, error) {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	}
-	covering := map[string]bool{line: true}
+	covering := map[string]bool{line: true, strings.TrimSuffix(line, "/"): true}
 	for _, p := range []string{parent, parent + "/", parent + "/*", parent + "/**"} {
 		covering[p] = true
 	}

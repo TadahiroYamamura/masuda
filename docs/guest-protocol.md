@@ -13,11 +13,14 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | ゲストのパス | 中身 |
 |---|---|
 | `/workspace` | stagingからのclone（bundleを置いてゲストで`git clone`） |
-| `~/.claude/CLAUDE.md` | ループ規約（下記） |
+| `~/.claude/CLAUDE.md` | ループ規約（下記）。対象リポジトリの`.masuda/claude/`（`.masuda/claude.local/`を重ねたもの）に`CLAUDE.md`があれば、見出し`# プロジェクトのルール（.masuda/claude）`とループ規約が優先する旨の1行を挟んで後ろに連結する |
+| `~/.claude/rules/*.md` | `.masuda/claude/rules/*.md`（同じパスは`.masuda/claude.local/`が勝つ）。無ければ置かない |
+| `~/.claude/skills/<name>/` | `.masuda/claude/skills/<name>/`以下をディレクトリごと（同じパスは`.masuda/claude.local/`が勝つ）。無ければ置かない |
 | `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文を写す |
 | `~/.claude/settings.json` | フック設定（下記）と、対象リポジトリの`claudeSettings` |
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
 | `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の14観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |
+| `/masuda/pitfalls.jsonl` | プロジェクト固有の落とし穴。ホストの`.masuda/pitfalls.jsonl`を実行開始時に写して検査し、空行と`#`の行を除いたもの（1行1件`{id, category, trigger, question, background}`）。無ければ置かない。同梱のplan-questionsが読む |
 | `~/.claude/.mcp.json`相当 | `masuda`サーバー1つ（`http://masuda.internal:7000/mcp`） |
 
 環境変数（tmuxサーバーに継承させる）: `CLAUDE_CODE_OAUTH_TOKEN=<プレースホルダ>`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`、`GIT_AUTHOR_*`/`GIT_COMMITTER_*`。

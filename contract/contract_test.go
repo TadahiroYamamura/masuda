@@ -850,3 +850,82 @@ func TestCM9_ContinuesCarriesReportedAgentID(t *testing.T) {
 		t.Fatalf("next_task at the end: %v", done)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// C-M10: .masuda/claude/ and .masuda/claude.local/ in the guest's ~/.claude/
+// ---------------------------------------------------------------------------
+
+// The shared and personal directories are merged (the local one wins per path),
+// CLAUDE.md is appended after the loop rules, rules and skills land under
+// ~/.claude/, and what masuda owns (agents, settings.json) is not copied. The
+// merged copy is fixed at Run: a resume places the same content even if the
+// working tree changed.
+func TestCM10_ClaudeDirPlacedInGuest(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/claude/CLAUDE.md"] = "shared rules\n"
+	files[".masuda/claude/rules/style.md"] = "style\n"
+	files[".masuda/claude/rules/test.md"] = "shared test\n"
+	files[".masuda/claude/skills/lint/SKILL.md"] = "---\nname: lint\ndescription: d\n---\nlint\n"
+	files[".masuda/claude/skills/lint/scripts/run.sh"] = "echo run\n"
+	files[".masuda/claude/agents/evil.md"] = "---\nname: evil\n---\n"
+	files[".masuda/claude/settings.json"] = `{"hooks":{}}`
+	h := start(t, files)
+	// The personal directory is gitignored in a real repository; it is read from the working tree.
+	for p, c := range map[string]string{
+		".masuda/claude.local/CLAUDE.md":     "local rules\n",
+		".masuda/claude.local/rules/test.md": "local test\n",
+	} {
+		full := filepath.Join(h.repo, p)
+		_ = os.MkdirAll(filepath.Dir(full), 0o755)
+		if err := os.WriteFile(full, []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx := context.Background()
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/claude", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second).Id
+	home := filepath.Join(h.dataDir, "fake", id, "root", "home/ubuntu/.claude")
+	check := func() {
+		t.Helper()
+		claudeMD, _ := os.ReadFile(filepath.Join(home, "CLAUDE.md"))
+		s := string(claudeMD)
+		loop := strings.Index(s, "next_task")
+		heading := strings.Index(s, "# プロジェクトのルール（.masuda/claude）")
+		if loop < 0 || heading < loop || !strings.Contains(s[heading:], "ループ規約が優先") || !strings.HasSuffix(s, "local rules\n") || strings.Contains(s, "shared rules") {
+			t.Fatalf("~/.claude/CLAUDE.md must be the loop rules followed by the local CLAUDE.md:\n%s", s)
+		}
+		for p, want := range map[string]string{
+			"rules/style.md":             "style\n",
+			"rules/test.md":              "local test\n",
+			"skills/lint/SKILL.md":       files[".masuda/claude/skills/lint/SKILL.md"],
+			"skills/lint/scripts/run.sh": "echo run\n",
+		} {
+			if b, err := os.ReadFile(filepath.Join(home, p)); err != nil || string(b) != want {
+				t.Fatalf("~/.claude/%s = %q %v, want %q", p, b, err, want)
+			}
+		}
+		if _, err := os.Stat(filepath.Join(home, "agents/evil.md")); !os.IsNotExist(err) {
+			t.Fatalf(".masuda/claude/agents must not reach the guest: %v", err)
+		}
+		settings, _ := os.ReadFile(filepath.Join(home, "settings.json"))
+		if !strings.Contains(string(settings), "PostToolUse") {
+			t.Fatalf(".masuda/claude/settings.json must not replace masuda's settings: %s", settings)
+		}
+	}
+	check()
+
+	if err := os.WriteFile(filepath.Join(h.repo, ".masuda/claude.local/rules/test.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	check()
+}
