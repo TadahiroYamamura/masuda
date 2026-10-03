@@ -1,7 +1,7 @@
 connectrpc.com/connect v1.21.0 h1:LhqSJt7jHf5NJBo9Jq/t/9FjcYAideif0mg+qe2jCUs=
 connectrpc.com/connect v1.21.0/go.mod h1:A2ygJrukXwWy32vkCAAHNVguZrqZ+jeZ9rGRnGR4dN4=
-github.com/TadahiroYamamura/masuda-engine v0.1.1-0.20261003080309-64a8e69fe81b h1:5QTKfOGVdofn8ZM4cFB9J7NqvD9Pp85VnQnDURwwuGM=
-github.com/TadahiroYamamura/masuda-engine v0.1.1-0.20261003080309-64a8e69fe81b/go.mod h1:aW/kS+0O0nx1qzRjx+U8rvr+kWk2Da0dWFGQxxhilQA=
+github.com/TadahiroYamamura/masuda-engine v0.2.0 h1:bAs3iMOM30FgvIE72hPiEQKTahAlanvfioUGaphjv2I=
+github.com/TadahiroYamamura/masuda-engine v0.2.0/go.mod h1:aW/kS+0O0nx1qzRjx+U8rvr+kWk2Da0dWFGQxxhilQA=
 github.com/dlclark/regexp2 v1.11.0 h1:G/nrcoOa7ZXlpoa/91N3X7mM3r8eIlMBBJZvsz/mxKI=
 github.com/dlclark/regexp2 v1.11.0/go.mod h1:DHkYz0B9wPfa6wondMfaivmHpzrQ3v9q8cnmRbL6yW8=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
