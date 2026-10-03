@@ -67,7 +67,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	if _, err := loadPitfalls(defs); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	plan, err := s.backend.planBoot(defs, repoRoot, set, m.Workflow, m.Image)
+	plan, err := s.backend.planBoot(defs, repoRoot, set, m.Workflow, m.Image, connect.CodeInvalidArgument)
 	if err != nil {
 		return nil, err
 	}

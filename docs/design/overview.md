@@ -284,6 +284,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `privilegedCommands` | 特権コマンドの宣言（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |
+| `agents` | 役の名前→`model`・`effort`の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は`run`・`resume`・`workflow check`が断る |
 | `publish.remote` | `target: remote`のpublishがpushする実リポジトリのremoteの名前。既定`origin` |
 
 `settings.local.json`（利用者ごとの承認と値）:

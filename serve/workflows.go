@@ -103,6 +103,7 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 	var le errLoad
 	if errors.As(err, &le) {
 		problems := append([]*apiv1.Problem{{Message: le.Error()}}, pitfallProblems(ctx, req.Msg.RepoRoot)...)
+		problems = append(problems, settingsProblems(ctx, req.Msg.RepoRoot, nil)...)
 		return connect.NewResponse(&apiv1.CheckWorkflowResponse{Problems: problems}), nil
 	} else if err != nil {
 		return nil, err
@@ -164,6 +165,7 @@ func pitfallProblems(ctx context.Context, repoRoot string) []*apiv1.Problem {
 
 // settingsProblems はrepoRootの`.masuda/settings.json`を読み、Runが始める前に断るのと同じ
 // `agents`の役の名前の食い違いを問題として返す。読めなければその理由を問題の1つにする。
+// setがnil（定義が読み込めない）ときは照合する相手が無いので、役の名前の照合は飛ばす。
 func settingsProblems(ctx context.Context, repoRoot string, set *engine.Set) []*apiv1.Problem {
 	if repoRoot == "" {
 		return nil
@@ -177,6 +179,9 @@ func settingsProblems(ctx context.Context, repoRoot string, set *engine.Set) []*
 		return []*apiv1.Problem{{Path: config.SettingsFileName, Message: err.Error()}}
 	}
 	var out []*apiv1.Problem
+	if set == nil {
+		return out
+	}
 	for _, msg := range unknownAgentOverrides(set, cfg.Agents) {
 		out = append(out, &apiv1.Problem{Path: config.SettingsFileName, Message: msg})
 	}

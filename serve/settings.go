@@ -43,8 +43,7 @@ type bootPlan struct {
 	vars           map[string]string
 	checks         map[string]string
 	claudeSettings json.RawMessage
-	// agents はsettings.jsonの役ごとのmodel・effortの上書き。ゲストへ役定義を書き出すときに重ねる。
-	agents map[string]config.AgentOverride
+	agents         map[string]config.AgentOverride
 	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
 	// serveの--stall-afterが指定されていればそちらが勝つ（backend.stallFor）。
 	stallAfter time.Duration
@@ -57,15 +56,16 @@ const claudeTokenPrefix = "sk-ant-oat01-"
 // planBoot はdefsDir（`.masuda/`の写し）とrepoRootの承認・秘密からbootPlanを作る。
 // 足りないものはまとめてFailedPreconditionで返す（1つ直すたびに次が出てくるのを避ける）。
 // imageは要求で指定されたエントリ（空ならsettings.jsonのimage）。
-func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, image string) (*bootPlan, error) {
+func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, image string, agentsCode connect.Code) (*bootPlan, error) {
 	cfg, err := config.LoadDir(defsDir)
 	if err != nil {
 		// 設定ファイルが読めないのはConfigServiceと同じくFailedPrecondition（契約「エラーコードの約束」）。
 		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
 	}
-	// 他の不足と違い定義と設定の食い違いなので、workflow checkの問題と同じくInvalidArgumentで返す。
+	// 他の不足と違い定義と設定の食い違いなので、コードは呼び出し元が決める（Runは要求の指す定義の誤りでInvalidArgument、
+	// Resumeは要求がIDだけなので写しの不整合としてFailedPrecondition）。
 	if problems := unknownAgentOverrides(set, cfg.Agents); len(problems) > 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New(strings.Join(problems, "; ")))
+		return nil, connect.NewError(agentsCode, errors.New(strings.Join(problems, "; ")))
 	}
 	local, err := config.LoadLocal(repoRoot)
 	if err != nil {

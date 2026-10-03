@@ -119,7 +119,7 @@ func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("loading the workspace's definitions: %w", err))
 	}
 	// 承認・秘密の値はRunの後に変わりうる（取り消し・値の入れ替え）ので、再開のたびに読み直す。
-	plan, err := b.planBoot(w.DefinitionsDir(), w.RepoRoot, set, w.Workflow, w.Image)
+	plan, err := b.planBoot(w.DefinitionsDir(), w.RepoRoot, set, w.Workflow, w.Image, connect.CodeFailedPrecondition)
 	if err != nil {
 		return nil, err
 	}
