@@ -1,9 +1,12 @@
 package live
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -17,7 +20,7 @@ import (
 )
 
 // claudeDirBudget はTestClaudeDirReachesSubagentにかけてよい時間。VMの起動込み。
-const claudeDirBudget = 9 * time.Minute
+const claudeDirBudget = 12 * time.Minute
 
 // 印はゲストに置く`.masuda/claude/`・`.masuda/claude.local/`のそれぞれにしか書かず、役の本文にも
 // 入力にも出さない。出力に印があれば、その置き場所がサブエージェントに読まれたことになる。
@@ -28,10 +31,19 @@ const (
 )
 
 // claudeDirRepoFiles はコミットするもの。`.masuda/claude.local/`はgitignoreして作業ツリーにだけ置く
-// （claudeDirLocalFiles）。settings.jsonとDockerfileはpythonRepoFilesと同じもの（イメージのキャッシュを使う）。
+// （claudeDirLocalFiles）。DockerfileはpythonRepoFilesと同じもの（イメージのキャッシュを使う）。
+// settings.jsonはpythonRepoFilesのものにclaudeSettings.modelを足し、役のmodelの有無で
+// サブエージェントのモデルが分かれることを見る（proberはmodel・effortを書き、echoerは書かない）。
+// claudeSettings.modelには、modelを書かない役が継承したことを区別できるよう、
+// proberのmodelと違うものを選ぶ。
 var claudeDirRepoFiles = map[string]string{
-	".gitignore":                        ".masuda/settings.local.json\n.masuda/claude.local/\n",
-	".masuda/settings.json":             pythonRepoFiles[".masuda/settings.json"],
+	".gitignore": ".masuda/settings.local.json\n.masuda/claude.local/\n",
+	".masuda/settings.json": `{
+  "image": "default",
+  "egress": ["api.anthropic.com"],
+  "claudeSettings": {"model": "opus"}
+}
+`,
 	".masuda/images/default/Dockerfile": pythonRepoFiles[".masuda/images/default/Dockerfile"],
 	".masuda/claude/rules/marker.md":    "出力を書くときは本文の先頭に`" + ruleMark + "`を必ず含める。\n",
 	".masuda/claude/skills/echo-mark/SKILL.md": `---
@@ -44,17 +56,31 @@ description: 確認用の印の文字列を返す
 name: prober
 description: スキルとルールが届いているかを確かめる
 tools: Read, Skill
+model: sonnet
+effort: low
 outputs: [probe]
 outcomes:
   done: 書いた
 ---
 スキルecho-markを呼び、その結果と、ルールに従った印を出力` + "`probe`" + `に書く。
 `,
+	".masuda/agents/echoer.md": `---
+name: echoer
+description: 入力をそのまま写す
+tools: Read
+inputs: [probe]
+outputs: [echo]
+outcomes:
+  done: 書いた
+---
+入力` + "`probe`" + `を読み、その中身をそのまま出力` + "`echo`" + `に書く。
+`,
 	".masuda/workflows/claude-dir.yaml": `version: 1
 inputs: [instructions]
 start: probe
 nodes:
-  probe: {type: agent, role: agents/prober, next: end}
+  probe: {type: agent, role: agents/prober, next: echo}
+  echo: {type: agent, role: agents/echoer, next: end}
 `,
 }
 
@@ -64,7 +90,8 @@ var claudeDirLocalFiles = map[string]string{
 
 // TestClaudeDirReachesSubagent は、`.masuda/claude/`のルールとスキル、`.masuda/claude.local/`の
 // CLAUDE.mdが、ゲストのサブエージェントまで届くかを確かめる。出力`probe`に3つの印があり、
-// フックの記録にSkillの使用があれば合格。
+// フックの記録にSkillの使用があれば合格。あわせて、役定義のmodel・effortと
+// claudeSettings.modelがサブエージェントの会話ログに記録されたとおりに効いたかを見る。
 func TestClaudeDirReachesSubagent(t *testing.T) {
 	if os.Getenv("MASUDA_LIVE_TEST") != "1" {
 		t.Skip("set MASUDA_LIVE_TEST=1 to run against the real sandbox service")
@@ -135,6 +162,90 @@ func TestClaudeDirReachesSubagent(t *testing.T) {
 	if countTool(toolUses(t, wsDir), "Skill") == 0 {
 		t.Errorf("no Skill use in the hook records")
 	}
+
+	usage := subagentModels(t, filepath.Join(wsDir, "exports", "transcripts"))
+	for role, u := range usage {
+		t.Logf("subagent %s: model %v effort %v", role, u.models, u.efforts)
+	}
+	for _, p := range checkSubagentModel(usage, "prober", "claude-sonnet", "low") {
+		t.Error(p)
+	}
+	for _, p := range checkSubagentModel(usage, "echoer", "claude-opus", "") {
+		t.Error(p)
+	}
+}
+
+// modelUsage は1つの役のサブエージェントの応答に記録されたmodel・effortの値と出現回数。
+type modelUsage struct{ models, efforts map[string]int }
+
+// subagentModels は書き出した会話ログのうちサブエージェントのもの（`subagents/*.jsonl`）から、
+// 応答（type: assistant）の`message.model`と`effort`を役ごとに集める。役は応答の`attributionAgent`
+// （サブエージェント定義のname）で見分ける。ゲストのClaude Code 2.1.287の会話ログには
+// agentTypeが無く、records/subagents.jsonはDONEに至った最後のタスクのIDを持たないため。
+func subagentModels(t *testing.T, transcripts string) map[string]modelUsage {
+	t.Helper()
+	out := map[string]modelUsage{}
+	_ = filepath.WalkDir(transcripts, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || filepath.Base(filepath.Dir(p)) != "subagents" || !strings.HasSuffix(p, ".jsonl") {
+			return nil
+		}
+		f, err := os.Open(p)
+		if err != nil {
+			t.Errorf("reading %s: %v", p, err)
+			return nil
+		}
+		defer f.Close()
+		sc := bufio.NewScanner(f)
+		sc.Buffer(nil, 64<<20)
+		for sc.Scan() {
+			var line struct {
+				Type             string `json:"type"`
+				AttributionAgent string `json:"attributionAgent"`
+				Effort           string `json:"effort"`
+				Message          struct {
+					Model string `json:"model"`
+				} `json:"message"`
+			}
+			if json.Unmarshal(sc.Bytes(), &line) != nil || line.Type != "assistant" {
+				continue
+			}
+			u, ok := out[line.AttributionAgent]
+			if !ok {
+				u = modelUsage{models: map[string]int{}, efforts: map[string]int{}}
+				out[line.AttributionAgent] = u
+			}
+			u.models[line.Message.Model]++
+			u.efforts[line.Effort]++
+		}
+		if err := sc.Err(); err != nil {
+			t.Errorf("reading %s: %v", p, err)
+		}
+		return nil
+	})
+	return out
+}
+
+// checkSubagentModel は役roleの応答がすべてmodelPrefixで始まるモデルで、effortが空でなければ
+// すべてそのeffortで記録されているかを確かめ、外れたものを返す。
+func checkSubagentModel(usage map[string]modelUsage, role, modelPrefix, effort string) []string {
+	u, ok := usage[role]
+	if !ok {
+		return []string{"no assistant turn of subagent " + role + " in the transcripts"}
+	}
+	var problems []string
+	for m := range u.models {
+		if !strings.HasPrefix(m, modelPrefix) {
+			problems = append(problems, role+": model "+strconv.Quote(m)+", want "+modelPrefix+"*")
+		}
+	}
+	if effort != "" {
+		for e := range u.efforts {
+			if e != effort {
+				problems = append(problems, role+": effort "+strconv.Quote(e)+", want "+effort)
+			}
+		}
+	}
+	return problems
 }
 
 // claude-dirのワークフローは、engineの読み込み時の検査を通る（VMを使わないので常に走る）。
