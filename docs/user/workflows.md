@@ -64,7 +64,7 @@ nodes:
 - 書き込めるエージェント（`tools`に`Write`か`Edit`を持つ、または`tools`を省略した）と`commit`は、承認済みの計画がある状態でしか動けない。読み込みの検査で、計画の承認より前にそれらへ届く経路があれば拒否する
 - 1回の実行のノードの出現は20000までで打ち切る
 
-## エージェントの書き方
+## エージェントの書き方 {#write-agent}
 
 ```markdown title=".masuda/agents/summarizer.md"
 ---
@@ -80,6 +80,7 @@ outcomes:
 ```
 
 - `tools`: Claude Codeの道具の名前。`Write`・`Edit`を持たないエージェントは「書き込めない」役になり、作業ツリーを変えると`deviation`ゲートが開く
+  - [`.masuda/claude/`](settings.md#claude-dir)に置いたスキルを使わせるなら、`tools`に`Skill`を足す。同梱のエージェントは`Skill`を持っている
 - `inputs`・`outputs`: 受け取る・書くデータの名前。入力はVMの`/masuda/in/<出現ID>/<名前>`にファイルとして置かれる
 - `outcomes`: 終わり方と、その意味の説明。`done`は必須。エージェントはこの中から1つを選んで報告する
 
@@ -101,7 +102,7 @@ outcomes:
 ```
 
 - masudaが自分で用意するデータ: `diff`（分岐元からの差分）、`step-diff`（今のステップの差分）、`fix-diff`（修正を始めた時点からの差分）
-- 同梱のスキーマ: `plan`（計画。計画への問いと答えの`checks`を含む）、`plan-checklist`（計画への問い）、`findings`（指摘の台帳。実行中に書かれたものが溜まっていく）、`commit-message`、`selected-perspectives`、`answers`
+- 同梱のスキーマ: `plan`（計画。計画への問いと答えの`checks`を含む）、`plan-checklist`（計画への問い）、`findings`（指摘の台帳。実行中に書かれたものが溜まっていく）、`commit-message`、`comment-manifest`（実装する役・直す役が追加・変更したコメントと、それぞれが満たす基準の一覧。溜まっていく。観点[`comment-criteria`](reviews.md)が照合する）、`selected-perspectives`、`answers`
 
 ## 同梱のワークフロー
 
@@ -132,6 +133,7 @@ outcomes:
 - 計画を直す役（plan-reviser、`revise`ノード）が問いに1つずつ答え、答えに合わせて計画を直す。答えは計画の`checks`に`addressed`（計画で扱った）・`out_of_scope`（範囲外）・`open`（判断できない）として残り、plan gateで計画と一緒に読める（[`masuda gate show`](cli.md#gate)）。調査が足りなければ調査へ戻す
 - `open`の問いが残ると、聞く役（plan-interviewer、`ask`ノード）が、それらを1つの質問にまとめて人間に聞く。plan gateより前に`masuda list`の`question:<出現ID>`として現れるので、`masuda question list`で読み、`masuda question answer`で問いのidごとに答える。答えを受けて計画を直す役がもう一度直し（`revise-answered`ノード）、まだ判断できない問いがあれば再び聞く。手直しが上限（3回）に達したときは、そのままplan gateへ進む
 - 実装する役（implementer）は計画（`plan`）に加えて調査結果（`investigation`）を読み、既存の流儀に合わせ、既にある機能を重複して作らない
+- 実装する役（implementer）と直す役（fixer）は、追加・変更したコードコメントを`comment-manifest`に列挙し、どの基準（10行以上の要約・選択の理由・コードから読めない背景・トレードオフ等）を満たすかを書く。基準を言えないコメントは書かない。レビューでは観点`comment-criteria`がこの一覧と差分を照合する
 - ステップの実装は`/masuda/checks/test`（`settings.json`の`checks.test`）が通るまで、最大3回やり直す。直せなければ`stuck`で計画の承認へ戻る
 - レビューと修正は役ごとに1つのセッションで行う。レビューする役（reviewer）が観点を順に当てて指摘を台帳（`findings`）に書き、確かめる役（review-checker）が指摘の正確さを確かめる（不正確ならreviewerへ戻す）。直す役（fixer）は、実装したサブエージェントの続きとして（`continues: agents/implementer`）自動で直してよい指摘（`autofix: true`）をまとめて直し、指摘が誤り・計画の判断に反すると判断したものは直さずに反論する。再確認する役（rechecker）が解消を確かめ、反論が妥当なら指摘を取り下げる（未解決ならfixerへ戻す）
 - 途中レビューは、ステップの差分（`step-diff`）に対して、reviewerが各観点の`trigger`を見て当てはまる観点だけで行う（[レビュー観点](reviews.md)）。指摘が無ければ（`clean`）、または直す指摘が無ければ（`nothing_to_fix`）そのままコミットする。直しきれなければ`interim`ゲートで止まる

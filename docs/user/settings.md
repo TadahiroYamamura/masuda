@@ -7,7 +7,7 @@
 | `settings.json` | チーム | する | **宣言**。使うイメージ、通信先、秘密の名前と送り先、生成する`.env`、特権コマンド、チェック、Claude Codeの設定 |
 | `settings.local.json` | あなた | しない（`masuda init`が`.gitignore`に足す） | **承認と手元の値**。どの宣言を承認したか、`.env`の公開値、無活動のしきい値など |
 
-このほか任意で、プロジェクト固有の落とし穴を[`pitfalls.jsonl`](#pitfalls)に書ける（チームのもの。コミットする）。
+このほか任意で、プロジェクト固有の落とし穴を[`pitfalls.jsonl`](#pitfalls)に書ける（チームのもの。コミットする）。VMの中のClaude Codeに渡すルールやスキルは[`claude/`と`claude.local/`](#claude-dir)に置ける。
 
 通信先・平文の秘密・特権コマンドは、`settings.json`で宣言され、かつ`settings.local.json`で承認されたときだけ効く（[概念](concepts.md#declare-approve)）。秘密の値はどちらにも書かない（`masuda secret set`でホストの秘密ストアへ）。
 
@@ -219,6 +219,31 @@ VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`�
 すべて必須で、空にできない。ほかのキーがあると読み込みを断る。`masuda run`は`.masuda/`を写すときにこのファイルも写して1行ずつ検査し、誤りがあれば実行を始めずに行番号と理由を返す（例: `.masuda/pitfalls.jsonl: line 3: category "edge" is not one of spec, ...`）。`masuda workflow check`も同じ検査をして、誤りの行ごとに問題として出す。検査を通ったものが、注釈の行を除いてVMの`/masuda/pitfalls.jsonl`に置かれる。
 
 [レビュー観点](reviews.md)との違い: 観点は実装した差分を**判定する**ためのもの、落とし穴は実装の前の計画に**問う**ためのもの。
+
+## claude/ と claude.local/ {#claude-dir}
+
+VMの中のClaude Code（メインセッションとサブエージェント）の`~/.claude/`に置くもの。どちらも任意で、`masuda init`は作らない。
+
+| ディレクトリ | 誰のものか | コミット |
+|---|---|---|
+| `.masuda/claude/` | チーム | する |
+| `.masuda/claude.local/` | あなた | しない（`masuda init`が`.gitignore`に`.masuda/claude.local/`を足す） |
+
+置けるもの:
+
+| パス | VMでの置き場所 |
+|---|---|
+| `CLAUDE.md` | `~/.claude/CLAUDE.md`の後ろ。masudaのループ規約の後に、見出し`# プロジェクトのルール（.masuda/claude）`と「ループ規約と矛盾するときはループ規約が優先」の1行を挟んで連結する |
+| `rules/*.md` | `~/.claude/rules/` |
+| `skills/<名前>/`（`SKILL.md`と、それが使うファイル） | `~/.claude/skills/<名前>/`（ディレクトリごと） |
+
+- 同じ相対パスのファイルは`claude.local/`が勝つ。`CLAUDE.md`も連結ではなく、`claude.local/`のもので置き換わる
+- これ以外のもの（`agents/`・`settings.json`・`commands/`等）は無視し、`masuda serve`の標準エラーに1行の警告を出す。サブエージェントの定義は`.masuda/agents/`、Claude Codeの設定は`settings.json`の[`claudeSettings`](#claudesettings)に書く（`~/.claude/agents/`と`~/.claude/settings.json`はmasudaが作る）
+- シンボリックリンクは写さない
+- 読むタイミング: `masuda run`が`.masuda/`を写すときに2つを重ねた結果を写し、その実行は終わりまで（`resume`しても）同じ中身を使う
+- サブエージェントがスキルを呼ぶには、役の`tools`に`Skill`が要る。同梱の役は持っている。自分で書いた役で`tools`を限っているなら`Skill`を足す（[エージェントの書き方](workflows.md#write-agent)）
+
+どこに何を書くかは[概念](concepts.md#where-to-write)の対応表を参照。
 
 ## config.json {#serve-config}
 
