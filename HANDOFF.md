@@ -16,8 +16,9 @@
 - masuda-sandboxの契約テスト8件緑（1回目はC-S3の`timedOut`が落ちたが再現せず、#73に記録）。tarball予行ok
 - engine: `go test ./...`緑（C-E1〜C-E9、歩行テストはE14後の形）
 ## 未完と理由
+- **v0.2.1も公開済み**（2026-10-03 19:00頃。masuda `887a82e`、engine・sandboxはv0.2.0と同じコミット。追跡Issue #75）。中身は文書の版のタグからの置き換え（`__MASUDA_VERSION__`、`scripts/docs-prepare.sh`）と`curl | sh`のインストーラ（`scripts/install.sh`→添付物`masuda_installer.sh`）。masudaのrunで実装（予行5、`workflows/fix`、`3ed39857b68b`）。途中で#74（bypass modeでも`rm -rf`の許可を求めて止まる。`masuda chat`で`1`を送って進めた）
 - **v0.2.0は公開済み**（2026-10-03 17:35頃。masuda `841f270`、engine `64a8e69`、sandbox `a9dce82`。追跡Issue #73に表）。release・docs完走、添付物4つ、サイトは`0.2`が`latest`。公開物の一時的な導入で`contract: ok`・doctor ok（トークン以外）を確認。リリースノートに変更点を追記した
-- 残り: **ハーネスの更新（SKILL.mdの手順6、ユーザーが打つ。初回）**→手順6の後に`masuda version`・`doctor`を確かめる→#73を閉じる。quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
+- 残り: **ハーネスの更新（SKILL.mdの手順6、ユーザーが打つ。初回。インストーラで入れられる）**→`masuda version`・`doctor`を確かめる→#73・#75を閉じる。quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
 - `go.mod`はengine `v0.2.0`に固定済み（`841f270`）。developとmainは同じコミット
 ## 次の一手
 1. ハーネスの更新（手順6）が済んだら、masuda自身のrunをハーネス（既定のソケット）で回す体制に移る。開発版は`masuda-dev`の場所のまま
