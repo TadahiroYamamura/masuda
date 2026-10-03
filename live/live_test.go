@@ -17,6 +17,11 @@
 // SendMessageで続きを送ったとき前の文脈が残るかを確かめる。1〜2分で終わる。ゲストのClaude Codeの版
 // （guest.ClaudeCodeVersion。liveのDockerfileもこの版を入れる）を上げたら、1周より先に単独で回す: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/`
 //
+// TestEngineContinuationKeepsMemory・TestEngineContinuationFallsBackAfterResume
+// （engine_continuation_test.go）は、ワークフローの`continues`がゲストのサブエージェントまで届くか
+// （続きが成り立つ場合と、再開でVMを作り直して新しいサブエージェントが入力だけで進む場合）を確かめる。
+// 1本1分前後: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestEngineContinuation ./live/`
+//
 // 失敗したときは、データディレクトリ（ワークスペースの記録・stagingを含む）と対象リポジトリを
 // 消さずに残し、パスをログに出す。
 package live
