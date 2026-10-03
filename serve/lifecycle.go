@@ -125,6 +125,14 @@ func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv
 		_ = w.Save()
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
+	// サブエージェントのIDは前のVMのClaude Codeでしか通じない。残すと続きの宛先として
+	// 存在しないIDを渡すことになるので、作り直すVMの前に消す。
+	if err := w.ClearSubagentIDs(); err != nil {
+		b.removeRun(w.ID)
+		w.State, w.Reason = prevState, prevReason
+		_ = w.Save()
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
 	b.statusChanged(w.ID)
 	b.goBackground(func(context.Context) { b.boot(c, true) })
 	return connect.NewResponse(b.toProto(w)), nil

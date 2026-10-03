@@ -26,6 +26,12 @@ func TaskFile(t *engine.AgentTask, inputPaths map[string]string) []byte {
 	fmt.Fprintf(&b, "- 出現ID（MCPツールの`occurrence`に渡す）: `%s`\n", t.Occurrence)
 	b.WriteString("- 作業対象のリポジトリ: `/workspace`\n\n")
 
+	if t.Continues != "" {
+		b.WriteString("## 続き\n\n")
+		fmt.Fprintf(&b, "このタスクは出現`%s`の続きとして同じサブエージェントに渡されることがある。前の作業を覚えていればそれを前提に進めてよい。覚えていなければ、このタスクの入力だけから進める（入力はそれだけで足りるように用意されている）。\n\n", t.Continues)
+		fmt.Fprintf(&b, "続きとして受け取った場合も、従うのはこのタスクの「役割の指示」で、MCPツールの`occurrence`にはこのタスクの出現ID`%s`を渡す（前の出現IDではない）。\n\n", t.Occurrence)
+	}
+
 	b.WriteString("## 役割の指示\n\n")
 	b.WriteString(strings.TrimSpace(a.Body))
 	b.WriteString("\n\n")

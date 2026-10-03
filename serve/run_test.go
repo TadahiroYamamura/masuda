@@ -26,7 +26,7 @@ func TestNeedsHumanEndCarriesFeedbackAsReason(t *testing.T) {
 	id := res.Msg.Id
 	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
 	c := srv.backend.runFor(id)
-	task, err := c.NextTask(ctx)
+	task, err := c.NextTask(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -137,3 +137,24 @@ func TestOpenGateStepDiffPinsSnapshot(t *testing.T) {
 		t.Fatalf("comments: %v %+v", err, cs)
 	}
 }
+
+// 続きのタスクには宛先の出現と、記憶が無くても入力だけで進めることを書く。続きでなければ節は無い。
+func TestTaskFileContinues(t *testing.T) {
+	task := &engine.AgentTask{
+		Occurrence: "0007", Workflow: "workflows/w", Node: "fix",
+		Agent: &engine.Agent{Name: "fixer", Body: "直す。", Outcomes: map[string]string{"done": "直した"}},
+	}
+	if s := string(TaskFile(task, nil)); strings.Contains(s, "## 続き") {
+		t.Fatalf("a task without continues must not have the section:\n%s", s)
+	}
+	task.Continues = "0003"
+	s := string(TaskFile(task, nil))
+	for _, want := range []string{"## 続き", "出現`0003`の続き", "このタスクの入力だけから進める", "出現ID`0007`"} {
+		if !strings.Contains(s, want) {
+			t.Fatalf("task file lacks %q:\n%s", want, s)
+		}
+	}
+	if strings.Index(s, "## 続き") > strings.Index(s, "## 役割の指示") {
+		t.Fatalf("the continuation section must come before the role's instructions:\n%s", s)
+	}
+}

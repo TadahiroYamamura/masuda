@@ -49,7 +49,7 @@ func TestRejectSendsHumanLineComments(t *testing.T) {
 	// 実行はゲストのnext_taskで進む。ゲートで待つnext_taskは、却下の後に差し戻し先のタスクを返す。
 	tasks := make(chan any, 1)
 	go func() {
-		task, err := cl.srv.backend.runFor(id).NextTask(ctx)
+		task, err := cl.srv.backend.runFor(id).NextTask(ctx, "")
 		if err != nil {
 			t.Error(err)
 		}

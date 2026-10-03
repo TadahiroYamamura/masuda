@@ -325,7 +325,7 @@ func TestTriageGateDecisions(t *testing.T) {
 	id := res.Msg.Id
 	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
 	c := cl.srv.backend.runFor(id)
-	task, err := c.NextTask(ctx)
+	task, err := c.NextTask(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestEngineBlockedCannotBeResumedAfterStop(t *testing.T) {
 	id := res.Msg.Id
 	waitFor(t, cl.ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
 	c := cl.srv.backend.runFor(id)
-	task, err := c.NextTask(ctx)
+	task, err := c.NextTask(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -65,6 +65,11 @@ type runCtl struct {
 	// ラベルしか持たないので、`end:needs_human`等で終わったときに人間へ見せる理由をここから取る。
 	fbMu        sync.Mutex
 	endFeedback string
+
+	// lastTask はこの実行（＝このVM）でnext_taskが最後に渡したエージェントのタスクの出現。
+	// 次のnext_taskで報告されたサブエージェントのIDをこの出現に結び付ける。
+	lastTaskMu sync.Mutex
+	lastTask   string
 }
 
 func (c *runCtl) run() engine.RunID { return engine.RunID(c.id) }
@@ -217,8 +222,11 @@ func (c *runCtl) waitingAgent(ctx context.Context, occ string) (engine.Status, s
 // mcp.Host
 // ---------------------------------------------------------------------------
 
-func (c *runCtl) NextTask(ctx context.Context) (any, error) {
+func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 	c.touch("next_task")
+	if err := c.recordSubagent(agentID); err != nil {
+		return nil, err
+	}
 	ctx, cancel := context.WithTimeout(ctx, maxBlock)
 	defer cancel()
 	for {
@@ -233,7 +241,16 @@ func (c *runCtl) NextTask(ctx context.Context) (any, error) {
 			if err != nil {
 				return nil, err
 			}
-			return map[string]any{"kind": "task", "occurrence": st.Occurrence, "role": st.Task.Agent.Name, "task_path": p}, nil
+			res := map[string]any{"kind": "task", "occurrence": st.Occurrence, "role": st.Task.Agent.Name, "task_path": p}
+			if cont, err := c.continuesOf(st.Task); err != nil {
+				return nil, err
+			} else if cont != nil {
+				res["continues"] = cont
+			}
+			c.lastTaskMu.Lock()
+			c.lastTask = st.Occurrence
+			c.lastTaskMu.Unlock()
+			return res, nil
 		case engine.StatusDone:
 			return map[string]any{"kind": "done", "outcome": st.Outcome}, nil
 		case engine.StatusBlocked:
@@ -247,6 +264,48 @@ func (c *runCtl) NextTask(ctx context.Context) (any, error) {
 			return nil, errors.New("the workspace is stopping")
 		}
 	}
+}
+
+// recordSubagent は、メインセッションが報告したサブエージェントのIDを、そのメインセッションに
+// 最後に渡したタスクの出現に結び付けて記録する。この実行でまだタスクを渡していなければ
+// （再開直後のメインセッションが前のVMのIDを持ち越した等）何もしない。
+func (c *runCtl) recordSubagent(agentID string) error {
+	if agentID == "" {
+		return nil
+	}
+	c.lastTaskMu.Lock()
+	occ := c.lastTask
+	c.lastTaskMu.Unlock()
+	if occ == "" {
+		return nil
+	}
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		return err
+	}
+	return w.SetSubagentID(occ, agentID)
+}
+
+// continuesOf はタスクの続きの宛先（next_taskの`continues`）を返す。続きでなければnil。
+// 宛先の出現のIDが報告されていなければ`occurrence`だけにし、続けるか新しく起動するかは
+// ゲストに任せる。
+func (c *runCtl) continuesOf(t *engine.AgentTask) (map[string]any, error) {
+	if t.Continues == "" {
+		return nil, nil
+	}
+	cont := map[string]any{"occurrence": t.Continues}
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := w.SubagentIDs()
+	if err != nil {
+		return nil, err
+	}
+	if id := ids[t.Continues]; id != "" {
+		cont["agent_id"] = id
+	}
+	return cont, nil
 }
 
 func (c *runCtl) WriteOutput(ctx context.Context, occ, name, content string) (any, error) {

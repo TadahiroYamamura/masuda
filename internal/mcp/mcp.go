@@ -32,7 +32,9 @@ type Question struct {
 // エラーはツールのエラー（isError）として返す。プロトコル上の拒否（`accepted: false`等）は
 // エラーでなく戻り値で表すこと。
 type Host interface {
-	NextTask(ctx context.Context) (any, error)
+	// NextTask のagentIDは、メインセッションが直前に受け取ったタスクを担当したサブエージェントのID
+	// （空なら報告なし）。
+	NextTask(ctx context.Context, agentID string) (any, error)
 	WriteOutput(ctx context.Context, occurrence, name, content string) (any, error)
 	ReportResult(ctx context.Context, occurrence, outcome, feedback, agentID string) (any, error)
 	ReportConcern(ctx context.Context, occurrence, text string) (any, error)
@@ -115,8 +117,6 @@ func (s *Server) Close() {
 	<-s.done
 }
 
-var objectSchema = json.RawMessage(`{"type":"object"}`)
-
 func schema(props string, required ...string) json.RawMessage {
 	req, _ := json.Marshal(required)
 	if required == nil {
@@ -143,8 +143,17 @@ func register(srv *sdk.Server, host Host) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}}, nil
 		})
 	}
-	add("next_task", "次のタスクを受け取る。人間の判断（ゲート・質問）を待つ間はブロックする。", objectSchema,
-		func(ctx context.Context, _ json.RawMessage) (any, error) { return host.NextTask(ctx) })
+	add("next_task", "次のタスクを受け取る。人間の判断（ゲート・質問）を待つ間はブロックする。",
+		schema(`"agent_id":{"type":"string","description":"直前に完了したタスクを担当したサブエージェントのID（Agentツールの結果のagentId）。続きを送って同じサブエージェントを続けたときもそのID"}`),
+		func(ctx context.Context, raw json.RawMessage) (any, error) {
+			var a struct {
+				AgentID string `json:"agent_id"`
+			}
+			if err := decode(raw, &a); err != nil {
+				return nil, err
+			}
+			return host.NextTask(ctx, a.AgentID)
+		})
 
 	add("write_output", "タスクの出力データを書く。スキーマに合わなければaccepted: falseと理由を返す。",
 		schema(occProp+`,"name":{"type":"string"},"content":{"type":"string"}`, "occurrence", "name", "content"),

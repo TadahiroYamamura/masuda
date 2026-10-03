@@ -288,3 +288,56 @@ func readJSONDir(dir string, f func([]byte) error) error {
 	}
 	return nil
 }
+
+// subagentsFile はサブエージェントのIDの記録（`records/subagents.json`、出現→ID）。
+// メインセッションが`next_task`の`agent_id`で報告したもので、`continues`の宛先から
+// 続ける相手を引くために使う（docs/guest-protocol.md「MCPツール」）。
+const subagentsFile = "subagents.json"
+
+// SubagentIDs は出現→サブエージェントのIDの記録を返す。無ければ空。
+func (w *Workspace) SubagentIDs() (map[string]string, error) {
+	recordsMu.Lock()
+	defer recordsMu.Unlock()
+	return w.subagentIDsLocked()
+}
+
+func (w *Workspace) subagentIDsLocked() (map[string]string, error) {
+	b, err := os.ReadFile(filepath.Join(w.RecordsDir(), subagentsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return map[string]string{}, nil
+	} else if err != nil {
+		return nil, err
+	}
+	m := map[string]string{}
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, fmt.Errorf("%s: %w", subagentsFile, err)
+	}
+	return m, nil
+}
+
+// SetSubagentID は出現occを担当したサブエージェントのIDを記録する。
+func (w *Workspace) SetSubagentID(occ, id string) error {
+	if !occPattern.MatchString(occ) {
+		return fmt.Errorf("invalid occurrence %q", occ)
+	}
+	recordsMu.Lock()
+	defer recordsMu.Unlock()
+	m, err := w.subagentIDsLocked()
+	if err != nil {
+		return err
+	}
+	m[occ] = id
+	return writeJSON(w.RecordsDir(), subagentsFile, m)
+}
+
+// ClearSubagentIDs は記録を消す。IDはVMの中のClaude Codeでしか意味を持たないので、VMを
+// 作り直す再開のたびに消す。
+func (w *Workspace) ClearSubagentIDs() error {
+	recordsMu.Lock()
+	defer recordsMu.Unlock()
+	err := os.Remove(filepath.Join(w.RecordsDir(), subagentsFile))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}

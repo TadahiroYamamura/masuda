@@ -34,3 +34,13 @@ func TestLoopRulesForbidAskingInConversation(t *testing.T) {
 		}
 	}
 }
+
+// ループ規約は、続きのタスクをSendMessageで同じサブエージェントへ送り、送れなければ新しく起動し、
+// 委譲したサブエージェントのIDをnext_taskで報告することを書く（docs/guest-protocol.md）。
+func TestLoopRulesDescribeContinuation(t *testing.T) {
+	for _, want := range []string{"continues", "SendMessage", "ToolSearch", "agent_id", "新しく起動"} {
+		if !strings.Contains(string(loopRules), want) {
+			t.Errorf("loop rules lack %q", want)
+		}
+	}
+}

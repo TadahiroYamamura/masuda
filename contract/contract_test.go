@@ -753,3 +753,100 @@ func TestCM8_PublishLessWorkflowRunsOnExistingBranch(t *testing.T) {
 		t.Fatalf("unknown workflow: %v, want InvalidArgument", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// C-M9: continues reaches the guest
+// ---------------------------------------------------------------------------
+
+const continueWorkflow = `version: 1
+inputs: [instructions]
+start: first
+nodes:
+  first: {type: agent, role: agents/c-first, inputs: [instructions], outputs: [token], next: second}
+  second: {type: agent, role: agents/c-second, continues: agents/c-first, outputs: [recall], next: finish}
+  finish: {type: discard, export: [recall], next: end}
+`
+
+const continueFirst = `---
+name: c-first
+description: thinks of a token
+tools: Read
+outputs: [token]
+outcomes:
+  done: thought
+---
+Think of a token.
+`
+
+const continueSecond = `---
+name: c-second
+description: recalls the token
+tools: Read
+outputs: [recall]
+outcomes:
+  done: recalled
+---
+Recall the token.
+`
+
+// The task of a node with continues carries the occurrence it continues, and the
+// subagent id the main session reported with next_task for that occurrence. A
+// resume recreates the VM, so the ids reported before it are no longer offered.
+func TestCM9_ContinuesCarriesReportedAgentID(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/workflows/continue.yaml"] = continueWorkflow
+	files[".masuda/agents/c-first.md"] = continueFirst
+	files[".masuda/agents/c-second.md"] = continueSecond
+	h := start(t, files)
+	ctx := context.Background()
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/continue", Branch: "feat/cont", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second).Id
+
+	first := h.mcp(id, "next_task", nil)
+	if first["role"] != "c-first" || first["continues"] != nil {
+		t.Fatalf("first task: %v", first)
+	}
+	occ1 := first["occurrence"].(string)
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ1, "name": "token", "content": "abc"})
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ1, "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+
+	second := h.mcp(id, "next_task", map[string]any{"agent_id": "agent-a1"})
+	if second["role"] != "c-second" {
+		t.Fatalf("second task: %v", second)
+	}
+	cont, _ := second["continues"].(map[string]any)
+	if cont["occurrence"] != occ1 || cont["agent_id"] != "agent-a1" {
+		t.Fatalf("continues must point at %s with the reported id: %v", occ1, second)
+	}
+	task, err := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", second["task_path"].(string)))
+	if err != nil || !strings.Contains(string(task), "## 続き") || !strings.Contains(string(task), occ1) {
+		t.Fatalf("task file must name the occurrence it continues: %v\n%s", err, task)
+	}
+
+	if _, err := h.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	// The new main session has no previous task in this VM; an id it passes is not bound.
+	again := h.mcp(id, "next_task", map[string]any{"agent_id": "agent-stale"})
+	cont, _ = again["continues"].(map[string]any)
+	if again["occurrence"] != second["occurrence"] || cont["occurrence"] != occ1 || cont["agent_id"] != nil {
+		t.Fatalf("after resume the task continues %s without an id: %v", occ1, again)
+	}
+	occ2 := again["occurrence"].(string)
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ2, "name": "recall", "content": "unknown"})
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ2, "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result after resume: %v", r)
+	}
+	if done := h.mcp(id, "next_task", map[string]any{"agent_id": "agent-b1"}); done["kind"] != "done" {
+		t.Fatalf("next_task at the end: %v", done)
+	}
+}
