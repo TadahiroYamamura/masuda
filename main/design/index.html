@@ -1305,7 +1305,7 @@
 <li>契約テスト: <code>go test ./contract/</code>（例 <code>go test ./contract/ -run TestCM1</code>）。フェイクのsandbox（<code>masuda serve --fake-sandbox</code>、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（<a href="contracts/">contracts.md</a>）</li>
 <li>実機テスト: <code>MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/</code>。実際の<code>masuda-sandbox serve</code>とClaudeのトークンが要る（前提は<code>live/live_test.go</code>の冒頭）。<code>sandbox.proto</code>を変えた作業では<code>MASUDA_SANDBOX_SOCKET</code>で開発版のsandboxを指す</li>
 <li>開発版（チェックアウトからビルドしたもの）は、ハーネス（masuda自身の開発を回している公開物）の<code>~/.local/bin/masuda</code>・既定のソケット・既定のデータディレクトリを使わない。決まりは<a href="release/#dev-separation">リリース手順</a></li>
-<li>ドキュメントサイト: <code>.venv-docs/</code>に<code>requirements-docs.txt</code>を入れ、<code>scripts/docs-prepare.sh</code>（生成物を作る）→<code>mkdocs build --strict</code>。文書中の<code>0.2.0</code>は、同スクリプトがタグの版に置き換える（元ファイルを書き換える）</li>
+<li>ドキュメントサイト: <code>.venv-docs/</code>に<code>requirements-docs.txt</code>を入れ、<code>scripts/docs-prepare.sh</code>（生成物を作る）→<code>mkdocs build --strict</code>。文書中の<code>0.2.1</code>は、同スクリプトがタグの版に置き換える（元ファイルを書き換える）</li>
 <li>GitHub操作（Issue作成等）は<code>gh</code>を直接使わず<code>scripts/gh.sh</code>を使う。このリポジトリ専用のトークンを<code>.env</code>から読み込んで<code>gh</code>に渡すラッパー</li>
 <li>作業単位は<code>docs/work-orders.md</code>（サイトには載せない）</li>
 </ul>

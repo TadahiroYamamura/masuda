@@ -544,13 +544,24 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補完を有効にする
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         起動
@@ -600,7 +611,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         更新と削除
@@ -1481,13 +1492,24 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補完を有効にする
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         起動
@@ -1537,7 +1559,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         更新と削除
@@ -1633,7 +1655,7 @@ id<span class="w"> </span>-nG<span class="w"> </span><span class="p">|</span><sp
 <p><code>/dev/kvm</code>が無ければ、BIOSの仮想化支援（Intel VT-x・AMD-V）か、WSL2の入れ子の仮想化が無効になっている。自分が<code>kvm</code>グループに入っていなければ<code>sudo usermod -aG kvm "$USER"</code>のあとログインし直す。</p>
 <h2 id="_3">入れる<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <h3 id="_4">かんたんな入れ方<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/v0.2.0/masuda_installer.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/v0.2.1/masuda_installer.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
 </code></pre></div>
 <p>別のバージョンを入れるときは、<code>MASUDA_VERSION=X.Y.Z</code>（先頭の<code>v</code>は付けない）を<code>sh</code>の前に付ける（<code>... | MASUDA_VERSION=X.Y.Z sh</code>）。</p>
 <ul>
@@ -1644,7 +1666,7 @@ id<span class="w"> </span>-nG<span class="w"> </span><span class="p">|</span><sp
 <p>curl・tar・npm・sha256sum（macOSはshasum）が要る。</p>
 <h3 id="_5">手で入れる<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>以下では入れるバージョンを<code>VERSION</code>に置く（<a href="https://github.com/TadahiroYamamura/masuda/releases">Releaseの一覧</a>の最新。先頭の<code>v</code>は付けない）。</p>
-<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.0
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.2.1
 </code></pre></div>
 <h4 id="masuda-sandbox">masuda-sandbox<a class="headerlink" href="#masuda-sandbox" title="Permanent link">&para;</a></h4>
 <div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span>
@@ -1677,7 +1699,9 @@ masuda<span class="w"> </span>version
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>doctor
 </code></pre></div>
 <p>QEMU・KVM（macOSはHVF）・Node・Docker・gitと、<code>masuda-sandbox serve</code>への到達、Claudeのトークンを1項目ずつ確かめ、足りないものに直し方を添える。この時点では<code>masuda-sandbox</code>（まだ起動していない）とClaudeトークン（まだ登録していない）がNGになる。次の「起動」と「Claudeのトークンを登録する」のあとでもう一度打ち、すべて<code>ok</code>になることを確かめる（<a href="../cli/#doctor">CLIリファレンス</a>）。</p>
-<h2 id="_7">起動<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
+<h3 id="_7">補完を有効にする<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>シェルの起動ファイルに<code>source &lt;(masuda completion bash)</code>（zshは<code>source &lt;(masuda completion zsh)</code>）を書くと、コマンド・フラグ・ワークスペースIDなどをTabで補完できる。ワークスペースIDなどの候補は<code>masuda serve</code>が動いているときだけ出る（<a href="../cli/#completion">CLIリファレンス</a>）。</p>
+<h2 id="_8">起動<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
 <p>ターミナルを2つ使う（またはtmux等で両方を常駐させる）。先に<code>masuda-sandbox serve</code>を起動する。</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># 1つめ</span>
 masuda-sandbox<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span>
@@ -1714,7 +1738,7 @@ masuda<span class="w"> </span>doctor
 </code></pre></div>
 <p>特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで<code>--repo .</code>を付けて登録する（リポジトリごとの登録が優先される）。</p>
 <p>トークンの本物の値はホストの<code>~/.local/share/masuda/secrets/</code>にだけ置かれ、VMには入らない（<a href="../concepts/#secrets">概念</a>）。</p>
-<h2 id="_8">更新と削除<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<h2 id="_9">更新と削除<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
 <p>更新は、インストーラをもう一度実行すればよい。手で入れたときは、両方を<strong>同じ新しいバージョン</strong>で入れ直す（上の手順を新しい<code>VERSION</code>で繰り返す）。入れ直す前に<code>masuda serve</code>と<code>masuda-sandbox serve</code>を止める。ワークスペースの状態（<code>~/.local/share/masuda/</code>）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（<code>masuda version</code>の<code>claude code:</code>）に合わせるときは、Dockerfileのinstall行の数字を変えて<code>masuda image build</code>する。</p>
 <p>削除は<code>npm uninstall -g masuda-sandbox</code>と<code>rm ~/.local/bin/masuda</code>。状態とトークンも消すなら<code>~/.local/share/masuda/</code>と<code>~/.config/masuda/</code>も消す。</p>
 <p>masuda自体を直す人がソースからビルドする手順は<a href="../../design/#source">開発者向け</a>にある。</p>
