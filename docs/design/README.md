@@ -29,7 +29,8 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 - [masuda-engine](https://github.com/TadahiroYamamura/masuda-engine)は`go.mod`で版（タグ、無い間は`main`の擬似バージョン）に固定している。隣の`../masuda-engine`の作業中のコードで試すときは、gitignoreした`go.work`を作る: `go work init . && go work use ../masuda-engine`（固定した版で確かめるときは`GOWORK=off`）。版の上げ方は[リリース手順](release.md#engine)
 - protoを変えたら`buf generate`で`gen/`を作り直してコミットする。`buf`が無ければ`go run github.com/bufbuild/buf/cmd/buf@latest generate`。sandbox APIのクライアントは`../masuda-sandbox/proto`から生成するので、[masuda-sandbox](https://github.com/TadahiroYamamura/masuda-sandbox)も隣にチェックアウトしておく。そのときは`go generate ./internal/sandboxcontract/`で`internal/sandboxcontract/sha.go`（sandbox.protoのSHA-256）も作り直す
 - 契約テスト: `go test ./contract/`（例 `go test ./contract/ -run TestCM1`）。フェイクのsandbox（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（[contracts.md](contracts.md)）
-- 実機テスト: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`。実際の`masuda-sandbox serve`とClaudeのトークンが要る（前提は`live/live_test.go`の冒頭）
+- 実機テスト: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`。実際の`masuda-sandbox serve`とClaudeのトークンが要る（前提は`live/live_test.go`の冒頭）。`sandbox.proto`を変えた作業では`MASUDA_SANDBOX_SOCKET`で開発版のsandboxを指す
+- 開発版（チェックアウトからビルドしたもの）は、ハーネス（masuda自身の開発を回している公開物）の`~/.local/bin/masuda`・既定のソケット・既定のデータディレクトリを使わない。決まりは[リリース手順](release.md#dev-separation)
 - ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`
 - GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使う。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
 - 作業単位は`docs/work-orders.md`（サイトには載せない）
@@ -49,9 +50,11 @@ pnpm install && pnpm build          # dist/cli.js。`node ~/src/masuda-sandbox/d
 
 cd ~/src/masuda
 go work init . && go work use ../masuda-engine   # engineも手元のものを使うときだけ
-go build -o ~/.local/bin/masuda ./cmd/masuda
-masuda version                      # dev。契約が隣のmasuda-sandboxと合っていればcontract: ok
+go build ./cmd/masuda
+./masuda version --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"   # dev。契約が隣のmasuda-sandboxと合っていればcontract: ok
 ```
+
+- serveは開発版のソケットとデータディレクトリで起こす: `./masuda serve --socket "$XDG_RUNTIME_DIR/masuda-dev.sock" --data-dir ~/.local/share/masuda-dev --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"`。CLIの`--socket`やトークンの登録は[リリース手順](release.md#dev-separation)
 
 - ソースからのビルドはバージョンが`dev`になる。リリースと同じに埋めるなら`go build -ldflags "-X main.version=X.Y.Z"`
 - masudaとmasuda-sandboxの契約（`sandbox.proto`）がずれていると`masuda serve`が起動しない。両方を同じ時点に揃えるか、`buf generate`と`go generate ./internal/sandboxcontract/`で作り直す

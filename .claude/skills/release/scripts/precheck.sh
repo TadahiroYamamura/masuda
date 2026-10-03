@@ -106,11 +106,4 @@ say "clients/ts: npm pack --dry-run"
 
 say "まとめ"
 if [ "$fail" -ne 0 ]; then echo "NGがある。直してからもう一度。"; exit 1; fi
-cat <<MSG
-速い確認はすべて通った。次はVMを使う確認（同時に走らせない）:
-  cd $sandbox && pnpm build && node dist/cli.js serve --socket "\$XDG_RUNTIME_DIR/masuda-sandbox.sock" &
-  MASUDA_SANDBOX_SOCKET="\$XDG_RUNTIME_DIR/masuda-sandbox.sock" pnpm test:contract
-  cd $root && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
-  cd $root && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
-そのあと SKILL.md の手順2（engineのタグ）へ。
-MSG
+echo "速い確認はすべて通った。次はSKILL.mdの1-2へ（1-0の開発版のsandboxが動いていれば起動行は飛ばす）。"
