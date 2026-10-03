@@ -41,7 +41,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 |---|---|---|---|
 | `next_task` | `agent_id?` | `{kind: "task", occurrence, role, task_path, continues?}` / `{kind: "done", outcome}` / `{kind: "blocked", reason}` | engine.Advanceを1回進める。待ちの間はブロック。`agent_id`と`continues`は下記 |
 | `write_output` | `occurrence`, `name`, `content` | `{accepted: true}` / `{accepted: false, problems: [...]}` | ホストが`/masuda/out/<occ>/<name>`へ置いた内容をスキーマ検証して受け付ける。受け付けない場合は理由を返す |
-| `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | 宣言外のoutcome、未出力のoutputがあれば拒否。`agent_id`はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは`next_task`の`agent_id`で行う |
+| `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | 宣言外のoutcome、`done`なのに未出力のoutputがあれば拒否。`done`以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。`agent_id`はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは`next_task`の`agent_id`で行う |
 | `report_concern` | `occurrence`, `text` | `{recorded: true}` | triageゲートを開く。以後`next_task`は人間の判断までブロック |
 | `ask_human` | `occurrence`, `questions: [{id, text, options?}]` | `{answers: {id: answer}}` | `question`ノードのエージェントだけが使う。答えが来るまでブロック |
 | `run_privileged_command` | `name` | `{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}` | 宣言済み・承認済みの名前のみ。`results_dir`は`/masuda/privileged/<run-id>/`。`outputs_error`は宣言した`outputs`のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は`outputs`に返る |
