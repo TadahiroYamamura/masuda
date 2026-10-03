@@ -1,29 +1,37 @@
 # HANDOFF
 ## 作業項目
-2026-10-03の1日分（develop `32ff0b7`〜`d528e8d`、**push済み・CI緑**。engineは`bd9515b`〜`fd33f3c`をpush済み）。最後の項目は「publish・discardを通らずに終わったrunのVMが残る」問題の修正と、Issue #15の解決（**#15はクローズ済み**）。1日の全体: 計画スキーマの階層化と`gate show`、行コメントの却下時配達、レビューの一括化、`continues`（fixerが実装者の続きで反論）、`done`以外の出力の保存、`workflows/fix`、計画の問い立て（plan-questions/plan-reviser/plan-interviewer）と`pitfalls.jsonl`、`comment-manifest`と観点`comment-criteria`、`.masuda/claude/`、Claude Codeの版固定（2.1.287）とリリース手順、継続の能力検査、run終了時のVM破棄。contract変更あり→**次のリリースはv0.2.0**。protoは変えていない。契約`docs/guest-protocol.md`は`/masuda/reviews/*.md`の行の「同梱の14観点」を「同梱の観点」にしただけ（ユーザー承認済み）。
-- 片付けを`internal/runner`の`Runner.Cleanup(ctx, export)`に1つにまとめた。sandboxがあれば（`GetSandbox`で確かめる）会話ログ→exports→実行ログの順に書き出してから壊し、無ければ実行ログだけ写す。壊した後は`destroyed`で二重にしない。旧`finish`（publish・discard）はこれを呼ぶだけになったので消した
-- `serve/run.go`の`reflect`: DONE（outcomeを問わない）を状態に書く**前に**`Cleanup(c.ctx, nil)`。`end`・`end:<ラベル>`で終わったrunもVMが壊れる。BLOCKEDは従来どおり実行ログの写し直しだけ（VMは残す）
-- `serve/lifecycle.go`の`stopRun`（Stop・Remove両方が通る）: `removeRun`の後に`Cleanup`（2分の上限）してから従来の`destroySandbox`。runCtlが無い（serve再起動後のBLOCKED、STOPPED・DONEのRemove）ときはその場で`runner.New`して使う。Removeは`RemoveKeepExports`の前に実行ログが写る
-- `AttachInfo`（`masuda chat`）はDONEなら`FailedPrecondition`（「exports/transcriptsを読め」）。DONEでもrunCtl（MCP）は残るので、状態で断る
-- #15は案1・案2の実装で**クローズ済み**（serveの再起動で残ったVMは従来どおり書き出さずに壊す。#15の範囲外）
-- docs: user/operations.md・troubleshooting.md（新節`{#why-stopped}`）・cli.md、design/overview.md（exportsの回収時機の記述が逆になっていたので直した）
+M14a（`docs/work-orders.md`。#68の前半）: masuda自身の`.masuda/`を整える。develop `31ffdef`〜`efd78f3`（**未push**）。
+- `31ffdef` `.gitignore`の`.masuda/`・`.masuda-gate/`をやめ、`masuda init`の`localIgnores`と同じ2行（`.masuda/settings.local.json`・`.masuda/claude.local/`）だけ無視。`.masuda/`を追跡に入れた
+- `.masuda/reviews/`の14ファイルは**すべて**同梱（`internal/perspectives/builtin`）とバイト単位で同じだったので消した（追跡に入れていない）。**残した観点は無い**
+- `1844336` Dockerfileを`install.sh | bash -s -- 2.1.287`に固定（「新設計」を削除、版の出どころの1行コメント）。`ctx/go.mod`・`go.sum`を今のもの（engine fd33f3c）に更新
+- `4813c63` settings.json: `checks.test`を`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`、`claudeSettings`を`{"model": "opus"}`、`egress`は空のまま
+- `efd78f3` `.masuda/pitfalls.jsonl`（11件。指示書の列挙どおり）
+- `.masuda/claude/`は作らなかった（リポジトリの`CLAUDE.md`はcloneで届き、追加で要るものが無い）
+- `docs/work-orders.md`のM14の追記（監督が書いた指示書）は未コミットのまま触っていない
 ## 完了した契約テスト
-- 2026-10-03: `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`緑。契約テストC-Mは無修正で緑。足したテスト（`serve/run_test.go`）: `TestEndWithoutPublishCleansUpSandbox`（`workflows/fix`を`needs_human`で終え、DONEの後に`GetSandbox`がNotFound・exportsに実行ログと会話ログ・活動はIDLE・その後のnext_taskはdoneを返す・AttachInfoはFailedPrecondition）、`TestStopAndRemoveExportLogs`（Stopで実行ログと会話ログが写りVMが壊れる、写した実行ログを消してからRemoveすると再び写る）。どちらも修正前のコードで落ちることを確かめた
-- 実機（sandbox serveが落ちていたのでHANDOFFの手順で起動した。`MASUDA_LIVE_KEEP=1 MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run 'TestClaudeDirReachesSubagent|TestEngineContinuationKeepsMemory' ./live/`、60秒で全合格）。終了後`pgrep -c qemu-system`は0。両テストに`assertCleanedUpAtDone`（DONEでGetSandboxがNotFound、`exports/transcripts/`に*.jsonlがある）を足し、どちらもメイン1・サブエージェント1の計2本が書き出された
-- 前回までの記録は`git log`（`52182c1`以前のHANDOFF）を参照
+- `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...`緑（全コミット後に再実行）。契約テストは無修正
+- `masuda workflow check`（フェイクserve、scratchpadの一時data-dir・ソケット）: `ok`。不正なcategoryの行を一時的に足すと`pitfalls.jsonl: line 16: category "edge" ...`の問題1件・終了コード1になり、pitfallsを検査していることを確かめた（行は戻した）
+- `masuda image build default`（実物のserve: `--sandbox-socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock --data-dir ~/.local/share/masuda-dev --socket $XDG_RUNTIME_DIR/masuda-dev.sock`）: 成功、`note:`無し。ビルドログで`Installing Claude Code native build 2.1.287`。Build ID `1ca46682-d790-5029-9da7-0e5e8a7a4254`。serveは終わってから止めた
+- ゲストのunshare: 下の注意点。**通った**
+- 終了時`pgrep -c qemu-system`は0。自分で立てたserve（フェイク・実物）は止めた。開発版sandbox serve（`masuda-sandbox-dev.sock`）は動かしたまま
 ## 未完と理由
 - `comment-criteria`と`comment-manifest`は実機で1周させていない（implementerが実際に一覧を書くか、基準を言えないコメントを消すか、reviewerが照合するかは未確認）
 - 人間への質問（plan-interviewerの`ask_human`→`question answer`→`revise-answered`）は実機で一度も通っていない（前回から持ち越し）
 - 記憶の無いサブエージェントに「前に書いた文字列」を求める課題はAPIの安全分類器に止められる件（前回から持ち越し。本番の続きは入力を持つので同じ形にはならない見込み）
+- `claudeSettings.model`がサブエージェントまで効くかは未確認（#69の範囲）
 ## 次の一手
-**v0.2の目標は「masudaを使ってmasudaが作れる体制」（ユーザー決定、2026-10-03）。スコープの正はGitHubマイルストーンv0.2**（masuda #68 #69 #70 #61、engine #8）。#67（レビュー段階）とengine #7（withdrawn）はv0.3へ。
-1. **#68**: masuda自身の`.masuda/`を整える（Dockerfileの版固定、egress、`checks.test`を`GOWORK=off go test ./...`相当に、`pitfalls.jsonl`）→ゲストで契約テストの`unshare -Urm`が通るか→作業ツリーのserve（別ソケット・別data-dir）で`workflows/fix`の予行。**指示書は先に`docs/work-orders.md`の項目として書き、それを`instructions`に渡す**（今日の振り返りで決めた運用）
-2. **#69**: `claudeSettings.model`でサブエージェントのモデルまで変わるかを実機で確認。足りなければengineへ契約の提案（`Agent.Model`）
-3. **#70**: リリース手順にハーネスの更新と開発版との分離の決まり
-4. **#61の残り**: chat（走行中・BLOCKEDで）、会話ログ、曖昧な指示書でplan-interviewerの質問→`question answer`→`revise-answered`を実機で通す
-5. 実機の確認が未了のもの: implementer・fixerの`comment-manifest`と`comment-criteria`の指摘、`pitfalls.jsonl`を置いた1周でplan-questionsが落とし穴を問いに加えるか、review gateの`gate comment`で却下して行コメントが反映されるか
-6. v0.2.0のリリース: SKILL.mdの1-0でClaude Codeを最新版へ上げ、継続テストと`TestClaudeDirReachesSubagent`→1周で検証。engineにタグを打ったらそのタグへ`go get`。quickstartの8・9節の出力例を実走に差し替え。v0.1のマイルストーンは閉じてよい
+1. **#68の後半**: 作業ツリーのserve（`~/.local/share/masuda-dev`・`$XDG_RUNTIME_DIR/masuda-dev.sock`、sandboxは`masuda-sandbox-dev.sock`）で`workflows/fix`の予行。指示書は`docs/work-orders.md`に項目を書いて`instructions`に渡す。egressの承認（今は宣言なし）とトークンの置き場所（開発版data-dirの`secrets/_user/`）を先に確かめる
+2. **#69**: `claudeSettings.model`（今回`opus`を書いた）でサブエージェントのモデルまで変わるかを実機で確認
+3. **#70**・**#61の残り**・v0.2.0のリリース（前回のHANDOFFの次の一手3〜6のまま）
 ## 注意点
+- **unshareの確認結果**: `.masuda/images/default`のイメージ（上のBuild ID）で作ったVM（ubuntuユーザー、egress無し、disk 8192MiB）で、フェイクsandboxの`asRoot`と同じ形`/usr/bin/unshare -Urm /bin/sh -c <rootExecScriptの写し> sh /tmp/gr /workspace /usr/bin/id -u`が終了コード0で`0`を出した。カーネル`6.18.54-0-virt`（Alpine linux-virt）、`unshare from util-linux 2.39.3`、`/proc/sys/user/max_user_namespaces`=15492、`unprivileged_userns_clone`・`apparmor_restrict_unprivileged_userns`はどちらも存在しない。さらに作業ツリーをtarでVMに入れ、egress無しのまま`checks.test`と同じ`GOWORK=off go build/vet/test ./...`が全パッケージ緑（contract 4.6秒・serve 6.3秒、C-M7と特権コマンドのテストを含む）。確認に使った`live/zz_m14a_unshare_test.go`はコミットせず消した。VMは`DestroySandbox`で壊した
+- **判断した点**:
+  - `egress`は空: Goモジュールはイメージで`go mod download all`済み、goplsは`~/go/bin/gopls`にある。上のegress無しのVMでビルド・テストが通った。bufはイメージに無いが、`buf generate`は`buf.build`のリモートプラグインと隣の`../masuda-sandbox/proto`を要するのでゲストではどのみち動かず、宣言も導入もしていない（プロトを変える作業は契約変更なのでゲストではやらない前提）
+  - `checks.test`の`GOWORK=off`はゲストでは効かない（go.workはgitignoreで届かない）が、指示書どおり明示した
+  - 落とし穴`test-case-names`: 指示書の「日本語で文で書く」と「既存テストに倣う」が関数名では食い違う（既存は英語の関数名＋直前の日本語コメント）。関数名は既存に倣い、直前のコメントと`t.Run`のサブテスト名を日本語の文にする問いにした
+  - `.gitignore`の`*.pid`等ほかの行は旧実装の名残の可能性があるが、範囲外なので触っていない
+- 開発版のdata-dir `~/.local/share/masuda-dev`は今回の`image build`で初めて作られた（中身はビルドの記録だけ）
+- ゲストイメージのgoplsは`@latest`（ビルド時はv0.23.0）で固定していない
 - DONEでVMを壊すのは`reflect`の中（＝engineを進めた呼び出しの中）。実VMでは、DONEに至ったnext_task・report_resultの応答はVMが先に壊れるのでゲストに届かない（メインセッションは終わるだけなので害は無い）。会話ログはその時点までのもので、最後のツール呼び出しの行が入らないことがある
 - DONEでもrunCtl（ゲスト向けMCPサーバー）はRemoveまで残る（publishの後と同じ。フェイクの契約テストがdoneの後にnext_taskを呼ぶため、閉じていない）
 - 依頼文では「`workflows/review`も`end`で終わる」とされていたが、同梱のreviewは`discard`（`export: [report, findings]`）を通る。`end`で終わるのはdevelopの`end:needs_human`等、fixの`needs_human`、利用者の自前ワークフロー、liveの継続テスト
@@ -63,4 +71,4 @@
 - 旧スキーマの計画はstepに`title`が無いので、ステップの見出しは`  1.`だけになる
 - `serve`の`TestStallAfterFromLocalSettings`は`./...`一括実行で稀に落ちる（5秒以内にSTALLEDにならない）。単体と再実行では緑。今回は一括でも緑
 ## 契約への提案
-なし（guest-protocolの表への追記と`report_result`の備考の修正は反映済み。engine側の提案はengine #7とengineのHANDOFFに）
+なし
