@@ -122,7 +122,7 @@ masuda run workflows/develop --branch feat/triangle --input instructions=@task.m
 - 分岐元は、今チェックアウトしているブランチ。変えるなら`--base main`のように渡す
 - `--input instructions=@task.md`の`@`は「ファイルの中身」。`instructions=文字列`と直接書いてもよい
 - 出てきた`55a7dbe1b35f`がワークスペースのID。以下`<id>`と書く
-- typoの修正のような小さな修正なら、`workflows/develop`の代わりに`masuda run workflows/fix`を使える。調査と計画を1つのセッションで済ませ、途中レビューとレポートを省く（[ワークフロー](workflows.md#fix)）。以下の手順は同じで、9節のレポートが無い
+- typoの修正のような小さな修正なら、`workflows/develop`の代わりに`masuda run workflows/fix`を使える。調査と計画を1つのセッションで済ませ、横断チェックとレポートを省く（[ワークフロー](workflows.md#fix)）。以下の手順は同じで、9節のレポートが無い
 
 `masuda run`はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。
 
@@ -211,7 +211,7 @@ masuda gate approve <id> 0000003 --hash <gate showが出したtarget_hash>
 - `--hash`を渡すと、あなたが読んだ内容と同じものだけを承認する。省くと、その時点で開いているゲートの内容を承認する
 - 直してほしければ`masuda gate reject <id> 0000003 --comment "ステップ2でテストも書くこと"`。計画がコメントを踏まえて書き直され、もう一度このゲートが開く
 
-承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→指摘の修正と再確認→コミット」が進む。途中レビューで指摘が無ければ、修正を飛ばしてそのままコミットする。自動では直しきれない指摘があったときだけ、途中の承認（`interim`ゲート）で止まる。計画に無いファイルが変わっていれば、コミットの前に`deviation`ゲートでも止まる（gitで追跡している`__pycache__`等が典型。[トラブルシューティング](troubleshooting.md#deviation)）。
+承認すると、計画のステップごとに「実装→テスト→コミット」が進む。テストが通らなければ実装をやり直す。レビューは全ステップが終わった後に1回だけ行う（9節）。計画に無いファイルが変わっていれば、コミットの前に`deviation`ゲートでも止まる（gitで追跡している`__pycache__`等が典型。[トラブルシューティング](troubleshooting.md#deviation)）。
 
 ## 9. レビュー結果を承認する（review gate）
 
@@ -233,7 +233,7 @@ cat ~/.local/share/masuda/workspaces/<id>/data/*/report
 masuda gate approve <id> <出現ID> --hash <target_hash>
 ```
 
-却下（`reject --comment ...`）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。差分の特定の行を直してほしいときは、却下の前に`gate comment`で行コメントを付けておく。付けたコメントは`gate show`の差分の後に並び、却下したときに`--comment`の本文とともに手直しのエージェントへ届く（承認したときは届かない）。
+却下（`reject --comment ...`）すると、実装した役の続きがコメントを踏まえて手直しし、テストとコミットの後にもう一度このゲートが開く。レビューの段はやり直さないので、指摘が直ったかを差分で確かめる。差分の特定の行を直してほしいときは、却下の前に`gate comment`で行コメントを付けておく。付けたコメントは`gate show`の差分の後に並び、却下したときに`--comment`の本文とともに手直しのエージェントへ届く（承認したときは届かない）。
 
 ```sh
 masuda gate comment <id> <出現ID> shapes/triangle.py:12 "負の長さも弾く"
