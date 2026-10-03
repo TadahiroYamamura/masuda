@@ -81,7 +81,7 @@ outcomes:
 - `inputs`・`outputs`: 受け取る・書くデータの名前。入力はVMの`/masuda/in/<出現ID>/<名前>`にファイルとして置かれる
 - `outcomes`: 終わり方と、その意味の説明。`done`は必須。エージェントはこの中から1つを選んで報告する
 
-本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（12個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
+本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（11個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
 
 ## データとスキーマ
 
@@ -109,24 +109,24 @@ outcomes:
 |---|---|---|
 | `workflows/develop` | `instructions` | 指示書から、調査・計画・実装・レビューをして反映する |
 | `workflows/review` | なし | 分岐元からの差分をレビューし、レポートを残して終える（反映しない） |
-| `workflows/implement/build-step` | `step` | `develop`の部品。計画の1ステップを実装・テスト・途中レビュー・コミットする |
-| `workflows/review/perspectives` | `diff` | 部品。全レビュー観点で差分を見る |
-| `workflows/review/perspective-review` | `perspective`・`diff` | 部品。1つの観点でレビューし、別の役が指摘の正確さを確かめる |
+| `workflows/implement/build-step` | `step` | `develop`の部品。計画の1ステップを実装・テスト・途中レビュー・修正・コミットする |
+| `workflows/implement/interim-review` | `diff` | 部品。ステップの差分を、`trigger`が当てはまる観点だけで1つのセッションでレビューし、別の役が指摘の正確さを確かめる |
+| `workflows/review/perspectives` | `diff` | 部品。全レビュー観点を1つのセッションで差分に当て、別の役が指摘の正確さと見落としを確かめる |
 | `workflows/review/cross-cutting` | `diff` | 部品。観点に分けにくい横断的な問題を探して確かめる |
-| `workflows/fix-finding` | `finding` | 部品。指摘1件を直し、別の役が解消を確かめる |
 | `workflows/smoke` | `instructions` | 疎通確認用。指示をそのまま書き返して終える |
 
 ### develop
 
 ```text
-調査 → 計画 → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 自動修正 → コミット）
-     → 全観点レビュー → 横断チェック → 自動修正 → コミット → レポート → [review gate] → publish
+調査 → 計画 → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 修正 → 再確認 → コミット）
+     → 全観点レビュー → 横断チェック → 修正 → 再確認 → コミット → レポート → [review gate] → publish
 ```
 
 - 計画を立てる役は、調査が足りなければ調査へ戻し、依頼がこのリポジトリで扱うものでなければ`out_of_scope`で終える
 - ステップの実装は`/masuda/checks/test`（`settings.json`の`checks.test`）が通るまで、最大3回やり直す。直せなければ`stuck`で計画の承認へ戻る
-- 途中レビューは、ステップの差分に関係しそうな観点だけを選んで行う（[レビュー観点](reviews.md)）。指摘のうち自動で直してよいもの（`autofix: true`）は直しを試み、直しきれなければ`interim`ゲートで止まる
-- 最後のレビューは全観点で行い、自動修正の後にレポート（`report`）を書いて`review`ゲートを開く。却下するとコメントを踏まえて手直し（`rework`）からやり直す
+- レビューと修正は役ごとに1つのセッションで行う。レビューする役（reviewer）が観点を順に当てて指摘を台帳（`findings`）に書き、確かめる役（review-checker）が指摘の正確さを確かめる（不正確ならreviewerへ戻す）。直す役（fixer）は自動で直してよい指摘（`autofix: true`）をまとめて直し、再確認する役（rechecker）が解消を確かめる（未解決ならfixerへ戻す）
+- 途中レビューは、ステップの差分（`step-diff`）に対して、reviewerが各観点の`trigger`を見て当てはまる観点だけで行う（[レビュー観点](reviews.md)）。指摘が無ければ（`clean`）、または直す指摘が無ければ（`nothing_to_fix`）そのままコミットする。直しきれなければ`interim`ゲートで止まる
+- 最後のレビューは全観点で行う。指摘が0件でもreview-checkerが見落としを確かめる。横断チェックの後に修正と再確認をし、直しきれない指摘はレポートに残してコミットへ進む。レポート（`report`）を書いて`review`ゲートを開く。却下するとコメントを踏まえて手直し（`rework`）からやり直す
 - publishのとき`report`をexportsに書き出す
 
 `masuda workflow show workflows/develop`が出す図（部品と、masudaが差し込むゲートを含む。黄色が人間の判断）:
@@ -142,7 +142,8 @@ flowchart TD
     w0_implement["implement<br/>type: foreach<br/>over: steps<br/>body: workflows/implement/build-step"]
     w0_review["review<br/>type: workflow<br/>workflows/review/perspectives"]
     w0_cross_cutting["cross-cutting<br/>type: workflow<br/>workflows/review/cross-cutting"]
-    w0_fix["fix<br/>type: foreach<br/>over: findings[autofix=true]<br/>body: workflows/fix-finding"]
+    w0_fix["fix<br/>type: agent<br/>agents/fixer<br/>max: 3"]
+    w0_recheck["recheck<br/>type: agent<br/>agents/rechecker<br/>max: 3"]
     w0_review_commit["review-commit<br/>type: commit<br/>scope: plan"]
     w0_report["report<br/>type: agent<br/>agents/synthesizer<br/>max: 3"]
     w0_approve_review{"approve-review<br/>type: approval<br/>gate: review, target: diff"}
@@ -164,14 +165,20 @@ flowchart TD
   w0_approve_plan -->|"rejected"| w0_plan
   w0_implement -->|"done"| w0_review
   w0_implement -->|"stuck"| w0_approve_plan
-  w0_implement -. "foreach" .-> w2_implement
+  w0_implement -. "foreach" .-> w1_implement
+  w0_review -->|"clean"| w0_cross_cutting
   w0_review -->|"done"| w0_cross_cutting
-  w0_review -. "workflow" .-> w5_each
+  w0_review -. "workflow" .-> w4_review
   w0_cross_cutting -->|"done"| w0_fix
   w0_cross_cutting -. "workflow" .-> w3_explore
-  w0_fix -->|"done"| w0_review_commit
-  w0_fix -->|"incomplete"| w0_review_commit
-  w0_fix -. "foreach" .-> w1_fix
+  w0_fix -->|"cannot_fix"| w0_review_commit
+  w0_fix -->|"done"| w0_recheck
+  w0_fix -->|"exhausted"| w0_review_commit
+  w0_fix -->|"nothing_to_fix"| w0_review_commit
+  w0_recheck -. "after run" .-> w0_recheck_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_recheck -->|"done"| w0_review_commit
+  w0_recheck -->|"exhausted"| w0_review_commit
+  w0_recheck -->|"unresolved"| w0_fix
   w0_review_commit -. "before commit" .-> w0_review_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
   w0_review_commit -->|"done"| w0_report
   w0_review_commit -->|"rejected"| w0_rework
@@ -187,47 +194,52 @@ flowchart TD
   w0_rework_commit -->|"done"| w0_review
   w0_rework_commit -->|"rejected"| w0_rework
   w0_publish -->|"done"| w0_end_done
-  subgraph w1_graph["workflows/fix-finding"]
+  subgraph w1_graph["workflows/implement/build-step"]
+    w1_implement["implement<br/>type: agent<br/>agents/implementer<br/>max: 3"]
+    w1_test["test<br/>type: exec<br/>/masuda/checks/test<br/>max: 3"]
+    w1_review["review<br/>type: workflow<br/>workflows/implement/interim-review"]
     w1_fix["fix<br/>type: agent<br/>agents/fixer<br/>max: 3"]
     w1_recheck["recheck<br/>type: agent<br/>agents/rechecker<br/>max: 3"]
+    w1_approve_interim{"approve-interim<br/>type: approval<br/>gate: interim, target: step-diff"}
+    w1_commit["commit<br/>type: commit<br/>scope: step"]
     w1_end_done((("end")))
-    w1_end_unresolved((("end:unresolved")))
+    w1_end_stuck((("end:stuck")))
   end
-  w1_fix -->|"cannot_fix"| w1_end_unresolved
+  w1_implement -->|"done"| w1_test
+  w1_implement -->|"exhausted"| w1_end_stuck
+  w1_implement -->|"stuck"| w1_end_stuck
+  w1_test -->|"done"| w1_review
+  w1_test -->|"failed"| w1_implement
+  w1_review -->|"clean"| w1_commit
+  w1_review -->|"done"| w1_fix
+  w1_review -. "workflow" .-> w2_interim_review
+  w1_fix -->|"cannot_fix"| w1_approve_interim
   w1_fix -->|"done"| w1_recheck
-  w1_fix -->|"exhausted"| w1_end_unresolved
+  w1_fix -->|"exhausted"| w1_approve_interim
+  w1_fix -->|"nothing_to_fix"| w1_commit
   w1_recheck -. "after run" .-> w1_recheck_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
-  w1_recheck -->|"done"| w1_end_done
+  w1_recheck -->|"done"| w1_commit
+  w1_recheck -->|"exhausted"| w1_approve_interim
   w1_recheck -->|"unresolved"| w1_fix
-  subgraph w2_graph["workflows/implement/build-step"]
-    w2_implement["implement<br/>type: agent<br/>agents/implementer<br/>max: 3"]
-    w2_test["test<br/>type: exec<br/>/masuda/checks/test<br/>max: 3"]
-    w2_pick_perspectives["pick-perspectives<br/>type: agent<br/>agents/trigger-matcher<br/>max: 3"]
-    w2_interim_find["interim-find<br/>type: foreach<br/>over: perspectives(from=pick-perspectives)<br/>body: workflows/review/perspective-review"]
-    w2_interim_fix["interim-fix<br/>type: foreach<br/>over: findings[autofix=true]<br/>body: workflows/fix-finding"]
-    w2_approve_interim{"approve-interim<br/>type: approval<br/>gate: interim, target: step-diff"}
-    w2_commit["commit<br/>type: commit<br/>scope: step"]
+  w1_approve_interim -->|"approved"| w1_commit
+  w1_approve_interim -->|"rejected"| w1_implement
+  w1_commit -. "before commit" .-> w1_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
+  w1_commit -->|"done"| w1_end_done
+  w1_commit -->|"rejected"| w1_implement
+  subgraph w2_graph["workflows/implement/interim-review"]
+    w2_interim_review["interim-review<br/>type: agent<br/>agents/reviewer<br/>max: 3"]
+    w2_interim_check["interim-check<br/>type: agent<br/>agents/review-checker<br/>max: 3"]
+    w2_end_clean((("end:clean")))
     w2_end_done((("end")))
-    w2_end_stuck((("end:stuck")))
   end
-  w2_implement -->|"done"| w2_test
-  w2_implement -->|"exhausted"| w2_end_stuck
-  w2_implement -->|"stuck"| w2_end_stuck
-  w2_test -->|"done"| w2_pick_perspectives
-  w2_test -->|"failed"| w2_implement
-  w2_pick_perspectives -. "after run" .-> w2_pick_perspectives_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
-  w2_pick_perspectives -->|"done"| w2_interim_find
-  w2_interim_find -->|"done"| w2_interim_fix
-  w2_interim_find -->|"incomplete"| w2_approve_interim
-  w2_interim_find -. "foreach" .-> w4_review
-  w2_interim_fix -->|"done"| w2_commit
-  w2_interim_fix -->|"incomplete"| w2_approve_interim
-  w2_interim_fix -. "foreach" .-> w1_fix
-  w2_approve_interim -->|"approved"| w2_commit
-  w2_approve_interim -->|"rejected"| w2_implement
-  w2_commit -. "before commit" .-> w2_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
-  w2_commit -->|"done"| w2_end_done
-  w2_commit -->|"rejected"| w2_implement
+  w2_interim_review -. "after run" .-> w2_interim_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_interim_review -->|"clean"| w2_end_clean
+  w2_interim_review -->|"done"| w2_interim_check
+  w2_interim_review -->|"exhausted"| w2_end_done
+  w2_interim_check -. "after run" .-> w2_interim_check_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_interim_check -->|"clean"| w2_end_clean
+  w2_interim_check -->|"done"| w2_end_done
+  w2_interim_check -->|"inaccurate"| w2_interim_review
   subgraph w3_graph["workflows/review/cross-cutting"]
     w3_explore["explore<br/>type: agent<br/>agents/cross-cutting-explorer<br/>max: 3"]
     w3_verify["verify<br/>type: agent<br/>agents/cross-cutting-verifier<br/>max: 3"]
@@ -238,25 +250,20 @@ flowchart TD
   w3_explore -->|"none_found"| w3_end_done
   w3_verify -. "after run" .-> w3_verify_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
   w3_verify -->|"done"| w3_end_done
-  subgraph w4_graph["workflows/review/perspective-review"]
+  subgraph w4_graph["workflows/review/perspectives"]
     w4_review["review<br/>type: agent<br/>agents/reviewer<br/>max: 3"]
     w4_check_review["check-review<br/>type: agent<br/>agents/review-checker<br/>max: 3"]
+    w4_end_clean((("end:clean")))
     w4_end_done((("end")))
-    w4_end_unresolved((("end:unresolved")))
   end
   w4_review -. "after run" .-> w4_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w4_review -->|"clean"| w4_check_review
   w4_review -->|"done"| w4_check_review
-  w4_review -->|"exhausted"| w4_end_unresolved
+  w4_review -->|"exhausted"| w4_end_done
   w4_check_review -. "after run" .-> w4_check_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w4_check_review -->|"clean"| w4_end_clean
   w4_check_review -->|"done"| w4_end_done
   w4_check_review -->|"inaccurate"| w4_review
-  subgraph w5_graph["workflows/review/perspectives"]
-    w5_each["each<br/>type: foreach<br/>over: perspectives<br/>body: workflows/review/perspective-review"]
-    w5_end_done((("end")))
-  end
-  w5_each -->|"done"| w5_end_done
-  w5_each -->|"incomplete"| w5_end_done
-  w5_each -. "foreach" .-> w4_review
   triage{{"triage gate (engine)<br/>can interrupt any node when an agent reports a concern"}}
   classDef human fill:#fde68a,stroke:#b45309
   classDef engine stroke-dasharray: 4 3
@@ -264,13 +271,15 @@ flowchart TD
   class w0_approve_review human
   class w0_investigate_deviation human
   class w0_plan_deviation human
+  class w0_recheck_deviation human
   class w0_review_commit_deviation human
   class w0_report_deviation human
   class w0_rework_commit_deviation human
+  class w1_approve_interim human
   class w1_recheck_deviation human
-  class w2_approve_interim human
-  class w2_pick_perspectives_deviation human
-  class w2_commit_deviation human
+  class w1_commit_deviation human
+  class w2_interim_review_deviation human
+  class w2_interim_check_deviation human
   class w3_explore_deviation human
   class w3_verify_deviation human
   class w4_review_deviation human
@@ -304,8 +313,9 @@ flowchart TD
     w0_cleanup["cleanup<br/>type: discard"]
     w0_end_done((("end")))
   end
+  w0_review -->|"clean"| w0_cross_cutting
   w0_review -->|"done"| w0_cross_cutting
-  w0_review -. "workflow" .-> w3_each
+  w0_review -. "workflow" .-> w2_review
   w0_cross_cutting -->|"done"| w0_report
   w0_cross_cutting -. "workflow" .-> w1_explore
   w0_report -. "after run" .-> w0_report_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
@@ -321,25 +331,20 @@ flowchart TD
   w1_explore -->|"none_found"| w1_end_done
   w1_verify -. "after run" .-> w1_verify_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
   w1_verify -->|"done"| w1_end_done
-  subgraph w2_graph["workflows/review/perspective-review"]
+  subgraph w2_graph["workflows/review/perspectives"]
     w2_review["review<br/>type: agent<br/>agents/reviewer<br/>max: 3"]
     w2_check_review["check-review<br/>type: agent<br/>agents/review-checker<br/>max: 3"]
+    w2_end_clean((("end:clean")))
     w2_end_done((("end")))
-    w2_end_unresolved((("end:unresolved")))
   end
   w2_review -. "after run" .-> w2_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_review -->|"clean"| w2_check_review
   w2_review -->|"done"| w2_check_review
-  w2_review -->|"exhausted"| w2_end_unresolved
+  w2_review -->|"exhausted"| w2_end_done
   w2_check_review -. "after run" .-> w2_check_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_check_review -->|"clean"| w2_end_clean
   w2_check_review -->|"done"| w2_end_done
   w2_check_review -->|"inaccurate"| w2_review
-  subgraph w3_graph["workflows/review/perspectives"]
-    w3_each["each<br/>type: foreach<br/>over: perspectives<br/>body: workflows/review/perspective-review"]
-    w3_end_done((("end")))
-  end
-  w3_each -->|"done"| w3_end_done
-  w3_each -->|"incomplete"| w3_end_done
-  w3_each -. "foreach" .-> w2_review
   triage{{"triage gate (engine)<br/>can interrupt any node when an agent reports a concern"}}
   classDef human fill:#fde68a,stroke:#b45309
   classDef engine stroke-dasharray: 4 3
