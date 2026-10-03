@@ -31,14 +31,14 @@
 
 | RPC | コード | 条件 |
 |---|---|---|
-| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
+| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。`settings.json`の`agents`に定義に無い役の名前がある。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
 | | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない。sandbox serviceの契約（`GetServerInfo`の`contract_sha256`）がmasudaと違う、または`GetServerInfo`を持たない古いsandbox（理由に両方のバージョンが入る） |
 | | `unavailable` | sandbox serviceに届かない（ワークスペースは作らない） |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
 | | `internal` | ワークスペース・stagingの作成、engineの開始に失敗した |
 | `Resume` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。起動に要るものが足りない、sandbox serviceの契約が違う（`Run`と同じ） |
+| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。定義の写しの`settings.json`の`agents`に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（`Run`と同じ） |
 | | `unavailable` | sandbox serviceに届かない（状態は変えない） |
 | | `internal` | 実行の窓口の用意・質問の破棄の記録に失敗した |
 | `Get` | `not_found` | ワークスペースが無い |

@@ -151,3 +151,36 @@ func TestResumeDiscardsQuestionsAskedByTheAgent(t *testing.T) {
 		t.Fatalf("after resume the same question task is handed out again: %v", m)
 	}
 }
+
+func TestResumeRefusesUnknownAgentNameInSettingsSnapshot(t *testing.T) {
+	dataDir := t.TempDir()
+	srv, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	ctx := context.Background()
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/resume-agents", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	if _, err := ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id})); err != nil {
+		t.Fatal(err)
+	}
+	w, err := srv.backend.store.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := filepath.Join(w.DefinitionsDir(), "settings.json")
+	if err := os.WriteFile(snapshot, []byte(`{"agents": {"nosuch": {"model": "opus"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id}))
+	if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "agents.nosuch") {
+		t.Fatalf("Resume: %v", err)
+	}
+	got, err := ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: id}))
+	if err != nil || got.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_STOPPED {
+		t.Fatalf("state after the refused Resume: %v %v", got, err)
+	}
+}
