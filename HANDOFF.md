@@ -16,11 +16,11 @@
 - masuda-sandboxの契約テスト8件緑（1回目はC-S3の`timedOut`が落ちたが再現せず、#73に記録）。tarball予行ok
 - engine: `go test ./...`緑（C-E1〜C-E9、歩行テストはE14後の形）
 ## 未完と理由
-- **v0.2.0のリリース**: 1-0・1-2まで済み。残り: developのpush（ユーザー）→1-1 `precheck.sh v0.2.0`→engine・sandbox・masudaのタグ（ユーザー、順に）→`go.mod`を`v0.2.0`へ→`main`をdevelopに合わせる→公開後の確認→ハーネスの更新（手順6、ユーザー）→v0.1マイルストーンを閉じる→HANDOFF
-- quickstartの8・9節の出力例の実走への差し替え（任意）
-- #61の「特権コマンドの実機動作」は未確認（題材が無かった）
+- **v0.2.0は公開済み**（2026-10-03 17:35頃。masuda `841f270`、engine `64a8e69`、sandbox `a9dce82`。追跡Issue #73に表）。release・docs完走、添付物4つ、サイトは`0.2`が`latest`。公開物の一時的な導入で`contract: ok`・doctor ok（トークン以外）を確認。リリースノートに変更点を追記した
+- 残り: **ハーネスの更新（SKILL.mdの手順6、ユーザーが打つ。初回）**→手順6の後に`masuda version`・`doctor`を確かめる→#73を閉じる。quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
+- `go.mod`はengine `v0.2.0`に固定済み（`841f270`）。developとmainは同じコミット
 ## 次の一手
-1. リリースの続き（上）。打つ直前に`git log origin/develop..develop`が空、`precheck.sh v0.2.0`が緑であること
+1. ハーネスの更新（手順6）が済んだら、masuda自身のrunをハーネス（既定のソケット）で回す体制に移る。開発版は`masuda-dev`の場所のまま
 2. ハーネス導入後（SKILL.mdの手順6）: `~/.local/share/masuda`を日付付きで退避、`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`、既定のソケットで公開物のserve。開発版は`masuda-dev`の場所のまま
 3. 次のdevelop周回で、reviewerをSonnetに下げてよいか再確認（予行3では観点レビューの差は小さい、横断はOpusが要る）。E14後の`develop`の所要・トークンを予行2（90分・32M）と比べる
 4. v0.3の題材: #67（レビュー段階のpr-review-guide。最終レビューの段の形はE14で保った）、engine #7、engine #9（fixerのcommit-message）、engine #10の残り（文書だけの差分のレビュー省略）、masuda #71（liveが秘密ストアを読む）、#72（質問に補足）
@@ -36,6 +36,6 @@
 - review-commit（`scope: plan`）のメッセージは計画の`summary`全文（engine #9）
 - `waiting_input(idle)`はメインセッションがサブエージェントの完了通知を待つ状態
 - 1-2のsandbox契約テストと`pnpm build`は走行中の開発版sandboxのdistを作り直すので先に止める（SKILL.md）
-- engine mainは`64a8e69`までpush済み。masudaのdevelopは未push（2026-10-03 17:20時点で約50コミット）
+- 3リポジトリとも`v0.2.0`のタグまでpush済み。このHANDOFFのコミットはdevelopに乗るのでpushはユーザー指示で
 ## 契約への提案
 - なし（今日の契約変更はすべてユーザー承認済み・反映済み: engine `Agent.Model`・`Effort`、`docs/guest-protocol.md`の`model`・`effort`の行と`settings.json`の`agents`の優先）
