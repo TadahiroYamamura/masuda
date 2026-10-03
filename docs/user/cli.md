@@ -257,7 +257,7 @@ masuda workflow check [<workflow>] [--repo <dir>]
 |---|---|
 | `list` | ワークフローごとに、どこから来たか（ORIGIN: `bundled`は同梱、`repo`は`.masuda/workflows/`）と受け取る入力 |
 | `show` | ワークフローの図をMermaidで出す。呼び出す部品のワークフローと、masudaが差し込むゲート（`deviation`・`triage`）も描く |
-| `check` | 定義の検査。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ`ok` |
+| `check` | 定義の検査。`.masuda/settings.json`の読み込みと、`agents`の役の名前が定義にあるかの照合も行う。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ`ok` |
 
 `workflow check`の引数を省くと、rootのワークフロー（他のどのワークフローからも呼ばれないもの）をそれぞれ検査する。部品として呼ばれるワークフロー（`workflows/implement/build-step`等）は、呼び出し元から辿って検査される。
 
