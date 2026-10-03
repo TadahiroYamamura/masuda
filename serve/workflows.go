@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -14,6 +16,7 @@ import (
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/pitfalls"
 )
 
 // workflowService はWorkflowServiceの実装。対象リポジトリの作業ツリーの`.masuda/`をそのまま
@@ -99,7 +102,8 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 	set, err := definitionsFor(ctx, req.Msg.RepoRoot)
 	var le errLoad
 	if errors.As(err, &le) {
-		return connect.NewResponse(&apiv1.CheckWorkflowResponse{Problems: []*apiv1.Problem{{Message: le.Error()}}}), nil
+		problems := append([]*apiv1.Problem{{Message: le.Error()}}, pitfallProblems(ctx, req.Msg.RepoRoot)...)
+		return connect.NewResponse(&apiv1.CheckWorkflowResponse{Problems: problems}), nil
 	} else if err != nil {
 		return nil, err
 	}
@@ -123,7 +127,38 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 			out.Problems = append(out.Problems, &apiv1.Problem{Path: p.Path, Node: p.Node, Message: p.Message})
 		}
 	}
+	out.Problems = append(out.Problems, pitfallProblems(ctx, req.Msg.RepoRoot)...)
 	return connect.NewResponse(out), nil
+}
+
+// pitfallProblems はrepoRootの`.masuda/pitfalls.jsonl`を、Runと同じ検査にかけ、誤りの行ごとに
+// 問題を1つ返す。ワークフローに依らないので、どのworkflowを指定しても同じものが出る。
+func pitfallProblems(ctx context.Context, repoRoot string) []*apiv1.Problem {
+	if repoRoot == "" {
+		return nil
+	}
+	root, err := repoTop(ctx, repoRoot)
+	if err != nil {
+		return nil // definitionsForが同じ誤りを返している
+	}
+	b, err := os.ReadFile(filepath.Join(root, config.DirName, pitfalls.FileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return []*apiv1.Problem{{Path: pitfalls.FileName, Message: err.Error()}}
+	}
+	_, err = pitfalls.Parse(b)
+	if err == nil {
+		return nil
+	}
+	var out []*apiv1.Problem
+	if joined, ok := err.(interface{ Unwrap() []error }); ok {
+		for _, e := range joined.Unwrap() {
+			out = append(out, &apiv1.Problem{Path: pitfalls.FileName, Message: e.Error()})
+		}
+		return out
+	}
+	return []*apiv1.Problem{{Path: pitfalls.FileName, Message: err.Error()}}
 }
 
 // rootWorkflows は他のどのワークフローからも辿れないワークフロー（engineの仕様でのroot）。

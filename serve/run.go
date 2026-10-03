@@ -40,6 +40,8 @@ type runCtl struct {
 	plan *bootPlan
 	// reviews は実行開始時に固定した観点（`<id>.md`→中身）。ゲストの`/masuda/reviews/`へ置く。
 	reviews map[string][]byte
+	// pitfalls は実行開始時に写した落とし穴（検査済み、注釈の行を除いたもの）。空ならゲストに置かない。
+	pitfalls []byte
 
 	// ctx はこの実行の寿命。Stop・Remove・serveの停止で取り消され、ブロック中のnext_task・
 	// ask_human、起動の途中、engineの進行を止める。

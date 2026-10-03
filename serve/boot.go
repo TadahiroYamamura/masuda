@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -20,6 +21,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
+	"github.com/TadahiroYamamura/masuda/internal/pitfalls"
 	"github.com/TadahiroYamamura/masuda/internal/runner"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -51,6 +53,23 @@ func snapshotReviews(w *workspace.Workspace) (map[string][]byte, error) {
 		return nil, fmt.Errorf("snapshotting review perspectives: %w", err)
 	}
 	return perspectives.Load(w.ReviewsDir())
+}
+
+// loadPitfalls はdir（`.masuda/`かその写し）の落とし穴を読んで検査し、ゲストへ置く中身を返す。
+// ファイルが無ければnil。観点と違って同梱のものは無く、写しは定義の写し（copyDefinitions）が
+// そのまま兼ねるので、再開しても実行開始時と同じ中身になる。
+func loadPitfalls(dir string) ([]byte, error) {
+	b, err := os.ReadFile(filepath.Join(dir, pitfalls.FileName))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	} else if err != nil {
+		return nil, err
+	}
+	out, err := pitfalls.Parse(b)
+	if err != nil {
+		return nil, fmt.Errorf("%s/%s: %w", config.DirName, pitfalls.FileName, err)
+	}
+	return out, nil
 }
 
 // copyDefinitions は対象リポジトリの`.masuda/`をdstへ写す（無ければ空のdstを作る）。
@@ -105,6 +124,10 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 	if err != nil {
 		return nil, err
 	}
+	pits, err := loadPitfalls(w.DefinitionsDir())
+	if err != nil {
+		return nil, err
+	}
 	store, err := runner.OpenFileStore(filepath.Join(w.RecordsDir(), "engine.json"))
 	if err != nil {
 		return nil, err
@@ -126,7 +149,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 	})
 	ctx, cancel := context.WithCancel(b.ctx)
 	c := &runCtl{
-		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews,
+		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews, pitfalls: pits,
 		changed: make(chan struct{}), ctx: ctx, cancel: cancel, bootDone: make(chan struct{}),
 	}
 	c.eng = engine.New(set, store, r, engine.Options{})
@@ -287,7 +310,7 @@ func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcp
 }
 
 // prepareGuest はstagingのブランチをゲストへcloneさせ、ループ規約・サブエージェント定義・
-// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
+// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点と落とし穴の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
 func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *runCtl, placeholders map[string]string) error {
 	set, plan := c.set, c.plan
 	repo := staging.Open(w.StagingDir())
@@ -326,6 +349,7 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		EnvFiles:       plan.guestEnvFiles(placeholders),
 		Checks:         plan.checks,
 		Reviews:        c.reviews,
+		Pitfalls:       c.pitfalls,
 	})
 }
 

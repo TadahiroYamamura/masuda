@@ -63,6 +63,10 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("reading .masuda/reviews: %w", err))
 		}
 	}
+	// 落とし穴の誤りも、ワークスペースを作る前に定義の誤りとして返す（行番号と理由）。
+	if _, err := loadPitfalls(defs); err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	plan, err := s.backend.planBoot(defs, repoRoot, set, m.Workflow, m.Image)
 	if err != nil {
 		return nil, err

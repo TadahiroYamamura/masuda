@@ -76,6 +76,8 @@ type Layout struct {
 	Checks map[string]string
 	// Reviews はレビュー観点の写し（`<id>.md`→中身）。ReviewsDirへ置く。
 	Reviews map[string][]byte
+	// Pitfalls は落とし穴（検査済みのJSON Lines）。空でなければPitfallsPathへ置く。
+	Pitfalls []byte
 }
 
 // EnvFile は作業ツリーに生成するdotenv形式のファイル1つ。
@@ -92,6 +94,9 @@ const ChecksDir = "/masuda/checks"
 
 // ReviewsDir はレビュー観点を置くゲストのディレクトリ。同梱のreviewer・review-checkerはここを読む。
 const ReviewsDir = "/masuda/reviews"
+
+// PitfallsPath は落とし穴を置くゲストのパス。同梱のplan-questionsはここを読み、無ければ飛ばす。
+const PitfallsPath = "/masuda/pitfalls.jsonl"
 
 // bundleGuestPath はbundleを置くゲストのパス。cloneが終わったら消す。
 const bundleGuestPath = "/masuda/bootstrap.bundle"
@@ -143,7 +148,13 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 	if err := writeChecks(ctx, c, l.SandboxID, l.Checks); err != nil {
 		return err
 	}
-	return writeReviews(ctx, c, l.SandboxID, l.Reviews)
+	if err := writeReviews(ctx, c, l.SandboxID, l.Reviews); err != nil {
+		return err
+	}
+	if len(l.Pitfalls) > 0 {
+		return WriteBytes(ctx, c, l.SandboxID, PitfallsPath, l.Pitfalls, 0o644)
+	}
+	return nil
 }
 
 // writeReviews は観点の写しをゲストのReviewsDirへ置く。
