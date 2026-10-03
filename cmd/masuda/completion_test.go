@@ -141,7 +141,10 @@ func TestCompletionScriptの構文(t *testing.T) {
 	for _, shell := range []string{"bash", "zsh"} {
 		p := writeScript(t, t.TempDir(), shell)
 		if shell == "zsh" {
-			b, _ := os.ReadFile(p)
+			b, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
 			_, rest, _ := strings.Cut(string(b), "\n")
 			if err := os.WriteFile(p, []byte(rest), 0o644); err != nil {
 				t.Fatal(err)
@@ -378,15 +381,20 @@ func helpFlags(t *testing.T, run func([]string) error) []string {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer r.Close()
 	orig := os.Stderr
 	os.Stderr = w
+	defer func() { os.Stderr = orig }()
 	err = run([]string{"-h"})
 	os.Stderr = orig
 	w.Close()
 	if err != nil && !errors.Is(err, flag.ErrHelp) {
 		t.Fatalf("-hの結果 = %v", err)
 	}
-	out, _ := io.ReadAll(r)
+	out, rerr := io.ReadAll(r)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
 	var flags []string
 	for _, l := range strings.Split(string(out), "\n") {
 		if m := helpFlagLine.FindStringSubmatch(l); m != nil {

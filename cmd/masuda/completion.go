@@ -16,7 +16,6 @@ const (
 	argImage     argSource = "image"
 )
 
-// compNode は補完の表の1行。subsがあれば2語目にそれを補完し、フラグと位置引数はsubの側が持つ。
 type compNode struct {
 	name  string
 	flags []string
@@ -117,7 +116,6 @@ func runCompletion(args []string) error {
 	return err
 }
 
-// completionScript は補完関数のシェルスクリプト。zshはbashcompinit経由で同じ関数を使う。
 func completionScript(shell string) string {
 	var b strings.Builder
 	if shell == "zsh" {
@@ -178,8 +176,6 @@ func subNames(n compNode) []string {
 	return names
 }
 
-// forEachLeaf はフラグと位置引数を持つ単位（サブコマンドを持たないコマンド、またはsub）を、
-// "cmd"・"cmd sub"のキーで巡る。
 func forEachLeaf(f func(key string, n compNode)) {
 	for _, n := range completionTable {
 		if len(n.subs) == 0 {
