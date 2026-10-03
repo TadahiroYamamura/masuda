@@ -285,6 +285,39 @@ engine E14で同梱`develop`が変わった: ステップは`implement`→`test`
 - 検証: `go build ./... && go vet ./... && go test -count=1 ./...`（`go.work`有効）が緑。`mkdocs`が入っていれば`mkdocs build --strict`（無ければ飛ばしてHANDOFFに書く）。図の取り直しの前後で`git diff --stat docs/user/workflows.md`を確かめる
 - 禁止: M14aと同じ（既定のソケット・`~/.local/share/masuda`・開発版のserveとワークスペースに触れない、`docker rm -f`、他プロセスの`kill`、`git push`、`go.work`の削除、新しい依存の追加、engineの変更）
 
+### M14h. 文書のバージョンをタグから入れ、インストーラを添付物に加える（v0.2.1）
+
+v0.2.0の公開後にユーザーが気づいた2点（`docs/user/install.md`の`VERSION=0.1.0`が古いまま、`curl ... | sh`で入れたい）。masudaのrun（`workflows/fix`）で実装する。インストーラの実機確認（本物の添付物のダウンロード）はゲストが外に出られないので監督がホストで行う。以下がゲストの実装者への指示書。
+
+---
+
+2つの変更を入れる。どちらも文書・シェルスクリプト・GitHub Actionsの変更で、Goのコードは変えない。
+
+## 1. 文書のバージョンをビルド時にタグから入れる
+
+- `docs/user/install.md`の`VERSION=0.1.0`と、`docs/user/cli.md`の`masuda version`の出力例にある`0.1.0`（`masuda 0.1.0 ...`と`masuda-sandbox 0.1.0 ...`）を、目印`__MASUDA_VERSION__`に置き換える。ほかに版の数字を直書きしている箇所があれば（`grep -rn '0\.1\.0' docs/`で探す）同じ目印にする。ただし「v0.1.0で〜だった」のような過去の事実の記述は変えない
+- `scripts/docs-prepare.sh`（サイトのビルド前に`.github/workflows/docs.yml`が実行する）に、`docs/`以下のMarkdownの`__MASUDA_VERSION__`を版に置き換える処理を足す。版の決め方: 環境変数`MASUDA_DOCS_VERSION`があればそれ、無ければ`GITHUB_REF`が`refs/tags/vX.Y.Z`ならその`X.Y.Z`、それも無ければ`git describe --tags --abbrev=0 --match 'v[0-9]*'`の先頭の`v`を外したもの。どれも取れなければエラーで止める。置き換えは`docs/`の元ファイルをその場で書き換える（CIのcheckoutは使い捨て。手元で回したときは`git checkout -- docs/`で戻す。このことをスクリプトの冒頭コメントに書く）。`sed -i`はmacOSと引数が違うので、`perl -pi`か一時ファイル経由で書く
+- `.github/workflows/docs.yml`で`scripts/docs-prepare.sh`がタグのビルドでも走り、`GITHUB_REF`が見えることを確かめる（既にそうなら変更しない）
+- `docs/design/README.md`のサイトのビルドの説明（あれば）に、目印と置き換えのことを1行足す
+
+## 2. インストーラ
+
+- `scripts/install.sh`を新しく書く。**POSIX sh**（`#!/bin/sh`、bash固有の構文を使わない。`curl ... | sh`で動くため）。途中でダウンロードが切れても中途半端に実行されないよう、本体を関数にして最後の行で呼ぶ
+  - 版: 環境変数`MASUDA_VERSION`があればそれ、無ければスクリプト内の目印`__MASUDA_VERSION__`（`release.yml`がタグの版に置き換える）。目印のまま（置き換えられていない）で環境変数も無ければ、使い方を出して終了
+  - OS/archの判定: `uname -s`/`uname -m`で`Linux/x86_64`→`linux_amd64`、`Darwin/arm64`→`darwin_arm64`。それ以外は「このプラットフォーム向けの配布物は無い」で終了
+  - 前提の確認: `curl`、`tar`、`npm`、`sha256sum`または`shasum`。無いものを名前を挙げて終了（`npm`が無ければNodeの導入を案内）
+  - `mktemp -d`に、masudaの`masuda_X.Y.Z_<target>.tar.gz`と`SHA256SUMS`（`https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/`）、sandboxの`masuda-sandbox-X.Y.Z.tgz`と`SHA256SUMS`（`https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/`）を落とし、それぞれ自分のファイルの行だけをチェックサムで確かめる（`docs/user/install.md`の手順と同じ）。終わったら一時ディレクトリを消す（`trap`）
+  - masudaは`~/.local/bin/masuda`に`install -m 0755`（ディレクトリが無ければ作る）。`~/.local/bin`がPATHに無ければその旨を最後に出す
+  - sandboxは`npm install -g <tgz>`。失敗したら、`npm config set prefix ~/.local`の案内（`install.md`と同じ文）を出して終了コード1
+  - 最後に`masuda version`（PATHに無ければ`~/.local/bin/masuda version`）と`masuda-sandbox --version`を出し、「次は`masuda doctor`。起動は`docs/user/install.md`の『起動』」と案内する
+  - 既に同じ版が入っていても上書きしてよい（更新にも使う）
+- `.github/workflows/release.yml`: `dist/`に`masuda_installer.sh`を作る（`scripts/install.sh`の`__MASUDA_VERSION__`をタグの版に置き換えたもの、実行可能ビット付き）。`SHA256SUMS`に含め、Releaseの添付物（`files:`）に加える
+- `docs/user/install.md`の「入れる」の冒頭に「かんたんな入れ方」の小節を足す: `curl -fsSL https://github.com/TadahiroYamamura/masuda/releases/download/v__MASUDA_VERSION__/masuda_installer.sh | sh`（別の版は`MASUDA_VERSION=X.Y.Z`を前に付ける）。何をするか（上の箇条）を短く書き、今の手順は「手で入れる」の見出しの下に残す。「更新と削除」の節にも、更新はインストーラをもう一度実行すればよいと1行足す
+- `.claude/skills/release/SKILL.md`の「添付物が4つ」の記述（手順5と冒頭の表）を5つ（`masuda_installer.sh`を加える）に直す。手順5の一時的な導入はそのまま
+- 検証: `sh -n scripts/install.sh`が通る。`shellcheck`があれば`shellcheck -s sh scripts/install.sh`（無ければ飛ばす）。`scripts/docs-prepare.sh`を`MASUDA_DOCS_VERSION=9.9.9`で実行し、`grep -rn __MASUDA_VERSION__ docs/`が空で`install.md`に`9.9.9`が入ることを確かめ、`git checkout -- docs/`で戻す。`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑のまま（Goは変えていない）。インストーラの実際のダウンロードはこのVMからはできないので試さない（監督がホストで行う）
+
+やらないこと: `masuda update`のようなサブコマンド、Windows対応、npmレジストリへの公開。
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
