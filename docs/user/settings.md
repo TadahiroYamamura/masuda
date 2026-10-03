@@ -4,7 +4,7 @@
 
 | ファイル | 誰のものか | コミット | 中身 |
 |---|---|---|---|
-| `settings.json` | チーム | する | **宣言**。使うイメージ、通信先、秘密の名前と送り先、生成する`.env`、特権コマンド、チェック、Claude Codeの設定 |
+| `settings.json` | チーム | する | **宣言**。使うイメージ、通信先、秘密の名前と送り先、生成する`.env`、特権コマンド、チェック、Claude Codeの設定、役ごとのモデル |
 | `settings.local.json` | あなた | しない（`masuda init`が`.gitignore`に足す） | **承認と手元の値**。どの宣言を承認したか、`.env`の公開値、無活動のしきい値など |
 
 このほか任意で、プロジェクト固有の落とし穴を[`pitfalls.jsonl`](#pitfalls)に書ける（チームのもの。コミットする）。VMの中のClaude Codeに渡すルールやスキルは[`claude/`と`claude.local/`](#claude-dir)に置ける。
@@ -49,7 +49,12 @@
     "lint": "go vet ./..."
   },
   "claudeSettings": {
+    "model": "sonnet",
     "env": { "GOCACHE": "/tmp/go-cache" }
+  },
+  "agents": {
+    "reviewer": { "model": "opus" },
+    "implementer": { "effort": "high" }
   },
   "publish": { "remote": "origin" }
 }
@@ -164,7 +169,38 @@ VMの中に`/masuda/checks/<チェック名>`という実行可能スクリプ�
 
 VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`（エージェントのプロセスに渡す環境変数）や`permissions`などを書ける。`hooks`はmasudaが自分のものを置くので、masudaのものが優先される。
 
-`model`を書くと、メインセッションと、`model`を書いていない役（[エージェントの書き方](workflows.md#write-agent)）のモデルになる。役のサブエージェントはメインセッションのモデルを継承するため。
+`model`を書くと、メインセッションと、`model`を書いていない役（[エージェントの書き方](workflows.md#write-agent)）のモデルになる。役のサブエージェントはメインセッションのモデルを継承するため。役ごとに変えるなら[`agents`](#agents)に書く。
+
+### agents
+
+| 型 | 既定 |
+|---|---|
+| オブジェクト（役の名前→`{"model": ..., "effort": ...}`） | 空 |
+
+役ごとのモデルと推論の努力量の上書き。同梱の役（`reviewer`等）にも`.masuda/agents/`の役にも効く。同梱の役を定義ごと`.masuda/agents/`へ写して`model`を書き足すと、masudaを上げても本文の更新が届かなくなるので、モデルだけ変えたいときはここに書く。
+
+```json
+{
+  "claudeSettings": { "model": "sonnet" },
+  "agents": {
+    "reviewer": { "model": "opus" },
+    "implementer": { "model": "opus", "effort": "high" }
+  }
+}
+```
+
+この例では、メインセッションと上書きの無い役はSonnet、`reviewer`はOpus、`implementer`はOpusでeffort `high`で動く。
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `model` | 文字列（空不可） | 役定義のfrontmatterの`model`と同じ値（`sonnet`・`opus`・`haiku`等の別名、フルのモデルID、`inherit`） |
+| `effort` | `low`・`medium`・`high`・`xhigh`・`max`のいずれか | 役定義のfrontmatterの`effort`と同じ |
+
+- どちらも任意だが、少なくとも一方を書く（`{}`は断る）。書かなかった方は役定義のままになる
+- 優先順位は「`agents`の値 ＞ 役定義のfrontmatterの`model`・`effort` ＞ 省略時（`model`はメインセッションのモデル＝`claudeSettings`の`model`、`effort`はセッションの既定）」
+- キーは役の名前（エージェント定義の`name`）。`reviewer`と書き、`agents/reviewer`とは書かない。名前は`masuda workflow show <ワークフロー>`の図の`agents/<名前>`、または同梱のエージェントの一覧（[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)のファイル名）で分かる
+- 定義に無い名前があると、打ち間違いを黙って無視しないよう、`masuda run`が始める前に断り（知っている役の名前を並べる）、`masuda workflow check`も問題として出す
+- 効くのはVMの中のサブエージェントの定義だけで、ワークフローの検査や`continues`の判定は役定義のままで行う。`continues`で続きが成立したサブエージェントは、起動時の値のまま動く
 
 ### publish
 

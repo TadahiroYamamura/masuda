@@ -87,6 +87,7 @@ outcomes:
   - `model`: `sonnet`・`opus`・`haiku`等の別名、フルのモデルID、`inherit`。省略するとメインセッションのモデル（[`claudeSettings`](settings.md#claudesettings)の`model`）を継承する
   - `effort`: `low`・`medium`・`high`・`xhigh`・`max`のいずれか。省略するとセッションの既定を継承する
   - `continues`で続きが成立したサブエージェントは、起動時の`model`・`effort`のまま動く。続ける側の役の値は、新しく起動したときだけ使われる
+  - 同梱の役のモデルを変えるときは、定義を写さずに設定の[`agents`](settings.md#agents)に書く。`agents`の値はfrontmatterより優先する
 
 本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（15個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
 
