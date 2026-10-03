@@ -1,11 +1,11 @@
 # HANDOFF
 ## 作業項目
-「publish・discardを通らずに終わったrunのVMが残る」問題の修正と、Issue #15（会話ログ・実行ログの書き出し漏れ）の解決（masuda、develop、未push）。protoは変えていない。契約`docs/guest-protocol.md`は`/masuda/reviews/*.md`の行の「同梱の14観点」を「同梱の観点」にしただけ（ユーザー承認済み）。
+2026-10-03の1日分（develop `32ff0b7`〜`d528e8d`、**push済み・CI緑**。engineは`bd9515b`〜`fd33f3c`をpush済み）。最後の項目は「publish・discardを通らずに終わったrunのVMが残る」問題の修正と、Issue #15の解決（**#15はクローズ済み**）。1日の全体: 計画スキーマの階層化と`gate show`、行コメントの却下時配達、レビューの一括化、`continues`（fixerが実装者の続きで反論）、`done`以外の出力の保存、`workflows/fix`、計画の問い立て（plan-questions/plan-reviser/plan-interviewer）と`pitfalls.jsonl`、`comment-manifest`と観点`comment-criteria`、`.masuda/claude/`、Claude Codeの版固定（2.1.287）とリリース手順、継続の能力検査、run終了時のVM破棄。contract変更あり→**次のリリースはv0.2.0**。protoは変えていない。契約`docs/guest-protocol.md`は`/masuda/reviews/*.md`の行の「同梱の14観点」を「同梱の観点」にしただけ（ユーザー承認済み）。
 - 片付けを`internal/runner`の`Runner.Cleanup(ctx, export)`に1つにまとめた。sandboxがあれば（`GetSandbox`で確かめる）会話ログ→exports→実行ログの順に書き出してから壊し、無ければ実行ログだけ写す。壊した後は`destroyed`で二重にしない。旧`finish`（publish・discard）はこれを呼ぶだけになったので消した
 - `serve/run.go`の`reflect`: DONE（outcomeを問わない）を状態に書く**前に**`Cleanup(c.ctx, nil)`。`end`・`end:<ラベル>`で終わったrunもVMが壊れる。BLOCKEDは従来どおり実行ログの写し直しだけ（VMは残す）
 - `serve/lifecycle.go`の`stopRun`（Stop・Remove両方が通る）: `removeRun`の後に`Cleanup`（2分の上限）してから従来の`destroySandbox`。runCtlが無い（serve再起動後のBLOCKED、STOPPED・DONEのRemove）ときはその場で`runner.New`して使う。Removeは`RemoveKeepExports`の前に実行ログが写る
 - `AttachInfo`（`masuda chat`）はDONEなら`FailedPrecondition`（「exports/transcriptsを読め」）。DONEでもrunCtl（MCP）は残るので、状態で断る
-- **#15は閉じてよい状態**（案1・案2を実装。serveの再起動で残ったVMは従来どおり書き出さずに壊す。これは#15の本文の範囲外）
+- #15は案1・案2の実装で**クローズ済み**（serveの再起動で残ったVMは従来どおり書き出さずに壊す。#15の範囲外）
 - docs: user/operations.md・troubleshooting.md（新節`{#why-stopped}`）・cli.md、design/overview.md（exportsの回収時機の記述が逆になっていたので直した）
 ## 完了した契約テスト
 - 2026-10-03: `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`緑。契約テストC-Mは無修正で緑。足したテスト（`serve/run_test.go`）: `TestEndWithoutPublishCleansUpSandbox`（`workflows/fix`を`needs_human`で終え、DONEの後に`GetSandbox`がNotFound・exportsに実行ログと会話ログ・活動はIDLE・その後のnext_taskはdoneを返す・AttachInfoはFailedPrecondition）、`TestStopAndRemoveExportLogs`（Stopで実行ログと会話ログが写りVMが壊れる、写した実行ログを消してからRemoveすると再び写る）。どちらも修正前のコードで落ちることを確かめた
@@ -16,13 +16,13 @@
 - 人間への質問（plan-interviewerの`ask_human`→`question answer`→`revise-answered`）は実機で一度も通っていない（前回から持ち越し）
 - 記憶の無いサブエージェントに「前に書いた文字列」を求める課題はAPIの安全分類器に止められる件（前回から持ち越し。本番の続きは入力を持つので同じ形にはならない見込み）
 ## 次の一手
-0. Issue #15を閉じる（コミットを書き添えて。ユーザーかpushの後）
-1. 実機でdevelopを1周させ、implementer・fixerの`comment-manifest`と、`comment-criteria`の指摘（一覧に無い・基準が成り立たないコメントの削除）を出力で見る。review-checkerは一覧を読めないので、誤検知の判定がぶれないかも見る
-2. 曖昧な指示書でdevelopを回し、plan-interviewerの質問が`masuda question list`に出て、答えが`checks`に反映されることを実機で見る
-3. `.masuda/pitfalls.jsonl`を置いた1周で、plan-questionsが落とし穴を問いに加えるかを見る
-4. 次のリリース（**v0.2.0**）で、SKILL.mdの1-0に従ってClaude Codeを最新版へ上げ、継続テストと`TestClaudeDirReachesSubagent`→1周で検証する。engineにタグを打ったらそのタグへ`go get`し直す
-5. review gateに`gate comment`を付けて却下し、行コメントが反映されるかを見る
-6. `docs/user/quickstart.md`の8節・9節の出力例を実走の出力へ差し替える
+**v0.2の目標は「masudaを使ってmasudaが作れる体制」（ユーザー決定、2026-10-03）。スコープの正はGitHubマイルストーンv0.2**（masuda #68 #69 #70 #61、engine #8）。#67（レビュー段階）とengine #7（withdrawn）はv0.3へ。
+1. **#68**: masuda自身の`.masuda/`を整える（Dockerfileの版固定、egress、`checks.test`を`GOWORK=off go test ./...`相当に、`pitfalls.jsonl`）→ゲストで契約テストの`unshare -Urm`が通るか→作業ツリーのserve（別ソケット・別data-dir）で`workflows/fix`の予行。**指示書は先に`docs/work-orders.md`の項目として書き、それを`instructions`に渡す**（今日の振り返りで決めた運用）
+2. **#69**: `claudeSettings.model`でサブエージェントのモデルまで変わるかを実機で確認。足りなければengineへ契約の提案（`Agent.Model`）
+3. **#70**: リリース手順にハーネスの更新と開発版との分離の決まり
+4. **#61の残り**: chat（走行中・BLOCKEDで）、会話ログ、曖昧な指示書でplan-interviewerの質問→`question answer`→`revise-answered`を実機で通す
+5. 実機の確認が未了のもの: implementer・fixerの`comment-manifest`と`comment-criteria`の指摘、`pitfalls.jsonl`を置いた1周でplan-questionsが落とし穴を問いに加えるか、review gateの`gate comment`で却下して行コメントが反映されるか
+6. v0.2.0のリリース: SKILL.mdの1-0でClaude Codeを最新版へ上げ、継続テストと`TestClaudeDirReachesSubagent`→1周で検証。engineにタグを打ったらそのタグへ`go get`。quickstartの8・9節の出力例を実走に差し替え。v0.1のマイルストーンは閉じてよい
 ## 注意点
 - DONEでVMを壊すのは`reflect`の中（＝engineを進めた呼び出しの中）。実VMでは、DONEに至ったnext_task・report_resultの応答はVMが先に壊れるのでゲストに届かない（メインセッションは終わるだけなので害は無い）。会話ログはその時点までのもので、最後のツール呼び出しの行が入らないことがある
 - DONEでもrunCtl（ゲスト向けMCPサーバー）はRemoveまで残る（publishの後と同じ。フェイクの契約テストがdoneの後にnext_taskを呼ぶため、閉じていない）
@@ -36,7 +36,7 @@
 - 落とし穴の写しは定義の写し（`records/definitions/pitfalls.jsonl`）がそのまま兼ねる。観点（`records/reviews/`）のような別のスナップショットは作っていない（同梱が無く重ねる相手がいないため）
 - **契約（`docs/guest-protocol.md`）が変わったので次のリリースはv0.2.0**（engineも同じ。engineのHANDOFFより）
 - engineの制約1「出力は`done`の報告でしか保存されない」は**反映済み（engine `9a16b1e`）**。done以外でも書かれた出力は検証して保存される（recheckerは取り下げをunresolvedと同じ報告で書ける、`66cd4f7`）
-- **ユーザー判断待ち（engineの制約）**: recheckerの`withdrawn`（取り下げ）は累積データの保存時に捨てられるので、synthesizerは「反論して取り下げられた指摘」を台帳から読めずレポートに載らない
+- recheckerの`withdrawn`が保存時に捨てられ、synthesizerが「反論して取り下げられた指摘」を載せられない件は**engine #7**（v0.3、masuda #67と一緒に）
 - サブエージェントのIDはVMの中のClaude Codeでしか通じない。IDの結び付けは「そのrunCtlが最後に渡したタスクの出現」なので、メインセッションが`next_task`を2回呼ぶ（同じタスクが返る）と同じ出現に上書きされるだけで害は無い。serveを起こし直すとrunCtlも作り直される（その時点でVMも作り直し）ので、メモリの`lastTask`が消えても困らない
 - liveの続きの役（rememberer・recaller・copier）は`tools: Read`。`Write`を持たせるとengineが書き込める役とみなし、承認済みの計画を求めて検査で拒否する（出力は`write_output`なのでWriteは要らない）
 - ゲストのClaude Code 2.1.287では`Agent`ツールが非同期で起動し（`async_launched`）、完了は`<task-notification>`で届く。メインセッションはその間ターンを終える（Stopフック）。続き（`SendMessage`）は完了済みのサブエージェントを`Resuming agent`で再開する
@@ -49,7 +49,10 @@
 - `serve/settings.go`の`guestEnv`のコメントは「トークンを除く」だが、execの環境に`CLAUDE_CODE_OAUTH_TOKEN`（プレースホルダ）が入っていた（継続テストのレポートで`token source: exec-env`）。出どころ未調査（sandboxが秘密のプレースホルダをExecの環境に入れている可能性）。直していない
 - `end:failed`の`failed`はengineの予約ラベルで読み込みが拒否される。continuationの失敗は`end:not_continued`
 - 継続テストのclaudeは`--settings '{"disableAllHooks":true}'`で起こす。フックはmasudaの`/hooks`に届き、このセッションのSessionEndがメインセッションの死（DEAD）と区別できないため
-- `masuda-sandbox serve`は`cd ~/work/masuda-sandbox && node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox.sock`で起こす（2026-10-03昼に落ちていたので起こし直し、起動したまま）
+- `masuda-sandbox serve`は`cd ~/work/masuda-sandbox && node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox.sock`で起こす（2026-10-03夕方時点で起動したまま。`masuda serve`の開発版は動いていない）。liveで`MASUDA_LIVE_KEEP=1`にして残した`/tmp/masuda-live-*`は調査用で消してよい
+- **開発版とハーネスの分離の決まり**（#68・#70に本文あり）: 公開物のmasuda/serve/sandbox＋既定ソケット＋`~/.local/share/masuda`がハーネス。開発版は既定のソケット・data-dirを使わない。masuda自身の`.masuda/`は入っているハーネスの版で読める範囲に留める。sandbox.protoを変える作業は開発版sandboxを別ソケットで
+- **監督（Fable）がOpusに依頼する形の教訓**（2026-10-03の振り返り）: 指示書はファイルに残す、engineのpush回数を減らす（engineの作業が終わったらmasuda側は`go.work`で結合して進め、`go.mod`の固定は最後に1回）、liveを回したら`pgrep -c qemu-system`を見る、報告は短く詳細はHANDOFFへ
+- 今日の実機で見つかった未修正の小さな事象: 継続テストの`records/subagents.json`はDONEで壊したVMのIDを持ったまま（無害）。`docs/user/reference/workflow-schema.md`はサイトのビルドで更新
 - `trigger`の無い観点の扱いが変わった。旧trigger-matcherは「`trigger`を持たない観点は選ばない」だったが、engine `78818dd`のreviewer.mdは「途中レビュー: `trigger`を持たない観点は常に当てる」。同梱の`missing-tests-guard-clauses`・`missing-tests-new-code`も途中レビューで毎回当たる。これはユーザー判断で現状のまま確定（計画で実装とテストを同じステップに入れる方針になったため、テスト漏れの観点を途中で当てる意味がある）。`docs/user/reviews.md`はこの挙動で書いてある
 - reviewerは「実行位置」のノード名が`interim-`で始まるかで途中レビューを判別する。masudaの`internal/runner/task.go`が出す「実行位置: ワークフロー…のノード…」の形を変えると壊れる
 - `docs/user/workflows.md`の図は`masuda workflow show`の出力の貼り付け（`develop`・`fix`・`review`の3つ）。同梱定義が変わったら、`masuda serve --fake-sandbox --data-dir <tmp> --socket <tmp>/m.sock`を立て、リポジトリの外のディレクトリで`masuda workflow show workflows/<名前> --socket <tmp>/m.sock`を取り直して差し替える。`8af56b2`でdevelopの図を取り直した（fix・reviewは一致していた）
@@ -60,4 +63,4 @@
 - 旧スキーマの計画はstepに`title`が無いので、ステップの見出しは`  1.`だけになる
 - `serve`の`TestStallAfterFromLocalSettings`は`./...`一括実行で稀に落ちる（5秒以内にSTALLEDにならない）。単体と再実行では緑。今回は一括でも緑
 ## 契約への提案
-- `docs/guest-protocol.md`の「起動時にホストがゲストへ置くもの」の表への追記（`/masuda/pitfalls.jsonl`、`~/.claude/CLAUDE.md`への`.masuda/claude/`の`CLAUDE.md`の連結、`~/.claude/rules/`、`~/.claude/skills/`）は**反映済み**（ユーザー承認済み、`feat(guest)`のコミット）
+なし（guest-protocolの表への追記と`report_result`の備考の修正は反映済み。engine側の提案はengine #7とengineのHANDOFFに）
