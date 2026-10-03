@@ -1,4 +1,4 @@
-# masuda自身をmasudaで開発するためのゲストイメージ（新設計）。
+# masuda自身をmasudaで開発するためのゲストイメージ。
 # `masuda image build default` または `masuda run` の起動時に sandbox service が Docker でビルドし、
 # VMのrootfsにする。カーネルと起動層は sandbox 側の資産で、ここには含めない。
 #
@@ -21,7 +21,8 @@ RUN mkdir -p /workspace /masuda && chown ubuntu:ubuntu /workspace /masuda
 COPY --chown=ubuntu:ubuntu ctx/go.mod ctx/go.sum /tmp/modprefetch/
 USER ubuntu
 WORKDIR /home/ubuntu
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Claude Codeの版はinternal/guest.ClaudeCodeVersion（masudaが実機で検証した版）に合わせる。
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.287
 ENV PATH=/home/ubuntu/.local/bin:/home/ubuntu/go/bin:$PATH
 # GOCACHE は tmpfs の /tmp へ（ルートディスクを圧迫しないため）。モジュールキャッシュは前取りして残す
 ENV GOCACHE=/tmp/go-cache
