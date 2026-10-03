@@ -226,6 +226,35 @@ func TestCompletionの候補(t *testing.T) {
 		}
 	})
 
+	t.Run("=の直後で入力中の語が空でもパスのフラグの値を補完する", func(t *testing.T) {
+		got, _ := complete(t, fake.bin, dir, "run", "--repo", "=")
+		if !slices.Equal(got, []string{"subdir"}) {
+			t.Errorf("--repo=の直後の候補 = %v, want [subdir]", got)
+		}
+	})
+
+	t.Run("1語目と2語目が-で始まるときはコマンドもサブコマンドも出さない", func(t *testing.T) {
+		for _, words := range [][]string{{"-"}, {"gate", "-"}} {
+			got, _ := complete(t, fake.bin, dir, words...)
+			if len(got) != 0 {
+				t.Errorf("%v の候補 = %v, want 空", words, got)
+			}
+		}
+	})
+
+	t.Run("位置引数を取らないコマンドでは候補が空でmasudaも呼ばれない", func(t *testing.T) {
+		if err := os.Remove(fake.log); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		got, _ := complete(t, fake.bin, dir, "list", "")
+		if len(got) != 0 {
+			t.Errorf("候補 = %v, want 空", got)
+		}
+		if _, err := os.Stat(fake.log); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("masudaが呼ばれた: %v", err)
+		}
+	})
+
 	t.Run("値を取るが候補の無いフラグの直後は何も出さない", func(t *testing.T) {
 		got, _ := complete(t, fake.bin, dir, "run", "--branch", "")
 		if len(got) != 0 {
@@ -244,6 +273,7 @@ func TestCompletionの候補(t *testing.T) {
 			{[]string{"question", "answer", "ws"}, []string{"ws-1", "ws-2"}},
 			{[]string{"run", ""}, []string{"workflows/develop"}},
 			{[]string{"run", "--branch", "x", "--workflow", ""}, []string{"workflows/develop"}},
+			{[]string{"run", "--branch", "=", "x", ""}, []string{"workflows/develop"}},
 			{[]string{"workflow", "show", ""}, []string{"workflows/develop"}},
 			{[]string{"image", "build", ""}, []string{"base"}},
 			{[]string{"run", "--image", ""}, []string{"base"}},
@@ -267,7 +297,26 @@ func TestCompletionの候補(t *testing.T) {
 		if err := os.Remove(fake.log); err != nil && !errors.Is(err, os.ErrNotExist) {
 			t.Fatal(err)
 		}
-		complete(t, fake.bin, dir, "resume", "--socket", "/tmp/x.sock", "")
+		for _, sockFlag := range []string{"--socket", "-socket"} {
+			if err := os.Remove(fake.log); err != nil && !errors.Is(err, os.ErrNotExist) {
+				t.Fatal(err)
+			}
+			complete(t, fake.bin, dir, "resume", sockFlag, "/tmp/x.sock", "")
+			b, err := os.ReadFile(fake.log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := strings.TrimSpace(string(b)); got != "list --all --socket /tmp/x.sock" {
+				t.Errorf("%s: masudaへの引数 = %q", sockFlag, got)
+			}
+		}
+	})
+
+	t.Run("--socketが=でつないで入力済みのときも動的候補の取得に渡される", func(t *testing.T) {
+		if err := os.Remove(fake.log); err != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Fatal(err)
+		}
+		complete(t, fake.bin, dir, "resume", "--socket", "=", "/tmp/x.sock", "")
 		b, err := os.ReadFile(fake.log)
 		if err != nil {
 			t.Fatal(err)

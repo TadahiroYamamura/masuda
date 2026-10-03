@@ -188,16 +188,14 @@ func forEachLeaf(f func(key string, n compNode)) {
 	}
 }
 
-// completionPrologue の _masuda_dyn は、候補の取得先を決める --socket を「--socket <path>」の分離形でしか拾わない。
-// bash は COMP_WORDBREAKS の `=` で「--socket=/x」を3語に割るため、`=` 形まで追うと語の組み立てが要り、
-// 取りこぼしても既定のソケットで候補が出るだけなので割り切っている。
 const completionPrologue = `# masuda completion
 _masuda_dyn() {
   local bin=${COMP_WORDS[0]} i
   local -a sock=()
   for ((i = 1; i < COMP_CWORD; i++)); do
     case ${COMP_WORDS[i]} in
-      --socket|-socket) sock=(--socket "${COMP_WORDS[i+1]}") ;;
+      --socket|-socket)
+        if [[ ${COMP_WORDS[i+1]} == = ]]; then sock=(--socket "${COMP_WORDS[i+2]}"); else sock=(--socket "${COMP_WORDS[i+1]}"); fi ;;
     esac
   done
   {
