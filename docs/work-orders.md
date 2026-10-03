@@ -253,6 +253,26 @@ masudaは自分自身の開発にmasudaを使う（dogfooding）。そのため�
 - 検証: `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...`が緑（go.modはE13入りのengineに固定済みなので`GOWORK=off`でよい）。契約テストC-M1〜C-M10は無修正で緑のまま。フェイクserveで`masuda workflow check`が問題を出さないこと
 - 禁止: M14aと同じ（既定のソケット・`~/.local/share/masuda`に触れない、開発版のserve・ワークスペース（`~/.local/share/masuda-dev`、`$XDG_RUNTIME_DIR/masuda-dev.sock`、ブランチ`docs/release-harness`）に触れない、`docker rm -f`、他プロセスの`kill`、`git push`、`go.work`の削除、新しい依存の追加、engineの変更）
 
+### M14f. 予行4: M14eへのレビュー指摘を直す（`workflows/fix`、Sonnet実装者の計測）
+
+予行3（M14eの差分に`workflows/review`を3通りの役の割り当てで当てた比較）で出た指摘のうち妥当なものを、masudaのrun（`workflows/fix`。既定の役はSonnet、reviewer・cross-cuttingはOpus）で直す。監督がgateを扱う。以下がゲストの実装者への指示書。
+
+---
+
+M14e（`.masuda/settings.json`の`agents`で役ごとの`model`・`effort`を上書きする機能。コミット`80f4dc1`〜`89782be`）のレビューで出た指摘を直す。
+
+1. **コメント2つを消す**: `serve/settings_test.go`のテストのヘルパー`runSmokeGuestAgent`の直前のコメントと、`serve/settings.go`の`bootPlan.agents`のフィールドコメント。どちらもコードから読める内容の言い直しで、コメントの基準（CLAUDE.md）に当たらない
+2. **`workflow check`が`settings.json`を読めないときのテスト**: `serve/workflows.go`の`settingsProblems`で`config.Load`が失敗する分岐（壊れたJSON・検査に通らない値）を通るテストが無い。既存の`TestUnknownAgentOverrideRefusesRunAndShowsInCheck`にサブテストを足し、`.masuda/settings.json`を壊れたJSON（例 `{`）にして`Check`を呼ぶと、`Path`が`settings.json`の問題が1件出てエラーにならないことを確かめる
+3. **定義が読めないときも`settings.json`の問題を出す**: `workflow check`（`serve/workflows.go`の`Check`）は定義の読み込みに失敗した分岐（`errLoad`）で`pitfallProblems`だけを付けて返しており、`settingsProblems`は正常経路にしか無い。定義も`settings.json`も壊れていると後者が出ない。`errLoad`の分岐でも`config.Load`の失敗は問題として出す（定義が無いので役の名前の照合は飛ばす。例: `settingsProblems`が`set`のnilを受けて照合を省く）。2のテストに「定義も壊れているとき両方の問題が出る」を足す
+4. **`Resume`で返すエラーコードを揃え、`docs/api/errors.md`に書く**: `planBoot`の`agents`の役の名前の検査は`InvalidArgument`を返すが、`planBoot`は`Resume`（`serve/lifecycle.go`）からも呼ばれる。`Resume`の要求はIDだけなので「要求の内容が不正」には当たらず、同じ`Resume`の中の他の写しの読み込み失敗は`FailedPrecondition`で返している。**決定**: `Run`は`InvalidArgument`のまま、`Resume`は`FailedPrecondition`にする（`planBoot`に呼び出し元を渡すか、`Resume`側でコードを付け替える）。`docs/api/errors.md`の`Run`の`invalid_argument`の条件に「`settings.json`の`agents`に定義に無い役の名前がある」を足し、`Resume`の`failed_precondition`の条件にも同じ内容を足す。`serve/`のテストで`Resume`のコードを確かめる（既存の`Resume`のテストに倣う。再開時に定義の写しの同梱の役が無くなっている状況を作るのが難しければ、`settings.json`の写しの`agents`を書き換えてから`Resume`する）
+5. **`config.Efforts`とengineの一覧のずれを検出する**: `internal/config/config.go`の`Efforts`はengineの非公開の一覧の写し。各値を役定義のfrontmatterの`effort`に書いた定義をengineが読み込めることを確かめるテストを足す（`internal/config`か`serve`のテスト。engineの`Load`系の公開APIを使う。`settings.json`にだけ書ける値はこれで検出できる。逆向きは検出できないことをテストのコメントに書く）
+6. **文書**: `docs/design/overview.md`の`settings.json`のキーの表に`agents`の行を足す（役の名前→`model`・`effort`の上書き。frontmatterより優先）。`docs/user/cli.md`の`workflow check`の説明に、`settings.json`の読み込みと`agents`の役の名前の照合も行うことを足す
+7. **契約の文言（監督が決定済み）**: `docs/guest-protocol.md`の`~/.claude/agents/*.md`の行を「エージェント定義（engine）から`name`・`description`・`tools`・本文と、あれば`model`・`effort`を写す。`model`・`effort`は`.masuda/settings.json`の`agents`に上書きがあればその値」にする。この1行以外の契約は変えない
+
+検証: `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑。契約テスト`contract/`は無修正で緑のまま。判定の分岐をわざと壊してテストが落ちることを確かめてから戻す。
+
+やらないこと: engineの変更、`agents`の仕様の変更、上記以外のリファクタリング。
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
