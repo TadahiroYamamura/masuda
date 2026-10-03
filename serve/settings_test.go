@@ -165,7 +165,6 @@ func TestNodeEgressWithinApprovalRuns(t *testing.T) {
 	}
 }
 
-// runSmokeGuestAgent はsmokeを実行し、ゲストに置かれたechoの役定義の中身を返す。
 func runSmokeGuestAgent(t *testing.T, repo string) string {
 	t.Helper()
 	dataDir := t.TempDir()

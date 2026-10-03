@@ -43,8 +43,7 @@ type bootPlan struct {
 	vars           map[string]string
 	checks         map[string]string
 	claudeSettings json.RawMessage
-	// agents はsettings.jsonの役ごとのmodel・effortの上書き。ゲストへ役定義を書き出すときに重ねる。
-	agents map[string]config.AgentOverride
+	agents         map[string]config.AgentOverride
 	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
 	// serveの--stall-afterが指定されていればそちらが勝つ（backend.stallFor）。
 	stallAfter time.Duration
