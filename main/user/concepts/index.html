@@ -544,6 +544,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-to-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エージェントへの指示をどこに書くか
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1435,6 +1446,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#where-to-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エージェントへの指示をどこに書くか
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1659,6 +1681,34 @@
 <li><strong>使い捨て</strong>。止めたり、ホストを再起動したりすれば失われる。続きは新しいVMをstagingから作り直して再開する（最後のスナップショットの作業ツリーを、コミットしていない変更として戻す）。VMの中にだけ置いたもの（キャッシュ、生成物）は消える前提で使う</li>
 <li>VMから外への通信は、許可したホストへのHTTP（とTLS）だけ（<a href="../secrets-and-egress/">秘密・egress・特権コマンド</a>）</li>
 </ul>
+<h2 id="where-to-write">エージェントへの指示をどこに書くか<a class="headerlink" href="#where-to-write" title="Permanent link">&para;</a></h2>
+<p>VMの中のClaude Codeが読む指示は、誰と共有するかで置き場所を選ぶ。あなたのホストの<code>~/.claude/</code>はVMに入らない。</p>
+<table>
+<thead>
+<tr>
+<th>範囲</th>
+<th>置き場所</th>
+<th>VMへの届き方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>プロジェクトで共有し、版管理する</td>
+<td>リポジトリの<code>CLAUDE.md</code>・<code>.claude/</code></td>
+<td><code>/workspace</code>のcloneに入るので、そのまま届く（masudaの外でClaude Codeを使うときにも効く）</td>
+</tr>
+<tr>
+<td>プロジェクトで共有し、版管理する（masudaで動かすときだけ）</td>
+<td><code>.masuda/claude/</code></td>
+<td>実行開始時に<code>~/.claude/</code>へ写す（<a href="../settings/#claude-dir">設定</a>）</td>
+</tr>
+<tr>
+<td>あなた個人 × このプロジェクト</td>
+<td><code>.masuda/claude.local/</code>（gitignore）</td>
+<td>同上。同じパスは<code>.masuda/claude/</code>より優先</td>
+</tr>
+</tbody>
+</table>
 <h2 id="_3">ワークフローとノード<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <p>ワークフローは「どの役のエージェントに何をさせ、どこで人間に聞くか」を書いたYAML。同梱の<code>develop</code>は調査→計画→承認→ステップごとの実装→レビュー→承認→反映を行う。各段階が<strong>ノード</strong>で、エージェントに1つのタスクをさせる<code>agent</code>、決まったコマンドを動かす<code>exec</code>、人間の承認を待つ<code>approval</code>などがある（<a href="../workflows/">ワークフロー</a>）。</p>
 <p>同じノードに何度入ったかを区別するため、ノードに入るたびに<strong>出現ID</strong>（<code>000004</code>のような連番。ゲートや質問を指すときに使う）が振られる。</p>
@@ -1676,17 +1726,17 @@
 <tr>
 <td><code>plan</code></td>
 <td><code>develop</code>で計画ができたとき。中身は計画</td>
-<td>承認すると実装へ。却下すると計画をやり直す</td>
+<td>承認すると実装へ。却下すると、計画を直す役が却下理由に答えて計画を直す（<code>fix</code>は計画を立て直す）</td>
 </tr>
 <tr>
 <td><code>interim</code></td>
-<td><code>develop</code>の各ステップで、途中レビューの指摘を直しきれなかったとき。中身は<strong>このステップでこれからコミットされる差分</strong>（ブランチ先頭からの未コミットの変更。<code>target: step-diff</code>）。<code>review</code>の「publishされる差分（コミット済み）」とは違う</td>
+<td>同梱のワークフローでは使わない。自分のワークフローで<code>gate: interim</code>を書いたときに開く（例: ステップごとの途中レビューで直しきれなかったとき）。中身は<strong>このステップでこれからコミットされる差分</strong>（ブランチ先頭からの未コミットの変更。<code>target: step-diff</code>）。<code>review</code>の「publishされる差分（コミット済み）」とは違う</td>
 <td>承認するとそのステップをコミットして次へ。却下するとそのステップの実装をやり直す</td>
 </tr>
 <tr>
 <td><code>review</code></td>
 <td><code>develop</code>の最後。中身は分岐元からの差分</td>
-<td>承認するとpublish。却下すると手直しとレビューをやり直す</td>
+<td>承認するとpublish。却下すると、実装した役の続きが行コメントを直し、テストとコミットの後にこのゲートへ戻る（最終レビューはやり直さない。<code>fix</code>はやり直す）</td>
 </tr>
 <tr>
 <td><code>deviation</code></td>

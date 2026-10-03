@@ -657,6 +657,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#continues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        続き（continues）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -692,10 +703,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="エージェント定義">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出力の受け付け
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         データとスキーマ
@@ -707,7 +735,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         累積データ
@@ -719,6 +747,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エンジンが用意するもの
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1370,6 +1409,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#continues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        続き（continues）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1405,10 +1455,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="エージェント定義">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        出力の受け付け
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_7" class="md-nav__link">
+  <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
         データとスキーマ
@@ -1420,7 +1487,7 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#_8" class="md-nav__link">
+  <a href="#_9" class="md-nav__link">
     <span class="md-ellipsis">
       
         累積データ
@@ -1432,6 +1499,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エンジンが用意するもの
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1529,7 +1607,7 @@
 <tr>
 <td><code>agent</code></td>
 <td><code>role</code></td>
-<td><code>max</code>、<code>inputs</code>、<code>outputs</code>、<code>egress</code>、<code>secrets</code></td>
+<td><code>continues</code>、<code>max</code>、<code>inputs</code>、<code>outputs</code>、<code>egress</code>、<code>secrets</code></td>
 <td>エージェント定義が宣言したもの + <code>exhausted</code></td>
 </tr>
 <tr>
@@ -1594,8 +1672,21 @@
 <li><code>findings</code>は<code>findings[]</code>の省略形</li>
 <li><code>with</code>は呼び出し先の入力名にデータ名を結びつける。書かなければ同名のデータを渡す</li>
 <li><code>question.questions</code>は固定の質問。エンジンが<code>Runner.OpenQuestion</code>で開き、<code>Engine.Answer</code>で答えが来たら<code>outputs</code>の1つめのデータ名にJSON（id→answer）で保存して<code>answered</code>で遷移する</li>
-<li><code>question.role</code>を書くと、エージェントがタスクとして質問を組み立て、<code>ask_human</code>（ホストが<code>Engine.Answer</code>へ仲介する）で人間に聞く。1タスク中に複数回聞いてよく、エンジンは答えをその出現に溜める。エージェントが<code>done</code>で報告したとき、溜まった答え（id→answer、後勝ち）を<code>outputs</code>の1つめに保存し、ノードは<code>answered</code>で遷移する（<code>done</code>は<code>answered</code>に読み替える）。答えが1つも無いまま<code>done</code>なら無効な結果として差し戻す。エージェント定義の<code>outcomes</code>は<code>done</code>のみでよい</li>
+<li><code>question.role</code>を書くと、エージェントがタスクとして質問を組み立て、<code>ask_human</code>（ホストが<code>Engine.Answer</code>へ仲介する）で人間に聞く。1タスク中に複数回聞いてよく、エンジンは答えをその出現に溜める。エージェントが<code>done</code>で報告したとき、溜まった答え（id→answer、後勝ち）を<code>outputs</code>の1つめに保存し、ノードは<code>answered</code>で遷移する（<code>done</code>は<code>answered</code>に読み替える）。答えが1つも無いまま<code>done</code>なら無効な結果として差し戻す。答えの保存は<code>done</code>のときだけで、<code>done</code>以外で終えたときは溜まった答えを保存しない（エージェント定義が宣言した出力は下の「出力の受け付け」に従う）。エージェント定義の<code>outcomes</code>は<code>done</code>のみでよい</li>
 <li>ゲート名<code>triage</code>・<code>deviation</code>は予約</li>
+<li><code>agent.continues</code>は役の参照（<code>agents/&lt;役&gt;</code>）。下の「続き」を参照</li>
+</ul>
+<h3 id="continues">続き（continues）<a class="headerlink" href="#continues" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><span class="w">  </span><span class="nt">fix</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents/fixer</span>
+<span class="w">    </span><span class="nt">continues</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents/implementer</span>
+</code></pre></div>
+<ul>
+<li>意味: 「このrunでその役が最後に担当した出現（任意のフレーム。agentノードの出現のうち終了済みで出現IDが最大のもの）のサブエージェントに、このタスクを続けて渡す。該当する出現が無ければ通常どおり新しく起動する」</li>
+<li>宛先の出現はノードへの進入時に決まり、<code>AgentTask.Continues</code>で渡る（下の「エンジンが用意するもの」）。エンジンが決めるのは宛先の出現だけで、続きが成立するか（VMの再開後でサブエージェントがいない等）はRunner／ゲストの事情。成立しなければゲストは新しく起動する</li>
+<li><strong>記憶はあれば使う。無くても成立する入力を常に渡す。</strong> 続きのタスクの入力（<code>inputs</code>・feedback・役の本文）は、新しいサブエージェントが単独でこなせる完全なものにする。続けられたサブエージェントには、続きのタスクで役の指示が切り替わる</li>
+<li>続きが成立したサブエージェントは起動時の<code>model</code>・<code>effort</code>のまま動く。続ける側の役の<code>model</code>・<code>effort</code>は使われない（新しく起動したときだけ使われる）</li>
 </ul>
 <h3 id="_5">スナップショットと計画外変更の検出の基準点<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
 <p>エンジンは<code>agent</code>・<code>exec</code>の出現が終わるたびに<code>Runner.Snapshot</code>を取る。</p>
@@ -1611,8 +1702,9 @@
 <li>参照先が存在し、呼び出しが循環しない</li>
 <li>各ノードが出しうるoutcomeすべてに行き先がある。出さないoutcomeへの行き先も誤り</li>
 <li>承認ノードも<code>max</code>付きノードも含まない閉路は拒否する</li>
-<li>入力・<code>with</code>・<code>inputs</code>が、そのノードに至るどの経路でも用意済みであること</li>
+<li>入力・<code>with</code>・<code>inputs</code>が、そのノードに至るどの経路でも用意済みであること。ノードの出力は<code>done</code>（<code>question</code>は<code>answered</code>）の遷移でだけ用意済みとみなす。<code>done</code>以外の終わり方で書かれる出力は任意なので数えない</li>
 <li>承認済み計画が無い状態で、書き込めるエージェントや<code>commit</code>に到達しない</li>
+<li><code>continues</code>: 続ける側の役の<code>tools</code>は、続けられる役の<code>tools</code>の部分集合であること（<code>tools</code>省略＝全ツールは、続けられる側も省略のときだけ可）。サブエージェントの道具は起動時に固定され、続きで増やせないため。書き込めない役を書き込める役で続けることを禁じ、上の「承認済み計画が無い状態で書き込めるエージェントへ到達しない」をすり抜けさせない。また、続けられる役のagentノードが、同じrootから到達可能なワークフローのどこかに無ければ拒否する</li>
 <li>未コミットの変更がある状態で<code>publish</code>に到達しない</li>
 <li><code>egress</code>・<code>secrets</code>は宣言の形だけ検査する（許可されているかはmasudaが実行時に見る）。<code>egress</code>の要素はホスト名（先頭の<code>*.</code>だけワイルドカード可）で、<strong>ポートは書けない</strong>（masudaの<code>settings.json</code>の<code>egress</code>と同じ形）</li>
 </ul>
@@ -1621,6 +1713,8 @@
 name: planner
 description: 調査結果から変更方針とステップ分解を計画として書く
 tools: Read, Grep, Glob, Bash
+model: sonnet
+effort: low
 inputs: [investigation]
 outputs: [plan]
 outcomes:
@@ -1634,13 +1728,22 @@ outcomes:
 <li><code>outcomes</code>は必須で<code>done</code>を含む。<code>exhausted</code>・<code>blocked</code>・<code>failed</code>は宣言できない</li>
 <li><code>tools</code>は配列かカンマ区切り。省略は全ツール。<code>Write</code>か<code>Edit</code>を持つ（または省略）エージェントが「書き込める」</li>
 <li><code>outputs</code>に<code>diff</code>・<code>step-diff</code>・<code>fix-diff</code>は名乗れない（エンジンが用意する）</li>
+<li><code>model</code>・<code>effort</code>は任意。Runner（masudaではゲストのClaude Codeのサブエージェント定義のfrontmatter）にそのまま渡す。省略はその環境の既定（masudaでは<code>claudeSettings.model</code>のメインセッションのモデルを継承）。<code>effort</code>は<code>low</code>・<code>medium</code>・<code>high</code>・<code>xhigh</code>・<code>max</code></li>
 </ul>
-<h2 id="_7">データとスキーマ<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h2>
-<h3 id="_8">累積データ<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<h3 id="_7">出力の受け付け<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>agentノード（<code>question</code>の<code>role</code>を含む）のタスクが宣言する出力は、ノードの<code>outputs</code>とエージェント定義の<code>outputs</code>を合わせたもの（<code>question</code>ノードの<code>outputs</code>は答えの保存先なので含まない）。エンジンは報告（<code>Engine.ReportResult</code>）を受けたとき、終わり方に応じて次のように扱う。</p>
+<ul>
+<li><code>done</code>: 宣言した出力はすべて必須。書かれていない出力があれば無効な結果として同じノードへ差し戻す（feedbackに理由。進入回数に数える）</li>
+<li><code>done</code>以外の終わり方: 書かれていなくてよい（結果は有効）。書かれた出力だけを受け付ける</li>
+<li>どちらでも、書かれた出力はスキーマ（下の「データとスキーマ」）で検証し、1つでも不正なら無効な結果として差し戻す（<code>done</code>と同じ。その報告の出力は1つも保存しない）。報告が有効なら書かれた出力を保存し、その出現が書いたデータとして以後の解決で最新の値になる（累積データでは書き込みとして連結される）</li>
+<li><code>exec</code>ノードの出力は<code>done</code>（exit 0）のときだけ読み、すべて必須（<code>failed</code>では読まない）</li>
+</ul>
+<h2 id="_8">データとスキーマ<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<h3 id="_9">累積データ<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
 <p>スキーマのトップレベルに<code>"x-masuda-accumulate": true</code>を持つデータは<strong>累積データ</strong>で、普通のデータ（最後に書かれた値だけが見える）と違い、runの中で書かれた値を1つの配列に集める。</p>
 <ul>
 <li>書き込みは配列でなければならず、要素は<code>id</code>フィールドがあればそれで重複を排除する（後勝ち）。無ければ常に追加</li>
-<li>読み出しは、その時点までに受け付けた全書き込みを連結した配列。1度も書かれていなければ<code>[]</code>。したがって累積データは<strong>どの経路でも常に用意済み</strong>として扱い、<code>Set.Check</code>のデータ可用性の解析で欠落にしない</li>
+<li>読み出しは、その時点までに受け付けた全書き込み（<code>done</code>以外の終わり方で書かれたものを含む）を連結した配列。1度も書かれていなければ<code>[]</code>。したがって累積データは<strong>どの経路でも常に用意済み</strong>として扱い、<code>Set.Check</code>のデータ可用性の解析で欠落にしない</li>
 <li>累積データを<code>inputs</code>に取るエージェント・execは、runのそれまでの全要素を受け取る（例: synthesizerは全観点と横断チェックの指摘をまとめて読む）</li>
 <li>要素に<code>withdrawn: true</code>を持つものは、読み出しとforeachの項目から除く（同じ<code>id</code>で書き直せば取り下げになる）</li>
 <li>
@@ -1649,10 +1752,14 @@ outcomes:
 <li>
 <p><code>schemas/&lt;data&gt;.json</code>があるデータは、受け取る境界でJSON Schema（draft 2020-12）で検証する</p>
 </li>
-<li>同梱スキーマ: <code>plan</code>（summary、steps[]、expected_byproducts[]）、<code>findings</code>（累積。要素は<code>id</code>、file、line、severity、autofix、message…）、<code>commit-message</code>、<code>selected-perspectives</code>、<code>answers</code></li>
+<li>同梱スキーマ: <code>plan</code>（goal、summary、steps[]（number、title、description、tests[]、files[]）、alternatives[]（option、reason）、risks[]、expected_byproducts[]、checks[]（id、category、question、answer、status。計画に立てた問いと答え））、<code>plan-checklist</code>（計画への問い。claims[]、sets[]、items[]（id、category、question、reason、hint）、not_covered[]）、<code>findings</code>（累積。要素は<code>id</code>、file、line、severity、autofix、message、suggestion、withdrawn、disputed（修正者が指摘に反論した）、response（反論の理由）…）、<code>comment-manifest</code>（累積。要素は<code>file</code>、<code>line</code>、<code>kind</code>、<code>note</code>。実装者が追加・変更したコメントと満たす基準）、<code>commit-message</code>、<code>selected-perspectives</code>、<code>answers</code></li>
 <li>スキーマのトップレベルが<code>string</code>型なら、出力ファイルの内容そのものを1つの文字列として検証する（JSONとしてパースしない）。<code>commit-message</code>がこれに当たる</li>
 <li>スキーマが無いデータは空でないことだけ確かめる</li>
-<li>エンジンが用意するデータ: <code>diff</code>、<code>step-diff</code>、<code>fix-diff</code>（unified diff）</li>
+</ul>
+<h2 id="_10">エンジンが用意するもの<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h2>
+<ul>
+<li>データ: <code>diff</code>、<code>step-diff</code>、<code>fix-diff</code>（unified diff）</li>
+<li><code>AgentTask.Continues</code>: ノードが<code>continues</code>を書いていれば、続けて渡す宛先の出現ID（上の「続き」）。書いていないか該当する出現が無ければ空。resumeで再発行されるタスクも同じ宛先を指す</li>
 </ul>
 
 

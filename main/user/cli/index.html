@@ -1887,7 +1887,7 @@
 </tr>
 </tbody>
 </table>
-<p>列の読み方は<a href="../operations/#list">運用</a>。</p>
+<p>列の読み方は<a href="../operations/#list">運用</a>。<code>end:&lt;ラベル&gt;</code>で終わったワークスペース（<code>outcome needs_human</code>等）は、POSITIONに結果と、終わらせたエージェントの理由の1行目が出る。</p>
 <h2 id="watch">watch<a class="headerlink" href="#watch" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda watch [&lt;id&gt;] [--after &lt;seq&gt;]
 </code></pre></div>
@@ -1912,12 +1912,13 @@
 <h2 id="chat">chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda chat &lt;id&gt;
 </code></pre></div>
-<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース、起動中のワークスペースには使えない。</p>
+<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
 <h2 id="gate">gate<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda gate list [&lt;id&gt;]
 masuda gate show &lt;id&gt; &lt;occurrence&gt;
 masuda gate approve &lt;id&gt; &lt;occurrence&gt; [--hash &lt;h&gt;] [--file &lt;path&gt;]... [--comment &lt;text&gt;]
 masuda gate reject &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&gt;]
+masuda gate comment &lt;id&gt; &lt;occurrence&gt; &lt;path&gt;:&lt;line&gt; &lt;text&gt;
 masuda gate dismiss|halt|redo &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&gt;]
 </code></pre></div>
 <table>
@@ -1934,7 +1935,7 @@ masuda gate dismiss|halt|redo &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&
 </tr>
 <tr>
 <td><code>show</code></td>
-<td>ゲートの種類・<code>target_hash</code>・（あれば）反映されるcommit・判断済みなら判断、と中身。<code>triage</code>は懸念の本文、<code>deviation</code>は計画外で変わったファイルの一覧を出す。差分のゲートは見出しで区別する: <code>target: diff</code>（<code>review</code>）は「publishされる内容（コミット済み）」、<code>target: step-diff</code>（<code>interim</code>）は「このステップでこれからコミットされる内容（未コミット）」。未判断なら、そのゲートで打てるコマンドを添える</td>
+<td>ゲートの種類・<code>target_hash</code>・（あれば）反映されるcommit・判断済みなら判断、と中身。<code>triage</code>は懸念の本文、<code>deviation</code>は計画外で変わったファイルの一覧を出す。<code>target: plan</code>（<code>plan</code>）は計画のJSONを、goal・summary・ステップごとの内容とテストと対象ファイル・計画への問いと答え（<code>checks</code>。問いごとに<code>&lt;id&gt; [addressed|out_of_scope|open] &lt;問い&gt;</code>と、次の行に答え）・採らなかった案・リスク・想定する副産物の節に分けて出す（JSONとして読めなければ全文）。差分のゲートは見出しで区別する: <code>target: diff</code>（<code>review</code>）は「publishされる内容（コミット済み）」、<code>target: step-diff</code>（<code>interim</code>）は「このステップでこれからコミットされる内容（未コミット）」。差分のゲートでは、承認対象のコミットに人間が付けたコメントを差分の後に<code>comments (sent to the agent on reject):</code>の見出しで<code>&lt;path&gt;:&lt;line&gt;: &lt;本文&gt;</code>の形に並べる（無ければ見出しごと省く）。未判断なら、そのゲートで打てるコマンドを添える</td>
 </tr>
 <tr>
 <td><code>approve</code></td>
@@ -1942,7 +1943,11 @@ masuda gate dismiss|halt|redo &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&
 </tr>
 <tr>
 <td><code>reject</code></td>
-<td>却下する</td>
+<td>却下する。差分のゲートなら、<code>comment</code>で付けた行コメントも<code>--comment</code>の本文とともにエージェントへ届く</td>
+</tr>
+<tr>
+<td><code>comment</code></td>
+<td>差分のゲート（<code>review</code>・<code>interim</code>）の承認対象のコミットの行にコメントを付ける。<code>&lt;path&gt;</code>は差分の新しい側のファイル、<code>&lt;line&gt;</code>はその行番号（1から）。本文は引用符で囲まなくても残りの引数をつなげて1つにする。差分を対象にしないゲート（<code>plan</code>・<code>deviation</code>・<code>triage</code>）ではエラー。付けたコメントは却下したときだけエージェントへ届き、承認したときは差分ビュー用に残るだけ</td>
 </tr>
 <tr>
 <td><code>dismiss</code>・<code>halt</code>・<code>redo</code></td>
@@ -1981,17 +1986,26 @@ masuda gate dismiss|halt|redo &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&
 <div class="highlight"><pre><span></span><code>masuda question list [&lt;id&gt;]
 masuda question answer &lt;id&gt; &lt;occurrence&gt; &lt;question-id&gt;=&lt;answer&gt;...
 </code></pre></div>
-<p><code>list</code>は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出す。<code>answer</code>は<code>&lt;質問のid&gt;=&lt;答え&gt;</code>を1つ以上並べる。</p>
-<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>question<span class="w"> </span>answer<span class="w"> </span>4f1c2a9e8b3d<span class="w"> </span><span class="m">000012</span><span class="w"> </span><span class="nv">scope</span><span class="o">=</span>yes<span class="w"> </span><span class="s2">"reason=既存のAPIは変えない"</span>
+<p><code>list</code>は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出し、最後にすべての問いに答えるコマンドの形（<code>answer: masuda question answer &lt;id&gt; &lt;occurrence&gt; '&lt;question-id&gt;=&lt;answer&gt;' ...</code>）を添える。1つの質問に複数の問いが入ることがあり、<code>answer</code>はそのすべてに答えを求める（<code>&lt;質問のid&gt;=&lt;答え&gt;</code>を問いの数だけ並べる。足りなければエラー）。</p>
+<p><code>develop</code>では、計画の承認（plan gate）の前に、計画についての質問が来ることがある。計画に立てられた問いのうち計画を直す役が判断できなかったものを、<code>SPEC-1</code>・<code>REGRESSION-2</code>のような問いのidでまとめて聞く（<a href="../workflows/#develop">develop</a>）。</p>
+<div class="highlight"><pre><span></span><code>$ masuda question list 4f1c2a9e8b3d
+4f1c2a9e8b3d 0000006 (opened 10-03 01:40:12)
+  SPEC-1: ステップ1: 退化三角形（1,2,3）を ValueError にするか
+    指示書は「三角不等式を満たさない」とだけ書いており、等号の扱いが決められない
+  REGRESSION-2: shapes/__init__.py に triangle を公開するか
+    既存の circle・rectangle は __init__.py で公開しておらず、指示書にも記述が無い
+answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REGRESSION-2=&lt;answer&gt;'
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>question<span class="w"> </span>answer<span class="w"> </span>4f1c2a9e8b3d<span class="w"> </span><span class="m">0000006</span><span class="w"> </span><span class="s2">"SPEC-1=不正とする"</span><span class="w"> </span><span class="s2">"REGRESSION-2=公開しない"</span>
 </code></pre></div>
 <h2 id="stop">stop<a class="headerlink" href="#stop" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda stop &lt;id&gt;
 </code></pre></div>
-<p>VMを止めて<code>stopped</code>にする。stagingと記録は残り、<code>resume</code>で再開できる。既に<code>done</code>のワークスペースはエラー。masudaが実行を止めた<code>blocked</code>（triageの<code>halt</code>等）はVMを片付けるだけで<code>blocked</code>のまま（再開はできない）。</p>
+<p>会話ログと実行ログを<code>exports/</code>へ書き出してからVMを壊し、<code>stopped</code>にする。stagingと記録は残り、<code>resume</code>で再開できる。既に<code>done</code>のワークスペースはエラー（VMは終わったときに壊してある）。masudaが実行を止めた<code>blocked</code>（triageの<code>halt</code>等）はVMを片付けるだけで<code>blocked</code>のまま（再開はできない）。</p>
 <h2 id="remove">remove<a class="headerlink" href="#remove" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda remove &lt;id&gt; [--force]
 </code></pre></div>
-<p>ワークスペースを消す。<code>workspaces/&lt;id&gt;/</code>のうち<code>exports/</code>だけを残す。動いているワークスペースは<code>--force</code>を付けたときだけ、止めてから消す。</p>
+<p>ワークスペースを消す。消す前に実行ログを<code>exports/</code>へ写し（VMが残っていれば会話ログも）、<code>workspaces/&lt;id&gt;/</code>のうち<code>exports/</code>だけを残す。動いているワークスペースは<code>--force</code>を付けたときだけ、止めてから消す。</p>
 <h2 id="init">init<a class="headerlink" href="#init" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda init [--repo &lt;dir&gt;]
 </code></pre></div>
@@ -2046,7 +2060,7 @@ masuda privileged-command approve &lt;name&gt; [--repo &lt;dir&gt;]
 <div class="highlight"><pre><span></span><code>masuda image list [--repo &lt;dir&gt;]
 masuda image build [&lt;entry&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
-<p><code>list</code>は<code>.masuda/images/</code>のエントリと、ビルド済みかどうか・最後のビルドのID。<code>build</code>は<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>をビルドし、ログを標準エラーへ、ビルドのIDを標準出力へ出す。<code>&lt;entry&gt;</code>を省くと<code>settings.json</code>の<code>image</code>。</p>
+<p><code>list</code>は<code>.masuda/images/</code>のエントリと、ビルド済みかどうか・最後のビルドのID。<code>build</code>は<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>をビルドし、ログを標準エラーへ、ビルドのIDを標準出力へ出す。<code>&lt;entry&gt;</code>を省くと<code>settings.json</code>の<code>image</code>。Dockerfileが入れるClaude Codeの版が<code>masuda version</code>の検証済みの版と違えば（版を書いていないものも）、始めに標準エラーへ<code>note:</code>の1行を出す（<a href="../settings/#image">設定のimage</a>）。</p>
 <h2 id="workflow">workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda workflow list [--repo &lt;dir&gt;]
 masuda workflow show &lt;workflow&gt; [--repo &lt;dir&gt;]
@@ -2071,7 +2085,7 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 </tr>
 <tr>
 <td><code>check</code></td>
-<td>定義の検査。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ<code>ok</code></td>
+<td>定義の検査。<code>.masuda/settings.json</code>の読み込みと、<code>agents</code>の役の名前が定義にあるかの照合も行う。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ<code>ok</code></td>
 </tr>
 </tbody>
 </table>
@@ -2079,9 +2093,10 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <h2 id="version">version<a class="headerlink" href="#version" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda version [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;]
 </code></pre></div>
-<p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
+<p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（<code>masuda init</code>の雛形が入れる版）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
 <div class="highlight"><pre><span></span><code>masuda 0.1.0 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
+  claude code: 2.1.287 (guest, verified)
 masuda-sandbox 0.1.0 (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok

@@ -1410,11 +1410,19 @@
 </tr>
 <tr>
 <td><code>~/.claude/CLAUDE.md</code></td>
-<td>ループ規約（下記）</td>
+<td>ループ規約（下記）。対象リポジトリの<code>.masuda/claude/</code>（<code>.masuda/claude.local/</code>を重ねたもの）に<code>CLAUDE.md</code>があれば、見出し<code># プロジェクトのルール（.masuda/claude）</code>とループ規約が優先する旨の1行を挟んで後ろに連結する</td>
+</tr>
+<tr>
+<td><code>~/.claude/rules/*.md</code></td>
+<td><code>.masuda/claude/rules/*.md</code>（同じパスは<code>.masuda/claude.local/</code>が勝つ）。無ければ置かない</td>
+</tr>
+<tr>
+<td><code>~/.claude/skills/&lt;name&gt;/</code></td>
+<td><code>.masuda/claude/skills/&lt;name&gt;/</code>以下をディレクトリごと（同じパスは<code>.masuda/claude.local/</code>が勝つ）。無ければ置かない</td>
 </tr>
 <tr>
 <td><code>~/.claude/agents/*.md</code></td>
-<td>その実行で使うサブエージェント定義。エージェント定義（engine）から<code>name</code>・<code>description</code>・<code>tools</code>・本文を写す</td>
+<td>その実行で使うサブエージェント定義。エージェント定義（engine）から<code>name</code>・<code>description</code>・<code>tools</code>・本文と、あれば<code>model</code>・<code>effort</code>を写す。<code>model</code>・<code>effort</code>は<code>.masuda/settings.json</code>の<code>agents</code>に上書きがあればその値</td>
 </tr>
 <tr>
 <td><code>~/.claude/settings.json</code></td>
@@ -1426,7 +1434,11 @@
 </tr>
 <tr>
 <td><code>/masuda/reviews/*.md</code></td>
-<td>レビュー観点。ホストの実リポジトリの<code>.masuda/reviews/</code>（無ければ同梱の14観点）をタスク開始時にスナップショットしたもの。trigger-matcherと<code>Runner.Items(perspectives)</code>は<strong>ここ</strong>を読む。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
+<td>レビュー観点。ホストの実リポジトリの<code>.masuda/reviews/</code>（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong>ここ</strong>を読む。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
+</tr>
+<tr>
+<td><code>/masuda/pitfalls.jsonl</code></td>
+<td>プロジェクト固有の落とし穴。ホストの<code>.masuda/pitfalls.jsonl</code>を実行開始時に写して検査し、空行と<code>#</code>の行を除いたもの（1行1件<code>{id, category, trigger, question, background}</code>）。無ければ置かない。同梱のplan-questionsが読む</td>
 </tr>
 <tr>
 <td><code>~/.claude/.mcp.json</code>相当</td>
@@ -1439,10 +1451,11 @@
 <h2 id="claudeclaudemd">ループ規約（<code>~/.claude/CLAUDE.md</code>の要旨）<a class="headerlink" href="#claudeclaudemd" title="Permanent link">&para;</a></h2>
 <ol>
 <li><code>next_task</code>を呼ぶ。返ってきたタスクファイルのパスを読む</li>
-<li>タスクが指すサブエージェント（<code>role</code>）に、タスクファイルのパスだけを渡して委譲する。自分では調査・実装・レビューをしない</li>
+<li>タスクに<code>continues</code>があり、その<code>agent_id</code>のサブエージェントがまだいれば、そのサブエージェントに<code>SendMessage</code>でタスクファイルのパスだけを送る。いなければ（VMの再開後など）、タスクが指す役（<code>role</code>）のサブエージェントを新しく起動し、タスクファイルのパスだけを渡して委譲する。自分では調査・実装・レビューをしない</li>
 <li>サブエージェントが<code>write_output</code>と<code>report_result</code>を呼び終えるのを待つ。呼んでいなければ、呼ぶよう差し戻す</li>
-<li>1へ戻る。<code>next_task</code>が<code>done</code>または<code>blocked</code>を返したら終了する</li>
+<li><code>next_task</code>に直前のサブエージェントの<code>agent_id</code>を渡して1へ戻る。<code>next_task</code>が<code>done</code>または<code>blocked</code>を返したら終了する</li>
 </ol>
+<p>続きは「記憶はあれば使う。無くても成立する入力を常に渡す」。続けられたかどうかでタスクの入力は変わらないので、送る相手がいない・送れないときに新しく起動しても実行は成り立つ。</p>
 <p>メインセッションがゲートや質問を自分で解決する経路は無い。</p>
 <h2 id="mcp">MCPツール<a class="headerlink" href="#mcp" title="Permanent link">&para;</a></h2>
 <table>
@@ -1457,9 +1470,9 @@
 <tbody>
 <tr>
 <td><code>next_task</code></td>
-<td>—</td>
-<td><code>{kind: "task", occurrence, role, task_path}</code> / <code>{kind: "done", outcome}</code> / <code>{kind: "blocked", reason}</code></td>
-<td>engine.Advanceを1回進める。待ちの間はブロック</td>
+<td><code>agent_id?</code></td>
+<td><code>{kind: "task", occurrence, role, task_path, continues?}</code> / <code>{kind: "done", outcome}</code> / <code>{kind: "blocked", reason}</code></td>
+<td>engine.Advanceを1回進める。待ちの間はブロック。<code>agent_id</code>と<code>continues</code>は下記</td>
 </tr>
 <tr>
 <td><code>write_output</code></td>
@@ -1471,7 +1484,7 @@
 <td><code>report_result</code></td>
 <td><code>occurrence</code>, <code>outcome</code>, <code>feedback?</code>, <code>agent_id?</code></td>
 <td><code>{accepted: true}</code> / <code>{accepted: false, reason}</code></td>
-<td>宣言外のoutcome、未出力のoutputがあれば拒否</td>
+<td>宣言外のoutcome、<code>done</code>なのに未出力のoutputがあれば拒否。<code>done</code>以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。<code>agent_id</code>はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは<code>next_task</code>の<code>agent_id</code>で行う</td>
 </tr>
 <tr>
 <td><code>report_concern</code></td>
@@ -1494,8 +1507,13 @@
 </tbody>
 </table>
 <p>ツールは<code>occurrence</code>で今のタスクを指す。現在待っている出現と一致しない呼び出しは拒否する。</p>
+<p><code>next_task</code>の<code>agent_id</code>と<code>continues</code>:</p>
+<ul>
+<li>引数<code>agent_id</code>（任意）: 直前に完了したタスクを担当したサブエージェントのID。メインセッションが<code>Agent</code>ツールの結果から得る。続きのタスクで同じサブエージェントを続けたときも、そのサブエージェントのIDを渡す。masudaはそのメインセッションに最後に渡したタスクの出現にIDを結び付けて記録する。VMを作り直す再開では記録を消す（前のVMのIDは通じないため）</li>
+<li>戻り<code>continues</code>（任意）: <code>{occurrence, agent_id?}</code>。このタスクを続けて渡す宛先。<code>occurrence</code>はengineが決めた出現（ワークフローの<code>continues: agents/&lt;役&gt;</code>）、<code>agent_id</code>はその出現について<code>next_task</code>で報告されたID（報告が無ければ省く）</li>
+</ul>
 <h2 id="_4">タスクファイル<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
+<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、続き（宛先の出現ID。<code>continues</code>があるときだけ）、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
 <h2 id="hooks">フック（<code>/hooks</code>）<a class="headerlink" href="#hooks" title="Permanent link">&para;</a></h2>
 <p><code>~/.claude/settings.json</code>に次のフックを入れる。いずれも<code>curl -s -X POST http://masuda.internal:7000/hooks -d @-</code>でstdinのJSONをそのまま送る。</p>
 <table>

@@ -1303,7 +1303,8 @@
 <li><a href="https://github.com/TadahiroYamamura/masuda-engine">masuda-engine</a>は<code>go.mod</code>で版（タグ、無い間は<code>main</code>の擬似バージョン）に固定している。隣の<code>../masuda-engine</code>の作業中のコードで試すときは、gitignoreした<code>go.work</code>を作る: <code>go work init . &amp;&amp; go work use ../masuda-engine</code>（固定した版で確かめるときは<code>GOWORK=off</code>）。版の上げ方は<a href="release/#engine">リリース手順</a></li>
 <li>protoを変えたら<code>buf generate</code>で<code>gen/</code>を作り直してコミットする。<code>buf</code>が無ければ<code>go run github.com/bufbuild/buf/cmd/buf@latest generate</code>。sandbox APIのクライアントは<code>../masuda-sandbox/proto</code>から生成するので、<a href="https://github.com/TadahiroYamamura/masuda-sandbox">masuda-sandbox</a>も隣にチェックアウトしておく。そのときは<code>go generate ./internal/sandboxcontract/</code>で<code>internal/sandboxcontract/sha.go</code>（sandbox.protoのSHA-256）も作り直す</li>
 <li>契約テスト: <code>go test ./contract/</code>（例 <code>go test ./contract/ -run TestCM1</code>）。フェイクのsandbox（<code>masuda serve --fake-sandbox</code>、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（<a href="contracts/">contracts.md</a>）</li>
-<li>実機テスト: <code>MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/</code>。実際の<code>masuda-sandbox serve</code>とClaudeのトークンが要る（前提は<code>live/live_test.go</code>の冒頭）</li>
+<li>実機テスト: <code>MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/</code>。実際の<code>masuda-sandbox serve</code>とClaudeのトークンが要る（前提は<code>live/live_test.go</code>の冒頭）。<code>sandbox.proto</code>を変えた作業では<code>MASUDA_SANDBOX_SOCKET</code>で開発版のsandboxを指す</li>
+<li>開発版（チェックアウトからビルドしたもの）は、ハーネス（masuda自身の開発を回している公開物）の<code>~/.local/bin/masuda</code>・既定のソケット・既定のデータディレクトリを使わない。決まりは<a href="release/#dev-separation">リリース手順</a></li>
 <li>ドキュメントサイト: <code>.venv-docs/</code>に<code>requirements-docs.txt</code>を入れ、<code>scripts/docs-prepare.sh</code>（生成物を作る）→<code>mkdocs build --strict</code></li>
 <li>GitHub操作（Issue作成等）は<code>gh</code>を直接使わず<code>scripts/gh.sh</code>を使う。このリポジトリ専用のトークンを<code>.env</code>から読み込んで<code>gh</code>に渡すラッパー</li>
 <li>作業単位は<code>docs/work-orders.md</code>（サイトには載せない）</li>
@@ -1320,11 +1321,16 @@ pnpm<span class="w"> </span>install<span class="w"> </span><span class="o">&amp;
 
 <span class="nb">cd</span><span class="w"> </span>~/src/masuda
 go<span class="w"> </span>work<span class="w"> </span>init<span class="w"> </span>.<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>go<span class="w"> </span>work<span class="w"> </span>use<span class="w"> </span>../masuda-engine<span class="w">   </span><span class="c1"># engineも手元のものを使うときだけ</span>
-go<span class="w"> </span>build<span class="w"> </span>-o<span class="w"> </span>~/.local/bin/masuda<span class="w"> </span>./cmd/masuda
-masuda<span class="w"> </span>version<span class="w">                      </span><span class="c1"># dev。契約が隣のmasuda-sandboxと合っていればcontract: ok</span>
+go<span class="w"> </span>build<span class="w"> </span>./cmd/masuda
+./masuda<span class="w"> </span>version<span class="w"> </span>--sandbox-socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w">   </span><span class="c1"># dev。契約が隣のmasuda-sandboxと合っていればcontract: ok</span>
 </code></pre></div>
 <ul>
-<li>ソースからのビルドはバージョンが<code>dev</code>になる。リリースと同じに埋めるなら<code>go build -ldflags "-X main.version=X.Y.Z"</code></li>
+<li>
+<p>serveは開発版のソケットとデータディレクトリで起こす: <code>./masuda serve --socket "$XDG_RUNTIME_DIR/masuda-dev.sock" --data-dir ~/.local/share/masuda-dev --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"</code>。CLIの<code>--socket</code>やトークンの登録は<a href="release/#dev-separation">リリース手順</a></p>
+</li>
+<li>
+<p>ソースからのビルドはバージョンが<code>dev</code>になる。リリースと同じに埋めるなら<code>go build -ldflags "-X main.version=X.Y.Z"</code></p>
+</li>
 <li>masudaとmasuda-sandboxの契約（<code>sandbox.proto</code>）がずれていると<code>masuda serve</code>が起動しない。両方を同じ時点に揃えるか、<code>buf generate</code>と<code>go generate ./internal/sandboxcontract/</code>で作り直す</li>
 </ul>
 <h2 id="_5">触る対象から引く<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>

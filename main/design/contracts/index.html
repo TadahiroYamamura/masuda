@@ -1412,7 +1412,7 @@
 </tr>
 <tr>
 <td><code>OutOfRange</code></td>
-<td><code>Watch</code>の<code>after_seq</code>が最新のseqより大きい（serve再起動で番号が振り直された等）。クライアントは<code>after_seq: 0</code>で繋ぎ直す</td>
+<td><code>Watch</code>の<code>after_seq</code>が最新のseqより大きい（serve再起動で番号が振り直された等）、または<code>after_seq</code>の次のイベントが再送バッファに残っていない（<code>after_seq+1</code>が再送できる最古のseqより小さい。理由に再送できる最古のseqが入る）。クライアントは<code>after_seq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す。<code>after_seq: 0</code>は常に通る</td>
 </tr>
 <tr>
 <td><code>Unimplemented</code></td>

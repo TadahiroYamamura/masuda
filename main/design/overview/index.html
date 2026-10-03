@@ -2263,7 +2263,8 @@ masuda
 ゲスト（メインエージェント）         ホスト（masuda / engine）
   next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
   ◀──── タスクファイルのパス ─────  /masuda/in/&lt;occ&gt;/ に入力を書き込み済み
-  サブエージェントが作業
+  サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
+  （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
   write_output / report_result ──▶ /masuda/out/&lt;occ&gt;/ をホストが読み出し、スキーマ検証
                                    ノード境界: WIPスナップショットを staging へ pull
                                    次ノード: egress/秘密の方針を SetPolicy で切替
@@ -2323,7 +2324,7 @@ masuda
 <li><strong>publish</strong>: <code>target: local</code>なら実リポジトリの同名ブランチへfast-forward、<code>target: remote</code>なら<code>settings.json</code>の<code>publish.remote</code>（既定<code>origin</code>）が指す実リポジトリのremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない</li>
 <li><strong>discard</strong>: 反映せずに片付ける</li>
 </ul>
-<p>publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。stagingは<code>masuda remove</code>まで残す。</p>
+<p>publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。<code>end</code>で終わった（publish・discardを通らない）実行も、DONEを状態に写す前に同じ順で会話ログと実行ログを書き出してVMを破棄する（<code>Runner.Cleanup</code>に1つにまとめてあり、壊した後に呼ぶと実行ログの写し直しだけになる）。DONEのVMは再開にも使わない（Resumeは新しいVMを作る）ので残す理由が無く、残すとDONEにはStopが効かないためRemoveまで残り続ける。stagingは<code>masuda remove</code>まで残す。</p>
 <h3 id="exports">exports<a class="headerlink" href="#exports" title="Permanent link">&para;</a></h3>
 <p>置き場所は<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/exports/</code>。中身は次の3つ。</p>
 <table>
@@ -2350,7 +2351,8 @@ masuda
 </table>
 <ul>
 <li>会話ログは、ゲストのホームをcwdにして<code>find .claude/projects -type f -name '*.jsonl'</code>を<code>Exec</code>し、各ファイルを<code>ReadFile</code>で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに<code>kind: export-warning</code>として記録し、publish・discardは止めない</li>
-<li>回収するのはpublish・discardのときだけ。Stop・serveの再起動・Removeではゲストが先に無くなるので回収しない</li>
+<li>会話ログを回収するのは、DONE（publish・discard・<code>end</code>）とStop（<code>Remove</code>の<code>force</code>を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す</li>
+<li>再開後に書き出すと、同じパスのファイルは新しいもので置き換わる</li>
 <li><code>masuda remove</code>はワークスペースのディレクトリのうち<code>exports/</code>だけを残して消す</li>
 </ul>
 <h3 id="_3">ホスト側のディレクトリ<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
@@ -2726,6 +2728,10 @@ masuda
 <td>ゲストの<code>~/.claude/settings.json</code>へ合成するオブジェクト（フックはmasudaのものが優先）</td>
 </tr>
 <tr>
+<td><code>agents</code></td>
+<td>役の名前→<code>model</code>・<code>effort</code>の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は<code>run</code>・<code>resume</code>・<code>workflow check</code>が断る</td>
+</tr>
+<tr>
 <td><code>publish.remote</code></td>
 <td><code>target: remote</code>のpublishがpushする実リポジトリのremoteの名前。既定<code>origin</code></td>
 </tr>
@@ -2903,11 +2909,11 @@ masuda
 <p>認証はローカル利用のみを前提とする。<code>$XDG_RUNTIME_DIR/masuda.sock</code>（UDS）で待ち受け、<code>config.json</code>に<code>listen</code>があるときだけ、そのループバックのアドレスでも同じハンドラで待ち受ける（ブラウザのGUIはUDSに繋げないため）。ループバックの待ち受けはCORSで任意のオリジンを許し、<code>Host</code>ヘッダーがループバックの名前でない要求は断る（DNS rebinding対策）。リモートから使う場合はユーザーがリバースプロキシ等で守る。</p>
 <h3 id="watch">Watch<a class="headerlink" href="#watch" title="Permanent link">&para;</a></h3>
 <ul>
-<li>イベントの<code>seq</code>は全ワークスペースで1本の通し番号。<code>after_seq</code>を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは<code>records/execution-log.jsonl</code>に残る）</li>
+<li>イベントの<code>seq</code>は全ワークスペースで1本の通し番号。<code>after_seq</code>を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、<code>after_seq</code>の次のイベントがそこに残っていなければ<code>OutOfRange</code>で終わる（黙って最古から続けると、取りこぼしにクライアントが気づけない）。serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは<code>records/execution-log.jsonl</code>に残る）</li>
 <li><code>after_seq</code>が0（新しいものだけ）でも、最初に対象のワークスペースごとの今の<code>status</code>を1つずつ送る。この<code>status</code>は新しい番号を振らず、<code>seq</code>に今の最新の番号を入れる。購読の開始と状態の変化が前後しても、変化を取りこぼしたまま次の変化まで何も見えなくなることがない</li>
 <li><code>status</code>は内容が前に流したものと変わったときだけ流す。時刻（<code>updated_at</code>・<code>last_activity</code>）だけの違いでは流さない</li>
 <li><code>workspace_id</code>が空のイベントはserve全体についての通知（<code>ServeNotice{kind, detail, value}</code>）で、どのワークスペースを指定したWatchにも届く。今出すのはディスク使用量の警告（<code>disk-warning</code>）だけ</li>
-<li><code>after_seq</code>が最新の<code>seq</code>より大きければ<code>OutOfRange</code>で終わる（serveの再起動で番号が振り直された後に古い番号で繋いだ等）。クライアントは<code>after_seq: 0</code>で繋ぎ直す</li>
+<li><code>after_seq</code>が最新の<code>seq</code>より大きい（serveの再起動で番号が振り直された後に古い番号で繋いだ等）か、<code>after_seq+1</code>が再送できる最古の<code>seq</code>より小さければ<code>OutOfRange</code>で終わる。後者の理由には再送できる最古の<code>seq</code>を入れる。クライアントは<code>after_seq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す。<code>after_seq: 0</code>は常に通る</li>
 </ul>
 <h3 id="gate">Gateの判断<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h3>
 <ul>

@@ -1449,8 +1449,8 @@
 <tr>
 <td><code>out_of_range</code></td>
 <td>400</td>
-<td><code>Watch</code>の<code>after_seq</code>が最新のseqより大きい（serveの再起動で番号が振り直された等）</td>
-<td><code>after_seq: 0</code>で繋ぎ直す</td>
+<td><code>Watch</code>の<code>after_seq</code>が最新のseqより大きい（serveの再起動で番号が振り直された等）、または<code>after_seq</code>の次のイベントが再送用に持つ直近10000件に残っていない</td>
+<td><code>after_seq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す（<code>after_seq: 0</code>は常に通る）</td>
 </tr>
 <tr>
 <td><code>unimplemented</code></td>
@@ -1508,7 +1508,7 @@
 <tr>
 <td><code>Run</code></td>
 <td><code>invalid_argument</code></td>
-<td><code>repo_root</code>が不正。<code>workflow</code>か<code>branch</code>が空。<code>.masuda/</code>を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。<code>workflow</code>が定義に無い。ワークフローの<code>inputs</code>が足りない。<code>.masuda/reviews/</code>の観点ファイルのfrontmatterが読めない。ブランチ名が不正。<code>base</code>が実リポジトリに無い。既存のブランチで分岐元を決められない（<code>base</code>を渡す）</td>
+<td><code>repo_root</code>が不正。<code>workflow</code>か<code>branch</code>が空。<code>.masuda/</code>を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。<code>workflow</code>が定義に無い。ワークフローの<code>inputs</code>が足りない。<code>.masuda/reviews/</code>の観点ファイルのfrontmatterが読めない。<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。ブランチ名が不正。<code>base</code>が実リポジトリに無い。既存のブランチで分岐元を決められない（<code>base</code>を渡す）</td>
 </tr>
 <tr>
 <td></td>
@@ -1543,7 +1543,7 @@
 <tr>
 <td></td>
 <td><code>failed_precondition</code></td>
-<td>再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは<code>Stop</code>した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの<code>settings.json</code>や<code>settings.local.json</code>が読めない。起動に要るものが足りない、sandbox serviceの契約が違う（<code>Run</code>と同じ）</td>
+<td>再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは<code>Stop</code>した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの<code>settings.json</code>や<code>settings.local.json</code>が読めない。定義の写しの<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（<code>Run</code>と同じ）</td>
 </tr>
 <tr>
 <td></td>
@@ -1573,7 +1573,7 @@
 <tr>
 <td></td>
 <td><code>out_of_range</code></td>
-<td><code>after_seq</code>が最新のseqより大きい（ストリームの最初に終わる）。<code>after_seq: 0</code>で繋ぎ直す</td>
+<td><code>after_seq</code>が最新のseqより大きい、または<code>after_seq+1</code>が再送できる最古のseqより小さい（続きが再送用の直近10000件に残っていない。メッセージに再送できる最古のseqが入る）。どちらもストリームの最初に終わる。<code>after_seq: 0</code>で繋ぎ直す</td>
 </tr>
 <tr>
 <td></td>

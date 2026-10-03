@@ -1155,6 +1155,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dev-separation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        開発版との分離
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#0-issue" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1173,6 +1184,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="1. 打つ前の確認">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-0-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-0. ゲストのClaude Codeの版を上げる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-1. 速い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-2. 遅い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1199,7 +1249,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-masuda" class="md-nav__link">
+  <a href="#engine" class="md-nav__link">
     <span class="md-ellipsis">
       
         4. masudaの版上げとタグ
@@ -1221,10 +1271,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6" class="md-nav__link">
+  <a href="#harness" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. 記録
+        6. ハーネスの更新
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 記録
       
     </span>
   </a>
@@ -1324,6 +1385,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#dev-separation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        開発版との分離
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#0-issue" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1342,6 +1414,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="1. 打つ前の確認">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-0-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-0. ゲストのClaude Codeの版を上げる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-1. 速い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-2. 遅い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1368,7 +1479,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#4-masuda" class="md-nav__link">
+  <a href="#engine" class="md-nav__link">
     <span class="md-ellipsis">
       
         4. masudaの版上げとタグ
@@ -1390,10 +1501,21 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#6" class="md-nav__link">
+  <a href="#harness" class="md-nav__link">
     <span class="md-ellipsis">
       
-        6. 記録
+        6. ハーネスの更新
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 記録
       
     </span>
   </a>
@@ -1469,36 +1591,99 @@
 </tr>
 </tbody>
 </table>
-<p>masudaの<code>release.yml</code>は、<code>go vet</code>・<code>go test ./...</code>、<code>go.mod</code>のengineの版がタグと同じか、同じタグのmasuda-sandboxで<code>internal/sandboxcontract/sha.go</code>を生成し直して差分が無いかを確かめてから、<code>-ldflags "-X main.version=X.Y.Z"</code>でクロスビルドする。リリースノートには3リポジトリのタグとコミットハッシュの表を自動で書く。<code>docs.yml</code>はサイトを<code>X.Y</code>として公開し<code>latest</code>の別名を付ける。</p>
+<p>masudaの<code>release.yml</code>は、<code>go vet</code>・<code>go test ./...</code>、<code>go.mod</code>のengineの版がタグと同じか、同じタグのmasuda-sandboxで<code>internal/sandboxcontract/sha.go</code>を生成し直して差分が無いかを確かめてから、<code>-ldflags "-X main.version=X.Y.Z"</code>でクロスビルドする。リリースノートには3リポジトリのタグとコミットハッシュの表と、検証したゲストのClaude Codeの版（<code>masuda version</code>の<code>claude code:</code>の行）を自動で書く。<code>docs.yml</code>はサイトを<code>X.Y</code>として公開し<code>latest</code>の別名を付ける。</p>
 <h2 id="_2">分担<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>エージェントが進める場合、<strong>タグのpush（公開物を作る操作）と強制pushはエージェントからは実行できない</strong>（自動モードの安全判定が止める。別の経路で同じ結果を狙うことも禁じられている）。これは不便ではなく、取り消しの効かない一打を人間が打つ形として残す。</p>
 <ul>
-<li>エージェント: 打つ前の確認、<code>go.mod</code>の版上げとそのコミット、ブランチの通常のpush、Actionsの監視、Releaseと添付物の検証、<code>install.md</code>をなぞる確認、追跡Issueと<code>HANDOFF.md</code>の更新</li>
-<li>ユーザー: 3つのタグのpush。エージェントは打つべきコマンドを、コピーしてそのまま打てる形（<code>! cd ... &amp;&amp; git tag ... &amp;&amp; git push origin vX.Y.Z</code>）で、<strong>打つ直前に1つずつ</strong>出す。前のタグのワークフローが終わってから次を出す（順序の依存があるため）</li>
+<li>エージェント: 打つ前の確認、<code>go.mod</code>の版上げとそのコミット、ブランチの通常のpush、Actionsの監視、Releaseと添付物の検証、添付物を一時的に入れる確認、追跡Issueと<code>HANDOFF.md</code>の更新</li>
+<li>ユーザー: 3つのタグのpush。エージェントは打つべきコマンドを、コピーしてそのまま打てる形（<code>! cd ... &amp;&amp; git tag ... &amp;&amp; git push origin vX.Y.Z</code>）で、<strong>打つ直前に1つずつ</strong>出す。前のタグのワークフローが終わってから次を出す（順序の依存があるため）。ハーネスの更新（手順6）も、人間の常用環境を入れ替える操作なのでユーザーが打つ。エージェントはコマンドを出して結果を確かめる</li>
 </ul>
 <p>v0.1.0の初回にだけ要った作業（<code>redesign</code>→<code>develop</code>の付け替え、<code>main</code>の新設、<code>v1-frozen-*</code>のpush）は済んでいる。以後は<code>main</code>の先頭に打つ。</p>
+<h2 id="dev-separation">開発版との分離<a class="headerlink" href="#dev-separation" title="Permanent link">&para;</a></h2>
+<p>この節は番号の付く手順ではなく、以下の全手順に掛かる決まり。</p>
+<p><strong>ハーネス</strong>は、masuda自身の開発を回している公開物の組で、次のものを指す。</p>
+<ul>
+<li>公開物の<code>~/.local/bin/masuda</code>と、<code>npm install -g</code>した<code>masuda-sandbox</code></li>
+<li>既定のソケット<code>$XDG_RUNTIME_DIR/masuda.sock</code>・<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code></li>
+<li>既定のデータディレクトリ<code>~/.local/share/masuda</code></li>
+</ul>
+<p><strong>開発版</strong>（チェックアウトからビルドしたもの、リリース前に確かめるもの）をハーネスに混ぜない。ワークスペースの記録の形は版で変わりうるので、開発版がハーネスのバイナリやデータディレクトリを置き換えると、ハーネスで走行中のワークスペースが読めなくなる。</p>
+<ul>
+<li><strong>開発版のmasuda</strong>: チェックアウト直下の<code>./masuda</code>（<code>GOWORK=off go build ./cmd/masuda</code>の出力。<code>/masuda</code>はgitignore済み）を使い、<code>~/.local/bin</code>に置かない。開発版のserveは既定のソケットとデータディレクトリで待ち受けない</li>
+</ul>
+<div class="highlight"><pre><span></span><code>./masuda<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-dev.sock"</span><span class="w"> </span>--data-dir<span class="w"> </span>~/.local/share/masuda-dev<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--sandbox-socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span>
+</code></pre></div>
+<ul>
+<li><code>~/.config/masuda/config.json</code>はハーネスと共有で、<code>sandboxSocket</code>が書いてあれば明示しない限りそちらが使われる。開発版は<code>--sandbox-socket</code>を必ず明示する</li>
+<li>開発版のCLIは毎回<code>--socket "$XDG_RUNTIME_DIR/masuda-dev.sock"</code>を付ける（既定はハーネスの<code>masuda.sock</code>）</li>
+<li>秘密はデータディレクトリに置かれるので、開発版のserveにはトークンを別に登録する: <code>./masuda secret set CLAUDE_CODE_OAUTH_TOKEN --socket "$XDG_RUNTIME_DIR/masuda-dev.sock"</code>（値は標準入力から）</li>
+<li><strong>sandbox</strong>: 普段は共有（ハーネスの<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>）で、開発版のmasudaの<code>--sandbox-socket</code>もそこを指してよい。<code>masuda version</code>の<code>contract: ok</code>はハーネスのmasudaと共有のsandboxの組で見る。<code>sandbox.proto</code>を変える作業では、開発版の<code>masuda-sandbox serve</code>（<code>../masuda-sandbox</code>の<code>node dist/cli.js serve</code>）を<code>$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock</code>で立て、開発版のmasudaはそちらを指す</li>
+<li><strong>masuda自身の<code>.masuda/</code></strong>: 入っているハーネスの版で読める範囲に留める。新しい設定・スキーマは、その版をハーネスにしてから使う</li>
+<li><strong>gate・questionの操作</strong>: serveとCLIは同じ版の組で使う。ハーネスのserveのgate・questionはハーネスのCLI（<code>masuda</code>）で操作し、開発版のCLI（<code>./masuda</code>）をハーネスのserveに向けない。開発版のserveは開発版のCLIで操作する</li>
+<li><strong>liveテスト（<code>live/</code>）</strong>: VMの中では回せないので、ホストで開発版として回す。liveは既定で共有のsandboxに繋ぐ。<code>sandbox.proto</code>が変わる作業とリリース前の確認（手順1-0・1-2）では、<code>MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"</code>で開発版のsandboxを指す</li>
+</ul>
 <h2 id="0-issue">0. 版と追跡Issueを決める<a class="headerlink" href="#0-issue" title="Permanent link">&para;</a></h2>
 <ul>
 <li>版は<code>vX.Y.Z</code>。v1.0までは互換性を保証しないので、機能追加でもYを上げてよい。契約（<code>masuda.proto</code>・<code>sandbox.proto</code>・<code>guest-protocol.md</code>）が変わったときは必ずYを上げる</li>
 <li>追跡Issueを1つ作る（v0.1.0は#59）。この手順の各段をチェックボックスで書き、進めながら更新する。つまずいた点はそのIssueに書き、別の不具合は別Issueに切る</li>
 <li>3リポジトリとも、打つコミットがpush済みで作業ツリーがcleanであること。masudaは<code>develop</code>に全部入っていて、<code>main</code>を<code>develop</code>に合わせてから打つ</li>
+<li>ゲストのClaude Codeの版。既定は「その時点の最新版」（手順1-0）。追跡Issueに、上げる前の版・最新版・検証した版を書く</li>
 </ul>
 <h2 id="1">1. 打つ前の確認<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<h3 id="1-0-claude-code">1-0. ゲストのClaude Codeの版を上げる<a class="headerlink" href="#1-0-claude-code" title="Permanent link">&para;</a></h3>
+<p>ゲストのClaude Codeの版は<code>internal/guest</code>の<code>ClaudeCodeVersion</code>に固定してあり、<code>masuda init</code>の雛形のDockerfile・liveのDockerfile・<code>masuda version</code>の表示がこれを使う。各リリースは「その時点の最新のClaude Codeで動く」を既定にする。版はmasudaの外で毎日のように上がり、サブエージェントの継続（SendMessage）やフックの形が変わると無人の周回が壊れるため、上げるたびに実機で確かめてから打つ。</p>
+<p>最新版を知る（<code>install.sh</code>が引数なしで入れる版と同じURLから引く）。</p>
+<div class="highlight"><pre><span></span><code>.claude/skills/release/scripts/claude-code-latest.sh<span class="w">   </span><span class="c1"># 例 2.1.288</span>
+</code></pre></div>
+<p><code>internal/guest/guest.go</code>の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>./cmd/masuda/<span class="w"> </span>./internal/guest/<span class="w"> </span>./live/
+.claude/skills/release/scripts/precheck.sh<span class="w"> </span>--claude-code<span class="w">    </span><span class="c1"># 版が雛形・liveに入り、配布元に実在する</span>
+<span class="c1"># 開発版のsandboxを立てる（liveは既定でハーネスのsandboxに繋ぎ、sandbox.protoが変わるリリースでは契約が合わず起動しない）</span>
+<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
+<span class="c1"># 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）</span>
+<span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
+<span class="c1"># 実機1周（15〜20分）</span>
+<span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestDevelopLapOnPythonRepo<span class="w"> </span>./live/
+<span class="c1"># 1-0で立てた開発版のsandboxはここで止める（1-2は毎回起動行から始める。シェルをまたぐとsbpidが消えるため）</span>
+<span class="nb">kill</span><span class="w"> </span><span class="s2">"</span><span class="nv">$sbpid</span><span class="s2">"</span>
+</code></pre></div>
+<p>liveのイメージはDockerfileが変われば作り直される（初回は数分余計にかかる）。この2つは下の「遅い確認」のliveを兼ねる（版を上げなかったときも下で同じ順に回す）。</p>
+<ul>
+<li><strong>通れば</strong>（既定）: <code>chore(guest): Claude Codeを&lt;版&gt;に上げる</code>の1コミットにする。本文の<code>## 意図</code>に、上げる前の版と、継続テスト・1周が通ったことを書く。<code>develop</code>へpushする</li>
+<li><strong>通らなければ</strong>: 定数を前の版に戻す（コミットしない）。追跡Issueと、公開後にReleaseのノートへ「最新版 X では〜が動かないため Y で検証」と書く。原因は別Issueに切る（再現手順・落ちたテスト・ログの該当行）。前の版で両方が通ることは下の「遅い確認」で確かめる</li>
+</ul>
+<h3 id="1-1">1-1. 速い確認<a class="headerlink" href="#1-1" title="Permanent link">&para;</a></h3>
 <p>速い確認は<code>scripts/precheck.sh vX.Y.Z</code>にまとめてある。masudaのチェックアウトから打つ（隣に<code>../masuda-engine</code>と<code>../masuda-sandbox</code>がある前提。無ければ<code>MASUDA_ENGINE_DIR</code>・<code>MASUDA_SANDBOX_DIR</code>で場所を渡す）。</p>
 <div class="highlight"><pre><span></span><code>.claude/skills/release/scripts/precheck.sh<span class="w"> </span>vX.Y.Z
 </code></pre></div>
-<p>確かめること: 3リポジトリの作業ツリーがcleanでoriginと一致、<code>vX.Y.Z</code>のタグが未使用、masudaの<code>GOWORK=off</code>でのbuild・vet・test（契約テストC-M*を含む）、engineのtest、sandboxの単体テスト、<code>internal/sandboxcontract/sha.go</code>の再生成に差分が無いこと、<code>release.yml</code>と同じクロスビルドで<code>masuda version</code>が版を出すこと、<code>clients/ts</code>の<code>npm pack --dry-run</code>。</p>
+<p>確かめること: 3リポジトリの作業ツリーがcleanでoriginと一致、<code>vX.Y.Z</code>のタグが未使用、masudaの<code>GOWORK=off</code>でのbuild・vet・test（契約テストC-M*を含む）、ゲストのClaude Codeの版（<code>--claude-code</code>と同じ段。最新版と違えばinfoで出す）、engineのtest、sandboxの単体テスト、<code>internal/sandboxcontract/sha.go</code>の再生成に差分が無いこと、<code>release.yml</code>と同じクロスビルドで<code>masuda version</code>が版を出すこと、<code>clients/ts</code>の<code>npm pack --dry-run</code>。</p>
 <p><code>go.work</code>があるとテストは隣の<code>../masuda-engine</code>の作業ツリーで走る。固定した版で確かめたいので、スクリプトは<code>GOWORK=off</code>を付ける。</p>
-<p>遅い確認は手で回す。VMを使うものは同時に走らせない。</p>
+<h3 id="1-2">1-2. 遅い確認<a class="headerlink" href="#1-2" title="Permanent link">&para;</a></h3>
+<p>遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）</span>
-<span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span><span class="w"> </span><span class="p">&amp;</span>
-<span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span><span class="w"> </span>pnpm<span class="w"> </span>test:contract
-<span class="c1"># masudaの実機1周（15〜20分。同じserveを使う）</span>
-<span class="nb">cd</span><span class="w"> </span>../masuda<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>./live/
-<span class="c1"># sandboxのtarball予行（distを一時的に版付きで作る。終わったらpnpm buildでdevに戻す）</span>
-<span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>package.json<span class="w"> </span>/tmp/package.json.bak<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_VERSION</span><span class="o">=</span>vX.Y.Z<span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>pkg<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">version</span><span class="o">=</span>X.Y.Z<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>pack<span class="w"> </span>--pack-destination<span class="w"> </span>/tmp<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>/tmp/package.json.bak<span class="w"> </span>package.json<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>/tmp/masuda-sandbox-X.Y.Z.tgz<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>masuda-sandbox<span class="w"> </span>--version<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>uninstall<span class="w"> </span>-g<span class="w"> </span>masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build
+<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
+<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span>pnpm<span class="w"> </span>test:contract<span class="o">)</span>
+<span class="c1"># masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす</span>
+<span class="nb">cd</span><span class="w"> </span>../masuda<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
+<span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestDevelopLapOnPythonRepo<span class="w"> </span>./live/
+<span class="c1"># 開発版のsandboxを止める（下の予行のpnpm buildが走行中のserveのdistを作り直さないように。以後は使わない）</span>
+<span class="nb">kill</span><span class="w"> </span><span class="s2">"</span><span class="nv">$sbpid</span><span class="s2">"</span>
+<span class="c1"># sandboxのtarball予行（distを一時的に版付きで作る。途中で失敗しても、サブシェルを抜けるときにtrapがpackage.jsonを戻し、pnpm buildでdistをdevに戻す）</span>
+<span class="c1"># ハーネスのグローバルのmasuda-sandboxを上書きしないよう--prefixで入れる。置き場はmktempの自分専用のディレクトリ（共有の/tmpの予測できる名前に置いたものは実行しない）</span>
+<span class="nv">t</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span>
+<span class="o">(</span>
+<span class="w">  </span><span class="nb">set</span><span class="w"> </span>-e
+<span class="w">  </span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox
+<span class="w">  </span>cp<span class="w"> </span>package.json<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/package.json.bak"</span>
+<span class="w">  </span><span class="nb">trap</span><span class="w"> </span><span class="s1">'cp "$t/package.json.bak" package.json; pnpm build'</span><span class="w"> </span>EXIT
+<span class="w">  </span><span class="nv">MASUDA_SANDBOX_VERSION</span><span class="o">=</span>vX.Y.Z<span class="w"> </span>pnpm<span class="w"> </span>build
+<span class="w">  </span>npm<span class="w"> </span>pkg<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">version</span><span class="o">=</span>X.Y.Z
+<span class="w">  </span>npm<span class="w"> </span>pack<span class="w"> </span>--pack-destination<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
+<span class="w">  </span>npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>--prefix<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/masuda-sandbox-X.Y.Z.tgz"</span>
+<span class="w">  </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix/bin/masuda-sandbox"</span><span class="w"> </span>--version
+<span class="o">)</span>
+rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
 pgrep<span class="w"> </span>-af<span class="w"> </span>qemu-system<span class="w">   </span><span class="c1"># 孤児が無いこと</span>
 </code></pre></div>
 <p>liveが完走したら、ログに2分以上の無反応が無いかも見る（#65の停止は1周に2回ほど出る。完走を妨げないが、増えていたら記録する）。</p>
@@ -1516,7 +1701,7 @@ pgrep<span class="w"> </span>-af<span class="w"> </span>qemu-system<span class="
 scripts/gh.sh<span class="w"> </span>run<span class="w"> </span>watch<span class="w"> </span>-R<span class="w"> </span>TadahiroYamamura/masuda-sandbox<span class="w"> </span>&lt;run-id&gt;<span class="w"> </span>--exit-status
 scripts/gh.sh<span class="w"> </span>release<span class="w"> </span>view<span class="w"> </span>vX.Y.Z<span class="w"> </span>-R<span class="w"> </span>TadahiroYamamura/masuda-sandbox<span class="w"> </span>--json<span class="w"> </span>assets<span class="w"> </span>-q<span class="w"> </span><span class="s1">'.assets[].name'</span><span class="w">   </span><span class="c1"># tgzとSHA256SUMS</span>
 </code></pre></div>
-<h2 id="4-masuda">4. masudaの版上げとタグ<a class="headerlink" href="#4-masuda" title="Permanent link">&para;</a></h2>
+<h2 id="engine">4. masudaの版上げとタグ<a class="headerlink" href="#engine" title="Permanent link">&para;</a></h2>
 <p>まず<code>go.mod</code>のengineを、いま打ったタグに上げる（エージェント）。</p>
 <div class="highlight"><pre><span></span><code><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span><span class="nv">GOPROXY</span><span class="o">=</span>direct<span class="w"> </span>go<span class="w"> </span>get<span class="w"> </span>github.com/TadahiroYamamura/masuda-engine@vX.Y.Z
 <span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span>mod<span class="w"> </span>tidy
@@ -1544,23 +1729,57 @@ scripts/gh.sh<span class="w"> </span>run<span class="w"> </span>watch<span class
 <ul>
 <li>Releaseのノートの表（masuda・masuda-engine・masuda-sandboxのタグとコミット）が、手順2〜4で打った3つのコミットと一致する。<code>scripts/gh.sh release view vX.Y.Z --json body,assets</code>と、各リポジトリの<code>git rev-parse vX.Y.Z^{commit}</code>で突き合わせる</li>
 <li>添付物が4つ（tarball2種、<code>clients/ts</code>のtgz、<code>SHA256SUMS</code>）</li>
+<li>Releaseのノートに「ゲストのClaude Code: X で実機検証した」の行があり、Xが1-0で検証した版と同じ（<code>release.yml</code>が<code>masuda version</code>の表示から書く）。最新版で通らず前の版に留めたときは、<code>scripts/gh.sh release edit vX.Y.Z --notes-file &lt;file&gt;</code>でその理由（「最新版 X では〜が動かないため Y で検証」と別Issueの番号）を書き足す</li>
 <li>ドキュメントサイト: <code>curl -s https://tadahiroyamamura.github.io/masuda/versions.json</code>に<code>X.Y</code>があり、aliasに<code>latest</code>が付いている。<code>/latest/</code>と<code>/X.Y/</code>が200</li>
-<li><strong>添付物で<code>docs/user/install.md</code>をなぞる</strong>。両方のReleaseの添付物をダウンロードし、<code>sha256sum -c</code>、<code>npm install -g</code>した<code>masuda-sandbox --version</code>、tarballのmasudaで<code>masuda version</code>が<code>X.Y.Z</code>と<code>contract: ok</code>、<code>masuda doctor</code>が全部<code>ok</code>。開発用のserveが同じソケットで動いていれば、公開物のserveは別のソケットで起動して<code>--sandbox-socket</code>で指す。確かめたら<code>npm uninstall -g masuda-sandbox</code>で外し、<code>~/.local/bin</code>のバイナリを勝手に置き換えない</li>
+<li><strong>添付物を一時的に入れて確かめる</strong>。<code>mktemp -d</code>の自分専用のディレクトリ<code>$t</code>に両方のReleaseの添付物を落として<code>sha256sum -c</code>し、そこに入れた<code>masuda-sandbox</code>とtarballのmasudaで、<code>version</code>が<code>X.Y.Z</code>と<code>contract: ok</code>、<code>doctor</code>が全部<code>ok</code>（Claudeトークンの項目は一時データディレクトリでは未登録になるので、手順6で確かめる）。ソケットとデータディレクトリをすべて<code>$t</code>の下に置くので、ハーネスや開発版のソケットとぶつからず、<code>config.json</code>の<code>sandboxSocket</code>にも引かれない。ハーネス（<code>~/.local/bin</code>・グローバルの<code>masuda-sandbox</code>・既定のソケットとデータディレクトリ）には触れない</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="nv">t</span><span class="o">=</span><span class="k">$(</span>mktemp<span class="w"> </span>-d<span class="k">)</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
+curl<span class="w"> </span>-fLO<span class="w"> </span>https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/masuda-sandbox-X.Y.Z.tgz
+curl<span class="w"> </span>-fL<span class="w"> </span>-o<span class="w"> </span>SHA256SUMS.sandbox<span class="w"> </span>https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/SHA256SUMS
+curl<span class="w"> </span>-fLO<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/masuda_X.Y.Z_linux_amd64.tar.gz
+curl<span class="w"> </span>-fL<span class="w"> </span>-o<span class="w"> </span>SHA256SUMS.masuda<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/SHA256SUMS
+sha256sum<span class="w"> </span>-c<span class="w"> </span>SHA256SUMS.sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>grep<span class="w"> </span><span class="s1">' masuda_X.Y.Z_linux_amd64.tar.gz$'</span><span class="w"> </span>SHA256SUMS.masuda<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-
+npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span>--prefix<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix"</span><span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/masuda-sandbox-X.Y.Z.tgz"</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix/bin/masuda-sandbox"</span><span class="w"> </span>--version
+tar<span class="w"> </span>-xzf<span class="w"> </span>masuda_X.Y.Z_linux_amd64.tar.gz<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>masuda_X.Y.Z_linux_amd64/masuda<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/masuda"</span>
+<span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix/bin/masuda-sandbox"</span><span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/sandbox.sock"</span><span class="w"> </span><span class="p">&amp;</span>
+<span class="s2">"</span><span class="nv">$t</span><span class="s2">/masuda"</span><span class="w"> </span>version<span class="w"> </span>--sandbox-socket<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/sandbox.sock"</span>
+<span class="s2">"</span><span class="nv">$t</span><span class="s2">/masuda"</span><span class="w"> </span>doctor<span class="w"> </span>--sandbox-socket<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/sandbox.sock"</span><span class="w"> </span>--data-dir<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/data"</span>
+pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/sandbox.sock"</span><span class="p">;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>-<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
+</code></pre></div>
+<ul>
 <li>時間があれば、公開物で<code>docs/user/quickstart.md</code>を頭から1周する（15〜20分。サブエージェントに出してよい。出力例の差し替えは作業ツリーに置いて、コミットは人間の承認後）</li>
 </ul>
-<h2 id="6">6. 記録<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<h2 id="harness">6. ハーネスの更新<a class="headerlink" href="#harness" title="Permanent link">&para;</a></h2>
+<p>公開物をハーネスとして本導入する。ユーザーが打つ（人間の常用環境を入れ替える操作のため）。エージェントはコマンドを出して結果を確かめる。初回はv0.2.0の公開後で、<code>docs/user/install.md</code>を実機で検証する役割も兼ねる。install.mdと食い違えば、install.mdを直す別コミットにするか別Issueに切る。</p>
+<ol>
+<li><strong>更新前の確認</strong>: ハーネスのserveで<code>masuda list --all</code>し、走行中のものは終わらせ、stoppedも含めてすべて<code>masuda remove</code>する。記録の形が変わると走行中のものが読めなくなり、版をまたぐresumeも保証されないため（監督の判断）。残したい成果はremoveの前に取り出しておく<ul>
+<li>初回（ハーネスがまだ無い）は、確かめる先のserveが無いのでこの確認は飛ばす。既定のソケットで動いている開発版のsandbox（ソースから起こしたもの）があれば止め、以後の開発版のsandboxは<code>masuda-sandbox-dev.sock</code>で起こす</li>
+<li>初回は既定のデータディレクトリに既にある中身（M4暫定の<code>claude-oauth-token</code>、過去の記録）を消さない。<code>claude-oauth-token</code>はliveが読むため残す（新しく置かないだけ）。過去の記録が起動後の<code>masuda list --all</code>に出れば、上と同じに扱う</li>
+</ul>
+</li>
+<li>
+<p><strong>install.mdをなぞる</strong>: 動いている<code>masuda serve</code>→<code>masuda-sandbox serve</code>の順に止め（どちらもCtrl-C）、<code>docs/user/install.md</code>の「入れる」の<code>VERSION=</code>だけを<code>VERSION=X.Y.Z</code>（<code>v</code>は付けない）に差し替えて、「入れる」（masuda-sandbox・masuda）と「起動」のブロックをそのまま打つ。install.mdを実機で検証する役割を兼ねるので、ほかは書き換えない</p>
+</li>
+<li>
+<p><strong>Claudeのトークン</strong>: <code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>で正規の置き場所（<code>&lt;DataDir&gt;/secrets/_user/</code>）に登録する（登録済みなら不要。<code>docs/user/install.md</code>の「Claudeのトークンを登録する」）。M4暫定の<code>&lt;DataDir&gt;/claude-oauth-token</code>は読めるが、新しく置かない</p>
+</li>
+<li><strong>確かめる</strong>: <code>masuda version</code>で<code>X.Y.Z</code>と<code>contract: ok</code>、<code>masuda doctor</code>が全部<code>ok</code></li>
+<li><strong>イメージの作り直し</strong>: ハーネスで使うリポジトリ（masuda自身を含む）で、Dockerfileのinstall行のClaude Codeの版が<code>masuda version</code>の<code>claude code:</code>と違えば合わせ（masuda自身の<code>.masuda/images/default/Dockerfile</code>なら<code>chore(masuda)</code>の1コミット）、<code>masuda image build</code>する。イメージの記録はデータディレクトリごとで、初回はハーネスのデータディレクトリにまだ無いため必ず打つ</li>
+</ol>
+<h2 id="7">7. 記録<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
 <ul>
 <li>追跡Issueのチェックボックスを埋め、3タグとコミットの表、つまずいた点、残り（quickstartの1周など）を書く</li>
-<li><code>HANDOFF.md</code>に、公開した版と残りを書く</li>
+<li>追跡Issueに、ハーネスを更新したか（したなら版、しなかったなら理由）を書く</li>
+<li><code>HANDOFF.md</code>に、公開した版、検証したゲストのClaude Codeの版（最新版に上げられなかったならその理由とIssue）、残りを書く</li>
 <li>途中で直したもの（CIの設定、doctorの判定など）は、リリースのコミットとは別の<code>fix</code>/<code>chore</code>コミットにしてある。追跡Issueからたどれるようにハッシュを書く</li>
 </ul>
 <h2 id="_3">つまずきやすい点<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>モジュールプロキシのキャッシュ</strong>: <code>go get ...@main</code>は古いコミットを返すことがある。タグ直後は<code>GOPROXY=direct</code>を付ける</li>
 <li><strong>GitHubのランナー（Ubuntu 24.04）</strong>: AppArmorが非特権ユーザー名前空間を禁じているため、フェイクsandboxの<code>unshare -Urm</code>を使うテスト（C-M7・serveの特権コマンド）が落ちる。<code>ci.yml</code>・<code>release.yml</code>に<code>sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0</code>のステップがある。ランナーの像が変わったら最初に疑う</li>
-<li><strong>同じソケットに2つのserve</strong>: 開発用のserveを動かしたまま公開物を確かめるときは、ソケットを分ける。データディレクトリも同じものを2つのmasuda serveで共有しない</li>
+<li><strong>同じソケットに2つのserve</strong>: 既定のソケットとデータディレクトリはハーネスが使う。確かめるもの・開発版のserveは別のソケットとデータディレクトリで立てる。データディレクトリを2つのmasuda serveで共有しない（「開発版との分離」）</li>
 <li><strong><code>docs.yml</code>のengineの文書</strong>: サイトはmasuda-engineの既定ブランチ（<code>main</code>）から<code>workflow-schema.md</code>を取り込む。engineの<code>main</code>の先頭がタグと同じ時点で打てば一致する</li>
-<li><strong>sandboxの契約テストと資産ストア</strong>: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveと同時に走らせない</li>
+<li><strong>sandboxの契約テストと資産ストア</strong>: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveとも、ハーネスで走っているワークスペースとも同時に走らせない</li>
 </ul>
 
 
