@@ -130,7 +130,7 @@ masuda gate dismiss|halt|redo <id> <occurrence> [--comment <text>]
 | サブコマンド | 動き |
 |---|---|
 | `list` | 開いているゲート（`<id>`を省くと全ワークスペース）。列はWORKSPACE・OCCURRENCE・GATE・TARGET・OPENED |
-| `show` | ゲートの種類・`target_hash`・（あれば）反映されるcommit・判断済みなら判断、と中身。`triage`は懸念の本文、`deviation`は計画外で変わったファイルの一覧を出す。`target: plan`（`plan`）は計画のJSONを、goal・summary・ステップごとの内容とテストと対象ファイル・採らなかった案・リスク・想定する副産物の節に分けて出す（JSONとして読めなければ全文）。差分のゲートは見出しで区別する: `target: diff`（`review`）は「publishされる内容（コミット済み）」、`target: step-diff`（`interim`）は「このステップでこれからコミットされる内容（未コミット）」。差分のゲートでは、承認対象のコミットに人間が付けたコメントを差分の後に`comments (sent to the agent on reject):`の見出しで`<path>:<line>: <本文>`の形に並べる（無ければ見出しごと省く）。未判断なら、そのゲートで打てるコマンドを添える |
+| `show` | ゲートの種類・`target_hash`・（あれば）反映されるcommit・判断済みなら判断、と中身。`triage`は懸念の本文、`deviation`は計画外で変わったファイルの一覧を出す。`target: plan`（`plan`）は計画のJSONを、goal・summary・ステップごとの内容とテストと対象ファイル・計画への問いと答え（`checks`。問いごとに`<id> [addressed|out_of_scope|open] <問い>`と、次の行に答え）・採らなかった案・リスク・想定する副産物の節に分けて出す（JSONとして読めなければ全文）。差分のゲートは見出しで区別する: `target: diff`（`review`）は「publishされる内容（コミット済み）」、`target: step-diff`（`interim`）は「このステップでこれからコミットされる内容（未コミット）」。差分のゲートでは、承認対象のコミットに人間が付けたコメントを差分の後に`comments (sent to the agent on reject):`の見出しで`<path>:<line>: <本文>`の形に並べる（無ければ見出しごと省く）。未判断なら、そのゲートで打てるコマンドを添える |
 | `approve` | 承認する |
 | `reject` | 却下する。差分のゲートなら、`comment`で付けた行コメントも`--comment`の本文とともにエージェントへ届く |
 | `comment` | 差分のゲート（`review`・`interim`）の承認対象のコミットの行にコメントを付ける。`<path>`は差分の新しい側のファイル、`<line>`はその行番号（1から）。本文は引用符で囲まなくても残りの引数をつなげて1つにする。差分を対象にしないゲート（`plan`・`deviation`・`triage`）ではエラー。付けたコメントは却下したときだけエージェントへ届き、承認したときは差分ビュー用に残るだけ |
@@ -151,10 +151,22 @@ masuda question list [<id>]
 masuda question answer <id> <occurrence> <question-id>=<answer>...
 ```
 
-`list`は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出す。`answer`は`<質問のid>=<答え>`を1つ以上並べる。
+`list`は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出し、最後にすべての問いに答えるコマンドの形（`answer: masuda question answer <id> <occurrence> '<question-id>=<answer>' ...`）を添える。1つの質問に複数の問いが入ることがあり、`answer`はそのすべてに答えを求める（`<質問のid>=<答え>`を問いの数だけ並べる。足りなければエラー）。
+
+`develop`では、計画の承認（plan gate）の前に、計画についての質問が来ることがある。計画に立てられた問いのうち計画を直す役が判断できなかったものを、`SPEC-1`・`REGRESSION-2`のような問いのidでまとめて聞く（[develop](workflows.md#develop)）。
+
+```text
+$ masuda question list 4f1c2a9e8b3d
+4f1c2a9e8b3d 0000006 (opened 10-03 01:40:12)
+  SPEC-1: ステップ1: 退化三角形（1,2,3）を ValueError にするか
+    指示書は「三角不等式を満たさない」とだけ書いており、等号の扱いが決められない
+  REGRESSION-2: shapes/__init__.py に triangle を公開するか
+    既存の circle・rectangle は __init__.py で公開しておらず、指示書にも記述が無い
+answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=<answer>' 'REGRESSION-2=<answer>'
+```
 
 ```sh
-masuda question answer 4f1c2a9e8b3d 000012 scope=yes "reason=既存のAPIは変えない"
+masuda question answer 4f1c2a9e8b3d 0000006 "SPEC-1=不正とする" "REGRESSION-2=公開しない"
 ```
 
 ## stop

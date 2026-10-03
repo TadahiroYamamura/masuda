@@ -1,11 +1,13 @@
 # 設定ファイル
 
-対象リポジトリの`.masuda/`に2つ置く。リポジトリに依らない`masuda serve`全体の設定は、別に[`config.json`](#serve-config)に置く。
+対象リポジトリの`.masuda/`に2つ置く（ほかに任意の[`pitfalls.jsonl`](#pitfalls)）。リポジトリに依らない`masuda serve`全体の設定は、別に[`config.json`](#serve-config)に置く。
 
 | ファイル | 誰のものか | コミット | 中身 |
 |---|---|---|---|
 | `settings.json` | チーム | する | **宣言**。使うイメージ、通信先、秘密の名前と送り先、生成する`.env`、特権コマンド、チェック、Claude Codeの設定 |
 | `settings.local.json` | あなた | しない（`masuda init`が`.gitignore`に足す） | **承認と手元の値**。どの宣言を承認したか、`.env`の公開値、無活動のしきい値など |
+
+このほか任意で、プロジェクト固有の落とし穴を[`pitfalls.jsonl`](#pitfalls)に書ける（チームのもの。コミットする）。
 
 通信先・平文の秘密・特権コマンドは、`settings.json`で宣言され、かつ`settings.local.json`で承認されたときだけ効く（[概念](concepts.md#declare-approve)）。秘密の値はどちらにも書かない（`masuda secret set`でホストの秘密ストアへ）。
 
@@ -193,6 +195,30 @@ VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`�
 | `stallAfter` | 文字列（Goのduration。`10m`・`1h30m`等） | `config.json`の`stallAfter`（それも無ければ`"10m"`） | 無活動がこれだけ続いたら活動を`stalled`と表示する、このリポジトリでの上書き。何分黙れば異常かはマシンの速さやClaudeのプランで変わるので、ここに置ける。正でない値・読めない値は`run`・`resume`がエラーにする。`masuda serve --stall-after`があればそちらが勝つ | 手で書く |
 
 `claudeToken`を変えたら、その名前で`masuda secret set <名前>`して値を登録する。
+
+## pitfalls.jsonl {#pitfalls}
+
+`develop`の計画に問いを立てる役（plan-questions）に渡す、**プロジェクト固有の落とし穴**。過去に踏んだ失敗を「どんな変更のときに（`trigger`）、何を問うか（`question`）」の形で残しておくと、計画がそれに当たるとき、計画への問いとして挙がる。問いには計画を直す役が答え、答えられなければplan gateの前に人間に聞かれる（[develop](workflows.md#develop)）。任意のファイルで、`masuda init`は作らない。同梱の落とし穴は無い。
+
+1行に1件のJSONオブジェクト（JSON Lines）。空行と`#`で始まる行は読み飛ばす。
+
+```text title=".masuda/pitfalls.jsonl"
+# 日時まわり
+{"id": "tz-naive", "category": "data", "trigger": "日時を保存・比較・集計する変更", "question": "タイムゾーンの無い日時が混ざらないか", "background": "2025年3月、夏時間の切り替えの日に日次集計が1時間分ずれた"}
+{"id": "migration-order", "category": "release", "trigger": "DBのスキーマを変える変更", "question": "旧版のアプリが新しいスキーマで動き続けられるか", "background": "デプロイ中に旧版が新しい列を知らずにINSERTして失敗した"}
+```
+
+| キー | 型 | 意味 |
+|---|---|---|
+| `id` | 文字列（空白を含まない） | 落とし穴の名前 |
+| `category` | `spec`・`security`・`data`・`release`・`regression`・`performance`・`maintainability`・`other`のいずれか | 見落とすと起きる被害の種類。問いの分類になる |
+| `trigger` | 文字列 | この落とし穴が当てはまる変更（きっかけ）。自然文で書く |
+| `question` | 文字列 | 当てはまったときに立てる問い。役が計画に合わせて具体化する |
+| `background` | 文字列 | この落とし穴が生まれた背景 |
+
+すべて必須で、空にできない。ほかのキーがあると読み込みを断る。`masuda run`は`.masuda/`を写すときにこのファイルも写して1行ずつ検査し、誤りがあれば実行を始めずに行番号と理由を返す（例: `.masuda/pitfalls.jsonl: line 3: category "edge" is not one of spec, ...`）。`masuda workflow check`も同じ検査をして、誤りの行ごとに問題として出す。検査を通ったものが、注釈の行を除いてVMの`/masuda/pitfalls.jsonl`に置かれる。
+
+[レビュー観点](reviews.md)との違い: 観点は実装した差分を**判定する**ためのもの、落とし穴は実装の前の計画に**問う**ためのもの。
 
 ## config.json {#serve-config}
 

@@ -83,7 +83,7 @@ outcomes:
 - `inputs`・`outputs`: 受け取る・書くデータの名前。入力はVMの`/masuda/in/<出現ID>/<名前>`にファイルとして置かれる
 - `outcomes`: 終わり方と、その意味の説明。`done`は必須。エージェントはこの中から1つを選んで報告する
 
-本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（12個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
+本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（15個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
 
 ## データとスキーマ
 
@@ -101,7 +101,7 @@ outcomes:
 ```
 
 - masudaが自分で用意するデータ: `diff`（分岐元からの差分）、`step-diff`（今のステップの差分）、`fix-diff`（修正を始めた時点からの差分）
-- 同梱のスキーマ: `plan`（計画）、`findings`（指摘の台帳。実行中に書かれたものが溜まっていく）、`commit-message`、`selected-perspectives`、`answers`
+- 同梱のスキーマ: `plan`（計画。計画への問いと答えの`checks`を含む）、`plan-checklist`（計画への問い）、`findings`（指摘の台帳。実行中に書かれたものが溜まっていく）、`commit-message`、`selected-perspectives`、`answers`
 
 ## 同梱のワークフロー
 
@@ -119,14 +119,18 @@ outcomes:
 | `workflows/review/cross-cutting` | `diff` | 部品。観点に分けにくい横断的な問題を探して確かめる |
 | `workflows/smoke` | `instructions` | 疎通確認用。指示をそのまま書き返して終える |
 
-### develop
+### develop {#develop}
 
 ```text
-調査 → 計画 → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 修正 → 再確認 → コミット）
+調査 → 計画 → 問い立て → 問いへの回答と計画の手直し →（答えられない問いがあれば）人間への質問 → 回答を受けた手直し
+     → [plan gate] → ステップごとに（実装 → テスト → 途中レビュー → 修正 → 再確認 → コミット）
      → 全観点レビュー → 横断チェック → 修正 → 再確認 → コミット → レポート → [review gate] → publish
 ```
 
 - 計画を立てる役は、調査が足りなければ調査へ戻し、依頼がこのリポジトリで扱うものでなければ`out_of_scope`で終える
+- 計画ができたら、別の役（plan-questions、`questions`ノード）が計画を確かめる問いを立てる（`plan-checklist`）。計画の主張を「達成できたと言えるか」という問いに変え、見落とすと起きる被害の種類（`spec`・`security`・`data`・`release`・`regression`・`performance`・`maintainability`・`other`）ごとに、`SPEC-1`のようなidを付けて挙げる。判定や修正の提案はしない。対象リポジトリに`.masuda/pitfalls.jsonl`（[プロジェクト固有の落とし穴](settings.md#pitfalls)）があれば、当てはまるものも問いに加える
+- 計画を直す役（plan-reviser、`revise`ノード）が問いに1つずつ答え、答えに合わせて計画を直す。答えは計画の`checks`に`addressed`（計画で扱った）・`out_of_scope`（範囲外）・`open`（判断できない）として残り、plan gateで計画と一緒に読める（[`masuda gate show`](cli.md#gate)）。調査が足りなければ調査へ戻す
+- `open`の問いが残ると、聞く役（plan-interviewer、`ask`ノード）が、それらを1つの質問にまとめて人間に聞く。plan gateより前に`masuda list`の`question:<出現ID>`として現れるので、`masuda question list`で読み、`masuda question answer`で問いのidごとに答える。答えを受けて計画を直す役がもう一度直し（`revise-answered`ノード）、まだ判断できない問いがあれば再び聞く。手直しが上限（3回）に達したときは、そのままplan gateへ進む
 - 実装する役（implementer）は計画（`plan`）に加えて調査結果（`investigation`）を読み、既存の流儀に合わせ、既にある機能を重複して作らない
 - ステップの実装は`/masuda/checks/test`（`settings.json`の`checks.test`）が通るまで、最大3回やり直す。直せなければ`stuck`で計画の承認へ戻る
 - レビューと修正は役ごとに1つのセッションで行う。レビューする役（reviewer）が観点を順に当てて指摘を台帳（`findings`）に書き、確かめる役（review-checker）が指摘の正確さを確かめる（不正確ならreviewerへ戻す）。直す役（fixer）は、実装したサブエージェントの続きとして（`continues: agents/implementer`）自動で直してよい指摘（`autofix: true`）をまとめて直し、指摘が誤り・計画の判断に反すると判断したものは直さずに反論する。再確認する役（rechecker）が解消を確かめ、反論が妥当なら指摘を取り下げる（未解決ならfixerへ戻す）
@@ -143,6 +147,10 @@ flowchart TD
   subgraph w0_graph["workflows/develop"]
     w0_investigate["investigate<br/>type: agent<br/>agents/investigator<br/>max: 3"]
     w0_plan["plan<br/>type: agent<br/>agents/planner<br/>max: 4"]
+    w0_questions["questions<br/>type: agent<br/>agents/plan-questions<br/>max: 3"]
+    w0_revise["revise<br/>type: agent<br/>agents/plan-reviser<br/>max: 3"]
+    w0_ask{"ask<br/>type: question<br/>agents/plan-interviewer"}
+    w0_revise_answered["revise-answered<br/>type: agent<br/>agents/plan-reviser<br/>max: 3"]
     w0_approve_plan{"approve-plan<br/>type: approval<br/>gate: plan, target: plan"}
     w0_implement["implement<br/>type: foreach<br/>over: steps<br/>body: workflows/implement/build-step"]
     w0_review["review<br/>type: workflow<br/>workflows/review/perspectives"]
@@ -163,9 +171,22 @@ flowchart TD
   w0_investigate -. "after run" .-> w0_investigate_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
   w0_investigate -->|"done"| w0_plan
   w0_plan -. "after run" .-> w0_plan_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
-  w0_plan -->|"done"| w0_approve_plan
+  w0_plan -->|"done"| w0_questions
   w0_plan -->|"needs_more_investigation"| w0_investigate
   w0_plan -->|"out_of_scope"| w0_end_out_of_scope
+  w0_questions -. "after run" .-> w0_questions_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_questions -->|"done"| w0_revise
+  w0_revise -. "after run" .-> w0_revise_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_revise -->|"done"| w0_approve_plan
+  w0_revise -->|"exhausted"| w0_approve_plan
+  w0_revise -->|"needs_human"| w0_ask
+  w0_revise -->|"needs_more_investigation"| w0_investigate
+  w0_ask -->|"answered"| w0_revise_answered
+  w0_revise_answered -. "after run" .-> w0_revise_answered_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_revise_answered -->|"done"| w0_approve_plan
+  w0_revise_answered -->|"exhausted"| w0_approve_plan
+  w0_revise_answered -->|"needs_human"| w0_ask
+  w0_revise_answered -->|"needs_more_investigation"| w0_investigate
   w0_approve_plan -->|"approved"| w0_implement
   w0_approve_plan -->|"rejected"| w0_plan
   w0_implement -->|"done"| w0_review
@@ -272,10 +293,14 @@ flowchart TD
   triage{{"triage gate (engine)<br/>can interrupt any node when an agent reports a concern"}}
   classDef human fill:#fde68a,stroke:#b45309
   classDef engine stroke-dasharray: 4 3
+  class w0_ask human
   class w0_approve_plan human
   class w0_approve_review human
   class w0_investigate_deviation human
   class w0_plan_deviation human
+  class w0_questions_deviation human
+  class w0_revise_deviation human
+  class w0_revise_answered_deviation human
   class w0_recheck_deviation human
   class w0_review_commit_deviation human
   class w0_report_deviation human
@@ -491,6 +516,8 @@ flowchart TD
 | `.masuda/workflows/develop.yaml` | `workflows/develop`が自分のものになる |
 | `.masuda/agents/planner.md` | `develop`が使う計画の役が自分のものになる |
 | `.masuda/workflows/investigate.yaml` | 新しいワークフロー`workflows/investigate`が増える |
+
+計画を立てる役（`agents/planner`・`agents/quick-planner`）を差し替えるなら、計画に`checks`を書く（同梱の`plan`のスキーマで必須。問いを立てないなら空配列`[]`でよい）。書かないと計画が差し戻され続ける。
 
 同梱の実装する役（`agents/implementer`）は`plan`と`investigation`を入力に取る。自分のワークフローでimplementerを使うなら、それより前に`investigation`を書くノードを置く（無ければ検査で拒否される）。
 

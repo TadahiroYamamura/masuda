@@ -157,6 +157,8 @@ ID            BRANCH         STATE         ACTIVITY              POSITION       
 
 調査と計画が終わると、計画の承認待ち（`waiting_gate`、OPENに`gate:plan`）で止まる。
 
+計画を書いた役とは別の役が計画に問いを立て（「退化三角形を不正として扱うか」など）、計画を直す役がそれに答えてから、このゲートが開く。答えられない問い（`open`）が残ったときは、ゲートより前に質問（`waiting_question`、OPENに`question:<出現ID>`）として届くので、`masuda question list`で読んで`masuda question answer <id> <出現ID> SPEC-1=<答え> ...`で問いのidごとに答える（[途中で止まったら](#stuck)）。
+
 ```sh
 masuda gate list
 # WORKSPACE     OCCURRENCE  GATE  TARGET  OPENED
@@ -165,7 +167,7 @@ masuda gate list
 masuda gate show <id> 0000003
 ```
 
-`gate show`は計画を節に分けて出し、最後に打てるコマンドを添える。`goal`は計画が達成すること、`summary`はアプローチとテストの実行の仕方、`steps`は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、`alternatives`は検討したが採らなかった案、`risks`は懸念、`expected byproducts`はビルド・テストが生む副産物として計画外の変更の検出から外すパターン。出力例（ヘッダーの`gate:`〜`opened:`の行は省略）:
+`gate show`は計画を節に分けて出し、最後に打てるコマンドを添える。`goal`は計画が達成すること、`summary`はアプローチとテストの実行の仕方、`steps`は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、`alternatives`は検討したが採らなかった案、`risks`は懸念、`expected byproducts`はビルド・テストが生む副産物として計画外の変更の検出から外すパターン。`checks`は計画に立てられた問いと、計画を直す役の答え（`[addressed]`は計画で扱った、`[out_of_scope]`は範囲外、`[open]`は判断できず人間に聞いたもの）。出力例（ヘッダーの`gate:`〜`opened:`の行は省略）:
 
 ```text
 goal: 三角形の面積と周長を求めるモジュールを追加する
@@ -181,6 +183,12 @@ steps:
        - 負の辺・0 の辺で両関数が ValueError
        - 不成立 (1,2,10) と退化 (1,2,3) で ValueError
      files: shapes/triangle.py, tests/test_triangle.py
+
+checks (questions raised about the plan, with the planner's answers):
+  SPEC-1 [addressed] 退化三角形（1,2,3）を不正として扱うか
+      ステップ1の _check で a+b>c の厳密不等式を要求する
+  REGRESSION-1 [out_of_scope] 既存の shapes/circle.py・rectangle.py の呼び出し元に影響は無いか
+      新規モジュールの追加だけで既存ファイルは変更しないため
 
 alternatives (considered, not taken):
   - 退化三角形を許容する (<=): 面積 0 が無意味
@@ -253,9 +261,10 @@ python3 -m unittest discover -s tests -v
 
 レビューのレポートと実行ログ、エージェントの会話ログは`~/.local/share/masuda/workspaces/<id>/exports/`に残る（[運用](operations.md#exports)）。ワークスペースが要らなくなったら`masuda remove <id>`（exportsだけは残る）。
 
-## 途中で止まったら
+## 途中で止まったら {#stuck}
 
 - `masuda list`のSTATEが`blocked`: POSITIONに理由が出る。[トラブルシューティング](troubleshooting.md)
 - ACTIVITYが`stalled`や`waiting_input`のまま: [トラブルシューティング](troubleshooting.md#stalled)
 - 計画の承認より前に`done`で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（`outcome out_of_scope`）。課題の書き方を見直す
+- `develop`で、計画の承認より前に`waiting_question`（OPENに`question:<出現ID>`）になった: 計画に立てられた問いのうち、計画を直す役が判断できなかったものを聞いている。`masuda question list <id>`で問い（`SPEC-1`等のidと、問いと判断できなかった理由）を読み、`masuda question answer <id> <出現ID> SPEC-1=<答え> REGRESSION-2=<答え>`で**すべての問いに**答える（`question list`の最後の行に、そのまま埋めればよい形が出る）。答えを踏まえて計画が直され、plan gateが開く
 - `workflows/fix`で、計画の承認より前に`outcome needs_human`で終わった: 指示が曖昧で計画を立てられなかった。POSITIONに役の疑問が出るので、答える形で課題を書き直す
