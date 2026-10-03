@@ -86,6 +86,8 @@ GOWORK=off go test -count=1 ./cmd/masuda/ ./internal/guest/ ./live/
 MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
 # 実機1周（15〜20分）
 MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
+# 1-0で立てた開発版のsandboxはここで止める（1-2は毎回起動行から始める。シェルをまたぐとsbpidが消えるため）
+kill "$sbpid"
 ```
 
 liveのイメージはDockerfileが変われば作り直される（初回は数分余計にかかる）。この2つは下の「遅い確認」のliveを兼ねる（版を上げなかったときも下で同じ順に回す）。
@@ -107,7 +109,7 @@ liveのイメージはDockerfileが変われば作り直される（初回は数
 
 ### 1-2. 遅い確認
 
-遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。1-0で立てた開発版のsandboxが動いていれば、sandboxの起動行は打たない（同じソケットに2つ立てない）。
+遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。
 
 ```sh
 # masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）

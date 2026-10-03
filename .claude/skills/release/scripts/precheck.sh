@@ -2,7 +2,7 @@
 # リリース前の速い確認をまとめて走らせる。使い方: precheck.sh vX.Y.Z
 # masudaのチェックアウトの中から打つ。隣の../masuda-engine・../masuda-sandboxは
 # MASUDA_ENGINE_DIR・MASUDA_SANDBOX_DIRで差し替えられる。
-# VMを使う確認（sandboxの契約テスト、live）は長いので含めない。最後にコマンドを出す。
+# VMを使う確認（sandboxの契約テスト、live）は長いので含めない。最後にSKILL.mdの1-2を案内する。
 # `precheck.sh --claude-code`はゲストのClaude Codeの版の段だけを走らせる（SKILL.mdの1-0で版を上げた直後に使う）。
 set -euo pipefail
 
@@ -106,4 +106,4 @@ say "clients/ts: npm pack --dry-run"
 
 say "まとめ"
 if [ "$fail" -ne 0 ]; then echo "NGがある。直してからもう一度。"; exit 1; fi
-echo "速い確認はすべて通った。次はSKILL.mdの1-2へ（1-0の開発版のsandboxが動いていれば起動行は飛ばす）。"
+echo "速い確認はすべて通った。次はSKILL.mdの1-2へ。"
