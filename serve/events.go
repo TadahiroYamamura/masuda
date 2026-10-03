@@ -100,6 +100,15 @@ func (e *eventBus) head() uint64 {
 	return e.seq
 }
 
+func (e *eventBus) window() (oldest, head uint64) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if len(e.events) == 0 {
+		return e.seq + 1, e.seq
+	}
+	return e.events[0].Seq, e.seq
+}
+
 // ---------------------------------------------------------------------------
 // 発行の窓口
 // ---------------------------------------------------------------------------
@@ -138,10 +147,15 @@ func (s *workspaceService) Watch(ctx context.Context, req *connect.Request[apiv1
 	}
 	b := s.backend
 	next := req.Msg.AfterSeq
-	if head := b.events.head(); next > head {
+	oldest, head := b.events.window()
+	if next > head {
 		// serveの再起動で番号が振り直された後に古い番号を渡されると、黙って待つと番号が
 		// 追いつくまで何も届かない。クライアントにafter_seq: 0での繋ぎ直しを求める。
 		return connect.NewError(connect.CodeOutOfRange, fmt.Errorf("after_seq %d is beyond the latest seq %d (the server may have restarted); watch again with after_seq 0", next, head))
+	}
+	if next != 0 && next+1 < oldest {
+		// 続きが再送バッファから落ちているのに最古から黙って続けると、クライアントは取りこぼしに気づけない。
+		return connect.NewError(connect.CodeOutOfRange, fmt.Errorf("after_seq %d is older than the oldest seq that can be resent (%d); watch again with after_seq 0", next, oldest))
 	}
 	if next == 0 {
 		// 新しいものだけを流す指定でも、最初に今の状態を1つ送る。購読の開始と状態の変化が
