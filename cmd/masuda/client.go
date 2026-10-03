@@ -635,10 +635,16 @@ type gatePlan struct {
 	} `json:"alternatives"`
 	Risks              []string `json:"risks"`
 	ExpectedByproducts []string `json:"expected_byproducts"`
+	Checks             []struct {
+		ID       string `json:"id"`
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+		Status   string `json:"status"`
+	} `json:"checks"`
 }
 
-// formatPlan はtarget: planのゲートの中身（計画のJSON）を、goal・summary・steps・alternatives・
-// risks・expected byproductsの節に分けて字下げして出す。JSONとして解けない、またはstepsが無い
+// formatPlan はtarget: planのゲートの中身（計画のJSON）を、goal・summary・steps・checks・
+// alternatives・risks・expected byproductsの節に分けて字下げして出す。JSONとして解けない、またはstepsが無い
 // ときはok=falseを返し、呼び出し側は中身をそのまま出す（スキーマ外の計画でも内容を隠さないため）。
 func formatPlan(target, subject string) (string, bool) {
 	if target != "plan" {
@@ -680,6 +686,15 @@ func formatPlan(target, subject string) (string, bool) {
 		}
 		if len(st.Files) > 0 {
 			b.WriteString("     files: " + strings.Join(st.Files, ", ") + "\n")
+		}
+	}
+	if len(p.Checks) > 0 {
+		b.WriteString("\nchecks (questions raised about the plan, with the planner's answers):\n")
+		for _, c := range p.Checks {
+			b.WriteString("  " + c.ID + " [" + c.Status + "] " + c.Question + "\n")
+			if strings.TrimSpace(c.Answer) != "" {
+				indent(c.Answer, "      ")
+			}
 		}
 	}
 	if len(p.Alternatives) > 0 {
@@ -798,15 +813,33 @@ func questionList(args []string) error {
 		return err
 	}
 	for _, q := range res.Msg.Questions {
-		fmt.Printf("%s %s (opened %s)\n", q.WorkspaceId, q.Occurrence, fmtTime(q.OpenedAt))
-		for _, it := range q.Items {
-			fmt.Printf("  %s: %s\n", it.Id, it.Text)
-			if len(it.Options) > 0 {
-				fmt.Printf("    options: %s\n", strings.Join(it.Options, " | "))
-			}
-		}
+		fmt.Print(formatQuestion(q))
 	}
 	return nil
+}
+
+// formatQuestion は開いている質問1つを出す。1回のask_humanに複数の問いが入り（developの
+// plan-interviewerは計画の問いを`SPEC-1`等のidで一度に聞く）、本文は問いと理由の複数行に
+// なるので、2行目以降も字下げし、すべての問いに答えるコマンドの形を最後に添える
+// （answerは聞かれた問いすべての答えを求める）。
+func formatQuestion(q *apiv1.OpenQuestion) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s %s (opened %s)\n", q.WorkspaceId, q.Occurrence, fmtTime(q.OpenedAt))
+	hint := "answer: masuda question answer " + q.WorkspaceId + " " + q.Occurrence
+	for _, it := range q.Items {
+		lines := strings.Split(strings.TrimRight(it.Text, "\n"), "\n")
+		fmt.Fprintf(&b, "  %s: %s\n", it.Id, lines[0])
+		for _, l := range lines[1:] {
+			b.WriteString("    " + l + "\n")
+		}
+		if len(it.Options) > 0 {
+			fmt.Fprintf(&b, "    options: %s\n", strings.Join(it.Options, " | "))
+		}
+		// `<answer>`をシェルのリダイレクトと取られないよう、引用した形で示す。
+		hint += " '" + strings.ReplaceAll(it.Id, "'", `'\''`) + "=<answer>'"
+	}
+	b.WriteString(hint + "\n")
+	return b.String()
 }
 
 func questionAnswer(args []string) error {

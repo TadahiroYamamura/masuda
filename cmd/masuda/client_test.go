@@ -163,6 +163,38 @@ approve: masuda gate approve abc 0003 --hash h [--comment <text>]
 	}
 }
 
+// 計画の問いと答え（checks）はstepsの後、alternativesの前に、statusの印付きで出す。答えが空なら2行目を省く。
+func TestFormatGatePlanChecks(t *testing.T) {
+	plan := strings.Replace(newSchemaPlan, `"checks":[]`, `"checks":[`+
+		`{"id":"SPEC-1","category":"spec","question":"退化三角形（1,2,3）を不正として扱うか","answer":"ステップ1の _check で a+b>c の厳密不等式を要求する","status":"addressed"},`+
+		`{"id":"PERFORMANCE-1","category":"performance","question":"大きな入力で遅くならないか","answer":"定数時間の計算なので範囲外。\n入力の大きさに依らない","status":"out_of_scope"},`+
+		`{"id":"REGRESSION-2","category":"regression","question":"既存の shapes/circle.py の呼び出し元に影響は無いか","answer":"","status":"open"}]`, 1)
+	got := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(plan)}, nil)
+	want := `     files: README.md
+
+checks (questions raised about the plan, with the planner's answers):
+  SPEC-1 [addressed] 退化三角形（1,2,3）を不正として扱うか
+      ステップ1の _check で a+b>c の厳密不等式を要求する
+  PERFORMANCE-1 [out_of_scope] 大きな入力で遅くならないか
+      定数時間の計算なので範囲外。
+      入力の大きさに依らない
+  REGRESSION-2 [open] 既存の shapes/circle.py の呼び出し元に影響は無いか
+
+alternatives (considered, not taken):
+`
+	if !strings.Contains(got, want) {
+		t.Fatalf("plan gate with checks:\n%s\nwant to contain:\n%s", got, want)
+	}
+	if strings.Contains(newSchemaPlanGate(t), "checks (") {
+		t.Fatal("an empty checks array must omit the section")
+	}
+}
+
+func newSchemaPlanGate(t *testing.T) string {
+	t.Helper()
+	return formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(newSchemaPlan)}, nil)
+}
+
 // 既存ワークスペースの記録には旧スキーマ（goal・title・tests・alternatives・risksが無い）の計画が残る。
 func TestFormatGatePlanOldSchema(t *testing.T) {
 	old := `{"summary":"アプローチ: 追加する","steps":[{"number":1,"description":"shapes/triangle.py を新規追加","files":["shapes/triangle.py"]},{"number":2,"description":"テストを追加","files":["tests/test_triangle.py"]}],"expected_byproducts":[]}`
@@ -171,7 +203,7 @@ func TestFormatGatePlanOldSchema(t *testing.T) {
 	if !strings.Contains(got, want) {
 		t.Fatalf("old-schema plan:\n%s\nwant to contain:\n%q", got, want)
 	}
-	for _, not := range []string{"goal:", "tests:", "alternatives", "risks:", "expected byproducts"} {
+	for _, not := range []string{"goal:", "tests:", "checks (", "alternatives", "risks:", "expected byproducts"} {
 		if strings.Contains(got, not) {
 			t.Fatalf("absent sections must be omitted (%q):\n%s", not, got)
 		}
@@ -185,5 +217,22 @@ func TestFormatGatePlanFallback(t *testing.T) {
 		if !strings.Contains(got, "\n"+subject+"\n") || strings.Contains(got, "steps:") {
 			t.Fatalf("fallback for %q:\n%s", subject, got)
 		}
+	}
+}
+
+// developのplan-interviewerは計画の問いを1回のask_humanでまとめて聞き、本文は問いと理由の複数行になる。
+func TestFormatQuestionWithSeveralItems(t *testing.T) {
+	got := formatQuestion(&apiv1.OpenQuestion{WorkspaceId: "abc", Occurrence: "0007", Items: []*apiv1.QuestionItem{
+		{Id: "SPEC-1", Text: "退化三角形を不正として扱うか\n理由: 指示書に記述が無い"},
+		{Id: "REGRESSION-2", Text: "circle.py の呼び出し元に影響は無いか", Options: []string{"yes", "no"}},
+	}})
+	want := `  SPEC-1: 退化三角形を不正として扱うか
+    理由: 指示書に記述が無い
+  REGRESSION-2: circle.py の呼び出し元に影響は無いか
+    options: yes | no
+answer: masuda question answer abc 0007 'SPEC-1=<answer>' 'REGRESSION-2=<answer>'
+`
+	if !strings.HasPrefix(got, "abc 0007 (opened ") || !strings.HasSuffix(got, want) {
+		t.Fatalf("question:\n%s\nwant to end with:\n%s", got, want)
 	}
 }
