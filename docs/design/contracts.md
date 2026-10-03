@@ -29,7 +29,7 @@ Connectのコードは次の意味で使う。RPCごとの条件は`docs/api/err
 | `NotFound` | 指すものが無い。ワークスペースID、ゲートの出現、rev、ファイル |
 | `FailedPrecondition` | 今の状態では受け付けない。承認のハッシュ不一致、判断済みのゲート、止まっている・動いているワークスペース、秘密やトークンや承認の不足、設定ファイルが読めない（Run・Configで統一） |
 | `AlreadyExists` | 同名のものがある（ブランチ） |
-| `OutOfRange` | `Watch`の`after_seq`が最新のseqより大きい（serve再起動で番号が振り直された等）。クライアントは`after_seq: 0`で繋ぎ直す |
+| `OutOfRange` | `Watch`の`after_seq`が最新のseqより大きい（serve再起動で番号が振り直された等）、または`after_seq`の次のイベントが再送バッファに残っていない（`after_seq+1`が再送できる最古のseqより小さい。理由に再送できる最古のseqが入る）。クライアントは`after_seq: 0`で繋ぎ直し、最初の`status`で状態を組み立て直す。`after_seq: 0`は常に通る |
 | `Unimplemented` | その構成では提供しない（フェイクsandboxの`AttachInfo`等）。**ゲートのoutcomeの不一致には使わない** |
 | `Unavailable` | sandbox serviceに届かない |
 | `Internal` | ホスト側のI/O失敗 |

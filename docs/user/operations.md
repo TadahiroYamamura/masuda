@@ -59,7 +59,7 @@ masuda watch --after 1520   # 番号1520より後のイベントから再送
 | 拒否 | `http denied <ホスト>` | 許可していないホストへの通信を断った |
 | serve全体 | `notice <種類> <詳細>`（ワークスペースIDが空） | ディスク使用量の警告（`disk-warning`）等 |
 
-`--after`無しで始めると、まず対象のワークスペースの今の`status`が1行ずつ出る。再送できるのは`masuda serve`のメモリにある直近10000件で、`masuda serve`を再起動するとそれより前は再送できない（実行の記録そのものは`records/execution-log.jsonl`に残る）。
+`--after`無しで始めると、まず対象のワークスペースの今の`status`が1行ずつ出る。再送できるのは`masuda serve`のメモリにある直近10000件で、`masuda serve`を再起動するとそれより前は再送できない（実行の記録そのものは`records/execution-log.jsonl`に残る）。直近10000件より前の番号を`--after`に渡すとエラーになるので、`--after`無しで始め直す。
 
 ## 中を覗く（chat）
 

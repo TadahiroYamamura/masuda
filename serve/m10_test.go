@@ -3,6 +3,7 @@ package serve
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -380,6 +381,82 @@ func TestErrorCodesAreUnified(t *testing.T) {
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("Check of an undefined workflow: %v", err)
 	}
+}
+
+// Watchのafter_seqの次のイベントが再送バッファから落ちていればOutOfRangeで断り、
+// バッファに残っていれば続きから流す。after_seq: 0はバッファが溢れた後でも通る。
+func TestWatchAfterSeqOlderThanBuffer(t *testing.T) {
+	cl := startClients(t, t.TempDir(), Options{})
+	notice := func() *apiv1.WorkspaceEvent {
+		return &apiv1.WorkspaceEvent{Event: &apiv1.WorkspaceEvent_Notice{Notice: &apiv1.ServeNotice{Kind: "test"}}}
+	}
+	for range eventBufferSize + 5 {
+		cl.srv.backend.events.publish(notice())
+	}
+	oldest, _ := cl.srv.backend.events.window()
+	if oldest < 3 {
+		t.Fatalf("buffer did not overflow: oldest %d", oldest)
+	}
+	firstSeq := func(t *testing.T, after uint64) uint64 {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		st, err := cl.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{AfterSeq: after}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		if !st.Receive() {
+			t.Fatalf("Watch after_seq %d ended without an event: %v", after, st.Err())
+		}
+		return st.Msg().Seq
+	}
+	t.Run("最古より2つ前のafter_seqはOutOfRangeで終わり、理由に最古のseqが入る", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		st, err := cl.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{AfterSeq: oldest - 2}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		if st.Receive() {
+			t.Fatalf("Watch older than the buffer sent an event: %v", st.Msg())
+		}
+		if connect.CodeOf(st.Err()) != connect.CodeOutOfRange {
+			t.Fatalf("Watch older than the buffer: %v", st.Err())
+		}
+		if !strings.Contains(st.Err().Error(), fmt.Sprint(oldest)) {
+			t.Fatalf("error does not mention the oldest seq %d: %v", oldest, st.Err())
+		}
+	})
+	t.Run("最古ちょうどのafter_seqは通り、その次のイベントから届く", func(t *testing.T) {
+		if got := firstSeq(t, oldest); got != oldest+1 {
+			t.Fatalf("first seq after %d: got %d", oldest, got)
+		}
+	})
+	t.Run("最古の1つ前のafter_seqは続きがバッファにあるので通り、最古のイベントから届く", func(t *testing.T) {
+		if got := firstSeq(t, oldest-1); got != oldest {
+			t.Fatalf("first seq after %d: got %d", oldest-1, got)
+		}
+	})
+	t.Run("after_seq 0はバッファが溢れた後でも通る", func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		go func() {
+			for ctx.Err() == nil {
+				cl.srv.backend.events.publish(notice())
+				time.Sleep(20 * time.Millisecond)
+			}
+		}()
+		st, err := cl.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.Close()
+		if !st.Receive() {
+			t.Fatalf("Watch after_seq 0 ended without an event: %v", st.Err())
+		}
+	})
 }
 
 // 引数なしのCheckはrootのワークフローだけを検査する。同梱の部品（implement/build-step等）を
