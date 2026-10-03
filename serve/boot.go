@@ -358,7 +358,7 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		if a == nil {
 			return fmt.Errorf("agent %s is not loaded", ref)
 		}
-		agents = append(agents, guest.AgentFile(a))
+		agents = append(agents, guest.AgentFile(withOverride(a, plan.agents[name])))
 	}
 	return guest.Prepare(ctx, b.sandbox, guest.Layout{
 		SandboxID:      w.ID,
@@ -372,6 +372,19 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		Pitfalls:       c.pitfalls,
 		Claude:         c.claude,
 	})
+}
+
+// withOverride はaの写しにsettings.jsonの`agents`の上書きを重ねて返す。engineの定義そのものは
+// 書き換えない（engineの検査や`continues`の判定は役定義のままの値で行わせるため）。
+func withOverride(a *engine.Agent, o config.AgentOverride) *engine.Agent {
+	cp := *a
+	if o.Model != nil {
+		cp.Model = *o.Model
+	}
+	if o.Effort != nil {
+		cp.Effort = *o.Effort
+	}
+	return &cp
 }
 
 // gitIdentity は実リポジトリのgit設定のuser.name・user.emailを返す。stagingのコミットは

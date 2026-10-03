@@ -43,6 +43,8 @@ type bootPlan struct {
 	vars           map[string]string
 	checks         map[string]string
 	claudeSettings json.RawMessage
+	// agents はsettings.jsonの役ごとのmodel・effortの上書き。ゲストへ役定義を書き出すときに重ねる。
+	agents map[string]config.AgentOverride
 	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
 	// serveの--stall-afterが指定されていればそちらが勝つ（backend.stallFor）。
 	stallAfter time.Duration
@@ -79,6 +81,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		vars:           local.Vars,
 		checks:         cfg.Checks,
 		claudeSettings: cfg.ClaudeSettings,
+		agents:         cfg.Agents,
 	}
 	if p.image == "" {
 		p.image = cfg.ImageEntry()

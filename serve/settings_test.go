@@ -165,6 +165,61 @@ func TestNodeEgressWithinApprovalRuns(t *testing.T) {
 	}
 }
 
+// runSmokeGuestAgent はsmokeを実行し、ゲストに置かれたechoの役定義の中身を返す。
+func runSmokeGuestAgent(t *testing.T, repo string) string {
+	t.Helper()
+	dataDir := t.TempDir()
+	_, ws := startServe(t, dataDir)
+	res, err := ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/agents", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, ws, res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	b, err := os.ReadFile(filepath.Join(FakeDir(dataDir), res.Msg.Id, "root", "home/ubuntu/.claude/agents/echo.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+func TestRunAppliesAgentOverridesToGuestAgents(t *testing.T) {
+	t.Run("設定のagentsで上書きした同梱の役は、ゲストの定義にmodelとeffortの行が出る", func(t *testing.T) {
+		repo := newSmokeRepo(t)
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"agents": {"echo": {"model": "haiku", "effort": "high"}}}`)
+		got := runSmokeGuestAgent(t, repo)
+		if !strings.Contains(got, "\nmodel: \"haiku\"\n") || !strings.Contains(got, "\neffort: \"high\"\n") {
+			t.Fatalf("guest echo.md:\n%s", got)
+		}
+	})
+	t.Run("役定義のfrontmatterにmodelがあっても設定の値が勝ち、設定に無いeffortはfrontmatterのまま", func(t *testing.T) {
+		repo := newSmokeRepo(t)
+		writeRepoFile(t, repo, ".masuda/agents/echo.md", `---
+name: echo
+description: 書き返す
+tools: Read
+model: sonnet
+effort: low
+inputs: [instructions]
+outputs: [echo]
+outcomes:
+  done: 書き返した
+---
+本文
+`)
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"agents": {"echo": {"model": "opus"}}}`)
+		got := runSmokeGuestAgent(t, repo)
+		if !strings.Contains(got, "\nmodel: \"opus\"\n") || strings.Contains(got, "sonnet") || !strings.Contains(got, "\neffort: \"low\"\n") {
+			t.Fatalf("guest echo.md:\n%s", got)
+		}
+	})
+	t.Run("設定のagentsが無ければ同梱の役にmodelもeffortも書かない", func(t *testing.T) {
+		got := runSmokeGuestAgent(t, newSmokeRepo(t))
+		if strings.Contains(got, "\nmodel:") || strings.Contains(got, "\neffort:") {
+			t.Fatalf("guest echo.md:\n%s", got)
+		}
+	})
+}
+
 func TestUnknownAgentOverrideRefusesRunAndShowsInCheck(t *testing.T) {
 	dataDir := t.TempDir()
 	cl := startClients(t, dataDir, Options{})
