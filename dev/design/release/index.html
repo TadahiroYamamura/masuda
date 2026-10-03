@@ -1587,7 +1587,7 @@
 <tr>
 <td>masuda</td>
 <td><code>.github/workflows/release.yml</code>と<code>docs.yml</code></td>
-<td><code>masuda_X.Y.Z_linux_amd64.tar.gz</code>、<code>masuda_X.Y.Z_darwin_arm64.tar.gz</code>、<code>masuda-api-client-X.Y.Z.tgz</code>（<code>clients/ts</code>の<code>npm pack</code>）、<code>SHA256SUMS</code></td>
+<td><code>masuda_X.Y.Z_linux_amd64.tar.gz</code>、<code>masuda_X.Y.Z_darwin_arm64.tar.gz</code>、<code>masuda-api-client-X.Y.Z.tgz</code>（<code>clients/ts</code>の<code>npm pack</code>）、<code>masuda_installer.sh</code>、<code>SHA256SUMS</code></td>
 </tr>
 </tbody>
 </table>
@@ -1728,7 +1728,7 @@ scripts/gh.sh<span class="w"> </span>run<span class="w"> </span>watch<span class
 <h2 id="5">5. 公開後の確認<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Releaseのノートの表（masuda・masuda-engine・masuda-sandboxのタグとコミット）が、手順2〜4で打った3つのコミットと一致する。<code>scripts/gh.sh release view vX.Y.Z --json body,assets</code>と、各リポジトリの<code>git rev-parse vX.Y.Z^{commit}</code>で突き合わせる</li>
-<li>添付物が4つ（tarball2種、<code>clients/ts</code>のtgz、<code>SHA256SUMS</code>）</li>
+<li>添付物が5つ（tarball2種、<code>clients/ts</code>のtgz、<code>masuda_installer.sh</code>、<code>SHA256SUMS</code>）</li>
 <li>Releaseのノートに「ゲストのClaude Code: X で実機検証した」の行があり、Xが1-0で検証した版と同じ（<code>release.yml</code>が<code>masuda version</code>の表示から書く）。最新版で通らず前の版に留めたときは、<code>scripts/gh.sh release edit vX.Y.Z --notes-file &lt;file&gt;</code>でその理由（「最新版 X では〜が動かないため Y で検証」と別Issueの番号）を書き足す</li>
 <li>ドキュメントサイト: <code>curl -s https://tadahiroyamamura.github.io/masuda/versions.json</code>に<code>X.Y</code>があり、aliasに<code>latest</code>が付いている。<code>/latest/</code>と<code>/X.Y/</code>が200</li>
 <li><strong>添付物を一時的に入れて確かめる</strong>。<code>mktemp -d</code>の自分専用のディレクトリ<code>$t</code>に両方のReleaseの添付物を落として<code>sha256sum -c</code>し、そこに入れた<code>masuda-sandbox</code>とtarballのmasudaで、<code>version</code>が<code>X.Y.Z</code>と<code>contract: ok</code>、<code>doctor</code>が全部<code>ok</code>（Claudeトークンの項目は一時データディレクトリでは未登録になるので、手順6で確かめる）。ソケットとデータディレクトリをすべて<code>$t</code>の下に置くので、ハーネスや開発版のソケットとぶつからず、<code>config.json</code>の<code>sandboxSocket</code>にも引かれない。ハーネス（<code>~/.local/bin</code>・グローバルの<code>masuda-sandbox</code>・既定のソケットとデータディレクトリ）には触れない</li>
