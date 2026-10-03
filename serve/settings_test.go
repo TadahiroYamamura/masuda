@@ -252,4 +252,44 @@ func TestUnknownAgentOverrideRefusesRunAndShowsInCheck(t *testing.T) {
 			t.Fatalf("problems: %v %v", check.Msg.Problems, err)
 		}
 	})
+	t.Run("settings.jsonが壊れたJSONのときworkflow checkはエラーにせず、Pathがsettings.jsonの問題を1件返す", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/settings.json", `{`)
+		check, err := cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/smoke"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(check.Msg.Problems) != 1 || check.Msg.Problems[0].Path != "settings.json" {
+			t.Fatalf("problems: %v", check.Msg.Problems)
+		}
+	})
+	t.Run("定義もsettings.jsonも壊れているときworkflow checkは定義の読み込み失敗とsettings.jsonの問題の両方を返す", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/agents/broken.md", ``)
+		writeRepoFile(t, repo, ".masuda/settings.json", `{`)
+		check, err := cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/smoke"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var loading, settings int
+		for _, p := range check.Msg.Problems {
+			if strings.HasPrefix(p.Message, "loading definitions") {
+				loading++
+			}
+			if p.Path == "settings.json" {
+				settings++
+			}
+		}
+		if loading != 1 || settings != 1 {
+			t.Fatalf("problems: %v", check.Msg.Problems)
+		}
+	})
+	t.Run("定義だけが壊れていてsettings.jsonが正常なときはsettings.jsonの問題を出さない", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"agents": {"nosuch": {"model": "opus"}}}`)
+		check, err := cl.workflows.Check(ctx, connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: repo, Workflow: "workflows/smoke"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(check.Msg.Problems) != 1 || !strings.HasPrefix(check.Msg.Problems[0].Message, "loading definitions") {
+			t.Fatalf("problems: %v", check.Msg.Problems)
+		}
+	})
 }
