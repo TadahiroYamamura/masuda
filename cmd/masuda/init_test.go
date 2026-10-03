@@ -19,7 +19,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created) != 2+14+2 {
+	if len(created) != 2+15+2 {
 		t.Fatalf("created %d files: %v", len(created), created)
 	}
 	cfg, err := config.Load(root)

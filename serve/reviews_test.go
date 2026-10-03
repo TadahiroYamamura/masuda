@@ -32,8 +32,8 @@ func TestRunPlacesReviewSnapshotInGuest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 15 {
-		t.Fatalf("guest /masuda/reviews has %d files, want 14 builtin + 1 extra", len(entries))
+	if len(entries) != 16 {
+		t.Fatalf("guest /masuda/reviews has %d files, want 15 builtin + 1 extra", len(entries))
 	}
 	if b, _ := os.ReadFile(filepath.Join(guestDir, "dead-code.md")); string(b) != "mine\n" {
 		t.Fatalf("repo perspective must replace the builtin one: %q", b)

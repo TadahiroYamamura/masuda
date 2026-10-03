@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func TestBuiltinHasFourteenPerspectives(t *testing.T) {
+func TestBuiltinHasFifteenPerspectives(t *testing.T) {
 	entries, err := fs.ReadDir(Builtin(), ".")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 14 {
-		t.Fatalf("builtin perspectives = %d, want 14", len(entries))
+	if len(entries) != 15 {
+		t.Fatalf("builtin perspectives = %d, want 15", len(entries))
 	}
 }
 
@@ -51,7 +51,7 @@ func TestSnapshotMergesRepoOverBuiltinAndIsKeptOnSecondCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 15 || string(got["dead-code.md"]) != "mine" || string(got["extra.md"]) != "extra" || got["notes.txt"] != nil {
+	if len(got) != 16 || string(got["dead-code.md"]) != "mine" || string(got["extra.md"]) != "extra" || got["notes.txt"] != nil {
 		t.Fatalf("snapshot: %d files, dead-code=%q", len(got), got["dead-code.md"])
 	}
 	// 再開では写しを作り直さない。
@@ -71,7 +71,7 @@ func TestSnapshotWithoutRepoReviewsIsBuiltin(t *testing.T) {
 	if err := Snapshot(nil, dst); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := Load(dst); len(got) != 14 {
+	if got, _ := Load(dst); len(got) != 15 {
 		t.Fatalf("snapshot of builtin = %d files", len(got))
 	}
 }
@@ -98,7 +98,7 @@ func TestMergeDropsDisabledPerspectives(t *testing.T) {
 	if _, ok := all["mine.md"]; ok {
 		t.Fatal("a disabled repo perspective must be dropped")
 	}
-	if _, ok := all["plain.md"]; !ok || len(all) != 14 {
+	if _, ok := all["plain.md"]; !ok || len(all) != 15 {
 		t.Fatalf("enabled ones stay: %d", len(all))
 	}
 	if err := os.WriteFile(filepath.Join(repo, "bad.md"), []byte("---\nenable: [\n---\n"), 0o644); err != nil {
