@@ -16,10 +16,10 @@
 - masuda-sandboxの契約テスト8件緑（1回目はC-S3の`timedOut`が落ちたが再現せず、#73に記録）。tarball予行ok
 - engine: `go test ./...`緑（C-E1〜C-E9、歩行テストはE14後の形）
 ## 未完と理由
-- **v0.2.2も公開済み**（2026-10-03 20:25頃。masuda `608408c`。追跡Issue #77）。`masuda completion bash|zsh`（旧実装にあった補完の復活。ハーネスで初めて回したrun `543799595910`で実装。review gateで注入の指摘（動的候補を`compgen -W`に渡す）を行コメントで却下→修正）。ハーネスの更新はユーザーがインストーラで
+- **v0.2.2も公開済み**（2026-10-03 20:25頃。masuda `608408c`。追跡Issue #77）。`masuda completion bash|zsh`（旧実装にあった補完の復活。ハーネスで初めて回したrun `543799595910`で実装。review gateで注入の指摘（動的候補を`compgen -W`に渡す）を行コメントで却下→修正）。ハーネスは0.2.2に更新済み（インストーラ→両serveを起こし直し）。#77は閉じた
 - **v0.2.1も公開済み**（2026-10-03 19:00頃。masuda `887a82e`、engine・sandboxはv0.2.0と同じコミット。追跡Issue #75）。中身は文書の版のタグからの置き換え（`__MASUDA_VERSION__`、`scripts/docs-prepare.sh`）と`curl | sh`のインストーラ（`scripts/install.sh`→添付物`masuda_installer.sh`）。masudaのrunで実装（予行5、`workflows/fix`、`3ed39857b68b`）。途中で#74（bypass modeでも`rm -rf`の許可を求めて止まる。`masuda chat`で`1`を送って進めた）
 - **v0.2.0は公開済み**（2026-10-03 17:35頃。masuda `841f270`、engine `64a8e69`、sandbox `a9dce82`。追跡Issue #73に表）。release・docs完走、添付物4つ、サイトは`0.2`が`latest`。公開物の一時的な導入で`contract: ok`・doctor ok（トークン以外）を確認。リリースノートに変更点を追記した
-- **ハーネスの初回導入も完了**（19:10、v0.2.1のインストーラ）。既定のソケットで`masuda-sandbox serve`と`masuda serve`が動いている（ログは`~/.local/share/masuda/logs/`）。`contract: ok`・doctor全部ok。#73・#75は閉じた。残り（v0.2.2の後）: ハーネスを0.2.2に更新（ユーザー、インストーラ）→両serveを起こし直す→`source <(masuda completion bash)`。quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
+- **ハーネスの初回導入も完了**（19:10、v0.2.1のインストーラ）。既定のソケットで`masuda-sandbox serve`と`masuda serve`が動いている（ログは`~/.local/share/masuda/logs/`）。`contract: ok`・doctor全部ok。#73・#75は閉じた。残り:quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
 - `go.mod`はengine `v0.2.0`に固定済み（`841f270`）。developとmainは同じコミット
 ## 次の一手
 1. masuda自身のrunをハーネス（既定のソケット、公開物0.2.1）で回す。開発版serveは必要なときだけ`masuda-dev`の場所で
@@ -28,7 +28,7 @@
 4. v0.3の題材: #67（レビュー段階のpr-review-guide。最終レビューの段の形はE14で保った）、engine #7、engine #9（fixerのcommit-message）、engine #10の残り（文書だけの差分のレビュー省略）、masuda #71（liveが秘密ストアを読む）、#72（質問に補足）
 ## 注意点
 - **開発版の置き場所**: `~/.local/share/masuda-dev`、`$XDG_RUNTIME_DIR/masuda-dev.sock`・`masuda-sandbox-dev.sock`。バイナリはscratchpadの`masuda-dev`（HEADを`git archive`してビルド）。`masuda-sandbox serve`は`cd ~/work/masuda-sandbox && node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`。再起動後は落ちている
-- **ハーネス**: `~/.local/bin/masuda`=0.2.1、`masuda-sandbox`=0.2.1（nvmのnode 24のグローバル）、既定ソケット、`~/.local/share/masuda`（退避せず。旧走行はDONEの4件が見える。トークンはM4暫定ファイルのまま認識。正規の`secret set`は任意）。**以後、masuda自身のrunはハーネスで回す**（`masuda run ... --repo ~/work/masuda`、gate・questionもハーネスのCLI）。開発版は`masuda-dev`の場所
+- **ハーネス**: `~/.local/bin/masuda`=0.2.2、`masuda-sandbox`=0.2.2（nvmのnode 24のグローバル）、既定ソケット、`~/.local/share/masuda`（退避せず。旧走行はDONEの4件が見える。トークンはM4暫定ファイルのまま認識。正規の`secret set`は任意）。**以後、masuda自身のrunはハーネスで回す**（`masuda run ... --repo ~/work/masuda`、gate・questionもハーネスのCLI）。開発版は`masuda-dev`の場所
 - Claudeトークンは`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（標準入力）。暫定ファイルの`cp`は安全判定で止まる。liveは暫定ファイルか`MASUDA_LIVE_CLAUDE_TOKEN`しか読まない（#71）
 - **masudaのrunでmasudaを作る**: 指示書は`docs/work-orders.md`の項目として書き、`---`以降を`--input instructions=@file`で渡す。`.masuda/`は作業ツリーから、リポジトリはHEAD（`--base`）からbare clone。developに未固定のengineの変更を使うコードがあるとゲストでビルドできない（先に`go.mod`を固定）。runの中の役はHANDOFF.md・work-orders.mdを書かない（`.masuda/claude/rules/masuda-run.md`）
 - **会話ログの集計**: `exports/transcripts/`のJSONLは各応答に`usage`・`model`・`effort`、役は`attributionAgent`。scratchpadの`tokens.py`
