@@ -29,6 +29,33 @@ masudaの`release.yml`は、`go vet`・`go test ./...`、`go.mod`のengineの版
 
 v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え、`main`の新設、`v1-frozen-*`のpush）は済んでいる。以後は`main`の先頭に打つ。
 
+## 開発版との分離 {#dev-separation}
+
+この節は番号の付く手順ではなく、以下の全手順に掛かる決まり。
+
+**ハーネス**は、masuda自身の開発を回している公開物の組で、次のものを指す。
+
+- 公開物の`~/.local/bin/masuda`と、`npm install -g`した`masuda-sandbox`
+- 既定のソケット`$XDG_RUNTIME_DIR/masuda.sock`・`$XDG_RUNTIME_DIR/masuda-sandbox.sock`
+- 既定のデータディレクトリ`~/.local/share/masuda`
+
+**開発版**（チェックアウトからビルドしたもの、リリース前に確かめるもの）をハーネスに混ぜない。ワークスペースの記録の形は版で変わりうるので、開発版がハーネスのバイナリやデータディレクトリを置き換えると、ハーネスで走行中のワークスペースが読めなくなる。
+
+- **開発版のmasuda**: チェックアウト直下の`./masuda`（`GOWORK=off go build ./cmd/masuda`の出力。`/masuda`はgitignore済み）を使い、`~/.local/bin`に置かない。開発版のserveは既定のソケットとデータディレクトリで待ち受けない
+
+  ```sh
+  ./masuda serve --socket "$XDG_RUNTIME_DIR/masuda-dev.sock" --data-dir ~/.local/share/masuda-dev \
+    --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"   # sandbox.protoを変える作業ではmasuda-sandbox-dev.sock
+  ```
+
+  - `~/.config/masuda/config.json`はハーネスと共有で、`sandboxSocket`が書いてあれば明示しない限りそちらが使われる。開発版は`--sandbox-socket`を必ず明示する
+  - 開発版のCLIは毎回`--socket "$XDG_RUNTIME_DIR/masuda-dev.sock"`を付ける（既定はハーネスの`masuda.sock`）
+  - 秘密はデータディレクトリに置かれるので、開発版のserveにはトークンを別に登録する: `./masuda secret set CLAUDE_CODE_OAUTH_TOKEN --socket "$XDG_RUNTIME_DIR/masuda-dev.sock"`（値は標準入力から）
+- **sandbox**: 普段は共有（ハーネスの`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）で、開発版のmasudaの`--sandbox-socket`もそこを指してよい。`masuda version`の`contract: ok`はハーネスのmasudaと共有のsandboxの組で見る。`sandbox.proto`を変える作業では、開発版の`masuda-sandbox serve`（`../masuda-sandbox`の`node dist/cli.js serve`）を`$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`で立て、開発版のmasudaはそちらを指す
+- **masuda自身の`.masuda/`**: 入っているハーネスの版で読める範囲に留める。新しい設定・スキーマは、その版をハーネスにしてから使う
+- **gate・questionの操作**: serveとCLIは同じ版の組で使う。ハーネスのserveのgate・questionはハーネスのCLI（`masuda`）で操作し、開発版のCLI（`./masuda`）をハーネスのserveに向けない。開発版のserveは開発版のCLIで操作する
+- **liveテスト（`live/`）**: VMの中では回せないので、ホストで開発版として回す。liveは既定で共有のsandboxに繋ぐ。`sandbox.proto`が変わる作業とリリース前の確認（手順1-0・1-2）では、`MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"`で開発版のsandboxを指す
+
 ## 0. 版と追跡Issueを決める
 
 - 版は`vX.Y.Z`。v1.0までは互換性を保証しないので、機能追加でもYを上げてよい。契約（`masuda.proto`・`sandbox.proto`・`guest-protocol.md`）が変わったときは必ずYを上げる
@@ -176,6 +203,6 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 
 - **モジュールプロキシのキャッシュ**: `go get ...@main`は古いコミットを返すことがある。タグ直後は`GOPROXY=direct`を付ける
 - **GitHubのランナー（Ubuntu 24.04）**: AppArmorが非特権ユーザー名前空間を禁じているため、フェイクsandboxの`unshare -Urm`を使うテスト（C-M7・serveの特権コマンド）が落ちる。`ci.yml`・`release.yml`に`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`のステップがある。ランナーの像が変わったら最初に疑う
-- **同じソケットに2つのserve**: 開発用のserveを動かしたまま公開物を確かめるときは、ソケットを分ける。データディレクトリも同じものを2つのmasuda serveで共有しない
+- **同じソケットに2つのserve**: 既定のソケットとデータディレクトリはハーネスが使う。確かめるもの・開発版のserveは別のソケットとデータディレクトリで立てる。データディレクトリを2つのmasuda serveで共有しない（「開発版との分離」）
 - **`docs.yml`のengineの文書**: サイトはmasuda-engineの既定ブランチ（`main`）から`workflow-schema.md`を取り込む。engineの`main`の先頭がタグと同じ時点で打てば一致する
 - **sandboxの契約テストと資産ストア**: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveと同時に走らせない
