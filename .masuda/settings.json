@@ -1,0 +1,15 @@
+{
+  "image": "default",
+  "egress": [],
+  "secrets": [],
+  "envFiles": [],
+  "checks": {
+    "test": "go test ./..."
+  },
+  "claudeSettings": {},
+  "images": {
+    "default": {
+      "diskMiB": 8192
+    }
+  }
+}

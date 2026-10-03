@@ -19,10 +19,9 @@ test_fizzbuzz.py
 /go.work.sum
 /dist/
 
-# masuda CLI runtime state (worktrees, gate markers) — created wherever the CLI
-# is run, including here when dogfooding masuda against its own repo
-.masuda/
-.masuda-gate/
+# masuda init が足す行（利用者ごとの承認と、個人用の ~/.claude/ の中身）
+.masuda/settings.local.json
+.masuda/claude.local/
 
 # Background-process pid files. internal/sandbox.pidPath derives these from a
 # process's identity, which for virtiofsd is an absolute socket path but for
