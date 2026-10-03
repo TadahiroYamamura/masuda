@@ -53,12 +53,12 @@ func TestGuestSubagentContinuation(t *testing.T) {
 	dataDir := keepOnFailure(t, "masuda-live-cont-data-")
 	sock := filepath.Join(dataDir, "masuda.sock")
 	ctx, cancel := context.WithTimeout(context.Background(), continuationBudget)
-	defer cancel()
+	t.Cleanup(cancel)
 	srv, err := serve.Start(ctx, serve.Options{Socket: sock, DataDir: dataDir, SandboxSocket: sbSock})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Stop()
+	t.Cleanup(srv.Stop)
 	api := connectAPI(sock)
 
 	if _, err := api.config.ApproveEgress(ctx, connect.NewRequest(&apiv1.HostRequest{RepoRoot: repo, Host: "api.anthropic.com"})); err != nil {
@@ -80,9 +80,7 @@ func TestGuestSubagentContinuation(t *testing.T) {
 	}
 	id := res.Msg.Id
 	t.Logf("workspace %s (data %s)", id, dataDir)
-	defer func() {
-		_, _ = api.ws.Stop(context.Background(), connect.NewRequest(&apiv1.StopRequest{Id: id}))
-	}()
+	destroyVMOnCleanup(t, api, sbSock, id)
 
 	final, err := driveLap(ctx, t, api, id)
 	wsDir := filepath.Join(dataDir, "workspaces", id)

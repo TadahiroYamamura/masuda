@@ -87,7 +87,7 @@ nodes:
 }
 
 // startEngineContinuation はリポジトリとserveを用意してworkflowを始め、APIとワークスペースのIDと
-// ディレクトリを返す。VMは後始末で止める。
+// ディレクトリを返す。VMは後始末で壊す。
 func startEngineContinuation(t *testing.T, workflow string) (context.Context, clients, string, string) {
 	t.Helper()
 	if os.Getenv("MASUDA_LIVE_TEST") != "1" {
@@ -138,10 +138,7 @@ func startEngineContinuation(t *testing.T, workflow string) (context.Context, cl
 	}
 	id := res.Msg.Id
 	t.Logf("workspace %s (data %s)", id, dataDir)
-	// Cleanupは後に登録したものから動くので、srv.Stopより先にVMを止める。
-	t.Cleanup(func() {
-		_, _ = api.ws.Stop(context.Background(), connect.NewRequest(&apiv1.StopRequest{Id: id}))
-	})
+	destroyVMOnCleanup(t, api, sbSock, id)
 	return ctx, api, id, filepath.Join(dataDir, "workspaces", id)
 }
 

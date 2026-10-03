@@ -22,8 +22,11 @@
 // （続きが成り立つ場合と、再開でVMを作り直して新しいサブエージェントが入力だけで進む場合）を確かめる。
 // 1本1分前後: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestEngineContinuation ./live/`
 //
+// TestClaudeDirReachesSubagent（claude_dir_test.go）は、`.masuda/claude/`のルール・スキルと
+// `.masuda/claude.local/`のCLAUDE.mdがゲストのサブエージェントまで届くかを確かめる。1分前後。
+//
 // 失敗したときは、データディレクトリ（ワークスペースの記録・stagingを含む）と対象リポジトリを
-// 消さずに残し、パスをログに出す。MASUDA_LIVE_KEEP=1なら成功しても残す。
+// 消さずに残し、パスをログに出す。MASUDA_LIVE_KEEP=1なら成功しても残す。VMはどちらでも壊す。
 //
 // TestFixLapOnPythonRepoは同じ課題を同梱のfixで1周させる。VMを使うテストは並列にしない
 // （`-run 'TestDevelopLapOnPythonRepo|TestFixLapOnPythonRepo'`で直列に回る）。
@@ -47,6 +50,8 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/serve"
 )
@@ -131,6 +136,35 @@ func keepOnFailure(t *testing.T, pattern string) string {
 	return dir
 }
 
+// destroyVMOnCleanup は、テストがどう終わっても（失敗・タイムアウト・MASUDA_LIVE_KEEP=1でも）
+// ワークスペースのVMを後始末で壊す。publish・discardを通らず`end`で終わるワークフローではVMが
+// 残り、DONEにはStopも効かない。データを残さないときはRemove（VMも壊す）を呼ぶ。データを残す
+// ときはRemoveが記録を消してしまうので、Stopに加えてsandbox serviceへ直接DestroySandboxする。
+// serveとそのctxより先に動くよう、それらもt.Cleanupで、これより前に登録すること。
+func destroyVMOnCleanup(t *testing.T, api clients, sbSock, id string) {
+	t.Helper()
+	t.Cleanup(func() {
+		ctx := context.Background()
+		if !t.Failed() && os.Getenv("MASUDA_LIVE_KEEP") != "1" {
+			if _, err := api.ws.Remove(ctx, connect.NewRequest(&apiv1.RemoveRequest{Id: id, Force: true})); err != nil {
+				t.Errorf("removing workspace %s: %v", id, err)
+			}
+			return
+		}
+		_, _ = api.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id}))
+		httpc := &http.Client{Transport: &http2.Transport{
+			AllowHTTP: true,
+			DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, "unix", sbSock)
+			},
+		}}
+		sb := sandboxv1connect.NewSandboxServiceClient(httpc, "http://masuda-sandbox")
+		if _, err := sb.DestroySandbox(ctx, connect.NewRequest(&sandboxv1.DestroySandboxRequest{Id: id})); err != nil && connect.CodeOf(err) != connect.CodeNotFound {
+			t.Errorf("destroying the sandbox of %s: %v", id, err)
+		}
+	})
+}
+
 // newPythonRepo はM8の段階1と同じ使い捨てのリポジトリを作る。`.masuda/`はsettings.jsonと
 // Dockerfileだけをコミットし、reviewsは置かない（観点がmasudaの同梱から揃うことも確かめる）。
 func newPythonRepo(t *testing.T) string {
@@ -203,12 +237,12 @@ func runLap(t *testing.T, workflow, branch string) {
 	dataDir := keepOnFailure(t, "masuda-live-data-")
 	sock := filepath.Join(dataDir, "masuda.sock")
 	ctx, cancel := context.WithTimeout(context.Background(), lapBudget)
-	defer cancel()
+	t.Cleanup(cancel)
 	srv, err := serve.Start(ctx, serve.Options{Socket: sock, DataDir: dataDir, SandboxSocket: sbSock})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer srv.Stop()
+	t.Cleanup(srv.Stop)
 	api := connectAPI(sock)
 
 	if _, err := api.config.ApproveEgress(ctx, connect.NewRequest(&apiv1.HostRequest{RepoRoot: repo, Host: "api.anthropic.com"})); err != nil {
@@ -229,10 +263,7 @@ func runLap(t *testing.T, workflow, branch string) {
 	}
 	id := res.Msg.Id
 	t.Logf("workspace %s (data %s)", id, dataDir)
-	// どう終わっても（失敗・タイムアウトでも）VMを残さない。DONEなら止めるものは無い。
-	defer func() {
-		_, _ = api.ws.Stop(context.Background(), connect.NewRequest(&apiv1.StopRequest{Id: id}))
-	}()
+	destroyVMOnCleanup(t, api, sbSock, id)
 
 	final, err := driveLap(ctx, t, api, id)
 	if err != nil {
