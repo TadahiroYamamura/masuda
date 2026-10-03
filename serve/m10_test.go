@@ -412,10 +412,13 @@ func TestWatchAfterSeqOlderThanBuffer(t *testing.T) {
 		return st.Msg().Seq
 	}
 	t.Run("最古より2つ前のafter_seqはOutOfRangeで終わり、理由に最古のseqが入る", func(t *testing.T) {
-		st, err := cl.ws.Watch(context.Background(), connect.NewRequest(&apiv1.WatchRequest{AfterSeq: oldest - 2}))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		st, err := cl.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{AfterSeq: oldest - 2}))
 		if err != nil {
 			t.Fatal(err)
 		}
+		defer st.Close()
 		if st.Receive() {
 			t.Fatalf("Watch older than the buffer sent an event: %v", st.Msg())
 		}
