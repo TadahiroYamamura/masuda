@@ -335,8 +335,8 @@ var SubagentMCPTools = []string{
 }
 
 // AgentFile はエンジンのエージェント定義から、ゲストの`~/.claude/agents/<name>.md`の中身を作る。
-// Claude Codeが読むのはname・description・toolsと本文だけで、inputs・outputs・outcomesは
-// タスクファイルで伝えるのでここには写さない。
+// Claude Codeが読むのはname・description・tools・model・effortと本文だけで、inputs・outputs・
+// outcomesはタスクファイルで伝えるのでここには写さない。
 func AgentFile(a *engine.Agent) Agent {
 	var b strings.Builder
 	b.WriteString("---\n")
@@ -345,6 +345,12 @@ func AgentFile(a *engine.Agent) Agent {
 	if a.Tools != nil {
 		tools := append(append([]string(nil), a.Tools...), SubagentMCPTools...)
 		fmt.Fprintf(&b, "tools: %s\n", yamlString(strings.Join(tools, ", ")))
+	}
+	if a.Model != "" {
+		fmt.Fprintf(&b, "model: %s\n", yamlString(a.Model))
+	}
+	if a.Effort != "" {
+		fmt.Fprintf(&b, "effort: %s\n", yamlString(a.Effort))
 	}
 	b.WriteString("---\n")
 	b.WriteString(a.Body)

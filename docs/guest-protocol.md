@@ -16,7 +16,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `~/.claude/CLAUDE.md` | ループ規約（下記）。対象リポジトリの`.masuda/claude/`（`.masuda/claude.local/`を重ねたもの）に`CLAUDE.md`があれば、見出し`# プロジェクトのルール（.masuda/claude）`とループ規約が優先する旨の1行を挟んで後ろに連結する |
 | `~/.claude/rules/*.md` | `.masuda/claude/rules/*.md`（同じパスは`.masuda/claude.local/`が勝つ）。無ければ置かない |
 | `~/.claude/skills/<name>/` | `.masuda/claude/skills/<name>/`以下をディレクトリごと（同じパスは`.masuda/claude.local/`が勝つ）。無ければ置かない |
-| `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文を写す |
+| `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文と、あれば`model`・`effort`を写す |
 | `~/.claude/settings.json` | フック設定（下記）と、対象リポジトリの`claudeSettings` |
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
 | `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |

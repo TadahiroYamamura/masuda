@@ -25,6 +25,24 @@ func TestAgentFileWithoutToolsLeavesToolsUnrestricted(t *testing.T) {
 	}
 }
 
+func TestAgentFileModelAndEffort(t *testing.T) {
+	t.Run("modelとeffortのある役はfrontmatterにその行を書く", func(t *testing.T) {
+		got := string(AgentFile(&engine.Agent{Name: "planner", Description: "d", Model: "sonnet", Effort: "low", Body: "body"}).Content)
+		front, _, _ := strings.Cut(strings.TrimPrefix(got, "---\n"), "---\n")
+		for _, want := range []string{"model: \"sonnet\"\n", "effort: \"low\"\n"} {
+			if !strings.Contains(front, want) {
+				t.Errorf("frontmatter lacks %q:\n%s", want, got)
+			}
+		}
+	})
+	t.Run("modelとeffortの無い役はfrontmatterにその行を書かない", func(t *testing.T) {
+		got := string(AgentFile(&engine.Agent{Name: "free", Description: "d", Body: "body"}).Content)
+		if strings.Contains(got, "model:") || strings.Contains(got, "effort:") {
+			t.Fatalf("an agent without model/effort must inherit the session's:\n%s", got)
+		}
+	})
+}
+
 // ループ規約は、人間への問いかけをask_humanに限り、会話で問いかけて待たないことを明記する（M8で
 // 会話の問いかけのまま止まった）。
 func TestLoopRulesForbidAskingInConversation(t *testing.T) {
