@@ -133,7 +133,7 @@ function serveNotice(ev) {
 
 `target: "diff"`のゲートには`stagingCommit`が入る。これはゲートを開いた時点のワークスペースのブランチ（`refs/heads/<branch>`）の先端で、承認された後にpublishされるのはこのコミット。`subject`の差分部分は`refs/masuda/base..stagingCommit`そのもの（`targetHash`もこの差分だけから計算する）で、コミットされていない変更（deviationで加えなかったファイル等）は差分に混ざらず、見出し`## publishされない変更（未コミット）`の下にファイル名だけが並ぶ。差分ビューを組むなら、見出しより前を`StagingService.Diff`（`from: "refs/masuda/base"`、`to: stagingCommit`）の結果と同じものとして扱い、見出しより後を「publishされない」一覧として別に見せる。
 
-`target: "step-diff"`のゲート（同梱の定義では`interim`）にも`stagingCommit`が入る。こちらはゲートを開いた時点の作業ツリーのスナップショット（staging上のコミットで、親はその時点のブランチ先頭。`refs/masuda/gates/<occurrence>`に残る）。ブランチにはまだ載っておらず、承認すると`commit`ノードが同じ内容をコミットする。`subject`は`StagingService.Diff`（`to: stagingCommit`、`from`は空＝親との差分）と同じもので、`targetHash`は`subject`全体のSHA-256。
+`target: "step-diff"`のゲート（同梱の定義には無い。自分のワークフローで`gate: interim`等として置く）にも`stagingCommit`が入る。こちらはゲートを開いた時点の作業ツリーのスナップショット（staging上のコミットで、親はその時点のブランチ先頭。`refs/masuda/gates/<occurrence>`に残る）。ブランチにはまだ載っておらず、承認すると`commit`ノードが同じ内容をコミットする。`subject`は`StagingService.Diff`（`to: stagingCommit`、`from`は空＝親との差分）と同じもので、`targetHash`は`subject`全体のSHA-256。
 
 | `target` | 承認して確定するもの | `stagingCommit` |
 |---|---|---|
