@@ -240,6 +240,19 @@ masudaは自分自身の開発にmasudaを使う（dogfooding）。そのため�
 - 既存のリリース手順の他の節は変えない（矛盾の整理に要る最小限は可）
 - コードは変えない。`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑のまま
 
+### M14e. `.masuda/settings.json`で役ごとの`model`・`effort`を上書きする（#69の続き、ユーザー決定 2026-10-03）
+
+背景: 予行1・2で、全役がOpus・effort mediumで動くため時間とトークンの消費が大きいと分かった（予行1の`fix`で13分・キャッシュ読出5.1M、予行2の`develop`で文書3ファイルに70分超）。E13/M14bで役定義のfrontmatterに`model`・`effort`を書けるようになったが、同梱の役を変えるには定義ごと`.masuda/agents/`に写す必要があり、本文の更新に追従できない。設定で役の名前だけ指して上書きできるようにする。engineは変えない（上書きはmasudaがゲストへ役定義を書き出すときに行う）。
+
+- **`settings.json`の新しい項目`agents`**: オブジェクト。キーは役の名前（エージェント定義の`name`。`reviewer`のように書き、`agents/reviewer`とは書かない）、値は`{"model": "...", "effort": "..."}`（どちらも任意、少なくとも一方）。同梱の役にも`.masuda/agents/`の役にも効く。優先順位は「`settings.json`の`agents`＞役定義のfrontmatter＞省略時（`model`はメインセッションのモデル＝`claudeSettings.model`、`effort`はセッションの既定）」
+- 検査（`internal/config`）: `effort`は`low`・`medium`・`high`・`xhigh`・`max`のいずれか、`model`は空でない文字列、知らないキーは拒否。`masuda run`は、`agents`の役の名前がその実行で読み込んだ定義（同梱＋`.masuda/agents/`）に無ければ`InvalidArgument`で始めない（理由に知っている役の名前を列挙。打ち間違いを黙って無視しないため）。`masuda workflow check`も同じ検査を問題として出す
+- 適用: `serve/boot.go`でゲストの`~/.claude/agents/*.md`を作るところ（`guest.AgentFile`の呼び出し）で、engineの`Agent`の写しに`settings.json`の`agents`の値を重ねてから書き出す。engineの`Set`やその`Agent`そのものは書き換えない（engineの検査や`continues`の判定に影響させない）。他の設定と同じく、実行の開始時に写した`settings.json`を終わりまで使う
+- docs: `docs/user/settings.md`に`agents`の節（例と優先順位、役の名前の調べ方＝`masuda workflow show`または同梱の役の一覧）、`claudeSettings`の節から参照。`docs/user/workflows.md`「エージェントの書き方」の`model`・`effort`の説明から「同梱の役を変えるなら設定の`agents`で」と参照。`docs/user/concepts.md`の「どこに何を書くか」の表に行があれば足す
+- テスト（名前は日本語の文。判定の分岐を壊して落ちることを確かめる）: `internal/config`で、効く値・不正な`effort`・知らないキー・空のオブジェクトの拒否。`serve/`でフェイクsandboxの実行を使い、`agents`で上書きした役のゲスト側の定義ファイル（`<DataDir>/fake/<sandbox-id>/root/home/ubuntu/.claude/agents/<役>.md`）に`model:`・`effort:`の行が出ること、役定義のfrontmatterに`model`がある役を設定で上書きすると設定の値になること、知らない役の名前で`Run`が`InvalidArgument`になること
+- **masuda自身の`.masuda/settings.json`**（ユーザー決定）: `claudeSettings.model`を`"sonnet"`にし（メインセッション・実装者・修正者など上書きの無い役はSonnet）、`agents`で`reviewer`・`cross-cutting-explorer`・`cross-cutting-verifier`を`{"model": "opus"}`にする（横断的な判断が要るレビュー役はOpus）。`effort`は書かない
+- 検証: `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...`が緑（go.modはE13入りのengineに固定済みなので`GOWORK=off`でよい）。契約テストC-M1〜C-M10は無修正で緑のまま。フェイクserveで`masuda workflow check`が問題を出さないこと
+- 禁止: M14aと同じ（既定のソケット・`~/.local/share/masuda`に触れない、開発版のserve・ワークスペース（`~/.local/share/masuda-dev`、`$XDG_RUNTIME_DIR/masuda-dev.sock`、ブランチ`docs/release-harness`）に触れない、`docker rm -f`、他プロセスの`kill`、`git push`、`go.work`の削除、新しい依存の追加、engineの変更）
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
