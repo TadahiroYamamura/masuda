@@ -45,7 +45,8 @@ masuda
 ゲスト（メインエージェント）         ホスト（masuda / engine）
   next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
   ◀──── タスクファイルのパス ─────  /masuda/in/<occ>/ に入力を書き込み済み
-  サブエージェントが作業
+  サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
+  （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
   write_output / report_result ──▶ /masuda/out/<occ>/ をホストが読み出し、スキーマ検証
                                    ノード境界: WIPスナップショットを staging へ pull
                                    次ノード: egress/秘密の方針を SetPolicy で切替
