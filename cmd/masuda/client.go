@@ -265,10 +265,12 @@ func runList(args []string) error {
 }
 
 // listRow はワークスペース1つを一覧の1行（タブ区切り）にする。活動は種類と最終活動からの経過、
-// 位置は止まった理由・結果があればそちらを、OPENは開いているゲートと質問を出す。
+// 位置は止まった理由・結果（done以外で終わったならその理由も）があればそちらを、OPENは開いているゲートと質問を出す。
 func listRow(w *apiv1.Workspace, now time.Time) string {
 	pos := w.Position
 	switch {
+	case w.Outcome != "" && w.Reason != "":
+		pos = "outcome " + w.Outcome + ": " + firstLine(w.Reason)
 	case w.Reason != "":
 		pos = w.Reason
 	case w.Outcome != "":

@@ -60,6 +60,11 @@ type runCtl struct {
 	changed chan struct{}
 
 	stateMu sync.Mutex // workspace.jsonの読み書き
+
+	// endFeedback は最後に受け付けたエージェントの報告のfeedback。engineのStatusは終わり方の
+	// ラベルしか持たないので、`end:needs_human`等で終わったときに人間へ見せる理由をここから取る。
+	fbMu        sync.Mutex
+	endFeedback string
 }
 
 func (c *runCtl) run() engine.RunID { return engine.RunID(c.id) }
@@ -126,7 +131,15 @@ func (c *runCtl) reflect(st engine.Status, err error) {
 		case engine.StatusQuestion:
 			w.State, w.Reason = workspace.StateWaitingQuestion, ""
 		case engine.StatusDone:
-			w.State, w.Outcome, w.Reason = workspace.StateDone, st.Outcome, ""
+			w.State, w.Outcome = workspace.StateDone, st.Outcome
+			// done以外の終わり方（needs_human・out_of_scope・stuck等）は、終わらせたエージェントの
+			// feedbackが人間への疑問や理由になる。serveを起こし直した後は手元に無いので、
+			// 空なら前に書いた理由を残す。
+			if st.Outcome == engine.OutcomeDone {
+				w.Reason = ""
+			} else if fb := c.lastFeedback(); fb != "" {
+				w.Reason = fb
+			}
 		case engine.StatusBlocked:
 			w.State, w.Reason = workspace.StateBlocked, st.Reason
 		default:
@@ -134,6 +147,12 @@ func (c *runCtl) reflect(st engine.Status, err error) {
 		}
 		w.Position = positionOf(st)
 	})
+}
+
+func (c *runCtl) lastFeedback() string {
+	c.fbMu.Lock()
+	defer c.fbMu.Unlock()
+	return c.endFeedback
 }
 
 // positionOf はengineの位置を人間向けに書く（"agent planner (occ 0042)"）。
@@ -288,6 +307,9 @@ func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ str
 	if err != nil {
 		return reject(err.Error())
 	}
+	c.fbMu.Lock()
+	c.endFeedback = feedback
+	c.fbMu.Unlock()
 	c.notify()
 	// 次の待ち（ゲート等）まで進めておく。APIから見える状態がnext_taskを待たずに変わるように。
 	_, _ = c.advance()

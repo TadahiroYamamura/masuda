@@ -108,6 +108,13 @@ func TestListRow(t *testing.T) {
 	if got != want {
 		t.Fatalf("listRow:\n got %q\nwant %q", got, want)
 	}
+	done := &apiv1.Workspace{
+		Id: "def", Branch: "fix/y", State: apiv1.WorkspaceState_WORKSPACE_STATE_DONE,
+		Position: "done", Outcome: "needs_human", Reason: "どちらの挙動に揃えるか決めてください\n詳細",
+	}
+	if got, want := listRow(done, now), "def\tfix/y\tdone\t-\toutcome needs_human: どちらの挙動に揃えるか決めてください\t-"; got != want {
+		t.Fatalf("listRow(needs_human):\n got %q\nwant %q", got, want)
+	}
 	for d, want := range map[time.Duration]string{5 * time.Second: "5s", 90 * time.Minute: "1h", 72 * time.Hour: "3d"} {
 		if got := since(d); got != want {
 			t.Fatalf("since(%v) = %s, want %s", d, got, want)
