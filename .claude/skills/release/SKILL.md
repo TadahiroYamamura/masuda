@@ -1,6 +1,6 @@
 ---
 name: release
-description: masuda・masuda-engine・masuda-sandboxの3リポジトリに同じタグvX.Y.Zを打って1つのリリースにする手順。「リリースする」「vX.Y.Zを出す」「タグを打つ」「Releaseを作る」「配布物（tarball）を更新する」と言われたとき、または版の話にpush・タグ・GitHub Release・go.modのengineの版上げが絡むときは、作業を始める前に必ずこれを読む。打つ前の確認、順序、エージェントとユーザーの分担、公開後の確認、記録までを含む。人間が読んでそのまま手で実行できる手順書でもある。
+description: masuda・masuda-engine・masuda-sandboxの3リポジトリに同じタグvX.Y.Zを打って1つのリリースにする手順。「リリースする」「vX.Y.Zを出す」「タグを打つ」「Releaseを作る」「配布物（tarball）を更新する」「ハーネスを更新する」と言われたとき、または版の話にpush・タグ・GitHub Release・go.modのengineの版上げが絡むときは、作業を始める前に必ずこれを読む。開発版との分離、打つ前の確認、順序、エージェントとユーザーの分担、公開後の確認、ハーネスの更新、記録までを含む。人間が読んでそのまま手で実行できる手順書でもある。
 ---
 
 # リリース手順
@@ -24,8 +24,8 @@ masudaの`release.yml`は、`go vet`・`go test ./...`、`go.mod`のengineの版
 
 エージェントが進める場合、**タグのpush（公開物を作る操作）と強制pushはエージェントからは実行できない**（自動モードの安全判定が止める。別の経路で同じ結果を狙うことも禁じられている）。これは不便ではなく、取り消しの効かない一打を人間が打つ形として残す。
 
-- エージェント: 打つ前の確認、`go.mod`の版上げとそのコミット、ブランチの通常のpush、Actionsの監視、Releaseと添付物の検証、`install.md`をなぞる確認、追跡Issueと`HANDOFF.md`の更新
-- ユーザー: 3つのタグのpush。エージェントは打つべきコマンドを、コピーしてそのまま打てる形（`! cd ... && git tag ... && git push origin vX.Y.Z`）で、**打つ直前に1つずつ**出す。前のタグのワークフローが終わってから次を出す（順序の依存があるため）
+- エージェント: 打つ前の確認、`go.mod`の版上げとそのコミット、ブランチの通常のpush、Actionsの監視、Releaseと添付物の検証、添付物を一時的に入れる確認、追跡Issueと`HANDOFF.md`の更新
+- ユーザー: 3つのタグのpush。エージェントは打つべきコマンドを、コピーしてそのまま打てる形（`! cd ... && git tag ... && git push origin vX.Y.Z`）で、**打つ直前に1つずつ**出す。前のタグのワークフローが終わってから次を出す（順序の依存があるため）。ハーネスの更新（手順6）も、人間の常用環境を入れ替える操作なのでユーザーが打つ。エージェントはコマンドを出して結果を確かめる
 
 v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え、`main`の新設、`v1-frozen-*`のpush）は済んでいる。以後は`main`の先頭に打つ。
 
@@ -197,12 +197,57 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 - 添付物が4つ（tarball2種、`clients/ts`のtgz、`SHA256SUMS`）
 - Releaseのノートに「ゲストのClaude Code: X で実機検証した」の行があり、Xが1-0で検証した版と同じ（`release.yml`が`masuda version`の表示から書く）。最新版で通らず前の版に留めたときは、`scripts/gh.sh release edit vX.Y.Z --notes-file <file>`でその理由（「最新版 X では〜が動かないため Y で検証」と別Issueの番号）を書き足す
 - ドキュメントサイト: `curl -s https://tadahiroyamamura.github.io/masuda/versions.json`に`X.Y`があり、aliasに`latest`が付いている。`/latest/`と`/X.Y/`が200
-- **添付物で`docs/user/install.md`をなぞる**。両方のReleaseの添付物をダウンロードし、`sha256sum -c`、`npm install -g`した`masuda-sandbox --version`、tarballのmasudaで`masuda version`が`X.Y.Z`と`contract: ok`、`masuda doctor`が全部`ok`。開発用のserveが同じソケットで動いていれば、公開物のserveは別のソケットで起動して`--sandbox-socket`で指す。確かめたら`npm uninstall -g masuda-sandbox`で外し、`~/.local/bin`のバイナリを勝手に置き換えない
+- **添付物を一時的に入れて確かめる**。`mktemp -d`の自分専用のディレクトリ`$t`に両方のReleaseの添付物を落として`sha256sum -c`し、そこに入れた`masuda-sandbox`とtarballのmasudaで、`version`が`X.Y.Z`と`contract: ok`、`doctor`が全部`ok`（Claudeトークンの項目は一時データディレクトリでは未登録になるので、手順6で確かめる）。ソケットとデータディレクトリをすべて`$t`の下に置くので、ハーネスや開発版のソケットとぶつからず、`config.json`の`sandboxSocket`にも引かれない。ハーネス（`~/.local/bin`・グローバルの`masuda-sandbox`・既定のソケットとデータディレクトリ）には触れない
+
+  ```sh
+  t=$(mktemp -d) && cd "$t"
+  curl -fLO https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/masuda-sandbox-X.Y.Z.tgz
+  curl -fL -o SHA256SUMS.sandbox https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/SHA256SUMS
+  curl -fLO https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/masuda_X.Y.Z_linux_amd64.tar.gz
+  curl -fL -o SHA256SUMS.masuda https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/SHA256SUMS
+  sha256sum -c SHA256SUMS.sandbox && grep ' masuda_X.Y.Z_linux_amd64.tar.gz$' SHA256SUMS.masuda | sha256sum -c -
+  npm install -g --prefix "$t/prefix" "$t/masuda-sandbox-X.Y.Z.tgz" && "$t/prefix/bin/masuda-sandbox" --version
+  tar -xzf masuda_X.Y.Z_linux_amd64.tar.gz && cp masuda_X.Y.Z_linux_amd64/masuda "$t/masuda"
+  "$t/prefix/bin/masuda-sandbox" serve --socket "$t/sandbox.sock" &
+  "$t/masuda" version --sandbox-socket "$t/sandbox.sock"   # X.Y.Zとcontract: ok
+  "$t/masuda" doctor --sandbox-socket "$t/sandbox.sock" --data-dir "$t/data"
+  pkill -f "$t/sandbox.sock"; cd - && rm -rf "$t"
+  ```
+
 - 時間があれば、公開物で`docs/user/quickstart.md`を頭から1周する（15〜20分。サブエージェントに出してよい。出力例の差し替えは作業ツリーに置いて、コミットは人間の承認後）
 
-## 6. 記録
+## 6. ハーネスの更新 {#harness}
+
+公開物をハーネスとして本導入する。ユーザーが打つ（人間の常用環境を入れ替える操作のため）。エージェントはコマンドを出して結果を確かめる。初回はv0.2.0の公開後で、`docs/user/install.md`を実機で検証する役割も兼ねる。install.mdと食い違えば、install.mdを直す別コミットにするか別Issueに切る。
+
+1. **更新前の確認**: ハーネスのserveで`masuda list --all`し、走行中のものは終わらせ、stoppedも含めてすべて`masuda remove`する。記録の形が変わると走行中のものが読めなくなり、版をまたぐresumeも保証されないため（監督の判断）。残したい成果はremoveの前に取り出しておく
+    - 初回（ハーネスがまだ無い）は、確かめる先のserveが無いのでこの確認は飛ばす。既定のソケットで動いている開発版のsandbox（ソースから起こしたもの）があれば止め、以後の開発版のsandboxは`masuda-sandbox-dev.sock`で起こす
+    - 初回は既定のデータディレクトリに既にある中身（M4暫定の`claude-oauth-token`、過去の記録）を消さない。`claude-oauth-token`はliveが読むため残す（新しく置かないだけ）。過去の記録が起動後の`masuda list --all`に出れば、上と同じに扱う
+2. **install.mdをなぞる**（`docs/user/install.md`の「入れる」「起動」）
+
+    ```sh
+    t=$(mktemp -d) && cd "$t"
+    curl -fLO https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/masuda-sandbox-X.Y.Z.tgz
+    curl -fL -o SHA256SUMS.sandbox https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/SHA256SUMS
+    curl -fLO https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/masuda_X.Y.Z_linux_amd64.tar.gz
+    curl -fL -o SHA256SUMS.masuda https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/SHA256SUMS
+    sha256sum -c SHA256SUMS.sandbox && grep ' masuda_X.Y.Z_linux_amd64.tar.gz$' SHA256SUMS.masuda | sha256sum -c -
+    # ここでmasuda serve→masuda-sandbox serveの順に止める（どちらもCtrl-C）
+    npm install -g "$t/masuda-sandbox-X.Y.Z.tgz" && masuda-sandbox --version
+    tar -xzf masuda_X.Y.Z_linux_amd64.tar.gz && install -m 0755 masuda_X.Y.Z_linux_amd64/masuda ~/.local/bin/masuda
+    cd - && rm -rf "$t"
+    masuda-sandbox serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"   # 1つめのターミナル
+    masuda serve                                                         # 2つめのターミナル
+    ```
+
+3. **Claudeのトークン**: `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`で正規の置き場所（`<DataDir>/secrets/_user/`）に登録する（登録済みなら不要。`docs/user/install.md`の「Claudeのトークンを登録する」）。M4暫定の`<DataDir>/claude-oauth-token`は読めるが、新しく置かない
+4. **確かめる**: `masuda version`で`X.Y.Z`と`contract: ok`、`masuda doctor`が全部`ok`
+5. **イメージの作り直し**: ハーネスで使うリポジトリ（masuda自身を含む）で、Dockerfileのinstall行のClaude Codeの版が`masuda version`の`claude code:`と違えば合わせ（masuda自身の`.masuda/images/default/Dockerfile`なら`chore(masuda)`の1コミット）、`masuda image build`する。イメージの記録はデータディレクトリごとで、初回はハーネスのデータディレクトリにまだ無いため必ず打つ
+
+## 7. 記録
 
 - 追跡Issueのチェックボックスを埋め、3タグとコミットの表、つまずいた点、残り（quickstartの1周など）を書く
+- 追跡Issueに、ハーネスを更新したか（したなら版、しなかったなら理由）を書く
 - `HANDOFF.md`に、公開した版、検証したゲストのClaude Codeの版（最新版に上げられなかったならその理由とIssue）、残りを書く
 - 途中で直したもの（CIの設定、doctorの判定など）は、リリースのコミットとは別の`fix`/`chore`コミットにしてある。追跡Issueからたどれるようにハッシュを書く
 
