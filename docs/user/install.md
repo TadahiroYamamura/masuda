@@ -38,13 +38,29 @@ id -nG | grep -w kvm
 
 ## 入れる
 
+### かんたんな入れ方
+
+```sh
+curl -fsSL https://github.com/TadahiroYamamura/masuda/releases/download/v__MASUDA_VERSION__/masuda_installer.sh | sh
+```
+
+別のバージョンを入れるときは、`MASUDA_VERSION=X.Y.Z`（先頭の`v`は付けない）を`sh`の前に付ける（`... | MASUDA_VERSION=X.Y.Z sh`）。
+
+- プラットフォームを判定し、masudaとmasuda-sandboxの同じバージョンの配布物を一時ディレクトリに取得する
+- `SHA256SUMS`で検証してから、masudaを`~/.local/bin/masuda`に、masuda-sandboxを`npm install -g`で入れる（既にあれば上書きする）
+- 最後に両方のバージョンを表示する
+
+curl・tar・npm・sha256sum（macOSはshasum）が要る。
+
+### 手で入れる
+
 以下では入れるバージョンを`VERSION`に置く（[Releaseの一覧](https://github.com/TadahiroYamamura/masuda/releases)の最新。先頭の`v`は付けない）。
 
 ```sh
 VERSION=__MASUDA_VERSION__
 ```
 
-### masuda-sandbox
+#### masuda-sandbox
 
 ```sh
 mkdir -p /tmp/masuda-sandbox-$VERSION && cd /tmp/masuda-sandbox-$VERSION
@@ -58,7 +74,7 @@ masuda-sandbox --version       # X.Y.Z
 
 `npm install -g`が権限で失敗するなら、npmのグローバルの置き場所を自分のディレクトリにする（`npm config set prefix ~/.local`。`~/.local/bin`をPATHに入れる）。sudoは使わない。
 
-### masuda
+#### masuda
 
 ```sh
 mkdir -p /tmp/masuda-$VERSION && cd /tmp/masuda-$VERSION
@@ -147,7 +163,7 @@ masuda doctor
 
 ## 更新と削除
 
-更新は、両方を**同じ新しいバージョン**で入れ直す（上の手順を新しい`VERSION`で繰り返す）。入れ直す前に`masuda serve`と`masuda-sandbox serve`を止める。ワークスペースの状態（`~/.local/share/masuda/`）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（`masuda version`の`claude code:`）に合わせるときは、Dockerfileのinstall行の数字を変えて`masuda image build`する。
+更新は、インストーラをもう一度実行すればよい。手で入れたときは、両方を**同じ新しいバージョン**で入れ直す（上の手順を新しい`VERSION`で繰り返す）。入れ直す前に`masuda serve`と`masuda-sandbox serve`を止める。ワークスペースの状態（`~/.local/share/masuda/`）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（`masuda version`の`claude code:`）に合わせるときは、Dockerfileのinstall行の数字を変えて`masuda image build`する。
 
 削除は`npm uninstall -g masuda-sandbox`と`rm ~/.local/bin/masuda`。状態とトークンも消すなら`~/.local/share/masuda/`と`~/.config/masuda/`も消す。
 

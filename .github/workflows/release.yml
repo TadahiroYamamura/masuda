@@ -117,10 +117,17 @@ jobs:
           npm pkg set version="$VERSION"
           npm pack --pack-destination ../../../dist
 
+      - name: Installer
+        env:
+          VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          perl -pe 's/__MASUDA_VERSION__/$ENV{VERSION}/g' masuda/scripts/install.sh >dist/masuda_installer.sh
+          chmod 0755 dist/masuda_installer.sh
+
       - name: Checksums
         working-directory: dist
         run: |
-          sha256sum *.tar.gz *.tgz >SHA256SUMS
+          sha256sum *.tar.gz *.tgz masuda_installer.sh >SHA256SUMS
           cat SHA256SUMS
 
       - uses: softprops/action-gh-release@v2
@@ -129,4 +136,5 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.tgz
+            dist/masuda_installer.sh
             dist/SHA256SUMS
