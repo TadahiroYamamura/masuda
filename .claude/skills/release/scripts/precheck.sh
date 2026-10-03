@@ -3,23 +3,56 @@
 # masudaのチェックアウトの中から打つ。隣の../masuda-engine・../masuda-sandboxは
 # MASUDA_ENGINE_DIR・MASUDA_SANDBOX_DIRで差し替えられる。
 # VMを使う確認（sandboxの契約テスト、live）は長いので含めない。最後にコマンドを出す。
+# `precheck.sh --claude-code`はゲストのClaude Codeの版の段だけを走らせる（SKILL.mdの1-0で版を上げた直後に使う）。
 set -euo pipefail
 
-tag=${1:-}
-case "$tag" in
-  v[0-9]*.[0-9]*.[0-9]*) ;;
-  *) echo "usage: $0 vX.Y.Z" >&2; exit 2 ;;
-esac
-version=${tag#v}
-
 root=$(git rev-parse --show-toplevel)
-engine=${MASUDA_ENGINE_DIR:-$root/../masuda-engine}
-sandbox=${MASUDA_SANDBOX_DIR:-$root/../masuda-sandbox}
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 fail=0
 
 say() { printf '\n== %s\n' "$*"; }
 ng() { printf 'NG: %s\n' "$*"; fail=1; }
 ok() { printf 'ok: %s\n' "$*"; }
+
+# check_claude_code は、internal/guestのClaudeCodeVersionが`masuda version`・init の雛形・liveのDockerfileに
+# 入っていること（go testで見る）と、その版が配布元に実在すること（manifest.jsonが200）を確かめる。
+check_claude_code() {
+  say "ゲストのClaude Code（internal/guest.ClaudeCodeVersion）"
+  local ver base code
+  ver=$(cd "$root" && GOWORK=off go run ./cmd/masuda version --sandbox-socket /nonexistent/none.sock 2>/dev/null \
+    | sed -n 's/^  claude code: \([^ ]*\) (guest, verified)$/\1/p')
+  if [ -z "$ver" ]; then ng "masuda versionにclaude codeの行が無い"; return; fi
+  ok "masuda versionの版: $ver"
+  if (cd "$root" && GOWORK=off go test -count=1 -run 'TestInitRepoWritesTemplatesAndKeepsExistingFiles|TestPrintVersionShowsVerifiedClaudeCode|TestLiveDockerfilePinsClaudeCode' ./cmd/masuda/ ./live/ >/dev/null); then
+    ok "雛形のDockerfile・liveのDockerfileに$verが入る"
+  else
+    ng "雛形かliveのDockerfileに版が入っていない（GOWORK=off go test ./cmd/masuda/ ./live/）"
+  fi
+  base=$("$here/claude-code-latest.sh" --base-url)
+  code=$(curl -s -o /dev/null -w '%{http_code}' "$base/$ver/manifest.json" || true)
+  if [ "$code" = 200 ]; then ok "$base/$ver/manifest.json は200"; else ng "$base/$ver/manifest.json が$code（その版は配布されていない）"; fi
+  local latest
+  if latest=$("$here/claude-code-latest.sh"); then
+    if [ "$latest" = "$ver" ]; then ok "最新版と同じ"; else printf 'info: 最新版は%s（定数は%s）。上げないなら理由を追跡Issueに書く\n' "$latest" "$ver"; fi
+  else
+    ng "最新版を引けない（claude-code-latest.sh）"
+  fi
+}
+
+if [ "${1:-}" = "--claude-code" ]; then
+  check_claude_code
+  exit "$fail"
+fi
+
+tag=${1:-}
+case "$tag" in
+  v[0-9]*.[0-9]*.[0-9]*) ;;
+  *) echo "usage: $0 vX.Y.Z | --claude-code" >&2; exit 2 ;;
+esac
+version=${tag#v}
+
+engine=${MASUDA_ENGINE_DIR:-$root/../masuda-engine}
+sandbox=${MASUDA_SANDBOX_DIR:-$root/../masuda-sandbox}
 
 check_repo() {
   local name=$1 dir=$2 branch=$3
@@ -43,6 +76,8 @@ if git -C "$root" merge-base --is-ancestor main develop; then ok "main は devel
 
 say "masuda: build / vet / test（GOWORK=off）"
 (cd "$root" && GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./... 2>&1 | grep -v 'no test files') || ng "masudaのテストが落ちた"
+
+check_claude_code
 
 say "masuda-engine: test"
 (cd "$engine" && go test -count=1 ./... 2>&1 | grep -v 'no test files') || ng "engineのテストが落ちた"
@@ -75,6 +110,7 @@ cat <<MSG
 速い確認はすべて通った。次はVMを使う確認（同時に走らせない）:
   cd $sandbox && pnpm build && node dist/cli.js serve --socket "\$XDG_RUNTIME_DIR/masuda-sandbox.sock" &
   MASUDA_SANDBOX_SOCKET="\$XDG_RUNTIME_DIR/masuda-sandbox.sock" pnpm test:contract
-  cd $root && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v ./live/
+  cd $root && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
+  cd $root && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
 そのあと SKILL.md の手順2（engineのタグ）へ。
 MSG

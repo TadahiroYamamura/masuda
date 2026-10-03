@@ -229,7 +229,7 @@ masuda image list [--repo <dir>]
 masuda image build [<entry>] [--repo <dir>]
 ```
 
-`list`は`.masuda/images/`のエントリと、ビルド済みかどうか・最後のビルドのID。`build`は`.masuda/images/<entry>/Dockerfile`をビルドし、ログを標準エラーへ、ビルドのIDを標準出力へ出す。`<entry>`を省くと`settings.json`の`image`。
+`list`は`.masuda/images/`のエントリと、ビルド済みかどうか・最後のビルドのID。`build`は`.masuda/images/<entry>/Dockerfile`をビルドし、ログを標準エラーへ、ビルドのIDを標準出力へ出す。`<entry>`を省くと`settings.json`の`image`。Dockerfileが入れるClaude Codeの版が`masuda version`の検証済みの版と違えば（版を書いていないものも）、始めに標準エラーへ`note:`の1行を出す（[設定のimage](settings.md#image)）。
 
 ## workflow
 
@@ -255,11 +255,12 @@ masuda workflow check [<workflow>] [--repo <dir>]
 masuda version [--sandbox-socket <path>] [--config <path>]
 ```
 
-ビルドに埋め込んだバージョン（ソースからビルドしたものは`dev`）、Goの版、masudaが前提にするsandboxの契約（`sandbox.proto`のSHA-256）を出す。`masuda-sandbox serve`に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（`contract: ok`か`contract: MISMATCH`）も出す。届かなくても終了コードは0。
+ビルドに埋め込んだバージョン（ソースからビルドしたものは`dev`）、Goの版、masudaが前提にするsandboxの契約（`sandbox.proto`のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（`masuda init`の雛形が入れる版）を出す。`masuda-sandbox serve`に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（`contract: ok`か`contract: MISMATCH`）も出す。届かなくても終了コードは0。
 
 ```text
 masuda 0.1.0 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
+  claude code: 2.1.287 (guest, verified)
 masuda-sandbox 0.1.0 (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok

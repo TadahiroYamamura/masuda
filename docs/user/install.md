@@ -5,7 +5,7 @@ masudaは2つの常駐プロセスで動く。
 - `masuda-sandbox serve`: VM（QEMU）を作り、中でコマンドを動かし、VMから外への通信を見張る
 - `masuda serve`: ワークフローを進め、ゲートや質問を人間に出し、gitへの反映を行う。`masuda`の各コマンドはこれに話しかける
 
-どちらもsudo無しで動く。Claude Codeはホストではなく、VMのイメージの中に入る。
+どちらもsudo無しで動く。Claude Codeはホストではなく、VMのイメージの中に入る。VMのClaude Codeの版は対象リポジトリの`.masuda/images/<entry>/Dockerfile`で固定されている。masudaの各リリースはその時点の最新版で実機検証し、`masuda init`の雛形にその版を書く（検証した版は`masuda version`の`claude code:`の行とReleaseのノートに出る）。上げるときは[設定のimage](settings.md#image)を見る。
 
 配布物は[GitHub Release](https://github.com/TadahiroYamamura/masuda/releases)に添付したtarballだけで、npmレジストリやパッケージマネージャーには公開していない。**masudaとmasuda-sandboxは同じバージョンを組で入れる**（違うと`masuda serve`が起動しない）。
 
@@ -147,7 +147,7 @@ masuda doctor
 
 ## 更新と削除
 
-更新は、両方を**同じ新しいバージョン**で入れ直す（上の手順を新しい`VERSION`で繰り返す）。入れ直す前に`masuda serve`と`masuda-sandbox serve`を止める。ワークスペースの状態（`~/.local/share/masuda/`）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。
+更新は、両方を**同じ新しいバージョン**で入れ直す（上の手順を新しい`VERSION`で繰り返す）。入れ直す前に`masuda serve`と`masuda-sandbox serve`を止める。ワークスペースの状態（`~/.local/share/masuda/`）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（`masuda version`の`claude code:`）に合わせるときは、Dockerfileのinstall行の数字を変えて`masuda image build`する。
 
 削除は`npm uninstall -g masuda-sandbox`と`rm ~/.local/bin/masuda`。状態とトークンも消すなら`~/.local/share/masuda/`と`~/.config/masuda/`も消す。
 

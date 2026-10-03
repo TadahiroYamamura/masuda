@@ -49,6 +49,14 @@ jobs:
           engine_commit=$(echo "$refs" | awk -v t="refs/tags/$tag^{}" '$2 == t { print $1 }')
           [ -n "$engine_commit" ] || engine_commit=$(echo "$refs" | awk 'NR == 1 { print $1 }')
           sandbox_commit=$(git -C ../masuda-sandbox rev-parse HEAD)
+          # 検証したClaude Codeの版はinternal/guest.ClaudeCodeVersion。定数を直接grepせず`masuda version`の
+          # 表示から取るのは、利用者が見るものとノートを同じ出どころにするため（sandboxに繋がらなくても0で終わる）。
+          claude_code=$(go run ./cmd/masuda version --sandbox-socket /nonexistent/none.sock 2>/dev/null \
+            | sed -n 's/^  claude code: \([^ ]*\) (guest, verified)$/\1/p')
+          if [ -z "$claude_code" ]; then
+            echo "masuda version did not print the verified Claude Code version" >&2
+            exit 1
+          fi
           echo "version=${tag#v}" >>"$GITHUB_OUTPUT"
           {
             echo "masuda $tag"
@@ -58,6 +66,8 @@ jobs:
             echo "| masuda | $tag | $GITHUB_SHA |"
             echo "| masuda-engine | $tag | $engine_commit |"
             echo "| masuda-sandbox | $tag | $sandbox_commit |"
+            echo
+            echo "ゲストのClaude Code: $claude_code で実機検証した（\`masuda init\`の雛形のDockerfileがこの版を入れる）。"
             echo
             echo "masuda-sandboxは同じタグのReleaseのtgzを入れる。手順は docs/user/install.md。macOS（darwin/arm64）は実験的。"
           } >../release-notes.md

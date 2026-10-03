@@ -61,6 +61,14 @@
 
 VMのイメージのエントリ。`.masuda/images/<image>/Dockerfile`からビルドする。名前は英数字で始まり、英数字・`.`・`_`・`-`だけ。`masuda run --image`で実行ごとに変えられる。
 
+VMのClaude Codeの版は、Dockerfileのinstall行で固定されている。
+
+```dockerfile
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.287
+```
+
+masudaの各リリースは、その時点の最新のClaude Codeで実機検証し、`masuda init`の雛形にその版を書く（検証した版は`masuda version`の`claude code:`の行）。上げるときはこの行の数字を変えて`masuda image build`する。`masuda init`は既にあるDockerfileを書き換えないので、masudaを上げても版は変わらない。Dockerfileの版が検証済みの版と違うとき（引数なしで最新版を入れる形も含む）は、`masuda image build`が始めに`note:`の1行で知らせる（ビルドは止めない）。
+
 ### images
 
 | 型 | 既定 |
