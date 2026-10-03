@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/guest"
 )
 
 func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
@@ -34,10 +35,17 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 		t.Fatalf(".gitignore = %q", ignore)
 	}
 	docker, _ := os.ReadFile(filepath.Join(root, ".masuda/images/default/Dockerfile"))
-	for _, want := range []string{"tmux", "git", "openssh-server", "ca-certificates", "claude.ai/install.sh", "/workspace /masuda"} {
+	for _, want := range []string{"tmux", "git", "openssh-server", "ca-certificates", "/workspace /masuda",
+		"claude.ai/install.sh | bash -s -- " + guest.ClaudeCodeVersion + "\n", "masuda " + version + "が"} {
 		if !strings.Contains(string(docker), want) {
 			t.Errorf("Dockerfile lacks %q", want)
 		}
+	}
+	if strings.Contains(string(docker), "__") {
+		t.Errorf("Dockerfile has an unfilled marker:\n%s", docker)
+	}
+	if got, ok := pinnedClaudeCode(docker); !ok || got != guest.ClaudeCodeVersion {
+		t.Errorf("pinnedClaudeCode(template) = %q, %v", got, ok)
 	}
 
 	// 2回目は既にあるものに触らず、消えたものだけ足す。

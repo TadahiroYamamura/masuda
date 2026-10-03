@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 )
 
@@ -78,6 +79,7 @@ func initRepo(root string) ([]string, error) {
 		if err != nil {
 			return created, err
 		}
+		data = renderTemplate(data)
 		if err := write(rel, data); err != nil {
 			return created, err
 		}
@@ -104,6 +106,15 @@ func initRepo(root string) ([]string, error) {
 		created = append(created, ".gitignore ("+localIgnore+")")
 	}
 	return created, nil
+}
+
+// renderTemplate は雛形の印を埋める。text/templateにしないのは、Dockerfileに利用者が
+// `{{`を含む行（Goのテンプレートを使うツールの例など）を書き写したときに壊れないようにするため。
+func renderTemplate(data []byte) []byte {
+	return []byte(strings.NewReplacer(
+		"__CLAUDE_CODE_VERSION__", guest.ClaudeCodeVersion,
+		"__MASUDA_VERSION__", version,
+	).Replace(string(data)))
 }
 
 // ensureIgnored はgitignoreにlineが無ければ末尾に足す。同じパターンを先頭`/`付きで書いた行と、

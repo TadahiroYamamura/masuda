@@ -14,8 +14,8 @@
 //	MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/
 //
 // TestGuestSubagentContinuation（continuation_test.go）は、ゲストのClaude Codeがサブエージェントに
-// SendMessageで続きを送ったとき前の文脈が残るかを確かめる。1〜2分で終わる。ゲストのClaude Codeの版が
-// 上がったら単独で回す: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/`
+// SendMessageで続きを送ったとき前の文脈が残るかを確かめる。1〜2分で終わる。ゲストのClaude Codeの版
+// （guest.ClaudeCodeVersion。liveのDockerfileもこの版を入れる）を上げたら、1周より先に単独で回す: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/`
 //
 // 失敗したときは、データディレクトリ（ワークスペースの記録・stagingを含む）と対象リポジトリを
 // 消さずに残し、パスをログに出す。
@@ -39,6 +39,7 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/serve"
 )
 
@@ -331,7 +332,7 @@ RUN apt-get update \
 RUN mkdir -p /workspace /masuda && chown ubuntu:ubuntu /workspace /masuda
 USER ubuntu
 WORKDIR /home/ubuntu
-RUN curl -fsSL https://claude.ai/install.sh | bash
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- ` + guest.ClaudeCodeVersion + `
 ENV PATH=/home/ubuntu/.local/bin:$PATH
 USER root
 `,
@@ -403,4 +404,14 @@ class RectangleTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 `,
+}
+
+// liveのイメージは、masudaが検証した版として出すClaude Codeを入れる（VMを使わないので常に走る）。
+func TestLiveDockerfilePinsClaudeCode(t *testing.T) {
+	want := "claude.ai/install.sh | bash -s -- " + guest.ClaudeCodeVersion + "\n"
+	for name, files := range map[string]map[string]string{"python": pythonRepoFiles, "continuation": continuationRepoFiles} {
+		if !strings.Contains(files[".masuda/images/default/Dockerfile"], want) {
+			t.Errorf("%s: Dockerfile lacks %q", name, want)
+		}
+	}
 }

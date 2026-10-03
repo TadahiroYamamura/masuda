@@ -366,6 +366,9 @@ func imageBuild(args []string) error {
 	if len(pos) == 1 {
 		entry = pos[0]
 	}
+	if note := imageClaudeCodeNote(root, entry); note != "" {
+		fmt.Fprintln(os.Stderr, note)
+	}
 	stream, err := c.clients().config.BuildImage(context.Background(), connect.NewRequest(&apiv1.BuildImageRequest{RepoRoot: root, Entry: entry}))
 	if err != nil {
 		return err

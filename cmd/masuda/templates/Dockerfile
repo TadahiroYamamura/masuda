@@ -28,6 +28,8 @@ RUN apt-get update \
 RUN mkdir -p /workspace /masuda && chown ubuntu:ubuntu /workspace /masuda
 USER ubuntu
 WORKDIR /home/ubuntu
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Claude Codeの版は固定している。__CLAUDE_CODE_VERSION__はmasuda __MASUDA_VERSION__が実機で検証した版
+# （masudaは各リリースでその時点の最新版を検証する）。上げるときはこの数字を変えて`masuda image build`する。
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- __CLAUDE_CODE_VERSION__
 ENV PATH=/home/ubuntu/.local/bin:$PATH
 USER root

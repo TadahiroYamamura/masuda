@@ -12,6 +12,7 @@ import (
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/guest"
 	"github.com/TadahiroYamamura/masuda/internal/sandboxcontract"
 	"github.com/TadahiroYamamura/masuda/serve"
 )
@@ -63,6 +64,7 @@ func runVersion(args []string) error {
 func printVersion(w io.Writer, socket string, cfgErr error) {
 	fmt.Fprintf(w, "masuda %s (%s %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 	fmt.Fprintf(w, "  sandbox contract sha256: %s\n", sandboxcontract.SHA256)
+	fmt.Fprintf(w, "  claude code: %s (guest, verified)\n", guest.ClaudeCodeVersion)
 	if cfgErr != nil {
 		fmt.Fprintf(w, "  (config.json: %v)\n", cfgErr)
 	}
