@@ -84,16 +84,12 @@ main() {
   fi
 
   echo
-  if command -v masuda >/dev/null 2>&1; then
-    masuda version
-  else
-    "$bindir/masuda" version
-  fi
-  if command -v masuda-sandbox >/dev/null 2>&1; then
-    masuda-sandbox --version
-  else
-    echo "install: masuda-sandbox がPATHに無い。npmのグローバルのbinディレクトリをPATHに入れる。" >&2
-  fi
+  # PATH上に古いmasudaが残っていると別の版を見てしまうので、いま入れたものを直接呼ぶ。
+  "$bindir/masuda" version
+  npm_bin=$(npm prefix -g)/bin
+  "$npm_bin/masuda-sandbox" --version
+  command -v masuda-sandbox >/dev/null 2>&1 ||
+    echo "install: masuda-sandbox がPATHに無い。$npm_bin をPATHに入れる。"
 
   case ":$PATH:" in
     *":$bindir:"*) ;;
