@@ -85,7 +85,7 @@ type EnvVar struct{ Name, Value string }
 // ChecksDir はチェックのスクリプトを置くゲストのディレクトリ。
 const ChecksDir = "/masuda/checks"
 
-// ReviewsDir はレビュー観点を置くゲストのディレクトリ。trigger-matcherはここを読む。
+// ReviewsDir はレビュー観点を置くゲストのディレクトリ。同梱のreviewer・review-checkerはここを読む。
 const ReviewsDir = "/masuda/reviews"
 
 // bundleGuestPath はbundleを置くゲストのパス。cloneが終わったら消す。
