@@ -4,9 +4,11 @@
   "secrets": [],
   "envFiles": [],
   "checks": {
-    "test": "go test ./..."
+    "test": "GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./..."
   },
-  "claudeSettings": {},
+  "claudeSettings": {
+    "model": "opus"
+  },
   "images": {
     "default": {
       "diskMiB": 8192
