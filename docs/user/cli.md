@@ -4,7 +4,7 @@
 masuda <command> [flags]
 ```
 
-`serve`・`init`・`version`・`doctor`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
+`serve`・`init`・`version`・`doctor`・`completion`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
 
 ## 共通の約束
 
@@ -36,6 +36,7 @@ masuda <command> [flags]
 | [`workflow`](#workflow) | ワークフローの一覧・図・検査 |
 | [`version`](#version) | masudaと接続先のmasuda-sandboxのバージョンを出す |
 | [`doctor`](#doctor) | 動かすための前提を確かめる |
+| [`completion`](#completion) | シェルの補完スクリプトを出す |
 
 ## serve
 
@@ -306,3 +307,21 @@ masudaを動かす前提を1項目ずつ確かめ、`[ok  ]`・`[warn]`・`[NG  
 [NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable: ...
        `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`を起動する。...
 ```
+
+## completion
+
+```text
+masuda completion bash|zsh
+```
+
+bashまたはzshの補完スクリプトを標準出力に出す。`masuda serve`には繋がない。シェルの起動ファイルに次の1行を書くと、コマンド・サブコマンド・フラグが補完される。
+
+```sh
+# ~/.bashrc
+source <(masuda completion bash)
+
+# ~/.zshrc
+source <(masuda completion zsh)
+```
+
+ワークスペースのID・ワークフロー名・イメージ名は、補完のたびに`masuda list --all`・`masuda workflow list`・`masuda image list`を呼んで取る。そのため`masuda serve`が動いているときだけ候補に出る。繋がらないときは候補が空になり、エラーは出ない。`--socket`を入力済みなら、その値で呼ぶ。
