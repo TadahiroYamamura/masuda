@@ -13,6 +13,10 @@
 //
 //	MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/
 //
+// TestGuestSubagentContinuation（continuation_test.go）は、ゲストのClaude Codeがサブエージェントに
+// SendMessageで続きを送ったとき前の文脈が残るかを確かめる。1〜2分で終わる。ゲストのClaude Codeの版が
+// 上がったら単独で回す: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/`
+//
 // 失敗したときは、データディレクトリ（ワークスペースの記録・stagingを含む）と対象リポジトリを
 // 消さずに残し、パスをログに出す。
 package live
