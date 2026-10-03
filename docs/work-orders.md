@@ -139,6 +139,70 @@ M10・M11b・M11cが見つけたもの。`docs/api/errors.md`と`docs/user/`の�
 - **E11後**: 同梱`build-step`の`approve-interim`が`target: step-diff`になるので、`gate show`とUI向けの`subject`の扱い、`docs/user/concepts.md`のinterimの説明、findingsのコメント取り込み（interimでは`staging_commit`がHEADで行番号は作業ツリー基準）を合わせる
 - 契約テスト: C-M1〜C-M8が緑のまま
 
+## M14. v0.2（masudaでmasudaを作る体制）
+
+v0.2の目標は「masudaを使ってmasudaが作れる体制」（マイルストーンv0.2: #68 #69 #70 #61、engine #8）。ハーネス（公開物の`masuda`・`masuda-sandbox serve`・既定ソケット・`~/.local/share/masuda`）の導入は**v0.2.0の公開後**に行う（`docs/user/install.md`の検証を兼ねる）。それまで開発版は既定の場所を使わない: データディレクトリ`~/.local/share/masuda-dev`、ソケット`$XDG_RUNTIME_DIR/masuda-dev.sock`・`$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`。`~/.local/share/masuda`と`$XDG_RUNTIME_DIR/masuda.sock`・`masuda-sandbox.sock`には触らない。
+
+各項目に共通: ビルド・テストは`GOWORK=off`（`go.work`があると隣の`../masuda-engine`の作業中のコードが混ざる）。契約（`proto/masuda/api/v1/masuda.proto`・`docs/guest-protocol.md`・`../masuda-sandbox/proto`・`../masuda-engine/engine/api.go`）は変えない。pushしない。コミットは目的ごとに分け、メッセージはCLAUDE.mdの形。終わったら`HANDOFF.md`を上書きし、最終報告は「コミット・検証・指示から外れた点」を10行以内（詳細はHANDOFFへ）。
+
+### M14a. masuda自身の`.masuda/`を整える（#68の前半）
+
+- **追跡に入れる**: `.gitignore`の`.masuda/`・`.masuda-gate/`（旧実装の名残。`.masuda-gate/`はもう無い）をやめ、`masuda init`が足す行（`cmd/masuda/init.go`の`localIgnores`）と同じものだけ無視する。`.masuda/`の中身をgitに加える
+- **`.masuda/reviews/`**: 同梱の観点（`internal/perspectives`）と内容が同じ写しは消す（無ければ同梱が使われる。写しを持つと同梱の更新が効かなくなる）。同梱と差があるものだけ残し、残したものはHANDOFFに列挙する
+- **`.masuda/images/default/Dockerfile`**: Claude Codeの版を`internal/guest.ClaudeCodeVersion`と同じ版に固定する。形は`cmd/masuda/templates/Dockerfile`と同じ`bash -s -- <版>`（数字は直書き。テンプレートの`__CLAUDE_CODE_VERSION__`の置換は`masuda init`のときだけ）。`masuda image build`の`note:`（版の不一致）が出なくなること。コメントの「新設計」は消す
+- `.masuda/images/default/ctx/go.mod`・`go.sum`を今の`go.mod`・`go.sum`で更新する（Dockerfileの冒頭のコメントどおり）
+- **`.masuda/settings.json`**: `checks.test`を`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`相当にする。`egress`はイメージで前取りしているものは宣言しない（Goモジュール・gopls・bufはイメージで取れているか確かめ、足りなければ宣言）。`claudeSettings`に`{"model": "opus"}`を書く（ユーザー決定: 既定の役をOpusにする。Claude Codeはfrontmatterに`model`の無いサブエージェントにメインセッションのモデルを使うので、これで役にも効く。`settings.json`の`model`は`CLAUDE_CODE_SUBAGENT_MODEL`が無い限りサブエージェントに直接は効かない、という公式の解決順序を前提にしている）
+- **`.masuda/pitfalls.jsonl`**（形式は`docs/user/settings.md`の`pitfalls.jsonl`の節。全キー必須）。少なくとも次を書く。`background`は`HANDOFF.md`・`CLAUDE.md`・`git log`から実際にあったことを引く:
+  - 契約ファイル（`masuda.proto`・`guest-protocol.md`・sandbox.proto・engineの`api.go`）は変えない（`HANDOFF.md`の「契約への提案」に書いて止まる）
+  - `buf generate`でsandboxのクライアントを作り直したら`internal/sandboxcontract/sha.go`を`go generate`で作り直して一緒にコミットする
+  - `go.work`があると隣のengineの未コミットの変更が混ざる。固定した版で確かめるときは`GOWORK=off`
+  - engineの版を上げるのは`go get ...@<tag|main>`と`go mod tidy`。プロキシが古いmainを返すことがある（`GOPROXY=direct`）
+  - `HANDOFF.md`はセッション終了時に決まった見出しで上書きする
+  - コメントの基準（CLAUDE.mdの「コメント」）
+  - ゲストのClaude Codeの版は`internal/guest.ClaudeCodeVersion`で固定。上げたら継続テスト（`TestGuestSubagentContinuation`）を先に回す
+  - `internal/runner/task.go`が出す「実行位置: ワークフロー…のノード…」の形は、engineのreviewerが途中レビューの判別（ノード名が`interim-`で始まるか）に使っている。変えると壊れる
+  - `docs/user/workflows.md`の図は`masuda workflow show`の出力の貼り付け。同梱定義が変わったら取り直す
+  - `docs/user/reference/workflow-schema.md`はengineの写し（`scripts/docs-prepare.sh`）。直接編集しない
+  - テストケース名は日本語で何を確かめるかを文で書く（`~/.claude/rules/testing.md`相当。既存テストに倣う）
+- **`.masuda/claude/`**: リポジトリの`CLAUDE.md`はcloneで届く。追加で要るものが無ければ作らない（作るなら理由をHANDOFFに）
+- **ゲストで非特権のユーザー名前空間が使えるか**: 契約テストC-M7とserveの特権コマンドのテストは、フェイクsandboxの`internal/fakesandbox/exec.go`の`asRoot`（`unshare -Urm /bin/sh -c <chrootするスクリプト> ...`）を使う。`.masuda/images/default`のイメージで作ったVMで、同じ形の`unshare -Urm`が通るか確かめる。手段は`live/`のヘルパー（イメージのビルド・sandboxの作成・`Exec`）を流用した使い捨てのプログラムかテストでよく、コミットしない。開発版のsandbox serveは`$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`で動いている（`MASUDA_SANDBOX_SOCKET`で渡す）。作ったVMは必ず壊し、終わったら`pgrep -af qemu-system`に自分の分が残っていないこと。**通らなければ**: 直さずに、落ち方（エラーの全文）とカーネル・`unshare`の版をHANDOFFに書き、`checks.test`はそのまま（`-skip`で外さない。判断は監督が行う）
+- **検証**: `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...`が緑。`masuda workflow check`（フェイクserve: `GOWORK=off go run ./cmd/masuda serve --fake-sandbox --data-dir <一時dir> --socket <一時dir>/m.sock`を立て、`--socket`で指す）が`pitfalls.jsonl`を通し、問題を出さないこと。`masuda image build default`（開発版sandbox serveを`--sandbox-socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`で指したフェイクでない`masuda serve`。`--data-dir ~/.local/share/masuda-dev --socket $XDG_RUNTIME_DIR/masuda-dev.sock`）が`note:`無しで通ること。立てたserveは終わったら止める
+- 禁止: `$XDG_RUNTIME_DIR/masuda.sock`・`masuda-sandbox.sock`・`~/.local/share/masuda`に触れる、`docker rm -f`・`docker system prune`、他人のqemu・node・serveプロセスを`kill`する（止めてよいのは自分が立てたserveだけ）、`git push`、`go.work`の削除
+- 完了の判定: 上の検証がすべて緑で、`.masuda/`がgitに追跡されていること。契約テストC-M1〜C-M10は無修正で緑のまま
+
+### M14b. 役定義の`model`・`effort`をゲストのサブエージェント定義に写す（#69、契約変更）
+
+**契約変更（ユーザー承認 2026-10-03）**: `docs/guest-protocol.md`の「起動時にホストがゲストへ置くもの」の`~/.claude/agents/*.md`の行に、`model`・`effort`（役定義にあれば）を足す。engine側はE13で`Agent.Model`・`Agent.Effort`を足した（`../masuda-engine`の`main`、未push）。
+
+背景: Claude Codeのサブエージェント定義はfrontmatterの`model`（`sonnet`・`opus`・`haiku`等の別名、フルのモデルID、`inherit`）と`effort`（`low`・`medium`・`high`・`xhigh`・`max`）を受け付け、どちらも効き、会話ログ（JSONL）の各応答に`model`・`effort`が記録されることをホストのClaude Code 2.1.288で実測した。`model`の無いサブエージェントはメインセッションのモデルを継承する（`settings.json`の`model`は直接は効かない）ので、`claudeSettings.model`が「既定の役のモデル」になる。指定の単位は役定義（ノード単位の上書きは入れない。ユーザー決定）。
+
+- **この項目に限り`go.work`を使う**（`GOWORK=off`を付けない）。隣の`../masuda-engine`のE13が要るため。`go.mod`のengineの固定はengineのpush後に監督が行う。契約テスト（`contract/`）も`go.work`で回す
+- `internal/guest.AgentFile`: `a.Model`・`a.Effort`が空でなければfrontmatterに`model:`・`effort:`を書く（`yamlString`で）。関数コメントの「Claude Codeが読むのはname・description・toolsと本文だけ」を直す
+- `internal/guest/guest_test.go`: `model`・`effort`のある役はその行が出る、無い役は出ない（テスト名は日本語の文）
+- docs: `docs/user/workflows.md`「エージェントの書き方」に`model`・`effort`を足す（値、省略時: `model`はメインセッションのモデル＝`claudeSettings.model`を継承、`effort`はセッションの既定を継承。`continues`で続きが成立したサブエージェントは起動時の設定のまま）。`docs/user/settings.md`の`claudeSettings`に「`model`を書くとメインセッションと、`model`を書いていない役のモデルになる」を足す。`docs/user/reference/workflow-schema.md`は写しなので触らない（サイトのビルドで取り込まれる）
+- **実機確認（#69の本体）**: `live/claude_dir_test.go`の`TestClaudeDirReachesSubagent`で、使う役の1つに`model: sonnet`・`effort: low`を書き、対象リポジトリの`.masuda/settings.json`の`claudeSettings`を`{"model": "opus"}`にする。完走後の`exports/transcripts/`で、その役のサブエージェントのJSONLに`"model":"claude-sonnet`と`"effort":"low"`が、`model`の無い役のJSONLに`"model":"claude-opus`が記録されていることを確かめる検査を足す（どのJSONLがどの役かは、中身の`agentType`や`records/subagents.json`等、既存の結び付け方を調べて使う）。実装者が回す: `MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestClaudeDirReachesSubagent ./live/`。ゲストのClaude Codeは2.1.287（`internal/guest.ClaudeCodeVersion`）で、frontmatterの`effort`が効かなければ（記録に`effort`が無い・値が違う）**直さずに**HANDOFFへ事実を書く（リリースで最新版に上げるときに再確認する）。終わったら`pgrep -af qemu-system`に自分の分が残っていないこと
+- 検証: `go build ./... && go vet ./... && go test -count=1 ./...`（`go.work`有効）が緑。契約テストC-M1〜C-M10は無修正で緑のまま。上記liveが緑
+- 禁止: M14aと同じ（既定のソケット・`~/.local/share/masuda`に触れない、`docker rm -f`、他プロセスの`kill`、`git push`、`go.work`の削除、新しい依存の追加）
+
+### M14c. 予行1: `Watch`の`after_seq`が再送バッファより古いときは`OutOfRange`を返す（#64）
+
+この項目は**masudaのrun（`workflows/fix`）で実装する予行**（#68の後半）。監督（Fable）が開発版のserveで`masuda run workflows/fix --branch fix/watch-after-seq --input instructions=@<この項目を書き出したファイル>`を回し、plan gate・review gateを扱う。以下がゲストの実装者への指示書。
+
+---
+
+`WorkspaceService.Watch`の`after_seq`は、最新のseqより大きければ`OutOfRange`を返す（`serve/events.go`）。しかし再送バッファ（直近の一定件数）より古いときは、黙って最古から続く。クライアントは間の取りこぼしに気づけない。
+
+決定（契約`docs/design/contracts.md`「エラーコードの約束」に反映する）: `after_seq`が再送バッファの最古のseqより小さい（＝`after_seq+1`から再送できない）ときも`OutOfRange`を返し、理由の文に「再送できる最古のseq」を含める。クライアントは`after_seq: 0`で繋ぎ直し、ストリームの最初に届く`status`から状態を組み立て直す（既存の「最新より大きい」の扱いと同じ）。`after_seq: 0`はこれまでどおり常に通る。
+
+やること:
+- `serve/events.go`の`Watch`で上の判定を足す。`proto/masuda/api/v1/masuda.proto`は変えない（`OutOfRange`は既存のコード）
+- `docs/design/contracts.md`の`OutOfRange`の行と、`docs/api/errors.md`の2箇所（`out_of_range`の表と`Watch`の行）を、両方の条件を書く形に直す。`docs/api/`にWatchの繋ぎ直しの流れを説明している箇所があれば（`grep -rn after_seq docs/api`）合わせる
+- `cmd/masuda`の`watch`が繋ぎ直しに`after_seq`を使っているなら、`OutOfRange`を受けたら`after_seq: 0`で繋ぎ直す（既に「最新より大きい」でそうしていれば、その経路に乗るだけでよい）
+- テスト（`serve/`の既存のWatchのテスト、`serve/m10_test.go`の「after_seqが最新より先ならOutOfRange」の隣に足す。テスト名は日本語の文）: バッファが溢れるだけイベントを起こしてから、最古より小さい`after_seq`で`Watch`すると`OutOfRange`になり、理由に最古のseqが含まれる。最古のseqちょうどなら通る。判定をわざと壊して落ちることを確かめてから戻す。バッファの大きさがテストで扱いにくければ、テストから小さくできる手段を足してよい（公開APIは変えない）
+- `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑。契約テスト`contract/`は無修正で緑のまま
+
+やらないこと: 再送バッファの大きさの変更、`Watch`の他の振る舞いの変更、protoの変更。
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
