@@ -45,7 +45,7 @@ v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え�
 
   ```sh
   ./masuda serve --socket "$XDG_RUNTIME_DIR/masuda-dev.sock" --data-dir ~/.local/share/masuda-dev \
-    --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"   # sandbox.protoを変える作業ではmasuda-sandbox-dev.sock
+    --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"
   ```
 
   - `~/.config/masuda/config.json`はハーネスと共有で、`sandboxSocket`が書いてあれば明示しない限りそちらが使われる。開発版は`--sandbox-socket`を必ず明示する
@@ -217,7 +217,7 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
   npm install -g --prefix "$t/prefix" "$t/masuda-sandbox-X.Y.Z.tgz" && "$t/prefix/bin/masuda-sandbox" --version
   tar -xzf masuda_X.Y.Z_linux_amd64.tar.gz && cp masuda_X.Y.Z_linux_amd64/masuda "$t/masuda"
   "$t/prefix/bin/masuda-sandbox" serve --socket "$t/sandbox.sock" &
-  "$t/masuda" version --sandbox-socket "$t/sandbox.sock"   # X.Y.Zとcontract: ok
+  "$t/masuda" version --sandbox-socket "$t/sandbox.sock"
   "$t/masuda" doctor --sandbox-socket "$t/sandbox.sock" --data-dir "$t/data"
   pkill -f "$t/sandbox.sock"; cd - && rm -rf "$t"
   ```

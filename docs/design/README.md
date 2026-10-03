@@ -46,11 +46,11 @@ git clone https://github.com/TadahiroYamamura/masuda-engine.git
 git clone https://github.com/TadahiroYamamura/masuda-sandbox.git
 
 cd ~/src/masuda-sandbox
-pnpm install && pnpm build          # dist/cli.js。`node ~/src/masuda-sandbox/dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"`で動かす
+pnpm install && pnpm build          # dist/cli.js。`node ~/src/masuda-sandbox/dist/cli.js serve --socket ...`で動かす
 
 cd ~/src/masuda
 go work init . && go work use ../masuda-engine   # engineも手元のものを使うときだけ
-go build ./cmd/masuda               # ./masuda
+go build ./cmd/masuda
 ./masuda version --sandbox-socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"   # dev。契約が隣のmasuda-sandboxと合っていればcontract: ok
 ```
 
