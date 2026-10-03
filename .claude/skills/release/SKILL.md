@@ -81,7 +81,7 @@ v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え�
 GOWORK=off go test -count=1 ./cmd/masuda/ ./internal/guest/ ./live/
 .claude/skills/release/scripts/precheck.sh --claude-code    # 版が雛形・liveに入り、配布元に実在する
 # 開発版のsandboxを立てる（liveは既定でハーネスのsandboxに繋ぎ、sandbox.protoが変わるリリースでは契約が合わず起動しない）
-cd ../masuda-sandbox && pnpm build && node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" &
+(cd ../masuda-sandbox && pnpm build && exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
 # 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）
 MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
 # 実機1周（15〜20分）
@@ -111,19 +111,27 @@ liveのイメージはDockerfileが変われば作り直される（初回は数
 
 ```sh
 # masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）
-cd ../masuda-sandbox && pnpm build && node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" &
-MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" pnpm test:contract
+(cd ../masuda-sandbox && pnpm build && exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
+(cd ../masuda-sandbox && MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" pnpm test:contract)
 # masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす
 cd ../masuda && MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
 MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
 # 開発版のsandboxを止める（下の予行のpnpm buildが走行中のserveのdistを作り直さないように。以後は使わない）
-pkill -f 'masuda-sandbox-dev.sock'
-# sandboxのtarball予行（distを一時的に版付きで作る。終わったらpnpm buildでdevに戻す）
+kill "$sbpid"
+# sandboxのtarball予行（distを一時的に版付きで作る。途中で失敗しても、サブシェルを抜けるときにtrapがpackage.jsonを戻し、pnpm buildでdistをdevに戻す）
 # ハーネスのグローバルのmasuda-sandboxを上書きしないよう--prefixで入れる。置き場はmktempの自分専用のディレクトリ（共有の/tmpの予測できる名前に置いたものは実行しない）
 t=$(mktemp -d)
-cd ../masuda-sandbox && cp package.json "$t/package.json.bak" && MASUDA_SANDBOX_VERSION=vX.Y.Z pnpm build \
-  && npm pkg set version=X.Y.Z && npm pack --pack-destination "$t" && cp "$t/package.json.bak" package.json \
-  && npm install -g --prefix "$t/prefix" "$t/masuda-sandbox-X.Y.Z.tgz" && "$t/prefix/bin/masuda-sandbox" --version && pnpm build
+(
+  set -e
+  cd ../masuda-sandbox
+  cp package.json "$t/package.json.bak"
+  trap 'cp "$t/package.json.bak" package.json; pnpm build' EXIT
+  MASUDA_SANDBOX_VERSION=vX.Y.Z pnpm build
+  npm pkg set version=X.Y.Z
+  npm pack --pack-destination "$t"
+  npm install -g --prefix "$t/prefix" "$t/masuda-sandbox-X.Y.Z.tgz"
+  "$t/prefix/bin/masuda-sandbox" --version
+)
 rm -rf "$t"
 pgrep -af qemu-system   # 孤児が無いこと
 ```
@@ -156,7 +164,7 @@ scripts/gh.sh run watch -R TadahiroYamamura/masuda-sandbox <run-id> --exit-statu
 scripts/gh.sh release view vX.Y.Z -R TadahiroYamamura/masuda-sandbox --json assets -q '.assets[].name'   # tgzとSHA256SUMS
 ```
 
-## 4. masudaの版上げとタグ
+## 4. masudaの版上げとタグ {#engine}
 
 まず`go.mod`のengineを、いま打ったタグに上げる（エージェント）。
 
@@ -223,22 +231,7 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 1. **更新前の確認**: ハーネスのserveで`masuda list --all`し、走行中のものは終わらせ、stoppedも含めてすべて`masuda remove`する。記録の形が変わると走行中のものが読めなくなり、版をまたぐresumeも保証されないため（監督の判断）。残したい成果はremoveの前に取り出しておく
     - 初回（ハーネスがまだ無い）は、確かめる先のserveが無いのでこの確認は飛ばす。既定のソケットで動いている開発版のsandbox（ソースから起こしたもの）があれば止め、以後の開発版のsandboxは`masuda-sandbox-dev.sock`で起こす
     - 初回は既定のデータディレクトリに既にある中身（M4暫定の`claude-oauth-token`、過去の記録）を消さない。`claude-oauth-token`はliveが読むため残す（新しく置かないだけ）。過去の記録が起動後の`masuda list --all`に出れば、上と同じに扱う
-2. **install.mdをなぞる**（`docs/user/install.md`の「入れる」「起動」）
-
-    ```sh
-    t=$(mktemp -d) && cd "$t"
-    curl -fLO https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/masuda-sandbox-X.Y.Z.tgz
-    curl -fL -o SHA256SUMS.sandbox https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/vX.Y.Z/SHA256SUMS
-    curl -fLO https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/masuda_X.Y.Z_linux_amd64.tar.gz
-    curl -fL -o SHA256SUMS.masuda https://github.com/TadahiroYamamura/masuda/releases/download/vX.Y.Z/SHA256SUMS
-    sha256sum -c SHA256SUMS.sandbox && grep ' masuda_X.Y.Z_linux_amd64.tar.gz$' SHA256SUMS.masuda | sha256sum -c -
-    # ここでmasuda serve→masuda-sandbox serveの順に止める（どちらもCtrl-C）
-    npm install -g "$t/masuda-sandbox-X.Y.Z.tgz" && masuda-sandbox --version
-    tar -xzf masuda_X.Y.Z_linux_amd64.tar.gz && install -m 0755 masuda_X.Y.Z_linux_amd64/masuda ~/.local/bin/masuda
-    cd - && rm -rf "$t"
-    masuda-sandbox serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"   # 1つめのターミナル
-    masuda serve                                                         # 2つめのターミナル
-    ```
+2. **install.mdをなぞる**: 動いている`masuda serve`→`masuda-sandbox serve`の順に止め（どちらもCtrl-C）、`docs/user/install.md`の「入れる」の`VERSION=`だけを`VERSION=X.Y.Z`（`v`は付けない）に差し替えて、「入れる」（masuda-sandbox・masuda）と「起動」のブロックをそのまま打つ。install.mdを実機で検証する役割を兼ねるので、ほかは書き換えない
 
 3. **Claudeのトークン**: `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`で正規の置き場所（`<DataDir>/secrets/_user/`）に登録する（登録済みなら不要。`docs/user/install.md`の「Claudeのトークンを登録する」）。M4暫定の`<DataDir>/claude-oauth-token`は読めるが、新しく置かない
 4. **確かめる**: `masuda version`で`X.Y.Z`と`contract: ok`、`masuda doctor`が全部`ok`
