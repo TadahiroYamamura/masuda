@@ -31,7 +31,7 @@ masuda自体を直す人向け。masudaを**使う**手順は[利用者向け](.
 - 契約テスト: `go test ./contract/`（例 `go test ./contract/ -run TestCM1`）。フェイクのsandbox（`masuda serve --fake-sandbox`、VMなし）とengineの実物で公開APIを叩く。各作業単位の完了は契約テストが緑であることで判定する（[contracts.md](contracts.md)）
 - 実機テスト: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 60m -v ./live/`。実際の`masuda-sandbox serve`とClaudeのトークンが要る（前提は`live/live_test.go`の冒頭）。`sandbox.proto`を変えた作業では`MASUDA_SANDBOX_SOCKET`で開発版のsandboxを指す
 - 開発版（チェックアウトからビルドしたもの）は、ハーネス（masuda自身の開発を回している公開物）の`~/.local/bin/masuda`・既定のソケット・既定のデータディレクトリを使わない。決まりは[リリース手順](release.md#dev-separation)
-- ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`
+- ドキュメントサイト: `.venv-docs/`に`requirements-docs.txt`を入れ、`scripts/docs-prepare.sh`（生成物を作る）→`mkdocs build --strict`。文書中の`__MASUDA_VERSION__`は、同スクリプトがタグの版に置き換える（元ファイルを書き換える）
 - GitHub操作（Issue作成等）は`gh`を直接使わず`scripts/gh.sh`を使う。このリポジトリ専用のトークンを`.env`から読み込んで`gh`に渡すラッパー
 - 作業単位は`docs/work-orders.md`（サイトには載せない）
 

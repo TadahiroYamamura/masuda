@@ -41,7 +41,7 @@ id -nG | grep -w kvm
 以下では入れるバージョンを`VERSION`に置く（[Releaseの一覧](https://github.com/TadahiroYamamura/masuda/releases)の最新。先頭の`v`は付けない）。
 
 ```sh
-VERSION=0.1.0
+VERSION=__MASUDA_VERSION__
 ```
 
 ### masuda-sandbox

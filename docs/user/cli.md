@@ -270,10 +270,10 @@ masuda version [--sandbox-socket <path>] [--config <path>]
 ビルドに埋め込んだバージョン（ソースからビルドしたものは`dev`）、Goの版、masudaが前提にするsandboxの契約（`sandbox.proto`のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（`masuda init`の雛形が入れる版）を出す。`masuda-sandbox serve`に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（`contract: ok`か`contract: MISMATCH`）も出す。届かなくても終了コードは0。
 
 ```text
-masuda 0.1.0 (go1.26.3 linux/amd64)
+masuda __MASUDA_VERSION__ (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
   claude code: 2.1.287 (guest, verified)
-masuda-sandbox 0.1.0 (linux/amd64, gondolin 0.12.0)
+masuda-sandbox __MASUDA_VERSION__ (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok
 ```
