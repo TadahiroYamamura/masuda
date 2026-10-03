@@ -209,6 +209,13 @@ _masuda_dyn() {
   } 2>/dev/null | awk 'NR > 1 { print $1 }'
 }
 
+_masuda_dynreply() {
+  local line
+  while IFS= read -r line; do
+    [[ $line == "$cur"* ]] && COMPREPLY+=("$line")
+  done <<< "$(_masuda_dyn "$1")"
+}
+
 _masuda_path() {
   local IFS=$'\n'
   COMPREPLY=($(compgen -"$1" -- "$cur"))
@@ -236,7 +243,7 @@ const completionBody = `_masuda() {
     case $(_masuda_flagkind "$flag") in
       file) _masuda_path f; return 0 ;;
       dir) _masuda_path d; return 0 ;;
-      workflow|image) COMPREPLY=($(compgen -W "$(_masuda_dyn "$(_masuda_flagkind "$flag")")" -- "$cur")); return 0 ;;
+      workflow|image) _masuda_dynreply "$(_masuda_flagkind "$flag")"; return 0 ;;
       none) return 0 ;;
     esac
   fi
@@ -279,7 +286,7 @@ const completionBody = `_masuda() {
   fi
   (( n == 0 )) || return 0
   local src=$(_masuda_arg "$key")
-  [[ -n $src ]] && COMPREPLY=($(compgen -W "$(_masuda_dyn "$src")" -- "$cur"))
+  [[ -n $src ]] && _masuda_dynreply "$src"
   return 0
 }
 
