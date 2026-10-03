@@ -122,7 +122,7 @@ func TestListRow(t *testing.T) {
 	}
 }
 
-const newSchemaPlan = `{"goal":"三角形の面積と周長を求めるモジュールを追加する","summary":"shapes/triangle.py を新規追加する。\nテストは unittest で実行する","steps":[{"number":1,"title":"三角形モジュールの実装","description":"_check で辺を検証する。\narea はヘロンの公式","tests":["3,4,5 で area が 6","負の辺で ValueError"],"files":["shapes/triangle.py","tests/test_triangle.py"]},{"number":2,"title":"READMEの更新","description":"使い方を書く。ドキュメントのみなのでテストは無い","tests":[],"files":["README.md"]}],"alternatives":[{"option":"退化三角形を許容する (<=)","reason":"面積 0 が無意味"}],"risks":["浮動小数の境界誤差は未対応"],"expected_byproducts":["**/__pycache__/**","**/*.pyc"]}`
+const newSchemaPlan = `{"goal":"三角形の面積と周長を求めるモジュールを追加する","summary":"shapes/triangle.py を新規追加する。\nテストは unittest で実行する","steps":[{"number":1,"title":"三角形モジュールの実装","description":"_check で辺を検証する。\narea はヘロンの公式","tests":["3,4,5 で area が 6","負の辺で ValueError"],"files":["shapes/triangle.py","tests/test_triangle.py"]},{"number":2,"title":"READMEの更新","description":"使い方を書く。ドキュメントのみなのでテストは無い","tests":[],"files":["README.md"]}],"alternatives":[{"option":"退化三角形を許容する (<=)","reason":"面積 0 が無意味"}],"risks":["浮動小数の境界誤差は未対応"],"expected_byproducts":["**/__pycache__/**","**/*.pyc"],"checks":[]}`
 
 func TestFormatGatePlan(t *testing.T) {
 	got := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(newSchemaPlan)}, nil)

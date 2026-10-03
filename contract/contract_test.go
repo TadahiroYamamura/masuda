@@ -374,7 +374,7 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	if r := h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": `{"nope":1}`}); r["accepted"] != false {
 		t.Fatalf("invalid plan accepted: %v", r)
 	}
-	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[]}`
+	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[],"checks":[]}`
 	if r := h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": plan}); r["accepted"] != true {
 		t.Fatalf("valid plan rejected: %v", r)
 	}
@@ -483,7 +483,7 @@ func TestCM4_RejectedReviewCarriesLineComments(t *testing.T) {
 	id := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second).Id
 	task := h.mcp(id, "next_task", nil)
 	occ := task["occurrence"].(string)
-	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[]}`
+	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[],"checks":[]}`
 	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": plan})
 	h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"})
 	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
