@@ -203,6 +203,43 @@ v0.2の目標は「masudaを使ってmasudaが作れる体制」（マイルス�
 
 やらないこと: 再送バッファの大きさの変更、`Watch`の他の振る舞いの変更、protoの変更。
 
+### M14d. 予行2: リリース手順にハーネスの更新と開発版との分離の決まりを足す（#70）
+
+この項目は**masudaのrun（`workflows/develop`）で実装する予行**。監督が開発版のserveで`masuda run workflows/develop --branch docs/release-harness --input instructions=@<この項目を書き出したファイル>`を回し、plan gate・question・review gateを扱う。質問の経路（plan-questions→plan-reviser→plan-interviewer→`question answer`）と`pitfalls.jsonl`の問いを実機で通すのも目的なので、置き場所などの判断は指示書で決め切らず、実装者からの質問に監督が答える。以下がゲストの実装者への指示書。
+
+---
+
+`.claude/skills/release/SKILL.md`（リリース手順。人間もこれを読んで手で実行する）に、次の2つを足す。あわせて開発者向けの文書にも同じ決まりを短く書く。
+
+## 背景
+
+masudaは自分自身の開発にmasudaを使う（dogfooding）。そのため、1台のPCに「ハーネス」（開発に使う、公開済みの版のmasuda）と「開発版」（作業ツリーからビルドしたもの）が同居する。両者が同じソケットやデータディレクトリを使うと、記録の形が変わったときに走行中のワークスペースが読めなくなるなど、版の混在で壊れる。この分離の決まりはIssue #68・#70で合意済みで、まだ文書に無い。
+
+## 足すこと
+
+1. **ハーネスの更新**（リリース後の手順。初回はv0.2.0の公開後に行い、`docs/user/install.md`の手順を実機で検証する役割も兼ねる）
+   - ハーネス = 公開物の`masuda`（`~/.local/bin/masuda`）・`masuda-sandbox`（`npm install -g`したもの）・既定のソケット（`$XDG_RUNTIME_DIR/masuda.sock`・`masuda-sandbox.sock`）・既定のデータディレクトリ（`~/.local/share/masuda`）
+   - 更新の前に、走行中のワークスペースが無いことを確かめる（`masuda list`。あれば終わらせるか`masuda remove`）。理由: 記録の形が変わっていると走行中のものが読めなくなる
+   - 手順はReleaseの添付物で`docs/user/install.md`をなぞる形（ダウンロード、`sha256sum -c`、`npm install -g`、`~/.local/bin/masuda`の入れ替え、`masuda-sandbox serve`と`masuda serve`の起こし直し、`masuda version`で`X.Y.Z`と`contract: ok`、`masuda doctor`が全部`ok`）。現在の手順5「公開後の確認」には「`~/.local/bin`のバイナリを勝手に置き換えない」とあるので、これと矛盾しない形に整理する（公開後の確認は一時的な導入、ハーネスの更新は本導入）
+   - Claudeのトークンは`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`で正規の置き場所（`<DataDir>/secrets/_user/`）に登録する。M4暫定の`<DataDir>/claude-oauth-token`は読めるが、新しく置かない
+2. **開発版との分離の決まり**
+   - 開発版の`masuda serve`・`masuda-sandbox serve`は既定のソケットとデータディレクトリを使わない（例: `~/.local/share/masuda-dev`、`$XDG_RUNTIME_DIR/masuda-dev.sock`・`masuda-sandbox-dev.sock`）
+   - `masuda version`の`contract: ok`は、ハーネスのmasudaと共有のsandboxの組で見る。sandbox.protoを変える作業では開発版の`masuda-sandbox serve`を別ソケットで立てる
+   - masuda自身の`.masuda/`は、いま入っているハーネスの版で読める範囲に留める。新しい設定やスキーマは、その版をハーネスにしてから使う
+   - gate・questionの操作は常にハーネスのCLIで行う。開発版のCLIをハーネスのserveに向けない
+   - liveテスト（`live/`）はVMの中では回せないので、ホストで開発版として回す
+
+## 置き場所
+
+- SKILL.mdには手順として（どの節に入れるかは既存の構成に合わせる）
+- 開発者向けの文書（`docs/design/overview.md`か`docs/user/operations.md`。どちらが適切かは既存の読者の分け方から判断する）にも、分離の決まりを短く書く。SKILL.mdの写しがサイトの`design/release.md`になる仕組み（`scripts/docs-prepare.sh`）があれば、二重に書かない形を選ぶ
+
+## やらないこと
+
+- ハーネスの更新を自動化するスクリプトは作らない（手順書だけ）
+- 既存のリリース手順の他の節は変えない（矛盾の整理に要る最小限は可）
+- コードは変えない。`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑のまま
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
