@@ -71,7 +71,7 @@ VMの中のtmuxのセッション`claude-work`（メインのClaude Code）に�
 
 - `C-b d`で切り離す。切り離してもセッションは動き続ける
 - 打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は`masuda gate`・`masuda question`で行う
-- 起動中・止まっているワークスペースには使えない
+- 使えるのは動いているワークスペースと、ワークフローが進めなくなって`blocked`になったもの（VMが残っている）だけ。起動中・`stopped`・`done`には使えない。`done`ではVMが壊れているので、会話は`exports/transcripts/`で読む（[exports](#exports)）
 - 接続の鍵は`chat`のたびに作り直され、`stop`で消える
 
 ## 止める・再開する {#resume}
@@ -81,7 +81,7 @@ masuda stop <id>
 masuda resume <id>
 ```
 
-`stop`はVMを止め、ワークスペースを`stopped`にする。stagingと記録は残る。
+`stop`は会話ログと実行ログを`exports/`へ書き出してからVMを壊し、ワークスペースを`stopped`にする。stagingと記録は残る。`resume`した後に止めたり終わったりすると、`exports/`の同じファイルは新しいもので置き換わる。
 
 `resume`できるのは、`stopped`のワークスペースと、VMの起動に失敗して`blocked`になったワークスペース（理由が`sandbox boot failed: `で始まるもの）。ワークフローが進めなくなって`blocked`になったものは再開できない。
 
@@ -107,17 +107,17 @@ masuda remove <id>            # 止まっている・終わったもの
 masuda remove <id> --force    # 動いているものを止めてから消す
 ```
 
-`~/.local/share/masuda/workspaces/<id>/`のうち`exports/`だけを残して消す。exportsも要らなければ、そのディレクトリを手で消す。
+`~/.local/share/masuda/workspaces/<id>/`のうち`exports/`だけを残して消す。消す前に実行ログを`exports/`へ写す（VMが残っていれば会話ログも）。exportsも要らなければ、そのディレクトリを手で消す。
 
 masudaはディスクを自動では消さない。ワークスペース置き場の使用量が[`config.json`](settings.md#serve-config)の`diskWarnBytes`（既定20GiB）を超えたとき、`masuda serve`の標準エラーと`masuda watch`に1回だけ警告を出す。VMのイメージは`masuda-sandbox`側にあり、`masuda-sandbox images prune --dry-run`で消せるものを確かめてから`masuda-sandbox images prune`で消せる。
 
 ## 結果を読む（exports） {#exports}
 
-ワークフローがpublishかdiscardで終わったとき、`~/.local/share/masuda/workspaces/<id>/exports/`に次が残る。
+ワークフローが終わったとき（`done`、終わり方を問わない）、masudaは`~/.local/share/masuda/workspaces/<id>/exports/`へ次を書き出してからVMを壊す。`stop`と`remove`のときも書き出す（下の注意）。
 
 | パス | 中身 |
 |---|---|
-| `exports/<データ名>` | ワークフローが書き出すと決めたデータ。`develop`は`report`（レビューのレポート、Markdown）、`review`は`report`と`findings`（指摘の一覧、JSON） |
+| `exports/<データ名>` | ワークフローのpublish・discardのノードが書き出すと決めたデータ。`develop`は`report`（レビューのレポート、Markdown）、`review`は`report`と`findings`（指摘の一覧、JSON） |
 | `exports/execution-log.jsonl` | 実行ログ。1行1イベント |
 | `exports/transcripts/<project>/…/*.jsonl` | VMの中のClaude Codeの会話ログ（メインとサブエージェント）。VMの`~/.claude/projects/`からの相対パスのまま |
 
@@ -130,7 +130,10 @@ jq -r 'select(.kind=="invalid" or .kind=="blocked") | .detail' exports/execution
 
 会話ログが読めなかったファイルは、実行ログに`kind: export-warning`として残る（publish・discardは止めない）。
 
-- exportsが作られるのはpublish・discardで終わったときだけ。`stop`や`masuda serve`の再起動、`remove`ではVMが先に無くなるので、会話ログは残らない
+- `end`・`end:<ラベル>`で終わったとき（`needs_human`・`out_of_scope`・`stuck`等）は、`<データ名>`は無く、実行ログと会話ログだけが残る
+- `stop`（`remove --force`も）は、VMを壊す前に実行ログと会話ログを書き出す。`remove`は消す前に実行ログを書き出す（VMが既に無ければ会話ログは取れない）
+- `masuda serve`の再起動では書き出さない。残っていたVMは会話ログを写さずに壊す
+- `blocked`のときはVMを残すので、書き出されるのは実行ログだけ。会話ログは`stop`したときに写る
 - 終わる前に中間の結果を見たいときは、ホストの記録を直接読む（下記）
 
 ## ホストの記録 {#host-records}

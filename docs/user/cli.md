@@ -114,7 +114,7 @@ masuda watch [<id>] [--after <seq>]
 masuda chat <id>
 ```
 
-VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース、起動中のワークスペースには使えない。
+VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース（`blocked`はVMが残っているので使える）、起動中のワークスペースには使えない。`done`ではVMを壊してあるので、会話は`exports/transcripts/`で読む。
 
 ## gate
 
@@ -175,7 +175,7 @@ masuda question answer 4f1c2a9e8b3d 0000006 "SPEC-1=不正とする" "REGRESSION
 masuda stop <id>
 ```
 
-VMを止めて`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー。masudaが実行を止めた`blocked`（triageの`halt`等）はVMを片付けるだけで`blocked`のまま（再開はできない）。
+会話ログと実行ログを`exports/`へ書き出してからVMを壊し、`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー（VMは終わったときに壊してある）。masudaが実行を止めた`blocked`（triageの`halt`等）はVMを片付けるだけで`blocked`のまま（再開はできない）。
 
 ## remove
 
@@ -183,7 +183,7 @@ VMを止めて`stopped`にする。stagingと記録は残り、`resume`で再開
 masuda remove <id> [--force]
 ```
 
-ワークスペースを消す。`workspaces/<id>/`のうち`exports/`だけを残す。動いているワークスペースは`--force`を付けたときだけ、止めてから消す。
+ワークスペースを消す。消す前に実行ログを`exports/`へ写し（VMが残っていれば会話ログも）、`workspaces/<id>/`のうち`exports/`だけを残す。動いているワークスペースは`--force`を付けたときだけ、止めてから消す。
 
 ## init
 

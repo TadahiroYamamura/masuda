@@ -95,6 +95,15 @@ VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM�
 - **`waiting_input(permission)`**: 道具の使用の許可を待っている。`chat`で答える
 - **`dead`**: Claude Codeのセッションが無くなった。`masuda stop`→`masuda resume`
 
+## 止まった・終わった原因を調べる {#why-stopped}
+
+ワークスペースの`exports/`（`~/.local/share/masuda/workspaces/<id>/exports/`）に、実行ログ（`execution-log.jsonl`）とVMの中のClaude Codeの会話ログ（`transcripts/`）が残る。どの終わり方（`done`・`stop`・`remove`）でも書き出され、`remove`の後も消えない（[exports](operations.md#exports)）。
+
+- どのノードでどう終わったかは実行ログで追う。`jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl`
+- エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが`transcripts/-workspace/<session>.jsonl`、サブエージェントがその下の`subagents/agent-*.jsonl`
+- `blocked`はVMを残しているので、会話ログはまだ書き出されていない。`masuda chat`で画面を見るか、`masuda stop`で書き出してから読む
+- `done`ではVMが壊れているので`masuda chat`は使えない。会話ログを読む
+
 ## `deviation`ゲートが思わぬファイルで開く（`__pycache__`等） {#deviation}
 
 書き込めない役（調査・レビュー等）がテストを走らせただけで、追跡しているファイルが書き換わると、`deviation`ゲートが開く。例: gitで追跡している`__pycache__/*.pyc`、ロックファイル、テストが更新するスナップショット。
@@ -107,7 +116,7 @@ VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM�
 
 | 症状 | 原因と対処 |
 |---|---|
-| planゲートの前に`done`で終わった（`outcome out_of_scope`） | 計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。`exports/`は作られない。役が書いた理由（`feedback`）は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。課題の書き方を直して`run`し直す |
+| planゲートの前に`done`で終わった（`outcome out_of_scope`） | 計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。`exports/`には実行ログと会話ログだけが残る。役が書いた理由（`feedback`）は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。課題の書き方を直して`run`し直す |
 | planゲートの前に`done`で終わった（`outcome needs_human`） | `workflows/fix`の計画を立てる役が、指示が曖昧で計画を立てられないと判断した。役が確かめたい疑問は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。疑問に答える形で指示書を直して`run`し直す |
 | planゲートの前に`blocked` | POSITIONの理由を読む。出力が検証で落ち続けた（`invalid`）、許可されていない通信を選んだノードがある等 |
 | `waiting_input`のまま、ゲートが開かない | 上の`waiting_input(idle)`。エージェントが画面の上で問いかけている |

@@ -93,7 +93,7 @@ publishノードを含まないワークフロー（rootから辿れるワーク
 - **publish**: `target: local`なら実リポジトリの同名ブランチへfast-forward、`target: remote`なら`settings.json`の`publish.remote`（既定`origin`）が指す実リポジトリのremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない
 - **discard**: 反映せずに片付ける
 
-publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。stagingは`masuda remove`まで残す。
+publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。`end`で終わった（publish・discardを通らない）実行も、DONEを状態に写す前に同じ順で会話ログと実行ログを書き出してVMを破棄する（`Runner.Cleanup`に1つにまとめてあり、壊した後に呼ぶと実行ログの写し直しだけになる）。DONEのVMは再開にも使わない（Resumeは新しいVMを作る）ので残す理由が無く、残すとDONEにはStopが効かないためRemoveまで残り続ける。stagingは`masuda remove`まで残す。
 
 ### exports
 
@@ -106,7 +106,8 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `exports/transcripts/<project>/…/*.jsonl` | ゲストのClaude Codeの会話ログ。ゲストの`~/.claude/projects/`からの相対パスのまま写す |
 
 - 会話ログは、ゲストのホームをcwdにして`find .claude/projects -type f -name '*.jsonl'`を`Exec`し、各ファイルを`ReadFile`で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに`kind: export-warning`として記録し、publish・discardは止めない
-- 回収するのはpublish・discardのときだけ。Stop・serveの再起動・Removeではゲストが先に無くなるので回収しない
+- 会話ログを回収するのは、DONE（publish・discard・`end`）とStop（`Remove`の`force`を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す
+- 再開後に書き出すと、同じパスのファイルは新しいもので置き換わる
 - `masuda remove`はワークスペースのディレクトリのうち`exports/`だけを残して消す
 
 ### ホスト側のディレクトリ
