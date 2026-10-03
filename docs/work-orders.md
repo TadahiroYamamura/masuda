@@ -318,6 +318,33 @@ v0.2.0の公開後にユーザーが気づいた2点（`docs/user/install.md`の
 
 やらないこと: `masuda update`のようなサブコマンド、Windows対応、npmレジストリへの公開。
 
+### M14i. `masuda completion`（bash・zshのシェル補完）を足す
+
+旧実装（v1、cobra製）には`masuda completion bash`があり、ユーザーの`~/.bashrc`に`source <( masuda completion bash )`がある。再設計版には無く、ハーネスを0.2.1にしたら補完が効かなくなった。masudaのrun（`workflows/fix`。初めてハーネスで回す）で実装する。以下がゲストの実装者への指示書。
+
+---
+
+`masuda completion bash` と `masuda completion zsh` を足し、`source <(masuda completion bash)`（zshは`source <(masuda completion zsh)`）で補完が効くようにする。新しい依存（cobra等）は入れない。CLIは`cmd/masuda/main.go`の`switch`と各サブコマンドの`flag.FlagSet`で手書きされている。
+
+## 補完するもの
+
+- 1語目: `main.go`の`switch`にあるコマンド（`serve`・`run`・`resume`・`list`・`chat`・`workflow`・`watch`・`gate`・`question`・`stop`・`remove`・`init`・`egress`・`secret`・`privileged-command`・`image`・`version`・`doctor`・`completion`・`help`）
+- 2語目: サブコマンドを持つもの（`gate list|show|approve|reject|comment|dismiss|halt|redo`、`question list|answer`、`egress list|approve|reject`、`secret list|set|approve|reject`、`privileged-command list|approve`、`image list|build`、`workflow list|show|check`、`completion bash|zsh`）
+- フラグ: そのコマンド（サブコマンド）の`FlagSet`に定義されたもの（`--socket`・`--repo`・`--branch`・`--base`・`--image`・`--input`・`--all`・`--after`・`--hash`・`--comment`・`--file`・`--force`・`--data-dir`・`--sandbox-socket`・`--config`・`--stall-after`・`--fake-sandbox`・`--workflow`等）。`--`付きと`-`付きの両方を受ける
+- 動的な候補（serveに繋がるときだけ。繋がらなければ候補なしで黙る。補完中にエラーを画面に出さない）: `resume`・`chat`・`watch`・`stop`・`remove`・`gate <sub>`・`question <sub>`の`<id>`は`masuda list --all`（`--socket`が入力済みならそれを渡す）の1列目。`run`の位置引数と`--workflow`、`workflow show|check`の引数は`masuda workflow list`の名前。`image build`の引数は`masuda image list`の名前
+- `--input name=@file`・`--repo <dir>`・`--data-dir`・`--socket`の値はファイル・ディレクトリの補完に任せる
+
+## 作り
+
+- `cmd/masuda/completion.go`に、コマンド・サブコマンド・フラグの表（Goのデータ）と、それからbashの補完関数を生成する処理を置く。表はmain.goの`switch`と各`FlagSet`から手で写すのではなく、**可能な限り実物から取る**（各サブコマンドの`FlagSet`を補完のために列挙できる形にする。難しければ表にし、`main.go`の`switch`と各`FlagSet`の定義に対して表が食い違っていないことを確かめるテストを置く。ドリフトしたらテストが落ちること）
+- zshは、同じbashの関数を`autoload -U +X bashcompinit && bashcompinit`で読み込む形でよい（native zshの`_arguments`は書かない）
+- `completion`は`serve`・`init`・`version`・`doctor`と同じくserveに繋がずに動く（`main.go`の使い方の末尾の注記に加える）。使い方（`usage`）に`completion bash|zsh`の行を足す
+- `docs/user/cli.md`に`completion`の節（`~/.bashrc`・`~/.zshrc`に書く1行、動的な候補はserveが動いているときだけ）、`docs/user/install.md`の「確かめる」か「起動」の後に補完の有効化を1段落
+- テスト（名前は日本語の文）: 生成したbashスクリプトが`bash -n`で通る（`bash`が無ければ飛ばす）、1語目の候補にすべてのコマンドが入る、`gate`の2語目に全サブコマンドが入る、`run`のフラグに`--branch`が入る、ドリフト検査。判定の分岐を壊して落ちることを確かめる
+- 検証: `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`が緑。`bash -c 'source <(go run ./cmd/masuda completion bash); complete -p masuda'`で登録されること
+
+やらないこと: fishとPowerShell、cobraへの置き換え、`masuda help <command>`。
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
