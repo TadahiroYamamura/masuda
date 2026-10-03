@@ -1,30 +1,27 @@
 # HANDOFF
 ## 作業項目
-M14a（`docs/work-orders.md`。#68の前半）: masuda自身の`.masuda/`を整える。develop `31ffdef`〜`efd78f3`（**未push**）。
-- `31ffdef` `.gitignore`の`.masuda/`・`.masuda-gate/`をやめ、`masuda init`の`localIgnores`と同じ2行（`.masuda/settings.local.json`・`.masuda/claude.local/`）だけ無視。`.masuda/`を追跡に入れた
-- `.masuda/reviews/`の14ファイルは**すべて**同梱（`internal/perspectives/builtin`）とバイト単位で同じだったので消した（追跡に入れていない）。**残した観点は無い**
-- `1844336` Dockerfileを`install.sh | bash -s -- 2.1.287`に固定（「新設計」を削除、版の出どころの1行コメント）。`ctx/go.mod`・`go.sum`を今のもの（engine fd33f3c）に更新
-- `4813c63` settings.json: `checks.test`を`GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./...`、`claudeSettings`を`{"model": "opus"}`、`egress`は空のまま
-- `efd78f3` `.masuda/pitfalls.jsonl`（11件。指示書の列挙どおり）
-- `.masuda/claude/`は作らなかった（リポジトリの`CLAUDE.md`はcloneで届き、追加で要るものが無い）
-- `docs/work-orders.md`のM14の追記（監督が書いた指示書）は未コミットのまま触っていない
+M14b（`docs/work-orders.md`。#69、契約変更・ユーザー承認2026-10-03）: 役定義の`model`・`effort`をゲストのサブエージェント定義に写す。develop `b9a363b`〜（**未push**）。
+- `b9a363b` `internal/guest.AgentFile`: `a.Model`・`a.Effort`が空でなければfrontmatterに`model:`・`effort:`を`yamlString`で書く。関数コメントを直した。`guest_test.go`に`TestAgentFileModelAndEffort`（サブテスト名は日本語の文）。契約`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行に「あれば`model`・`effort`を写す」
+- `256bd0a` `docs/user/workflows.md`「エージェントの書き方」に`model`・`effort`（値、省略時の継承、`continues`では起動時の設定のまま）。`docs/user/settings.md`の`claudeSettings`に「`model`はメインセッションと`model`を書いていない役のモデルになる」。`docs/user/reference/workflow-schema.md`（写し）は触っていない
+- `b5f419a` `live/claude_dir_test.go`: `TestClaudeDirReachesSubagent`を2ノード（prober→echoer）にし、proberに`model: sonnet`・`effort: low`、echoerは無し、`.masuda/settings.json`に`claudeSettings: {"model": "opus"}`（pythonRepoFilesの写しをやめ、`checks`も外した）。予算9分→12分。`exports/transcripts/**/subagents/*.jsonl`の応答から役ごとに`message.model`・`effort`を集めて検査
 ## 完了した契約テスト
-- `GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test -count=1 ./...`緑（全コミット後に再実行）。契約テストは無修正
-- `masuda workflow check`（フェイクserve、scratchpadの一時data-dir・ソケット）: `ok`。不正なcategoryの行を一時的に足すと`pitfalls.jsonl: line 16: category "edge" ...`の問題1件・終了コード1になり、pitfallsを検査していることを確かめた（行は戻した）
-- `masuda image build default`（実物のserve: `--sandbox-socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock --data-dir ~/.local/share/masuda-dev --socket $XDG_RUNTIME_DIR/masuda-dev.sock`）: 成功、`note:`無し。ビルドログで`Installing Claude Code native build 2.1.287`。Build ID `1ca46682-d790-5029-9da7-0e5e8a7a4254`。serveは終わってから止めた
-- ゲストのunshare: 下の注意点。**通った**
-- 終了時`pgrep -c qemu-system`は0。自分で立てたserve（フェイク・実物）は止めた。開発版sandbox serve（`masuda-sandbox-dev.sock`）は動かしたまま
+- `go build ./... && go vet ./... && go test -count=1 ./...`（**`go.work`有効**、engineは隣の`../masuda-engine` `9c39140`）緑。契約テストC-M1〜C-M10は無修正で緑
+- `TestAgentFileModelAndEffort`: `Model`の条件の反転・`Effort`の行を書かない・`Model`の行を常に書く、の3通りで落ちることを確かめて戻した
+- liveの判定関数（`subagentModels`・`checkSubagentModel`）は過去のliveの会話ログ（`/tmp/masuda-live-data-3942533590`、sonnet・medium）で、model接頭辞の検査・effortの検査・役が無いときの検査・`assistant`の絞り込みをそれぞれ壊すと落ちることを一時テストで確かめた（一時テストは消した）
+- live `MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestClaudeDirReachesSubagent ./live/`: **PASS（51秒）**。会話ログの記録: prober `claude-sonnet-5-5`×5・effort `low`×5、echoer `claude-opus-5-5`×6・effort `medium`×6。**ゲストのClaude Code 2.1.287でもfrontmatterの`effort`は効いた**。終了後`pgrep -af qemu-system`は自分の分なし
 ## 未完と理由
-- `comment-criteria`と`comment-manifest`は実機で1周させていない（implementerが実際に一覧を書くか、基準を言えないコメントを消すか、reviewerが照合するかは未確認）
-- 人間への質問（plan-interviewerの`ask_human`→`question answer`→`revise-answered`）は実機で一度も通っていない（前回から持ち越し）
-- 記憶の無いサブエージェントに「前に書いた文字列」を求める課題はAPIの安全分類器に止められる件（前回から持ち越し。本番の続きは入力を持つので同じ形にはならない見込み）
-- `claudeSettings.model`がサブエージェントまで効くかは未確認（#69の範囲）
+- `go.mod`のengineの固定は未（engineのE13がpush前のため。監督が行う）。今のコミットは`GOWORK=off`ではビルドできない（`engine.Agent`に`Model`・`Effort`が無い）
+- `comment-criteria`・`comment-manifest`の実機1周、`ask_human`の実機、記憶の無いサブエージェントへの課題（前回から持ち越し）
 ## 次の一手
-1. **#68の後半**: 作業ツリーのserve（`~/.local/share/masuda-dev`・`$XDG_RUNTIME_DIR/masuda-dev.sock`、sandboxは`masuda-sandbox-dev.sock`）で`workflows/fix`の予行。指示書は`docs/work-orders.md`に項目を書いて`instructions`に渡す。egressの承認（今は宣言なし）とトークンの置き場所（開発版data-dirの`secrets/_user/`）を先に確かめる
-2. **#69**: `claudeSettings.model`（今回`opus`を書いた）でサブエージェントのモデルまで変わるかを実機で確認
-3. **#70**・**#61の残り**・v0.2.0のリリース（前回のHANDOFFの次の一手3〜6のまま）
+1. engineのE13をpushし、`go get github.com/TadahiroYamamura/masuda-engine@main && go mod tidy`（古ければ`GOPROXY=direct`）→`GOWORK=off go test ./...`
+2. **#68の後半**: 開発版serveで`workflows/fix`の予行（M14c）
+3. **#70**・**#61の残り**・v0.2.0のリリース
 ## 注意点
-- **unshareの確認結果**: `.masuda/images/default`のイメージ（上のBuild ID）で作ったVM（ubuntuユーザー、egress無し、disk 8192MiB）で、フェイクsandboxの`asRoot`と同じ形`/usr/bin/unshare -Urm /bin/sh -c <rootExecScriptの写し> sh /tmp/gr /workspace /usr/bin/id -u`が終了コード0で`0`を出した。カーネル`6.18.54-0-virt`（Alpine linux-virt）、`unshare from util-linux 2.39.3`、`/proc/sys/user/max_user_namespaces`=15492、`unprivileged_userns_clone`・`apparmor_restrict_unprivileged_userns`はどちらも存在しない。さらに作業ツリーをtarでVMに入れ、egress無しのまま`checks.test`と同じ`GOWORK=off go build/vet/test ./...`が全パッケージ緑（contract 4.6秒・serve 6.3秒、C-M7と特権コマンドのテストを含む）。確認に使った`live/zz_m14a_unshare_test.go`はコミットせず消した。VMは`DestroySandbox`で壊した
+- echoer（`effort`を書かない役）の記録は`medium`。セッションの既定がそのまま継承された値で、`claudeSettings`に`effortLevel`等は書いていない
+- 役の見分けは応答の`attributionAgent`（サブエージェント定義の`name`）。2.1.287の会話ログには`agentType`が無く、`records/subagents.json`はDONEに至った最後のタスク（今回はechoerの`0000002`）のIDを持たない
+- メインセッション（`claudeSettings.model: opus`）の会話ログの値は、成功時にliveのdata-dirが消えるため確かめていない（サブエージェントのechoerがopusなので継承元はopusのはず）
+- `TestClaudeDirReachesSubagent`の対象リポジトリの`settings.json`は`pythonRepoFiles`の写しではなくなった（`image`・`egress`は同じ、`checks`無し、`claudeSettings`あり）。Dockerfileは同じなのでイメージのキャッシュは効いた
+- **unshareの確認結果**: `.masuda/images/default`のイメージ（M14aのBuild ID `1ca46682-d790-5029-9da7-0e5e8a7a4254`）で作ったVM（ubuntuユーザー、egress無し、disk 8192MiB）で、フェイクsandboxの`asRoot`と同じ形`/usr/bin/unshare -Urm /bin/sh -c <rootExecScriptの写し> sh /tmp/gr /workspace /usr/bin/id -u`が終了コード0で`0`を出した。カーネル`6.18.54-0-virt`（Alpine linux-virt）、`unshare from util-linux 2.39.3`、`/proc/sys/user/max_user_namespaces`=15492、`unprivileged_userns_clone`・`apparmor_restrict_unprivileged_userns`はどちらも存在しない。さらに作業ツリーをtarでVMに入れ、egress無しのまま`checks.test`と同じ`GOWORK=off go build/vet/test ./...`が全パッケージ緑（contract 4.6秒・serve 6.3秒、C-M7と特権コマンドのテストを含む）。確認に使った`live/zz_m14a_unshare_test.go`はコミットせず消した。VMは`DestroySandbox`で壊した
 - **判断した点**:
   - `egress`は空: Goモジュールはイメージで`go mod download all`済み、goplsは`~/go/bin/gopls`にある。上のegress無しのVMでビルド・テストが通った。bufはイメージに無いが、`buf generate`は`buf.build`のリモートプラグインと隣の`../masuda-sandbox/proto`を要するのでゲストではどのみち動かず、宣言も導入もしていない（プロトを変える作業は契約変更なのでゲストではやらない前提）
   - `checks.test`の`GOWORK=off`はゲストでは効かない（go.workはgitignoreで届かない）が、指示書どおり明示した
@@ -71,4 +68,4 @@ M14a（`docs/work-orders.md`。#68の前半）: masuda自身の`.masuda/`を整�
 - 旧スキーマの計画はstepに`title`が無いので、ステップの見出しは`  1.`だけになる
 - `serve`の`TestStallAfterFromLocalSettings`は`./...`一括実行で稀に落ちる（5秒以内にSTALLEDにならない）。単体と再実行では緑。今回は一括でも緑
 ## 契約への提案
-なし
+- M14bで`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行に`model`・`effort`を足した（承認済み、`b9a363b`）。ほかの提案はなし
