@@ -593,7 +593,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#stuck" class="md-nav__link">
     <span class="md-ellipsis">
       
         途中で止まったら
@@ -1467,7 +1467,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#stuck" class="md-nav__link">
     <span class="md-ellipsis">
       
         途中で止まったら
@@ -1587,6 +1587,7 @@ note: the Claude API (api.anthropic.com) is always reachable; list other hosts t
 <li>分岐元は、今チェックアウトしているブランチ。変えるなら<code>--base main</code>のように渡す</li>
 <li><code>--input instructions=@task.md</code>の<code>@</code>は「ファイルの中身」。<code>instructions=文字列</code>と直接書いてもよい</li>
 <li>出てきた<code>55a7dbe1b35f</code>がワークスペースのID。以下<code>&lt;id&gt;</code>と書く</li>
+<li>typoの修正のような小さな修正なら、<code>workflows/develop</code>の代わりに<code>masuda run workflows/fix</code>を使える。調査と計画を1つのセッションで済ませ、途中レビューとレポートを省く（<a href="../workflows/#fix">ワークフロー</a>）。以下の手順は同じで、9節のレポートが無い</li>
 </ul>
 <p><code>masuda run</code>はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。</p>
 <h2 id="7">7. 様子を見る<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
@@ -1608,22 +1609,55 @@ note: the Claude API (api.anthropic.com) is always reachable; list other hosts t
 <p>各列の意味は<a href="../operations/#list">運用</a>。VMの中のClaude Codeの画面を直接見たければ<code>masuda chat &lt;id&gt;</code>（<code>C-b d</code>で抜ける。抜けても実行は続く）。</p>
 <h2 id="8-plan-gate">8. 計画を承認する（plan gate）<a class="headerlink" href="#8-plan-gate" title="Permanent link">&para;</a></h2>
 <p>調査と計画が終わると、計画の承認待ち（<code>waiting_gate</code>、OPENに<code>gate:plan</code>）で止まる。</p>
+<p>計画を書いた役とは別の役が計画に問いを立て（「退化三角形を不正として扱うか」など）、計画を直す役がそれに答えてから、このゲートが開く。答えられない問い（<code>open</code>）が残ったときは、ゲートより前に質問（<code>waiting_question</code>、OPENに<code>question:&lt;出現ID&gt;</code>）として届くので、<code>masuda question list</code>で読んで<code>masuda question answer &lt;id&gt; &lt;出現ID&gt; SPEC-1=&lt;答え&gt; ...</code>で問いのidごとに答える（<a href="#stuck">途中で止まったら</a>）。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>list
 <span class="c1"># WORKSPACE     OCCURRENCE  GATE  TARGET  OPENED</span>
 <span class="c1"># 55a7dbe1b35f  0000003     plan  plan    10-03 01:38:54</span>
 
 masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span>
 </code></pre></div>
-<p><code>gate show</code>は計画（変更方針と、ステップごとの対象ファイル。<code>summary</code>・<code>steps</code>・<code>expected_byproducts</code>を持つJSONがそのまま1行で出る）と、打てるコマンドを出す。</p>
+<p><code>gate show</code>は計画を節に分けて出し、最後に打てるコマンドを添える。<code>goal</code>は計画が達成すること、<code>summary</code>はアプローチとテストの実行の仕方、<code>steps</code>は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、<code>alternatives</code>は検討したが採らなかった案、<code>risks</code>は懸念、<code>expected byproducts</code>はビルド・テストが生む副産物として計画外の変更の検出から外すパターン。<code>checks</code>は計画に立てられた問いと、計画を直す役の答え（<code>[addressed]</code>は計画で扱った、<code>[out_of_scope]</code>は範囲外、<code>[open]</code>は判断できず人間に聞いたもの）。出力例（ヘッダーの<code>gate:</code>〜<code>opened:</code>の行は省略）:</p>
+<div class="highlight"><pre><span></span><code>goal: 三角形の面積と周長を求めるモジュールを追加する
+
+summary:
+  shapes/triangle.py を新規追加し、ヘルパー _check で辺の検証を共通化する。テストは PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v で実行し、追跡済みの pyc を汚さない
+
+steps:
+  1. 三角形モジュールの実装
+     _check(a,b,c) で辺&lt;=0 と三角不等式違反を ValueError にする。area はヘロンの公式、perimeter は和。標準ライブラリ math のみ
+     tests:
+       - 3,4,5 で area が 6、perimeter が 12
+       - 負の辺・0 の辺で両関数が ValueError
+       - 不成立 (1,2,10) と退化 (1,2,3) で ValueError
+     files: shapes/triangle.py, tests/test_triangle.py
+
+checks (questions raised about the plan, with the planner's answers):
+  SPEC-1 [addressed] 退化三角形（1,2,3）を不正として扱うか
+      ステップ1の _check で a+b&gt;c の厳密不等式を要求する
+  REGRESSION-1 [out_of_scope] 既存の shapes/circle.py・rectangle.py の呼び出し元に影響は無いか
+      新規モジュールの追加だけで既存ファイルは変更しないため
+
+alternatives (considered, not taken):
+  - 退化三角形を許容する (&lt;=): 面積 0 が無意味
+
+risks:
+  - 浮動小数の境界誤差は未対応
+
+expected byproducts: **/__pycache__/**, **/*.pyc
+
+approve: masuda gate approve 55a7dbe1b35f 0000003 --hash &lt;target_hash&gt; [--comment &lt;text&gt;]
+reject:  masuda gate reject 55a7dbe1b35f 0000003 [--comment &lt;text&gt;]
+</code></pre></div>
+<p>計画は実行のたびにエージェントが書くので、ステップの分け方や文面は毎回変わる。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span><span class="w"> </span>--hash<span class="w"> </span>&lt;gate<span class="w"> </span>showが出したtarget_hash&gt;
 </code></pre></div>
 <ul>
 <li><code>--hash</code>を渡すと、あなたが読んだ内容と同じものだけを承認する。省くと、その時点で開いているゲートの内容を承認する</li>
 <li>直してほしければ<code>masuda gate reject &lt;id&gt; 0000003 --comment "ステップ2でテストも書くこと"</code>。計画がコメントを踏まえて書き直され、もう一度このゲートが開く</li>
 </ul>
-<p>承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→コミット」が進む。途中レビューで直しきれない指摘があったときだけ、途中の承認（<code>interim</code>ゲート）で止まる。計画に無いファイルが変わっていれば、コミットの前に<code>deviation</code>ゲートでも止まる（gitで追跡している<code>__pycache__</code>等が典型。<a href="../troubleshooting/#deviation">トラブルシューティング</a>）。</p>
+<p>承認すると、計画のステップごとに「実装→テスト→そのステップの差分の途中レビュー→指摘の修正と再確認→コミット」が進む。途中レビューで指摘が無ければ、修正を飛ばしてそのままコミットする。自動では直しきれない指摘があったときだけ、途中の承認（<code>interim</code>ゲート）で止まる。計画に無いファイルが変わっていれば、コミットの前に<code>deviation</code>ゲートでも止まる（gitで追跡している<code>__pycache__</code>等が典型。<a href="../troubleshooting/#deviation">トラブルシューティング</a>）。</p>
 <h2 id="9-review-gate">9. レビュー結果を承認する（review gate）<a class="headerlink" href="#9-review-gate" title="Permanent link">&para;</a></h2>
-<p>全ステップが終わると、全観点でのレビュー・横断的な問題の確認・自動修正が走り、レビューの承認待ち（<code>gate:review</code>）で止まる。</p>
+<p>全ステップが終わると、全観点でのレビュー（とその指摘の確かめ）・横断的な問題の確認・指摘の一括修正と再確認・レポートの作成が走り、レビューの承認待ち（<code>gate:review</code>）で止まる。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;
 </code></pre></div>
 <p><code>gate show</code>は分岐元から反映されるコミット（<code>commit:</code>）までの差分を出す。コミットされずに作業ツリーに残ったファイルがあれば、差分の後に「publishされない変更（未コミット）」として名前だけが並ぶ（これらは反映されない）。レビューの指摘はstagingのそのコミットへのコメントとしても残る。レビューのレポート（残っている指摘、自動で直した指摘）はホストのファイルで読める。</p>
@@ -1632,7 +1666,15 @@ masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> <
 <p>承認すると、そのコミットが手元のリポジトリの<code>feat/triangle</code>ブランチへ反映（publish）され、VMは片付けられる。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>--hash<span class="w"> </span>&lt;target_hash&gt;
 </code></pre></div>
-<p>却下（<code>reject --comment ...</code>）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。</p>
+<p>却下（<code>reject --comment ...</code>）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。差分の特定の行を直してほしいときは、却下の前に<code>gate comment</code>で行コメントを付けておく。付けたコメントは<code>gate show</code>の差分の後に並び、却下したときに<code>--comment</code>の本文とともに手直しのエージェントへ届く（承認したときは届かない）。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>comment<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>shapes/triangle.py:12<span class="w"> </span><span class="s2">"負の長さも弾く"</span>
+masuda<span class="w"> </span>gate<span class="w"> </span>reject<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>--comment<span class="w"> </span><span class="s2">"入力の検証を足す"</span>
+<span class="c1"># エージェントへ届く差し戻し:</span>
+<span class="c1">#   入力の検証を足す</span>
+<span class="c1">#</span>
+<span class="c1">#   ## 差分への行コメント</span>
+<span class="c1">#   - shapes/triangle.py:12: 負の長さも弾く</span>
+</code></pre></div>
 <h2 id="10">10. 結果を確かめる<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>list<span class="w"> </span>--all
 <span class="c1"># ID            BRANCH         STATE  ACTIVITY      POSITION      OPEN</span>
@@ -1644,11 +1686,13 @@ python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"
 </code></pre></div>
 <p>反映されるのはブランチだけで、今チェックアウトしているブランチや作業ツリーには触れない（チェックアウト中のブランチと同じ名前のときだけ、作業ツリーごとfast-forwardする）。</p>
 <p>レビューのレポートと実行ログ、エージェントの会話ログは<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>に残る（<a href="../operations/#exports">運用</a>）。ワークスペースが要らなくなったら<code>masuda remove &lt;id&gt;</code>（exportsだけは残る）。</p>
-<h2 id="_2">途中で止まったら<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h2 id="stuck">途中で止まったら<a class="headerlink" href="#stuck" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>masuda list</code>のSTATEが<code>blocked</code>: POSITIONに理由が出る。<a href="../troubleshooting/">トラブルシューティング</a></li>
 <li>ACTIVITYが<code>stalled</code>や<code>waiting_input</code>のまま: <a href="../troubleshooting/#stalled">トラブルシューティング</a></li>
 <li>計画の承認より前に<code>done</code>で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（<code>outcome out_of_scope</code>）。課題の書き方を見直す</li>
+<li><code>develop</code>で、計画の承認より前に<code>waiting_question</code>（OPENに<code>question:&lt;出現ID&gt;</code>）になった: 計画に立てられた問いのうち、計画を直す役が判断できなかったものを聞いている。<code>masuda question list &lt;id&gt;</code>で問い（<code>SPEC-1</code>等のidと、問いと判断できなかった理由）を読み、<code>masuda question answer &lt;id&gt; &lt;出現ID&gt; SPEC-1=&lt;答え&gt; REGRESSION-2=&lt;答え&gt;</code>で<strong>すべての問いに</strong>答える（<code>question list</code>の最後の行に、そのまま埋めればよい形が出る）。答えを踏まえて計画が直され、plan gateが開く</li>
+<li><code>workflows/fix</code>で、計画の承認より前に<code>outcome needs_human</code>で終わった: 指示が曖昧で計画を立てられなかった。POSITIONに役の疑問が出るので、答える形で課題を書き直す</li>
 </ul>
 
 

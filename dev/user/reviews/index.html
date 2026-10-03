@@ -673,10 +673,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        同梱の14観点
+        落とし穴との違い
       
     </span>
   </a>
@@ -684,7 +684,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱の15観点
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         観点を書くときのこつ
@@ -1302,10 +1313,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#14" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
-        同梱の14観点
+        落とし穴との違い
       
     </span>
   </a>
@@ -1313,7 +1324,18 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        同梱の15観点
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
     <span class="md-ellipsis">
       
         観点を書くときのこつ
@@ -1344,10 +1366,10 @@
 
 
 <h1 id="_1">レビュー観点<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p><code>develop</code>と<code>review</code>のレビューは、<strong>観点</strong>ごとに行う。観点は「何を見るか」を書いたMarkdownのファイル1つで、レビューの役のエージェントは1回に1つの観点だけを見て指摘を書く。</p>
+<p><code>develop</code>・<code>fix</code>・<code>review</code>のレビューは、<strong>観点</strong>に沿って行う。観点は「何を見るか」を書いたMarkdownのファイル1つで、レビューの役のエージェントは1つのセッションの中で観点を1つずつ順に当て、観点ごとに指摘を書く。</p>
 <h2 id="_2">置き場所と重ね方<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
-<li>masudaは14の観点を同梱している。<code>masuda init</code>は、それを対象リポジトリの<code>.masuda/reviews/</code>に書き出す</li>
+<li>masudaは15の観点を同梱している。<code>masuda init</code>は、それを対象リポジトリの<code>.masuda/reviews/</code>に書き出す</li>
 <li>実行に使う観点は「同梱の観点」に「<code>.masuda/reviews/*.md</code>」を重ねたもの。同じファイル名のものは丸ごと置き換え、同梱に無いファイル名のものは足される</li>
 <li>ファイル名（拡張子を除く）が観点のID</li>
 <li><code>masuda run</code>の時点の内容で固定され、その実行の終わりまで（<code>resume</code>しても）変わらない</li>
@@ -1375,7 +1397,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </tr>
 <tr>
 <td><code>trigger</code></td>
-<td>途中レビュー（<code>develop</code>のステップごとのレビュー）でこの観点を見るべき変更の条件を、自然文で書く。書かなければ、その観点は最後のレビューでだけ使われる</td>
+<td>途中レビュー（<code>develop</code>のステップごとのレビュー）でこの観点を見るべき変更の条件を、自然文で書く。書かなければ、その観点は途中レビューでも常に当てられる</td>
 </tr>
 <tr>
 <td><code>enable</code></td>
@@ -1395,26 +1417,33 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 <tbody>
 <tr>
 <td><code>develop</code>のステップごとの途中レビュー</td>
-<td>観点を選ぶ役（<code>trigger-matcher</code>）が、そのステップの差分と各観点の<code>trigger</code>を見比べて選んだものだけ。<code>trigger</code>の無い観点は選ばれない。迷ったら選ばない方に倒す（見逃しは最後のレビューで拾う）</td>
+<td>レビューの役（<code>reviewer</code>）が、そのステップの差分を各観点の<code>trigger</code>に照らし、該当しない観点を飛ばす。迷ったら飛ばしてよい（見逃しは最後のレビューで拾う）。<code>trigger</code>の無い観点は飛ばさず常に当てる</td>
 </tr>
 <tr>
-<td><code>develop</code>の最後のレビュー、<code>review</code>ワークフロー</td>
-<td>すべての観点</td>
+<td><code>develop</code>・<code>fix</code>の最後のレビュー、<code>review</code>ワークフロー</td>
+<td>すべての観点（<code>fix</code>には途中レビューが無い）</td>
 </tr>
 </tbody>
 </table>
-<p>各観点のレビューの後、別の役がその指摘が正確かを確かめ、誤りは取り下げる。指摘は<code>findings</code>という台帳に溜まり、自動で直してよいもの（<code>autofix: true</code>）は直しを試みる。最後にレポートを書く役が、残った指摘と直した指摘をまとめる。</p>
-<p>観点を増やすほどレビューに時間がかかる（観点ごとにエージェントのタスクが2つ以上走る）。</p>
-<h2 id="14">同梱の14観点<a class="headerlink" href="#14" title="Permanent link">&para;</a></h2>
+<p>レビューの後、別の役（<code>review-checker</code>）が全観点の指摘をまとめて正確かを確かめ、誤りは取り下げる。指摘は<code>findings</code>という台帳に溜まり、自動で直してよいもの（<code>autofix: true</code>）は直す役（<code>fixer</code>）がまとめて直し、別の役（<code>rechecker</code>）が解消を確かめる。fixerは実装したサブエージェントの続きとして動くので、実装の意図に照らして誤っている・計画の判断に反すると考えた指摘には、直さずに反論できる（台帳の指摘に<code>disputed</code>と理由<code>response</code>が付く）。recheckerは反論が妥当なら指摘を取り下げ、妥当でなければ直すよう戻す。取り下げられずに残った反論は、人間の判断待ちの指摘としてレポートに載る。最後にレポートを書く役が、残った指摘と直した指摘をまとめる。</p>
+<p>レビューのセッションの数は観点の数によらない（レビューと確かめで1つずつ）。観点を増やすと、1つのセッションが長くなる。</p>
+<h2 id="_5">落とし穴との違い<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p>観点は、実装した<strong>差分を判定する</strong>ためのもの（「この差分のここが問題だ」という指摘を書かせる）。これに対して<a href="../settings/#pitfalls">落とし穴</a>（<code>.masuda/pitfalls.jsonl</code>）は、実装の前に<strong>計画へ問う</strong>ためのもの（「この計画で、過去に踏んだこの失敗を避けられるか」という問いを立てさせる）。落とし穴は判定も修正の提案もせず、問いには計画を直す役が答え、答えられなければplan gateの前に人間に聞かれる。チームが過去に踏んだ失敗は、差分を見れば分かるものなら観点に、計画の段階で気づくべきもの（手順・順序・範囲の見落とし）なら落とし穴に書くとよい。</p>
+<h2 id="15">同梱の15観点<a class="headerlink" href="#15" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
 <th>ID</th>
 <th>名前</th>
-<th><code>trigger</code>（途中レビューで選ばれる条件）</th>
+<th><code>trigger</code>（途中レビューで当てる条件）</th>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>comment-criteria</code></td>
+<td>コメントの基準</td>
+<td>コードコメントを新規追加・変更する変更</td>
+</tr>
 <tr>
 <td><code>comment-history-leakage</code></td>
 <td>コメントへの修正経緯・レビュー指摘の混入</td>
@@ -1458,12 +1487,12 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 <tr>
 <td><code>missing-tests-guard-clauses</code></td>
 <td>ガード処理に対応するテストの漏れ</td>
-<td>なし（最後のレビューでだけ使う）</td>
+<td>なし（途中レビューでも常に当てる）</td>
 </tr>
 <tr>
 <td><code>missing-tests-new-code</code></td>
 <td>新規コードへのテスト漏れ</td>
-<td>なし（最後のレビューでだけ使う）</td>
+<td>なし（途中レビューでも常に当てる）</td>
 </tr>
 <tr>
 <td><code>n-plus-one-query</code></td>
@@ -1487,12 +1516,13 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </tr>
 </tbody>
 </table>
-<p>テストの漏れの2観点に<code>trigger</code>が無いのは、「テストは後のステップで書く」という計画のとき、途中のステップで指摘しても直せないため。</p>
-<h2 id="_5">観点を書くときのこつ<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<p><code>comment-criteria</code>は、実装する役・直す役が書いたコメントの一覧（<code>comment-manifest</code>。<a href="../workflows/">ワークフロー</a>）と差分のコメントを照合する。一覧に無いコメント、一覧の基準が実際には成り立たないコメント、テストのヘルパー関数・テスト内の変数へのコメントは、自動で直してよい指摘（削除）になる。<code>nolint</code>は<code>//nolint:xxx // 理由</code>の1行にまとめる。同じファイルの全関数に揃えたgodocは問題にしない。実装する役のいない<code>review</code>ワークフローでは一覧が空で届くので、照合せずに基準だけで判定する。コメントに経緯（過去の実装・却下した案・指摘への応答）が書き残されていないかは<code>comment-history-leakage</code>が見る。</p>
+<p>テストの漏れの2観点には<code>trigger</code>が無いので、途中レビューでも毎回当てられる。「テストは後のステップで書く」という計画では、途中のステップで指摘されても直せないことがある。</p>
+<h2 id="_6">観点を書くときのこつ<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>1つの観点では1種類の問題だけを扱う。広い観点は指摘がぶれる</li>
 <li>「問題としないもの」も書く。誤検知が減る</li>
-<li><code>trigger</code>は差分を見て判断できる条件にする（「重要な変更」のような曖昧な書き方では選ばれ方が安定しない）</li>
+<li><code>trigger</code>は差分を見て判断できる条件にする（「重要な変更」のような曖昧な書き方では当てるかどうかの判断が安定しない）</li>
 <li>同梱の観点の本文が書き方の見本になる（<code>masuda init</code>で書き出したもの）</li>
 </ul>
 

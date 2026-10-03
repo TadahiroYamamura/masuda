@@ -1517,7 +1517,7 @@
 <li><code>masuda-sandbox serve</code>: VM（QEMU）を作り、中でコマンドを動かし、VMから外への通信を見張る</li>
 <li><code>masuda serve</code>: ワークフローを進め、ゲートや質問を人間に出し、gitへの反映を行う。<code>masuda</code>の各コマンドはこれに話しかける</li>
 </ul>
-<p>どちらもsudo無しで動く。Claude Codeはホストではなく、VMのイメージの中に入る。</p>
+<p>どちらもsudo無しで動く。Claude Codeはホストではなく、VMのイメージの中に入る。VMのClaude Codeの版は対象リポジトリの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>で固定されている。masudaの各リリースはその時点の最新版で実機検証し、<code>masuda init</code>の雛形にその版を書く（検証した版は<code>masuda version</code>の<code>claude code:</code>の行とReleaseのノートに出る）。上げるときは<a href="../settings/#image">設定のimage</a>を見る。</p>
 <p>配布物は<a href="https://github.com/TadahiroYamamura/masuda/releases">GitHub Release</a>に添付したtarballだけで、npmレジストリやパッケージマネージャーには公開していない。<strong>masudaとmasuda-sandboxは同じバージョンを組で入れる</strong>（違うと<code>masuda serve</code>が起動しない）。</p>
 <h2 id="_2">前提<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <table>
@@ -1648,7 +1648,7 @@ masuda<span class="w"> </span>doctor
 <p>特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで<code>--repo .</code>を付けて登録する（リポジトリごとの登録が優先される）。</p>
 <p>トークンの本物の値はホストの<code>~/.local/share/masuda/secrets/</code>にだけ置かれ、VMには入らない（<a href="../concepts/#secrets">概念</a>）。</p>
 <h2 id="_6">更新と削除<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
-<p>更新は、両方を<strong>同じ新しいバージョン</strong>で入れ直す（上の手順を新しい<code>VERSION</code>で繰り返す）。入れ直す前に<code>masuda serve</code>と<code>masuda-sandbox serve</code>を止める。ワークスペースの状態（<code>~/.local/share/masuda/</code>）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。</p>
+<p>更新は、両方を<strong>同じ新しいバージョン</strong>で入れ直す（上の手順を新しい<code>VERSION</code>で繰り返す）。入れ直す前に<code>masuda serve</code>と<code>masuda-sandbox serve</code>を止める。ワークスペースの状態（<code>~/.local/share/masuda/</code>）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（<code>masuda version</code>の<code>claude code:</code>）に合わせるときは、Dockerfileのinstall行の数字を変えて<code>masuda image build</code>する。</p>
 <p>削除は<code>npm uninstall -g masuda-sandbox</code>と<code>rm ~/.local/bin/masuda</code>。状態とトークンも消すなら<code>~/.local/share/masuda/</code>と<code>~/.config/masuda/</code>も消す。</p>
 <p>masuda自体を直す人がソースからビルドする手順は<a href="../../design/#source">開発者向け</a>にある。</p>
 <p>次は<a href="../quickstart/">はじめての1周</a>。</p>

@@ -694,6 +694,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pitfalls.jsonl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        claude/ と claude.local/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#serve-config" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1501,6 +1523,28 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#pitfalls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        pitfalls.jsonl
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        claude/ と claude.local/
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#serve-config" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1532,7 +1576,7 @@
 
 
 <h1 id="_1">設定ファイル<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
-<p>対象リポジトリの<code>.masuda/</code>に2つ置く。リポジトリに依らない<code>masuda serve</code>全体の設定は、別に<a href="#serve-config"><code>config.json</code></a>に置く。</p>
+<p>対象リポジトリの<code>.masuda/</code>に2つ置く（ほかに任意の<a href="#pitfalls"><code>pitfalls.jsonl</code></a>）。リポジトリに依らない<code>masuda serve</code>全体の設定は、別に<a href="#serve-config"><code>config.json</code></a>に置く。</p>
 <table>
 <thead>
 <tr>
@@ -1557,6 +1601,7 @@
 </tr>
 </tbody>
 </table>
+<p>このほか任意で、プロジェクト固有の落とし穴を<a href="#pitfalls"><code>pitfalls.jsonl</code></a>に書ける（チームのもの。コミットする）。VMの中のClaude Codeに渡すルールやスキルは<a href="#claude-dir"><code>claude/</code>と<code>claude.local/</code></a>に置ける。</p>
 <p>通信先・平文の秘密・特権コマンドは、<code>settings.json</code>で宣言され、かつ<code>settings.local.json</code>で承認されたときだけ効く（<a href="../concepts/#declare-approve">概念</a>）。秘密の値はどちらにも書かない（<code>masuda secret set</code>でホストの秘密ストアへ）。</p>
 <h2 id="_2">共通の約束<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <ul>
@@ -1615,6 +1660,10 @@
 </tbody>
 </table>
 <p>VMのイメージのエントリ。<code>.masuda/images/&lt;image&gt;/Dockerfile</code>からビルドする。名前は英数字で始まり、英数字・<code>.</code>・<code>_</code>・<code>-</code>だけ。<code>masuda run --image</code>で実行ごとに変えられる。</p>
+<p>VMのClaude Codeの版は、Dockerfileのinstall行で固定されている。</p>
+<div class="highlight"><pre><span></span><code><span class="k">RUN</span><span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://claude.ai/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span><span class="m">2</span>.1.287
+</code></pre></div>
+<p>masudaの各リリースは、その時点の最新のClaude Codeで実機検証し、<code>masuda init</code>の雛形にその版を書く（検証した版は<code>masuda version</code>の<code>claude code:</code>の行）。上げるときはこの行の数字を変えて<code>masuda image build</code>する。<code>masuda init</code>は既にあるDockerfileを書き換えないので、masudaを上げても版は変わらない。Dockerfileの版が検証済みの版と違うとき（引数なしで最新版を入れる形も含む）は、<code>masuda image build</code>が始めに<code>note:</code>の1行で知らせる（ビルドは止めない）。</p>
 <h3 id="images">images<a class="headerlink" href="#images" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1941,6 +1990,105 @@
 </tbody>
 </table>
 <p><code>claudeToken</code>を変えたら、その名前で<code>masuda secret set &lt;名前&gt;</code>して値を登録する。</p>
+<h2 id="pitfalls">pitfalls.jsonl<a class="headerlink" href="#pitfalls" title="Permanent link">&para;</a></h2>
+<p><code>develop</code>の計画に問いを立てる役（plan-questions）に渡す、<strong>プロジェクト固有の落とし穴</strong>。過去に踏んだ失敗を「どんな変更のときに（<code>trigger</code>）、何を問うか（<code>question</code>）」の形で残しておくと、計画がそれに当たるとき、計画への問いとして挙がる。問いには計画を直す役が答え、答えられなければplan gateの前に人間に聞かれる（<a href="../workflows/#develop">develop</a>）。任意のファイルで、<code>masuda init</code>は作らない。同梱の落とし穴は無い。</p>
+<p>1行に1件のJSONオブジェクト（JSON Lines）。空行と<code>#</code>で始まる行は読み飛ばす。</p>
+<div class="highlight"><span class="filename">.masuda/pitfalls.jsonl</span><pre><span></span><code># 日時まわり
+{"id": "tz-naive", "category": "data", "trigger": "日時を保存・比較・集計する変更", "question": "タイムゾーンの無い日時が混ざらないか", "background": "2025年3月、夏時間の切り替えの日に日次集計が1時間分ずれた"}
+{"id": "migration-order", "category": "release", "trigger": "DBのスキーマを変える変更", "question": "旧版のアプリが新しいスキーマで動き続けられるか", "background": "デプロイ中に旧版が新しい列を知らずにINSERTして失敗した"}
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>型</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>文字列（空白を含まない）</td>
+<td>落とし穴の名前</td>
+</tr>
+<tr>
+<td><code>category</code></td>
+<td><code>spec</code>・<code>security</code>・<code>data</code>・<code>release</code>・<code>regression</code>・<code>performance</code>・<code>maintainability</code>・<code>other</code>のいずれか</td>
+<td>見落とすと起きる被害の種類。問いの分類になる</td>
+</tr>
+<tr>
+<td><code>trigger</code></td>
+<td>文字列</td>
+<td>この落とし穴が当てはまる変更（きっかけ）。自然文で書く</td>
+</tr>
+<tr>
+<td><code>question</code></td>
+<td>文字列</td>
+<td>当てはまったときに立てる問い。役が計画に合わせて具体化する</td>
+</tr>
+<tr>
+<td><code>background</code></td>
+<td>文字列</td>
+<td>この落とし穴が生まれた背景</td>
+</tr>
+</tbody>
+</table>
+<p>すべて必須で、空にできない。ほかのキーがあると読み込みを断る。<code>masuda run</code>は<code>.masuda/</code>を写すときにこのファイルも写して1行ずつ検査し、誤りがあれば実行を始めずに行番号と理由を返す（例: <code>.masuda/pitfalls.jsonl: line 3: category "edge" is not one of spec, ...</code>）。<code>masuda workflow check</code>も同じ検査をして、誤りの行ごとに問題として出す。検査を通ったものが、注釈の行を除いてVMの<code>/masuda/pitfalls.jsonl</code>に置かれる。</p>
+<p><a href="../reviews/">レビュー観点</a>との違い: 観点は実装した差分を<strong>判定する</strong>ためのもの、落とし穴は実装の前の計画に<strong>問う</strong>ためのもの。</p>
+<h2 id="claude-dir">claude/ と claude.local/<a class="headerlink" href="#claude-dir" title="Permanent link">&para;</a></h2>
+<p>VMの中のClaude Code（メインセッションとサブエージェント）の<code>~/.claude/</code>に置くもの。どちらも任意で、<code>masuda init</code>は作らない。</p>
+<table>
+<thead>
+<tr>
+<th>ディレクトリ</th>
+<th>誰のものか</th>
+<th>コミット</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.masuda/claude/</code></td>
+<td>チーム</td>
+<td>する</td>
+</tr>
+<tr>
+<td><code>.masuda/claude.local/</code></td>
+<td>あなた</td>
+<td>しない（<code>masuda init</code>が<code>.gitignore</code>に<code>.masuda/claude.local/</code>を足す）</td>
+</tr>
+</tbody>
+</table>
+<p>置けるもの:</p>
+<table>
+<thead>
+<tr>
+<th>パス</th>
+<th>VMでの置き場所</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAUDE.md</code></td>
+<td><code>~/.claude/CLAUDE.md</code>の後ろ。masudaのループ規約の後に、見出し<code># プロジェクトのルール（.masuda/claude）</code>と「ループ規約と矛盾するときはループ規約が優先」の1行を挟んで連結する</td>
+</tr>
+<tr>
+<td><code>rules/*.md</code></td>
+<td><code>~/.claude/rules/</code></td>
+</tr>
+<tr>
+<td><code>skills/&lt;名前&gt;/</code>（<code>SKILL.md</code>と、それが使うファイル）</td>
+<td><code>~/.claude/skills/&lt;名前&gt;/</code>（ディレクトリごと）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>同じ相対パスのファイルは<code>claude.local/</code>が勝つ。<code>CLAUDE.md</code>も連結ではなく、<code>claude.local/</code>のもので置き換わる</li>
+<li>これ以外のもの（<code>agents/</code>・<code>settings.json</code>・<code>commands/</code>等）は無視し、<code>masuda serve</code>の標準エラーに1行の警告を出す。サブエージェントの定義は<code>.masuda/agents/</code>、Claude Codeの設定は<code>settings.json</code>の<a href="#claudesettings"><code>claudeSettings</code></a>に書く（<code>~/.claude/agents/</code>と<code>~/.claude/settings.json</code>はmasudaが作る）</li>
+<li>シンボリックリンクは写さない</li>
+<li>読むタイミング: <code>masuda run</code>が<code>.masuda/</code>を写すときに2つを重ねた結果を写し、その実行は終わりまで（<code>resume</code>しても）同じ中身を使う</li>
+<li>サブエージェントがスキルを呼ぶには、役の<code>tools</code>に<code>Skill</code>が要る。同梱の役は持っている。自分で書いた役で<code>tools</code>を限っているなら<code>Skill</code>を足す（<a href="../workflows/#write-agent">エージェントの書き方</a>）</li>
+</ul>
+<p>どこに何を書くかは<a href="../concepts/#where-to-write">概念</a>の対応表を参照。</p>
 <h2 id="serve-config">config.json<a class="headerlink" href="#serve-config" title="Permanent link">&para;</a></h2>
 <p>リポジトリに依らない<code>masuda serve</code>全体の設定。置き場所は<code>$XDG_CONFIG_HOME/masuda/config.json</code>（未設定なら<code>~/.config/masuda/config.json</code>）で、<code>masuda serve --config &lt;path&gt;</code>で変えられる。無ければすべて既定。読むのは<code>masuda serve</code>の起動時だけなので、書き換えたらserveを起動し直す。</p>
 <div class="highlight"><span class="filename">~/.config/masuda/config.json</span><pre><span></span><code><span class="p">{</span>

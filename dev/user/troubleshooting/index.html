@@ -801,6 +801,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-stopped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった・終わった原因を調べる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deviation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1423,6 +1434,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#why-stopped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった・終わった原因を調べる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#deviation" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1634,6 +1656,14 @@
 <li><strong><code>waiting_input(permission)</code></strong>: 道具の使用の許可を待っている。<code>chat</code>で答える</li>
 <li><strong><code>dead</code></strong>: Claude Codeのセッションが無くなった。<code>masuda stop</code>→<code>masuda resume</code></li>
 </ul>
+<h2 id="why-stopped">止まった・終わった原因を調べる<a class="headerlink" href="#why-stopped" title="Permanent link">&para;</a></h2>
+<p>ワークスペースの<code>exports/</code>（<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>）に、実行ログ（<code>execution-log.jsonl</code>）とVMの中のClaude Codeの会話ログ（<code>transcripts/</code>）が残る。どの終わり方（<code>done</code>・<code>stop</code>・<code>remove</code>）でも書き出され、<code>remove</code>の後も消えない（<a href="../operations/#exports">exports</a>）。</p>
+<ul>
+<li>どのノードでどう終わったかは実行ログで追う。<code>jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl</code></li>
+<li>エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが<code>transcripts/-workspace/&lt;session&gt;.jsonl</code>、サブエージェントがその下の<code>subagents/agent-*.jsonl</code></li>
+<li><code>blocked</code>はVMを残しているので、会話ログはまだ書き出されていない。<code>masuda chat</code>で画面を見るか、<code>masuda stop</code>で書き出してから読む</li>
+<li><code>done</code>ではVMが壊れているので<code>masuda chat</code>は使えない。会話ログを読む</li>
+</ul>
 <h2 id="deviation"><code>deviation</code>ゲートが思わぬファイルで開く（<code>__pycache__</code>等）<a class="headerlink" href="#deviation" title="Permanent link">&para;</a></h2>
 <p>書き込めない役（調査・レビュー等）がテストを走らせただけで、追跡しているファイルが書き換わると、<code>deviation</code>ゲートが開く。例: gitで追跡している<code>__pycache__/*.pyc</code>、ロックファイル、テストが更新するスナップショット。</p>
 <ul>
@@ -1652,7 +1682,11 @@
 <tbody>
 <tr>
 <td>planゲートの前に<code>done</code>で終わった（<code>outcome out_of_scope</code>）</td>
-<td>計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。<code>exports/</code>は作られない。役が書いた理由（<code>feedback</code>）は<code>records/engine.json</code>に記録されている（<code>grep -o '"feedback":"[^"]*"' records/engine.json</code>）。課題の書き方を直して<code>run</code>し直す</td>
+<td>計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。<code>exports/</code>には実行ログと会話ログだけが残る。役が書いた理由（<code>feedback</code>）は<code>masuda list --all</code>のPOSITIONに1行目が出て、全文は<code>workspace.json</code>の<code>reason</code>にある。課題の書き方を直して<code>run</code>し直す</td>
+</tr>
+<tr>
+<td>planゲートの前に<code>done</code>で終わった（<code>outcome needs_human</code>）</td>
+<td><code>workflows/fix</code>の計画を立てる役が、指示が曖昧で計画を立てられないと判断した。役が確かめたい疑問は<code>masuda list --all</code>のPOSITIONに1行目が出て、全文は<code>workspace.json</code>の<code>reason</code>にある。疑問に答える形で指示書を直して<code>run</code>し直す</td>
 </tr>
 <tr>
 <td>planゲートの前に<code>blocked</code></td>

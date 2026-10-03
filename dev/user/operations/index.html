@@ -796,7 +796,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#host-records" class="md-nav__link">
     <span class="md-ellipsis">
       
         ホストの記録
@@ -1425,7 +1425,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#host-records" class="md-nav__link">
     <span class="md-ellipsis">
       
         ホストの記録
@@ -1500,6 +1500,7 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 </tbody>
 </table>
+<p><code>done</code>でも、ワークフローが<code>end:&lt;ラベル&gt;</code>で終わったときは<code>outcome</code>がそのラベルになる（<code>needs_human</code>・<code>out_of_scope</code>・<code>stuck</code>等）。このとき終わらせたエージェントが書いた理由（<code>feedback</code>）が<code>reason</code>に入り、POSITIONは<code>outcome needs_human: &lt;理由の1行目&gt;</code>の形になる。<code>needs_human</code>なら理由はエージェントが人間に確かめたい疑問なので、答える形で指示書を直して<code>run</code>し直す。理由の全文は<code>workspace.json</code>の<code>reason</code>にある（下の<a href="#host-records">ホストの記録</a>）。</p>
 <h3 id="activity">活動（ACTIVITY）<a class="headerlink" href="#activity" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1603,14 +1604,14 @@ masuda<span class="w"> </span>watch<span class="w"> </span>--after<span class="w
 <ul>
 <li><code>C-b d</code>で切り離す。切り離してもセッションは動き続ける</li>
 <li>打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は<code>masuda gate</code>・<code>masuda question</code>で行う</li>
-<li>起動中・止まっているワークスペースには使えない</li>
+<li>使えるのは動いているワークスペースと、ワークフローが進めなくなって<code>blocked</code>になったもの（VMが残っている）だけ。起動中・<code>stopped</code>・<code>done</code>には使えない。<code>done</code>ではVMが壊れているので、会話は<code>exports/transcripts/</code>で読む（<a href="#exports">exports</a>）</li>
 <li>接続の鍵は<code>chat</code>のたびに作り直され、<code>stop</code>で消える</li>
 </ul>
 <h2 id="resume">止める・再開する<a class="headerlink" href="#resume" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>stop<span class="w"> </span>&lt;id&gt;
 masuda<span class="w"> </span>resume<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
-<p><code>stop</code>はVMを止め、ワークスペースを<code>stopped</code>にする。stagingと記録は残る。</p>
+<p><code>stop</code>は会話ログと実行ログを<code>exports/</code>へ書き出してからVMを壊し、ワークスペースを<code>stopped</code>にする。stagingと記録は残る。<code>resume</code>した後に止めたり終わったりすると、<code>exports/</code>の同じファイルは新しいもので置き換わる。</p>
 <p><code>resume</code>できるのは、<code>stopped</code>のワークスペースと、VMの起動に失敗して<code>blocked</code>になったワークスペース（理由が<code>sandbox boot failed:</code>で始まるもの）。ワークフローが進めなくなって<code>blocked</code>になったものは再開できない。</p>
 <p>再開すると次のように進む。</p>
 <ol>
@@ -1628,10 +1629,10 @@ masuda<span class="w"> </span>resume<span class="w"> </span>&lt;id&gt;
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>remove<span class="w"> </span>&lt;id&gt;<span class="w">            </span><span class="c1"># 止まっている・終わったもの</span>
 masuda<span class="w"> </span>remove<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w">    </span><span class="c1"># 動いているものを止めてから消す</span>
 </code></pre></div>
-<p><code>~/.local/share/masuda/workspaces/&lt;id&gt;/</code>のうち<code>exports/</code>だけを残して消す。exportsも要らなければ、そのディレクトリを手で消す。</p>
+<p><code>~/.local/share/masuda/workspaces/&lt;id&gt;/</code>のうち<code>exports/</code>だけを残して消す。消す前に実行ログを<code>exports/</code>へ写す（VMが残っていれば会話ログも）。exportsも要らなければ、そのディレクトリを手で消す。</p>
 <p>masudaはディスクを自動では消さない。ワークスペース置き場の使用量が<a href="../settings/#serve-config"><code>config.json</code></a>の<code>diskWarnBytes</code>（既定20GiB）を超えたとき、<code>masuda serve</code>の標準エラーと<code>masuda watch</code>に1回だけ警告を出す。VMのイメージは<code>masuda-sandbox</code>側にあり、<code>masuda-sandbox images prune --dry-run</code>で消せるものを確かめてから<code>masuda-sandbox images prune</code>で消せる。</p>
 <h2 id="exports">結果を読む（exports）<a class="headerlink" href="#exports" title="Permanent link">&para;</a></h2>
-<p>ワークフローがpublishかdiscardで終わったとき、<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>に次が残る。</p>
+<p>ワークフローが終わったとき（<code>done</code>、終わり方を問わない）、masudaは<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>へ次を書き出してからVMを壊す。<code>stop</code>と<code>remove</code>のときも書き出す（下の注意）。</p>
 <table>
 <thead>
 <tr>
@@ -1642,7 +1643,7 @@ masuda<span class="w"> </span>remove<span class="w"> </span>&lt;id&gt;<span clas
 <tbody>
 <tr>
 <td><code>exports/&lt;データ名&gt;</code></td>
-<td>ワークフローが書き出すと決めたデータ。<code>develop</code>は<code>report</code>（レビューのレポート、Markdown）、<code>review</code>は<code>report</code>と<code>findings</code>（指摘の一覧、JSON）</td>
+<td>ワークフローのpublish・discardのノードが書き出すと決めたデータ。<code>develop</code>は<code>report</code>（レビューのレポート、Markdown）、<code>review</code>は<code>report</code>と<code>findings</code>（指摘の一覧、JSON）</td>
 </tr>
 <tr>
 <td><code>exports/execution-log.jsonl</code></td>
@@ -1660,10 +1661,13 @@ jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'select(.ki
 </code></pre></div>
 <p>会話ログが読めなかったファイルは、実行ログに<code>kind: export-warning</code>として残る（publish・discardは止めない）。</p>
 <ul>
-<li>exportsが作られるのはpublish・discardで終わったときだけ。<code>stop</code>や<code>masuda serve</code>の再起動、<code>remove</code>ではVMが先に無くなるので、会話ログは残らない</li>
+<li><code>end</code>・<code>end:&lt;ラベル&gt;</code>で終わったとき（<code>needs_human</code>・<code>out_of_scope</code>・<code>stuck</code>等）は、<code>&lt;データ名&gt;</code>は無く、実行ログと会話ログだけが残る</li>
+<li><code>stop</code>（<code>remove --force</code>も）は、VMを壊す前に実行ログと会話ログを書き出す。<code>remove</code>は消す前に実行ログを書き出す（VMが既に無ければ会話ログは取れない）</li>
+<li><code>masuda serve</code>の再起動では書き出さない。残っていたVMは会話ログを写さずに壊す</li>
+<li><code>blocked</code>のときはVMを残すので、書き出されるのは実行ログだけ。会話ログは<code>stop</code>したときに写る</li>
 <li>終わる前に中間の結果を見たいときは、ホストの記録を直接読む（下記）</li>
 </ul>
-<h2 id="_3">ホストの記録<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h2 id="host-records">ホストの記録<a class="headerlink" href="#host-records" title="Permanent link">&para;</a></h2>
 <p>ワークスペース1つは<code>~/.local/share/masuda/workspaces/&lt;id&gt;/</code>にまとまる。調べものに使う主なもの:</p>
 <table>
 <thead>
@@ -1675,7 +1679,7 @@ jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'select(.ki
 <tbody>
 <tr>
 <td><code>workspace.json</code></td>
-<td>対象リポジトリ・ブランチ・分岐元・ワークフロー・状態・理由・今の位置</td>
+<td>対象リポジトリ・ブランチ・分岐元・ワークフロー・状態・結果（<code>outcome</code>）・理由（<code>reason</code>）・今の位置</td>
 </tr>
 <tr>
 <td><code>staging.git/</code></td>

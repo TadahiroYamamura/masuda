@@ -2263,7 +2263,8 @@ masuda
 ゲスト（メインエージェント）         ホスト（masuda / engine）
   next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
   ◀──── タスクファイルのパス ─────  /masuda/in/&lt;occ&gt;/ に入力を書き込み済み
-  サブエージェントが作業
+  サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
+  （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
   write_output / report_result ──▶ /masuda/out/&lt;occ&gt;/ をホストが読み出し、スキーマ検証
                                    ノード境界: WIPスナップショットを staging へ pull
                                    次ノード: egress/秘密の方針を SetPolicy で切替
@@ -2323,7 +2324,7 @@ masuda
 <li><strong>publish</strong>: <code>target: local</code>なら実リポジトリの同名ブランチへfast-forward、<code>target: remote</code>なら<code>settings.json</code>の<code>publish.remote</code>（既定<code>origin</code>）が指す実リポジトリのremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない</li>
 <li><strong>discard</strong>: 反映せずに片付ける</li>
 </ul>
-<p>publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。stagingは<code>masuda remove</code>まで残す。</p>
+<p>publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。<code>end</code>で終わった（publish・discardを通らない）実行も、DONEを状態に写す前に同じ順で会話ログと実行ログを書き出してVMを破棄する（<code>Runner.Cleanup</code>に1つにまとめてあり、壊した後に呼ぶと実行ログの写し直しだけになる）。DONEのVMは再開にも使わない（Resumeは新しいVMを作る）ので残す理由が無く、残すとDONEにはStopが効かないためRemoveまで残り続ける。stagingは<code>masuda remove</code>まで残す。</p>
 <h3 id="exports">exports<a class="headerlink" href="#exports" title="Permanent link">&para;</a></h3>
 <p>置き場所は<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/exports/</code>。中身は次の3つ。</p>
 <table>
@@ -2350,7 +2351,8 @@ masuda
 </table>
 <ul>
 <li>会話ログは、ゲストのホームをcwdにして<code>find .claude/projects -type f -name '*.jsonl'</code>を<code>Exec</code>し、各ファイルを<code>ReadFile</code>で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに<code>kind: export-warning</code>として記録し、publish・discardは止めない</li>
-<li>回収するのはpublish・discardのときだけ。Stop・serveの再起動・Removeではゲストが先に無くなるので回収しない</li>
+<li>会話ログを回収するのは、DONE（publish・discard・<code>end</code>）とStop（<code>Remove</code>の<code>force</code>を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す</li>
+<li>再開後に書き出すと、同じパスのファイルは新しいもので置き換わる</li>
 <li><code>masuda remove</code>はワークスペースのディレクトリのうち<code>exports/</code>だけを残して消す</li>
 </ul>
 <h3 id="_3">ホスト側のディレクトリ<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>

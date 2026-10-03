@@ -1174,6 +1174,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="1. 打つ前の確認">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-0-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-0. ゲストのClaude Codeの版を上げる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-1. 速い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-2. 遅い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1343,6 +1382,45 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="1. 打つ前の確認">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1-0-claude-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-0. ゲストのClaude Codeの版を上げる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-1. 速い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1-2. 遅い確認
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1469,7 +1547,7 @@
 </tr>
 </tbody>
 </table>
-<p>masudaの<code>release.yml</code>は、<code>go vet</code>・<code>go test ./...</code>、<code>go.mod</code>のengineの版がタグと同じか、同じタグのmasuda-sandboxで<code>internal/sandboxcontract/sha.go</code>を生成し直して差分が無いかを確かめてから、<code>-ldflags "-X main.version=X.Y.Z"</code>でクロスビルドする。リリースノートには3リポジトリのタグとコミットハッシュの表を自動で書く。<code>docs.yml</code>はサイトを<code>X.Y</code>として公開し<code>latest</code>の別名を付ける。</p>
+<p>masudaの<code>release.yml</code>は、<code>go vet</code>・<code>go test ./...</code>、<code>go.mod</code>のengineの版がタグと同じか、同じタグのmasuda-sandboxで<code>internal/sandboxcontract/sha.go</code>を生成し直して差分が無いかを確かめてから、<code>-ldflags "-X main.version=X.Y.Z"</code>でクロスビルドする。リリースノートには3リポジトリのタグとコミットハッシュの表と、検証したゲストのClaude Codeの版（<code>masuda version</code>の<code>claude code:</code>の行）を自動で書く。<code>docs.yml</code>はサイトを<code>X.Y</code>として公開し<code>latest</code>の別名を付ける。</p>
 <h2 id="_2">分担<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <p>エージェントが進める場合、<strong>タグのpush（公開物を作る操作）と強制pushはエージェントからは実行できない</strong>（自動モードの安全判定が止める。別の経路で同じ結果を狙うことも禁じられている）。これは不便ではなく、取り消しの効かない一打を人間が打つ形として残す。</p>
 <ul>
@@ -1482,19 +1560,41 @@
 <li>版は<code>vX.Y.Z</code>。v1.0までは互換性を保証しないので、機能追加でもYを上げてよい。契約（<code>masuda.proto</code>・<code>sandbox.proto</code>・<code>guest-protocol.md</code>）が変わったときは必ずYを上げる</li>
 <li>追跡Issueを1つ作る（v0.1.0は#59）。この手順の各段をチェックボックスで書き、進めながら更新する。つまずいた点はそのIssueに書き、別の不具合は別Issueに切る</li>
 <li>3リポジトリとも、打つコミットがpush済みで作業ツリーがcleanであること。masudaは<code>develop</code>に全部入っていて、<code>main</code>を<code>develop</code>に合わせてから打つ</li>
+<li>ゲストのClaude Codeの版。既定は「その時点の最新版」（手順1-0）。追跡Issueに、上げる前の版・最新版・検証した版を書く</li>
 </ul>
 <h2 id="1">1. 打つ前の確認<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<h3 id="1-0-claude-code">1-0. ゲストのClaude Codeの版を上げる<a class="headerlink" href="#1-0-claude-code" title="Permanent link">&para;</a></h3>
+<p>ゲストのClaude Codeの版は<code>internal/guest</code>の<code>ClaudeCodeVersion</code>に固定してあり、<code>masuda init</code>の雛形のDockerfile・liveのDockerfile・<code>masuda version</code>の表示がこれを使う。各リリースは「その時点の最新のClaude Codeで動く」を既定にする。版はmasudaの外で毎日のように上がり、サブエージェントの継続（SendMessage）やフックの形が変わると無人の周回が壊れるため、上げるたびに実機で確かめてから打つ。</p>
+<p>最新版を知る（<code>install.sh</code>が引数なしで入れる版と同じURLから引く）。</p>
+<div class="highlight"><pre><span></span><code>.claude/skills/release/scripts/claude-code-latest.sh<span class="w">   </span><span class="c1"># 例 2.1.288</span>
+</code></pre></div>
+<p><code>internal/guest/guest.go</code>の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>./cmd/masuda/<span class="w"> </span>./internal/guest/<span class="w"> </span>./live/
+.claude/skills/release/scripts/precheck.sh<span class="w"> </span>--claude-code<span class="w">    </span><span class="c1"># 版が雛形・liveに入り、配布元に実在する</span>
+<span class="c1"># 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）</span>
+<span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
+<span class="c1"># 実機1周（15〜20分）</span>
+<span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestDevelopLapOnPythonRepo<span class="w"> </span>./live/
+</code></pre></div>
+<p>liveのイメージはDockerfileが変われば作り直される（初回は数分余計にかかる）。この2つは下の「遅い確認」のliveを兼ねる（版を上げなかったときも下で同じ順に回す）。</p>
+<ul>
+<li><strong>通れば</strong>（既定）: <code>chore(guest): Claude Codeを&lt;版&gt;に上げる</code>の1コミットにする。本文の<code>## 意図</code>に、上げる前の版と、継続テスト・1周が通ったことを書く。<code>develop</code>へpushする</li>
+<li><strong>通らなければ</strong>: 定数を前の版に戻す（コミットしない）。追跡Issueと、公開後にReleaseのノートへ「最新版 X では〜が動かないため Y で検証」と書く。原因は別Issueに切る（再現手順・落ちたテスト・ログの該当行）。前の版で両方が通ることは下の「遅い確認」で確かめる</li>
+</ul>
+<h3 id="1-1">1-1. 速い確認<a class="headerlink" href="#1-1" title="Permanent link">&para;</a></h3>
 <p>速い確認は<code>scripts/precheck.sh vX.Y.Z</code>にまとめてある。masudaのチェックアウトから打つ（隣に<code>../masuda-engine</code>と<code>../masuda-sandbox</code>がある前提。無ければ<code>MASUDA_ENGINE_DIR</code>・<code>MASUDA_SANDBOX_DIR</code>で場所を渡す）。</p>
 <div class="highlight"><pre><span></span><code>.claude/skills/release/scripts/precheck.sh<span class="w"> </span>vX.Y.Z
 </code></pre></div>
-<p>確かめること: 3リポジトリの作業ツリーがcleanでoriginと一致、<code>vX.Y.Z</code>のタグが未使用、masudaの<code>GOWORK=off</code>でのbuild・vet・test（契約テストC-M*を含む）、engineのtest、sandboxの単体テスト、<code>internal/sandboxcontract/sha.go</code>の再生成に差分が無いこと、<code>release.yml</code>と同じクロスビルドで<code>masuda version</code>が版を出すこと、<code>clients/ts</code>の<code>npm pack --dry-run</code>。</p>
+<p>確かめること: 3リポジトリの作業ツリーがcleanでoriginと一致、<code>vX.Y.Z</code>のタグが未使用、masudaの<code>GOWORK=off</code>でのbuild・vet・test（契約テストC-M*を含む）、ゲストのClaude Codeの版（<code>--claude-code</code>と同じ段。最新版と違えばinfoで出す）、engineのtest、sandboxの単体テスト、<code>internal/sandboxcontract/sha.go</code>の再生成に差分が無いこと、<code>release.yml</code>と同じクロスビルドで<code>masuda version</code>が版を出すこと、<code>clients/ts</code>の<code>npm pack --dry-run</code>。</p>
 <p><code>go.work</code>があるとテストは隣の<code>../masuda-engine</code>の作業ツリーで走る。固定した版で確かめたいので、スクリプトは<code>GOWORK=off</code>を付ける。</p>
-<p>遅い確認は手で回す。VMを使うものは同時に走らせない。</p>
+<h3 id="1-2">1-2. 遅い確認<a class="headerlink" href="#1-2" title="Permanent link">&para;</a></h3>
+<p>遅い確認は手で回す。VMを使うものは同時に走らせない。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）</span>
 <span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span><span class="w"> </span><span class="p">&amp;</span>
 <span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span><span class="w"> </span>pnpm<span class="w"> </span>test:contract
-<span class="c1"># masudaの実機1周（15〜20分。同じserveを使う）</span>
-<span class="nb">cd</span><span class="w"> </span>../masuda<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>./live/
+<span class="c1"># masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす</span>
+<span class="nb">cd</span><span class="w"> </span>../masuda<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
+<span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>60m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestDevelopLapOnPythonRepo<span class="w"> </span>./live/
 <span class="c1"># sandboxのtarball予行（distを一時的に版付きで作る。終わったらpnpm buildでdevに戻す）</span>
 <span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>package.json<span class="w"> </span>/tmp/package.json.bak<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_VERSION</span><span class="o">=</span>vX.Y.Z<span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="se">\</span>
 <span class="w">  </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>pkg<span class="w"> </span><span class="nb">set</span><span class="w"> </span><span class="nv">version</span><span class="o">=</span>X.Y.Z<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npm<span class="w"> </span>pack<span class="w"> </span>--pack-destination<span class="w"> </span>/tmp<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>/tmp/package.json.bak<span class="w"> </span>package.json<span class="w"> </span><span class="se">\</span>
@@ -1544,6 +1644,7 @@ scripts/gh.sh<span class="w"> </span>run<span class="w"> </span>watch<span class
 <ul>
 <li>Releaseのノートの表（masuda・masuda-engine・masuda-sandboxのタグとコミット）が、手順2〜4で打った3つのコミットと一致する。<code>scripts/gh.sh release view vX.Y.Z --json body,assets</code>と、各リポジトリの<code>git rev-parse vX.Y.Z^{commit}</code>で突き合わせる</li>
 <li>添付物が4つ（tarball2種、<code>clients/ts</code>のtgz、<code>SHA256SUMS</code>）</li>
+<li>Releaseのノートに「ゲストのClaude Code: X で実機検証した」の行があり、Xが1-0で検証した版と同じ（<code>release.yml</code>が<code>masuda version</code>の表示から書く）。最新版で通らず前の版に留めたときは、<code>scripts/gh.sh release edit vX.Y.Z --notes-file &lt;file&gt;</code>でその理由（「最新版 X では〜が動かないため Y で検証」と別Issueの番号）を書き足す</li>
 <li>ドキュメントサイト: <code>curl -s https://tadahiroyamamura.github.io/masuda/versions.json</code>に<code>X.Y</code>があり、aliasに<code>latest</code>が付いている。<code>/latest/</code>と<code>/X.Y/</code>が200</li>
 <li><strong>添付物で<code>docs/user/install.md</code>をなぞる</strong>。両方のReleaseの添付物をダウンロードし、<code>sha256sum -c</code>、<code>npm install -g</code>した<code>masuda-sandbox --version</code>、tarballのmasudaで<code>masuda version</code>が<code>X.Y.Z</code>と<code>contract: ok</code>、<code>masuda doctor</code>が全部<code>ok</code>。開発用のserveが同じソケットで動いていれば、公開物のserveは別のソケットで起動して<code>--sandbox-socket</code>で指す。確かめたら<code>npm uninstall -g masuda-sandbox</code>で外し、<code>~/.local/bin</code>のバイナリを勝手に置き換えない</li>
 <li>時間があれば、公開物で<code>docs/user/quickstart.md</code>を頭から1周する（15〜20分。サブエージェントに出してよい。出力例の差し替えは作業ツリーに置いて、コミットは人間の承認後）</li>
@@ -1551,7 +1652,7 @@ scripts/gh.sh<span class="w"> </span>run<span class="w"> </span>watch<span class
 <h2 id="6">6. 記録<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
 <ul>
 <li>追跡Issueのチェックボックスを埋め、3タグとコミットの表、つまずいた点、残り（quickstartの1周など）を書く</li>
-<li><code>HANDOFF.md</code>に、公開した版と残りを書く</li>
+<li><code>HANDOFF.md</code>に、公開した版、検証したゲストのClaude Codeの版（最新版に上げられなかったならその理由とIssue）、残りを書く</li>
 <li>途中で直したもの（CIの設定、doctorの判定など）は、リリースのコミットとは別の<code>fix</code>/<code>chore</code>コミットにしてある。追跡Issueからたどれるようにハッシュを書く</li>
 </ul>
 <h2 id="_3">つまずきやすい点<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>

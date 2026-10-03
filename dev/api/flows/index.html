@@ -1744,8 +1744,8 @@
 <tbody>
 <tr>
 <td><code>target: "plan"</code></td>
-<td>計画のJSON（同梱のスキーマなら<code>summary</code>・<code>steps[]{number, description, files}</code>・<code>expected_byproducts</code>）</td>
-<td>ステップと対象ファイルの一覧。JSONとして読めなければ全文</td>
+<td>計画のJSON（同梱のスキーマなら<code>goal</code>・<code>summary</code>・<code>steps[]{number, title, description, tests[], files[]}</code>・<code>alternatives[]{option, reason}</code>・<code>risks[]</code>・<code>expected_byproducts[]</code>。旧版の計画は<code>goal</code>・<code>title</code>・<code>tests</code>・<code>alternatives</code>・<code>risks</code>を持たない）</td>
+<td>目的・要約・ステップ（名前・内容・テスト・対象ファイル）・採らなかった案・リスクに分けて出す。無い項目は省く。JSONとして読めなければ全文</td>
 </tr>
 <tr>
 <td><code>target: "diff"</code></td>
@@ -1832,7 +1832,7 @@
 <tr>
 <td></td>
 <td><code>rejected</code></td>
-<td>定義の<code>next.rejected</code>へ戻る。<code>comment</code>は差し戻されたエージェントへの理由になる</td>
+<td>定義の<code>next.rejected</code>へ戻る。<code>comment</code>は差し戻されたエージェントへの理由になる。<code>stagingCommit</code>のあるゲート（<code>target: "diff"</code>・<code>"step-diff"</code>）では、そのコミットへの人間の行コメントも届く（下記）</td>
 </tr>
 <tr>
 <td><code>deviation</code></td>
@@ -1861,6 +1861,14 @@
 </tr>
 </tbody>
 </table>
+<p><code>stagingCommit</code>のあるゲートを<code>rejected</code>で判断すると、serveはそのコミットに付いた人間のコメント（<code>author: "human"</code>。<a href="#diff-view">差分ビュー</a>の<code>AddComment</code>で付けたもの）を時刻順に集め、<code>comment</code>の本文の後に続けて差し戻し先のエージェントへ渡す。エージェントへ届く形は次のとおり（本文が空なら見出しから始まり、人間のコメントが無ければ本文だけ）。</p>
+<div class="highlight"><pre><span></span><code>&lt;comment の本文&gt;
+
+## 差分への行コメント
+- &lt;path&gt;:&lt;line&gt;: &lt;body&gt;
+- ...
+</code></pre></div>
+<p><code>path</code>の無いコメントは<code>（コミット全体）</code>、<code>line</code>が0なら<code>&lt;path&gt;</code>だけになる。エージェントの指摘（<code>author</code>が観点名・<code>cross-cutting</code>）は含めない。合成するのはエージェントへ渡す文字列だけで、記録と<code>Gate.decision.comment</code>は人間が送った本文のまま残る。<code>approved</code>ではコメントは届かず、差分ビュー用に残るだけ。<code>deviation</code>・<code>triage</code>・<code>plan</code>のゲートには<code>stagingCommit</code>が無いので合成しない。</p>
 <p>ゲートの種類に合わない<code>outcome</code>（定義のゲート・deviationに<code>dismiss</code>、triageに<code>approved</code>、未知の文字列等）は<code>invalid_argument</code>になる。</p>
 <p>triageの<code>occurrence</code>は懸念を報告したエージェントの出現で、割り込まれた出現（待っていたゲート等）とは違うことがある。triageは他のどの状態にも割り込んで開くので、ゲートの表示中に別のゲート（triage）が現れることを想定しておく。</p>
 <h2 id="diff-view">stagingの差分とコメントで差分ビューを組む<a class="headerlink" href="#diff-view" title="Permanent link">&para;</a></h2>
@@ -1877,7 +1885,7 @@
 <li><code>paths</code>でファイルを絞れる（globは解釈しない）</li>
 <li>差分の前後の全文が要るときは、<code>GetBlob</code>（<code>rev</code>と<code>path</code>）でファイルを読む。64KiBずつのストリームで届くので、つなげてから文字列にする。存在しないパスは<code>not_found</code>（追加・削除されたファイルの片側）</li>
 <li><code>ListComments</code>でコメントを取り、<code>commit</code>・<code>path</code>・<code>line</code>で差分の行に重ねる。<code>commit</code>を指定すると、そのコミットのものだけが返る</li>
-<li>人間がコメントを付けるときは<code>AddComment</code>。<code>commit</code>はref名でもハッシュでもよく、記録はハッシュで残る（返る<code>Comment.commit</code>はハッシュ）。後でブランチが進んでも、コメントは付けたときのコミットに残る</li>
+<li>人間がコメントを付けるときは<code>AddComment</code>。<code>commit</code>はref名でもハッシュでもよく、記録はハッシュで残る（返る<code>Comment.commit</code>はハッシュ）。後でブランチが進んでも、コメントは付けたときのコミットに残る。ゲートの<code>stagingCommit</code>へ付けたコメントは、そのゲートを却下したときに差し戻し先のエージェントへ届く（<a href="#gates">判断する</a>）</li>
 </ul>
 </li>
 </ol>
