@@ -20,6 +20,11 @@ need() {
   command -v "$1" >/dev/null 2>&1 || fail "$1 が見つからない。$2"
 }
 
+check() {
+  line=$(grep " $2\$" "$1/SHA256SUMS") || fail "SHA256SUMSに $2 の行が無い"
+  (cd "$1" && printf '%s\n' "$line" | $verify >/dev/null) || fail "$2 のチェックサムが合わない"
+}
+
 main() {
   version=${MASUDA_VERSION:-$default_version}
   # 置き換え前の目印（先頭が数字でない）かどうかは、文字列の比較ではなく先頭の文字で判定する。
@@ -64,10 +69,8 @@ main() {
     fail "masuda-sandboxの配布物を取得できない（$sandbox_base）"
 
   # SHA256SUMSにはそのリリースの全部の添付物が載っているので、自分のファイルの行だけを検証する。
-  (cd masuda && grep " $masuda_file\$" SHA256SUMS | $verify >/dev/null) ||
-    fail "$masuda_file のチェックサムが合わない"
-  (cd sandbox && grep " $sandbox_file\$" SHA256SUMS | $verify >/dev/null) ||
-    fail "$sandbox_file のチェックサムが合わない"
+  check masuda "$masuda_file"
+  check sandbox "$sandbox_file"
 
   tar -xzf "masuda/$masuda_file" -C masuda || fail "$masuda_file を展開できない"
   bindir=$HOME/.local/bin
