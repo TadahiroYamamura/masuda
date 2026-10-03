@@ -16,7 +16,7 @@ masudaは3つのリポジトリ（masuda・[masuda-engine](https://github.com/Ta
 |---|---|---|
 | masuda-engine | 無し（Goのモジュールとしてタグを引くだけ） | — |
 | masuda-sandbox | `.github/workflows/release.yml`（手順は向こうの`docs/release.md`） | `masuda-sandbox-X.Y.Z.tgz`、`SHA256SUMS` |
-| masuda | `.github/workflows/release.yml`と`docs.yml` | `masuda_X.Y.Z_linux_amd64.tar.gz`、`masuda_X.Y.Z_darwin_arm64.tar.gz`、`masuda-api-client-X.Y.Z.tgz`（`clients/ts`の`npm pack`）、`SHA256SUMS` |
+| masuda | `.github/workflows/release.yml`と`docs.yml` | `masuda_X.Y.Z_linux_amd64.tar.gz`、`masuda_X.Y.Z_darwin_arm64.tar.gz`、`masuda-api-client-X.Y.Z.tgz`（`clients/ts`の`npm pack`）、`masuda_installer.sh`、`SHA256SUMS` |
 
 masudaの`release.yml`は、`go vet`・`go test ./...`、`go.mod`のengineの版がタグと同じか、同じタグのmasuda-sandboxで`internal/sandboxcontract/sha.go`を生成し直して差分が無いかを確かめてから、`-ldflags "-X main.version=X.Y.Z"`でクロスビルドする。リリースノートには3リポジトリのタグとコミットハッシュの表と、検証したゲストのClaude Codeの版（`masuda version`の`claude code:`の行）を自動で書く。`docs.yml`はサイトを`X.Y`として公開し`latest`の別名を付ける。
 
@@ -204,7 +204,7 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 ## 5. 公開後の確認
 
 - Releaseのノートの表（masuda・masuda-engine・masuda-sandboxのタグとコミット）が、手順2〜4で打った3つのコミットと一致する。`scripts/gh.sh release view vX.Y.Z --json body,assets`と、各リポジトリの`git rev-parse vX.Y.Z^{commit}`で突き合わせる
-- 添付物が4つ（tarball2種、`clients/ts`のtgz、`SHA256SUMS`）
+- 添付物が5つ（tarball2種、`clients/ts`のtgz、`masuda_installer.sh`、`SHA256SUMS`）
 - Releaseのノートに「ゲストのClaude Code: X で実機検証した」の行があり、Xが1-0で検証した版と同じ（`release.yml`が`masuda version`の表示から書く）。最新版で通らず前の版に留めたときは、`scripts/gh.sh release edit vX.Y.Z --notes-file <file>`でその理由（「最新版 X では〜が動かないため Y で検証」と別Issueの番号）を書き足す
 - ドキュメントサイト: `curl -s https://tadahiroyamamura.github.io/masuda/versions.json`に`X.Y`があり、aliasに`latest`が付いている。`/latest/`と`/X.Y/`が200
 - **添付物を一時的に入れて確かめる**。`mktemp -d`の自分専用のディレクトリ`$t`に両方のReleaseの添付物を落として`sha256sum -c`し、そこに入れた`masuda-sandbox`とtarballのmasudaで、`version`が`X.Y.Z`と`contract: ok`、`doctor`が全部`ok`（Claudeトークンの項目は一時データディレクトリでは未登録になるので、手順6で確かめる）。ソケットとデータディレクトリをすべて`$t`の下に置くので、ハーネスや開発版のソケットとぶつからず、`config.json`の`sandboxSocket`にも引かれない。ハーネス（`~/.local/bin`・グローバルの`masuda-sandbox`・既定のソケットとデータディレクトリ）には触れない
