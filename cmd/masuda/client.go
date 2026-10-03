@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -31,6 +32,7 @@ type clients struct {
 	questions apiv1connect.QuestionServiceClient
 	config    apiv1connect.ConfigServiceClient
 	workflows apiv1connect.WorkflowServiceClient
+	staging   apiv1connect.StagingServiceClient
 }
 
 func dial(socket string) *clients {
@@ -47,6 +49,7 @@ func dial(socket string) *clients {
 		questions: apiv1connect.NewQuestionServiceClient(httpc, base, connect.WithGRPC()),
 		config:    apiv1connect.NewConfigServiceClient(httpc, base, connect.WithGRPC()),
 		workflows: apiv1connect.NewWorkflowServiceClient(httpc, base, connect.WithGRPC()),
+		staging:   apiv1connect.NewStagingServiceClient(httpc, base, connect.WithGRPC()),
 	}
 }
 
@@ -375,7 +378,7 @@ func formatEvent(ev *apiv1.WorkspaceEvent) string {
 // gates
 // ---------------------------------------------------------------------------
 
-const gateUsage = "gate list [<id>] | gate show <id> <occurrence> | gate approve <id> <occurrence> [--hash <h>] [--file <path>]... [--comment <text>] | gate reject <id> <occurrence> [--comment <text>] | gate dismiss|halt|redo <id> <occurrence> [--comment <text>]"
+const gateUsage = "gate list [<id>] | gate show <id> <occurrence> | gate approve <id> <occurrence> [--hash <h>] [--file <path>]... [--comment <text>] | gate reject <id> <occurrence> [--comment <text>] | gate comment <id> <occurrence> <path>:<line> <text> | gate dismiss|halt|redo <id> <occurrence> [--comment <text>]"
 
 func runGate(args []string) error {
 	if len(args) == 0 {
@@ -391,6 +394,8 @@ func runGate(args []string) error {
 		return gateDecide(args[1:], true)
 	case "reject":
 		return gateDecide(args[1:], false)
+	case "comment":
+		return gateComment(args[1:])
 	case "dismiss", "halt", "redo":
 		return gateTriage(args[0], args[1:])
 	}
@@ -426,12 +431,69 @@ func gateShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := c.clients().gates.Get(context.Background(), connect.NewRequest(&apiv1.GetGateRequest{WorkspaceId: pos[0], Occurrence: pos[1]}))
+	cl := c.clients()
+	ctx := context.Background()
+	res, err := cl.gates.Get(ctx, connect.NewRequest(&apiv1.GetGateRequest{WorkspaceId: pos[0], Occurrence: pos[1]}))
 	if err != nil {
 		return err
 	}
-	fmt.Print(formatGate(res.Msg))
+	var comments []*apiv1.Comment
+	if res.Msg.StagingCommit != "" {
+		cs, err := cl.staging.ListComments(ctx, connect.NewRequest(&apiv1.ListCommentsRequest{WorkspaceId: pos[0], Commit: res.Msg.StagingCommit}))
+		if err != nil {
+			return err
+		}
+		comments = cs.Msg.Comments
+	}
+	fmt.Print(formatGate(res.Msg, comments))
 	return nil
+}
+
+// gateComment は差分のゲートの承認対象のコミット（staging_commit）の行に人間のコメントを付ける。
+// 付けたコメントは、そのゲートを却下したときに差し戻し先のエージェントへ本文とともに届く。
+func gateComment(args []string) error {
+	const usage = "gate comment <id> <occurrence> <path>:<line> <text>"
+	c := newCommand("gate comment", usage)
+	pos, err := c.parse(args, 4, -1)
+	if err != nil {
+		return err
+	}
+	path, line, err := parseLocation(pos[2])
+	if err != nil {
+		return err
+	}
+	// 引用符で囲まずに書いた本文も1つのコメントとして受ける
+	body := strings.Join(pos[3:], " ")
+	cl := c.clients()
+	ctx := context.Background()
+	g, err := cl.gates.Get(ctx, connect.NewRequest(&apiv1.GetGateRequest{WorkspaceId: pos[0], Occurrence: pos[1]}))
+	if err != nil {
+		return err
+	}
+	if g.Msg.StagingCommit == "" {
+		return fmt.Errorf("このゲートは差分を対象にしていない（gate %s, target %s）", g.Msg.Gate, orDash(g.Msg.Target))
+	}
+	res, err := cl.staging.AddComment(ctx, connect.NewRequest(&apiv1.AddCommentRequest{
+		WorkspaceId: pos[0], Commit: g.Msg.StagingCommit, Path: path, Line: line, Body: body,
+	}))
+	if err != nil {
+		return err
+	}
+	fmt.Printf("comment %s on %s:%d (commit %s)\n", res.Msg.Id, path, line, res.Msg.Commit)
+	return nil
+}
+
+// parseLocation は`<path>:<line>`を読む。パスに`:`が入っていてもよいよう、最後の`:`で分ける。
+func parseLocation(s string) (string, uint32, error) {
+	i := strings.LastIndex(s, ":")
+	if i <= 0 {
+		return "", 0, fmt.Errorf("場所は<path>:<line>で書く: %q", s)
+	}
+	n, err := strconv.ParseUint(s[i+1:], 10, 32)
+	if err != nil || n == 0 {
+		return "", 0, fmt.Errorf("行番号は1以上の整数で書く: %q", s)
+	}
+	return s[:i], uint32(n), nil
 }
 
 // triageOutcomes はtriageゲートの判断と、その意味（engineの扱い）。
@@ -451,8 +513,9 @@ var diffTargets = map[string]struct{ meaning, heading string }{
 
 // formatGate はゲートを人間が読む形にする。中身（subject）はゲートの種類で読み方が違うので、
 // triageは懸念の本文、deviationは計画の外で変わったファイルの一覧、target: planは節に分けた計画として
-// 見出しを付けて出し、最後にそのゲートで打てる判断のコマンドを添える。
-func formatGate(g *apiv1.Gate) string {
+// 見出しを付けて出し、最後にそのゲートで打てる判断のコマンドを添える。commentsはstaging_commitに
+// 付いたコメントで、そのうち人間のもの（却下でエージェントへ届くもの）を差分の後に出す。
+func formatGate(g *apiv1.Gate, comments []*apiv1.Comment) string {
 	var b strings.Builder
 	target := orDash(g.Target)
 	dt, isDiff := diffTargets[g.Target]
@@ -516,9 +579,37 @@ func formatGate(g *apiv1.Gate) string {
 		} else if subject != "" {
 			b.WriteString("\n" + subject + "\n")
 		}
+		if g.StagingCommit != "" {
+			b.WriteString(formatHumanComments(comments))
+		}
 		if g.Decision == nil {
 			fmt.Fprintf(&b, "\napprove: masuda gate approve %s --hash %s [--comment <text>]\nreject:  masuda gate reject %s [--comment <text>]\n", ref, g.TargetHash, ref)
+			if g.StagingCommit != "" {
+				fmt.Fprintf(&b, "comment: masuda gate comment %s <path>:<line> <text>\n", ref)
+			}
 		}
+	}
+	return b.String()
+}
+
+// formatHumanComments は人間のコメントを`<path>:<line>: <body>`で並べる。無ければ見出しごと省く。
+func formatHumanComments(comments []*apiv1.Comment) string {
+	var b strings.Builder
+	for _, c := range comments {
+		if c.Author != "human" {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("\ncomments (sent to the agent on reject):\n")
+		}
+		loc := c.Path
+		switch {
+		case loc == "":
+			loc = "(commit)"
+		case c.Line > 0:
+			loc = fmt.Sprintf("%s:%d", c.Path, c.Line)
+		}
+		fmt.Fprintf(&b, "  %s: %s\n", loc, strings.ReplaceAll(strings.TrimSpace(c.Body), "\n", "\n    "))
 	}
 	return b.String()
 }

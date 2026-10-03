@@ -165,12 +165,24 @@ Content-Type: application/json
 | ゲート | 判断 | 意味 |
 |---|---|---|
 | 定義のゲート | `approved` | 先へ進む。`target: "diff"`なら、承認したときのコミットがpublishの対象になる。`target: "step-diff"`なら、続く`commit`ノードが承認した内容をコミットする |
-| | `rejected` | 定義の`next.rejected`へ戻る。`comment`は差し戻されたエージェントへの理由になる |
+| | `rejected` | 定義の`next.rejected`へ戻る。`comment`は差し戻されたエージェントへの理由になる。`stagingCommit`のあるゲート（`target: "diff"`・`"step-diff"`）では、そのコミットへの人間の行コメントも届く（下記） |
 | `deviation` | `approved` + `approved_files` | `approved_files`に挙げたファイルだけを計画に加えてコミットする。挙げなかったファイルはコミットされず作業ツリーに残る。**空の`approved_files`は「何も加えずにコミットを進める」で、「全部承認」ではない** |
 | | `rejected` | コミットせず、commitノードの`next.rejected`（同梱の定義では実装のエージェント）へ差し戻す。書き込めないはずのエージェントが作業ツリーを変えたときのdeviationなら、実行が止まる（BLOCKED） |
 | `triage` | `dismiss` | 懸念を退けて続ける。割り込まれたノードがまだ終わっていなければ、同じ入力でもう一度入る |
 | | `halt` | 実行を止める（BLOCKED。`reason`に懸念の本文が入る）。BLOCKEDになったものは`Resume`できない |
 | | `redo` | 割り込まれたノードへ差し戻して入り直す。`comment`が理由になる（空なら懸念の本文） |
+
+`stagingCommit`のあるゲートを`rejected`で判断すると、serveはそのコミットに付いた人間のコメント（`author: "human"`。[差分ビュー](#diff-view)の`AddComment`で付けたもの）を時刻順に集め、`comment`の本文の後に続けて差し戻し先のエージェントへ渡す。エージェントへ届く形は次のとおり（本文が空なら見出しから始まり、人間のコメントが無ければ本文だけ）。
+
+```text
+<comment の本文>
+
+## 差分への行コメント
+- <path>:<line>: <body>
+- ...
+```
+
+`path`の無いコメントは`（コミット全体）`、`line`が0なら`<path>`だけになる。エージェントの指摘（`author`が観点名・`cross-cutting`）は含めない。合成するのはエージェントへ渡す文字列だけで、記録と`Gate.decision.comment`は人間が送った本文のまま残る。`approved`ではコメントは届かず、差分ビュー用に残るだけ。`deviation`・`triage`・`plan`のゲートには`stagingCommit`が無いので合成しない。
 
 ゲートの種類に合わない`outcome`（定義のゲート・deviationに`dismiss`、triageに`approved`、未知の文字列等）は`invalid_argument`になる。
 
@@ -192,7 +204,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
     - `paths`でファイルを絞れる（globは解釈しない）
 3. 差分の前後の全文が要るときは、`GetBlob`（`rev`と`path`）でファイルを読む。64KiBずつのストリームで届くので、つなげてから文字列にする。存在しないパスは`not_found`（追加・削除されたファイルの片側）
 4. `ListComments`でコメントを取り、`commit`・`path`・`line`で差分の行に重ねる。`commit`を指定すると、そのコミットのものだけが返る
-5. 人間がコメントを付けるときは`AddComment`。`commit`はref名でもハッシュでもよく、記録はハッシュで残る（返る`Comment.commit`はハッシュ）。後でブランチが進んでも、コメントは付けたときのコミットに残る
+5. 人間がコメントを付けるときは`AddComment`。`commit`はref名でもハッシュでもよく、記録はハッシュで残る（返る`Comment.commit`はハッシュ）。後でブランチが進んでも、コメントは付けたときのコミットに残る。ゲートの`stagingCommit`へ付けたコメントは、そのゲートを却下したときに差し戻し先のエージェントへ届く（[判断する](#gates)）
 
 `line`はそのコミットの時点のファイル（差分の新しい側）の行番号として扱う。serveは`path`と`line`が実在するかを確かめないので、クライアントが差分の中の行から選ばせる。コメントの`author`は人間なら`"human"`で`severity`は空。review gateを開いたときに取り込まれたエージェントの指摘（[上の節](#gates)）は`author`が観点名か`cross-cutting`で、`severity`が入る。
 

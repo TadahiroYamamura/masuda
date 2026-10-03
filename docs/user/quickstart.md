@@ -224,7 +224,17 @@ cat ~/.local/share/masuda/workspaces/<id>/data/*/report
 masuda gate approve <id> <出現ID> --hash <target_hash>
 ```
 
-却下（`reject --comment ...`）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。
+却下（`reject --comment ...`）すると、コメントを踏まえた手直し→テスト→レビューをやり直し、もう一度このゲートが開く。差分の特定の行を直してほしいときは、却下の前に`gate comment`で行コメントを付けておく。付けたコメントは`gate show`の差分の後に並び、却下したときに`--comment`の本文とともに手直しのエージェントへ届く（承認したときは届かない）。
+
+```sh
+masuda gate comment <id> <出現ID> shapes/triangle.py:12 "負の長さも弾く"
+masuda gate reject <id> <出現ID> --comment "入力の検証を足す"
+# エージェントへ届く差し戻し:
+#   入力の検証を足す
+#
+#   ## 差分への行コメント
+#   - shapes/triangle.py:12: 負の長さも弾く
+```
 
 ## 10. 結果を確かめる
 

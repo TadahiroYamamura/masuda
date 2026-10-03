@@ -112,6 +112,49 @@ func (s *gateService) Decide(_ context.Context, req *connect.Request[apiv1.Decid
 	return connect.NewResponse(gateToProto(w.ID, g)), nil
 }
 
+// rejectFeedback は差分ゲートを却下したときにengineへ渡す差し戻しの本文。人間の本文の後に、
+// 承認対象のコミットへ人間（author "human"）が付けた行コメントを時刻順に並べる。同じコミットに
+// 取り込まれたエージェントの指摘（findings由来）は人間の差し戻し理由ではないので含めない。
+func rejectFeedback(body string, comments []workspace.Comment) string {
+	var human []workspace.Comment
+	for _, c := range comments {
+		if c.Author == "human" {
+			human = append(human, c)
+		}
+	}
+	if len(human) == 0 {
+		return body
+	}
+	slices.SortStableFunc(human, func(a, b workspace.Comment) int { return a.Time.Compare(b.Time) })
+	var b strings.Builder
+	if body = strings.TrimSpace(body); body != "" {
+		b.WriteString(body)
+		b.WriteString("\n\n")
+	}
+	b.WriteString("## 差分への行コメント\n")
+	for _, c := range human {
+		b.WriteString("- ")
+		b.WriteString(commentLocation(c))
+		b.WriteString(": ")
+		// 複数行の本文は箇条書きの項目の中に収まるよう字下げする
+		b.WriteString(strings.ReplaceAll(strings.TrimSpace(c.Body), "\n", "\n  "))
+		b.WriteString("\n")
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// commentLocation はコメントの場所。AddCommentはpath・lineを省けるので、無い部分は書かない。
+func commentLocation(c workspace.Comment) string {
+	switch {
+	case c.Path == "":
+		return "（コミット全体）"
+	case c.Line == 0:
+		return c.Path
+	default:
+		return fmt.Sprintf("%s:%d", c.Path, c.Line)
+	}
+}
+
 // gateOutcomes はゲートの種類ごとに受け付けるoutcome。
 func gateOutcomes(gate string) []string {
 	if gate == engine.GateTriage {

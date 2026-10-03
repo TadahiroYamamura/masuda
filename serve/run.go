@@ -408,18 +408,28 @@ var errDecision = errors.New("decision refused")
 
 // decide はrecのゲートへの判断をengineへ渡し、記録して、次の待ちまで進める。
 func (c *runCtl) decide(rec *workspace.GateRecord, d engine.Decision) error {
+	w, err := c.b.store.Get(c.id)
+	if err != nil {
+		return err
+	}
+	// engineへ渡す判断だけに行コメントを合成し、記録（rec.Decision）には人間が送った本文を残す。
+	// 合成した文字列を記録に書くと、APIのDecision.commentが人間の入力と食い違うため。
+	toEngine := d
+	if d.Outcome == engine.OutcomeRejected && rec.StagingCommit != "" {
+		cs, err := w.Comments(rec.StagingCommit)
+		if err != nil {
+			return err
+		}
+		toEngine.Comment = rejectFeedback(d.Comment, cs)
+	}
 	c.mu.Lock()
-	err := c.eng.Decide(c.ctx, c.run(), rec.Occurrence, d)
+	err = c.eng.Decide(c.ctx, c.run(), rec.Occurrence, toEngine)
 	c.mu.Unlock()
 	if err != nil {
 		if errors.Is(err, engine.ErrNotImplemented) {
 			return err
 		}
 		return fmt.Errorf("%w: %v", errDecision, err)
-	}
-	w, err := c.b.store.Get(c.id)
-	if err != nil {
-		return err
 	}
 	rec.Decision = &workspace.DecisionRecord{
 		Outcome: d.Outcome, Comment: d.Comment, TargetHash: d.TargetHash,

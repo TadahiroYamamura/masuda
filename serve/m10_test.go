@@ -26,6 +26,7 @@ type testClients struct {
 	ws        apiv1connect.WorkspaceServiceClient
 	gates     apiv1connect.GateServiceClient
 	workflows apiv1connect.WorkflowServiceClient
+	staging   apiv1connect.StagingServiceClient
 }
 
 func startClients(t *testing.T, dataDir string, opts Options) testClients {
@@ -49,6 +50,7 @@ func startClients(t *testing.T, dataDir string, opts Options) testClients {
 		ws:        apiv1connect.NewWorkspaceServiceClient(httpc, base, connect.WithGRPC()),
 		gates:     apiv1connect.NewGateServiceClient(httpc, base, connect.WithGRPC()),
 		workflows: apiv1connect.NewWorkflowServiceClient(httpc, base, connect.WithGRPC()),
+		staging:   apiv1connect.NewStagingServiceClient(httpc, base, connect.WithGRPC()),
 	}
 }
 

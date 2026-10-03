@@ -469,6 +469,63 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	}
 }
 
+// C-M4の差し戻し: review gateを却下すると、承認対象のコミットへの人間の行コメントが
+// 理由の本文とともに差し戻し先のタスクファイルへ届く。ゲートの記録の本文は人間が送ったまま。
+func TestCM4_RejectedReviewCarriesLineComments(t *testing.T) {
+	h := start(t, smokeRepo())
+	ctx := context.Background()
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{
+		RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/lc", Inputs: map[string][]byte{"instructions": []byte("add b.go")},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second).Id
+	task := h.mcp(id, "next_task", nil)
+	occ := task["occurrence"].(string)
+	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[]}`
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": plan})
+	h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"})
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	open, _ := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
+	g := open.Msg.Gates[0]
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); err != nil {
+		t.Fatal(err)
+	}
+	task = h.mcp(id, "next_task", nil)
+	occ = task["occurrence"].(string)
+	h.guestWrite(id, "workspace/b.go", "package b\n")
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: add b"})
+	h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"})
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	open, _ = h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
+	if len(open.Msg.Gates) != 1 || open.Msg.Gates[0].Gate != "review" {
+		t.Fatalf("want review gate, got %+v", open.Msg.Gates)
+	}
+	rg := open.Msg.Gates[0]
+	if _, err := h.staging.AddComment(ctx, connect.NewRequest(&apiv1.AddCommentRequest{WorkspaceId: id, Commit: rg.StagingCommit, Path: "b.go", Line: 1, Body: "パッケージ名をbetaにする"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: rg.Occurrence, Decision: &apiv1.Decision{Outcome: "rejected", Comment: "直して"}})); err != nil {
+		t.Fatal(err)
+	}
+	task = h.mcp(id, "next_task", nil)
+	if task["role"] != "smoke-implementer" {
+		t.Fatalf("next_task after reject: %v", task)
+	}
+	b, err := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", task["task_path"].(string)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "直して\n\n## 差分への行コメント\n- b.go:1: パッケージ名をbetaにする"; !strings.Contains(string(b), want) {
+		t.Fatalf("the rework task must carry the line comment:\n%s", b)
+	}
+	got, err := h.gates.Get(ctx, connect.NewRequest(&apiv1.GetGateRequest{WorkspaceId: id, Occurrence: rg.Occurrence}))
+	if err != nil || got.Msg.Decision.GetComment() != "直して" {
+		t.Fatalf("recorded comment: %v %q", err, got.Msg.Decision.GetComment())
+	}
+}
+
 // ---------------------------------------------------------------------------
 // C-M5: watch, activity, questions
 // ---------------------------------------------------------------------------
