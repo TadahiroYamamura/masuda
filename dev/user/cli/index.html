@@ -747,6 +747,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        completion
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1653,6 +1664,17 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        completion
+      
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1676,7 +1698,7 @@
 <h1 id="cli">CLIリファレンス<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code>masuda &lt;command&gt; [flags]
 </code></pre></div>
-<p><code>serve</code>・<code>init</code>・<code>version</code>・<code>doctor</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
+<p><code>serve</code>・<code>init</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
 <h2 id="_1">共通の約束<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
@@ -1765,6 +1787,10 @@
 <tr>
 <td><a href="#doctor"><code>doctor</code></a></td>
 <td>動かすための前提を確かめる</td>
+</tr>
+<tr>
+<td><a href="#completion"><code>completion</code></a></td>
+<td>シェルの補完スクリプトを出す</td>
 </tr>
 </tbody>
 </table>
@@ -2153,6 +2179,17 @@ masuda-sandbox 0.2.1 (linux/amd64, gondolin 0.12.0)
 [NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable: ...
        `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`を起動する。...
 </code></pre></div>
+<h2 id="completion">completion<a class="headerlink" href="#completion" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda completion bash|zsh
+</code></pre></div>
+<p>bashまたはzshの補完スクリプトを標準出力に出す。<code>masuda serve</code>には繋がない。シェルの起動ファイルに次の1行を書くと、コマンド・サブコマンド・フラグが補完される。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># ~/.bashrc</span>
+<span class="nb">source</span><span class="w"> </span>&lt;<span class="o">(</span>masuda<span class="w"> </span>completion<span class="w"> </span>bash<span class="o">)</span>
+
+<span class="c1"># ~/.zshrc</span>
+<span class="nb">source</span><span class="w"> </span>&lt;<span class="o">(</span>masuda<span class="w"> </span>completion<span class="w"> </span>zsh<span class="o">)</span>
+</code></pre></div>
+<p>ワークスペースのID・ワークフロー名・イメージ名は、補完のたびに<code>masuda list --all</code>・<code>masuda workflow list</code>・<code>masuda image list</code>を呼んで取る。そのため<code>masuda serve</code>が動いているときだけ候補に出る。繋がらないときは候補が空になり、エラーは出ない。<code>--socket</code>を入力済みなら、その値で呼ぶ。</p>
 
 
 
