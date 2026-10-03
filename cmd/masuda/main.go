@@ -20,7 +20,7 @@ commands:
   list [--all]              ワークスペースの一覧（--allで終わった・止めたものも）
   chat <id>                 ゲストのメインセッション（tmux）にsshでアタッチする
   watch [<id>]              状態とイベントを流し続ける
-  gate list|show|approve|reject|dismiss|halt|redo
+  gate list|show|approve|reject|comment|dismiss|halt|redo
                             ゲートの一覧・内容・判断（dismiss/halt/redoはtriage）
   question list|answer      質問の一覧・回答
   stop <id>                 sandboxを止める（記録は残す）
@@ -36,8 +36,9 @@ commands:
   workflow list|show|check  ワークフローの一覧・図（Mermaid）・検査
   version                   masudaと、接続先のmasuda-sandboxのバージョンを表示する
   doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
+  completion bash|zsh       シェルの補完スクリプトを標準出力に出す（serve不要）
 
-serve・init・version・doctor以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -83,6 +84,8 @@ func main() {
 		err = runVersion(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
+	case "completion":
+		err = runCompletion(os.Args[2:])
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
