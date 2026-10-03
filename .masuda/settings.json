@@ -7,7 +7,12 @@
     "test": "GOWORK=off go build ./... && GOWORK=off go vet ./... && GOWORK=off go test ./..."
   },
   "claudeSettings": {
-    "model": "opus"
+    "model": "sonnet"
+  },
+  "agents": {
+    "reviewer": { "model": "opus" },
+    "cross-cutting-explorer": { "model": "opus" },
+    "cross-cutting-verifier": { "model": "opus" }
   },
   "images": {
     "default": {
