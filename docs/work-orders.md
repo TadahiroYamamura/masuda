@@ -273,6 +273,18 @@ M14e（`.masuda/settings.json`の`agents`で役ごとの`model`・`effort`を上
 
 やらないこと: engineの変更、`agents`の仕様の変更、上記以外のリファクタリング。
 
+### M14g. 同梱`develop`の見直し（engine E14）への追従: 利用者向け文書と図
+
+engine E14で同梱`develop`が変わった: ステップは`implement`→`test`→`commit`（途中レビュー`workflows/implement/interim-review`と途中の修正・interim gateを外した）、plan gateの却下は`revise-rejected`（plan-reviser）へ、review gateの却下は`rework`（implementerの続き）→`rework-test`→`rework-commit`→`approve-review`へ直接戻る。最終レビューの段は変わらない。masudaのコードは変えない（契約も変えない）。
+
+- **この項目は`go.work`でビルドする**（隣の`../masuda-engine`のE14を使う。`GOWORK=off`を付けない。`go.mod`の固定は監督がengineのpush後に行う）
+- `docs/user/workflows.md`: 同梱ワークフローの表から`workflows/implement/interim-review`の行を消し、`implement/build-step`の説明を「実装・テスト・コミット」に。`develop`の節の流れの行（「ステップごとに（実装 → テスト → 途中レビュー → …）」）と途中レビューの説明の段落を新しい流れに直し、却下時の動き（plan gate却下→reviserが却下理由に答えて計画を直す、review gate却下→実装者の続きが行コメントを直して同じゲートに戻る。レビューの全段はやり直さない）を書く。`develop`の図は、フェイクserve（`go run ./cmd/masuda serve --fake-sandbox --data-dir <tmp> --socket <tmp>/m.sock`。`go.work`有効）を立て、**リポジトリの外のディレクトリ**で`go run ./cmd/masuda workflow show workflows/develop --socket <tmp>/m.sock`を取り直して差し替える（`fix`・`review`の図も取り直し、変わっていなければそのまま）。「まずfixを試す」の目安の段落は、`develop`の重さの記述（途中レビュー・却下の全工程やり直し）を新しい事実に合わせて書き直す（数字は消してよい）
+- `docs/user/reviews.md`: 観点の`trigger`は「途中レビューで当てる条件」として説明されている。同梱の`develop`には途中レビューが無くなったので、「`trigger`は、自分のワークフローで`interim-`で始まる名前のノードにreviewerを置いたときに効く（同梱の`develop`・`fix`・`review`は最終レビューだけで、全観点を当てる）」の形に直す。テスト漏れ2観点の「途中レビューでも常に当てる」の記述も同様
+- `docs/user/concepts.md`: `interim`ゲートの行を「同梱のワークフローでは使わない。自分のワークフローで`gate: interim`を書いたときに開く」に直す。`docs/user/quickstart.md`の流れの説明（「実装→テスト→そのステップの差分の途中レビュー…」）を新しい流れに
+- `docs/user/cli.md`の`gate comment`の行（`review`・`interim`）はそのまま
+- 検証: `go build ./... && go vet ./... && go test -count=1 ./...`（`go.work`有効）が緑。`mkdocs`が入っていれば`mkdocs build --strict`（無ければ飛ばしてHANDOFFに書く）。図の取り直しの前後で`git diff --stat docs/user/workflows.md`を確かめる
+- 禁止: M14aと同じ（既定のソケット・`~/.local/share/masuda`・開発版のserveとワークスペースに触れない、`docker rm -f`、他プロセスの`kill`、`git push`、`go.work`の削除、新しい依存の追加、engineの変更）
+
 ## 契約テストの対応表
 
 | テスト | 項目 |
