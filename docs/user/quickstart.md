@@ -164,7 +164,36 @@ masuda gate list
 masuda gate show <id> 0000003
 ```
 
-`gate show`は計画（変更方針と、ステップごとの対象ファイル。`summary`・`steps`・`expected_byproducts`を持つJSONがそのまま1行で出る）と、打てるコマンドを出す。
+`gate show`は計画を節に分けて出し、最後に打てるコマンドを添える。`goal`は計画が達成すること、`summary`はアプローチとテストの実行の仕方、`steps`は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、`alternatives`は検討したが採らなかった案、`risks`は懸念、`expected byproducts`はビルド・テストが生む副産物として計画外の変更の検出から外すパターン。出力例（ヘッダーの`gate:`〜`opened:`の行は省略）:
+
+```text
+goal: 三角形の面積と周長を求めるモジュールを追加する
+
+summary:
+  shapes/triangle.py を新規追加し、ヘルパー _check で辺の検証を共通化する。テストは PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v で実行し、追跡済みの pyc を汚さない
+
+steps:
+  1. 三角形モジュールの実装
+     _check(a,b,c) で辺<=0 と三角不等式違反を ValueError にする。area はヘロンの公式、perimeter は和。標準ライブラリ math のみ
+     tests:
+       - 3,4,5 で area が 6、perimeter が 12
+       - 負の辺・0 の辺で両関数が ValueError
+       - 不成立 (1,2,10) と退化 (1,2,3) で ValueError
+     files: shapes/triangle.py, tests/test_triangle.py
+
+alternatives (considered, not taken):
+  - 退化三角形を許容する (<=): 面積 0 が無意味
+
+risks:
+  - 浮動小数の境界誤差は未対応
+
+expected byproducts: **/__pycache__/**, **/*.pyc
+
+approve: masuda gate approve 55a7dbe1b35f 0000003 --hash <target_hash> [--comment <text>]
+reject:  masuda gate reject 55a7dbe1b35f 0000003 [--comment <text>]
+```
+
+計画は実行のたびにエージェントが書くので、ステップの分け方や文面は毎回変わる。
 
 ```sh
 masuda gate approve <id> 0000003 --hash <gate showが出したtarget_hash>

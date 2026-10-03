@@ -374,7 +374,7 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	if r := h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": `{"nope":1}`}); r["accepted"] != false {
 		t.Fatalf("invalid plan accepted: %v", r)
 	}
-	plan := `{"summary":"add b","steps":[{"number":1,"description":"add b.go","files":["b.go"]}],"expected_byproducts":[]}`
+	plan := `{"goal":"b.goを足す","summary":"add b","steps":[{"number":1,"title":"bの追加","description":"add b.go","tests":[],"files":["b.go"]}],"alternatives":[],"risks":[],"expected_byproducts":[]}`
 	if r := h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": plan}); r["accepted"] != true {
 		t.Fatalf("valid plan rejected: %v", r)
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -449,8 +450,8 @@ var diffTargets = map[string]struct{ meaning, heading string }{
 }
 
 // formatGate はゲートを人間が読む形にする。中身（subject）はゲートの種類で読み方が違うので、
-// triageは懸念の本文、deviationは計画の外で変わったファイルの一覧として見出しを付けて出し、
-// 最後にそのゲートで打てる判断のコマンドを添える。
+// triageは懸念の本文、deviationは計画の外で変わったファイルの一覧、target: planは節に分けた計画として
+// 見出しを付けて出し、最後にそのゲートで打てる判断のコマンドを添える。
 func formatGate(g *apiv1.Gate) string {
 	var b strings.Builder
 	target := orDash(g.Target)
@@ -510,7 +511,9 @@ func formatGate(g *apiv1.Gate) string {
 				b.WriteString("  (no changes)\n")
 			}
 		}
-		if subject != "" {
+		if plan, ok := formatPlan(g.Target, subject); ok {
+			b.WriteString("\n" + plan)
+		} else if subject != "" {
 			b.WriteString("\n" + subject + "\n")
 		}
 		if g.Decision == nil {
@@ -518,6 +521,90 @@ func formatGate(g *apiv1.Gate) string {
 		}
 	}
 	return b.String()
+}
+
+// gatePlan はengine同梱の計画スキーマ（plan）のうち表示に使う項目。既存ワークスペースの記録には
+// goal・title・tests・alternatives・risksを持たない旧スキーマの計画も残っているので、どの項目も
+// 欠けてよい前提で読み、欠けた項目は行ごと省く。
+type gatePlan struct {
+	Goal    string `json:"goal"`
+	Summary string `json:"summary"`
+	Steps   []struct {
+		Number      int      `json:"number"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Tests       []string `json:"tests"`
+		Files       []string `json:"files"`
+	} `json:"steps"`
+	Alternatives []struct {
+		Option string `json:"option"`
+		Reason string `json:"reason"`
+	} `json:"alternatives"`
+	Risks              []string `json:"risks"`
+	ExpectedByproducts []string `json:"expected_byproducts"`
+}
+
+// formatPlan はtarget: planのゲートの中身（計画のJSON）を、goal・summary・steps・alternatives・
+// risks・expected byproductsの節に分けて字下げして出す。JSONとして解けない、またはstepsが無い
+// ときはok=falseを返し、呼び出し側は中身をそのまま出す（スキーマ外の計画でも内容を隠さないため）。
+func formatPlan(target, subject string) (string, bool) {
+	if target != "plan" {
+		return "", false
+	}
+	var p gatePlan
+	if err := json.Unmarshal([]byte(subject), &p); err != nil || len(p.Steps) == 0 {
+		return "", false
+	}
+	var b strings.Builder
+	indent := func(text, pad string) {
+		for _, line := range strings.Split(strings.TrimRight(text, "\n"), "\n") {
+			b.WriteString(pad + line + "\n")
+		}
+	}
+	if p.Goal != "" {
+		b.WriteString("goal: " + p.Goal + "\n\n")
+	}
+	if p.Summary != "" {
+		b.WriteString("summary:\n")
+		indent(p.Summary, "  ")
+		b.WriteString("\n")
+	}
+	b.WriteString("steps:\n")
+	for _, st := range p.Steps {
+		head := fmt.Sprintf("  %d.", st.Number)
+		if st.Title != "" {
+			head += " " + st.Title
+		}
+		b.WriteString(head + "\n")
+		if st.Description != "" {
+			indent(st.Description, "     ")
+		}
+		if len(st.Tests) > 0 {
+			b.WriteString("     tests:\n")
+			for _, t := range st.Tests {
+				b.WriteString("       - " + t + "\n")
+			}
+		}
+		if len(st.Files) > 0 {
+			b.WriteString("     files: " + strings.Join(st.Files, ", ") + "\n")
+		}
+	}
+	if len(p.Alternatives) > 0 {
+		b.WriteString("\nalternatives (considered, not taken):\n")
+		for _, a := range p.Alternatives {
+			b.WriteString("  - " + a.Option + ": " + a.Reason + "\n")
+		}
+	}
+	if len(p.Risks) > 0 {
+		b.WriteString("\nrisks:\n")
+		for _, r := range p.Risks {
+			b.WriteString("  - " + r + "\n")
+		}
+	}
+	if len(p.ExpectedByproducts) > 0 {
+		b.WriteString("\nexpected byproducts: " + strings.Join(p.ExpectedByproducts, ", ") + "\n")
+	}
+	return b.String(), true
 }
 
 // gateDecide は承認・却下を送る。承認の--hashを省くと、今開いているゲートのtarget_hashを使う

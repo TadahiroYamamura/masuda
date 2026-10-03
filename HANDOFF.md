@@ -1,28 +1,20 @@
 # HANDOFF
 ## 作業項目
-**v0.1.0のリリース**（#59、手順は`.claude/skills/release/SKILL.md`）。2026-10-03 01:10 JSTに公開した。3リポジトリのタグとコミット: masuda `v0.1.0`=5528b91、masuda-engine `v0.1.0`=4b0191a、masuda-sandbox `v0.1.0`=a9dce82。`develop`・`main`・`redesign`はいずれも5528b91。Release: https://github.com/TadahiroYamamura/masuda/releases/tag/v0.1.0 、docs: https://tadahiroyamamura.github.io/masuda/ （`0.1`=`latest`）。
-- `98ff556` fix(doctor): qemu-imgの欠けをNGに、lz4の検査をやめる（GondolinはVM起動のたびにqemu-imgを呼ぶ。lz4は自前でinitramfsを組むときだけ）
-- `41d07eb` chore(ci): ci.yml・release.ymlに`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`のステップ。GitHubのUbuntu 24.04ランナーはAppArmorが非特権ユーザー名前空間を禁じ、フェイクsandboxの`unshare -Urm`（C-M7・serveの特権コマンドのテスト）が`uid_map`への書き込みで落ちた
-- `5528b91` chore(deps): go.modのengineを`v0.1.0`に（内容は4b0191aと同じ）
-- 再起動（電源断）後の確認: `cab597aec8e2`をresumeして同じplan gateに戻り、承認して完走（実機5周目、約14分）。旧#52は構造的に解決
+`masuda gate show`のplanゲートで計画を読みやすく出す（engineの計画スキーマの構造化とCLIの描画）。
+- masuda-engine `bd9515b`（main、未push）: 同梱`plan.json`に`goal`・`steps[].title`・`steps[].tests`・`alternatives[]{option, reason}`・`risks[]`を足し（いずれも必須、配列は空可）、`planner.md`を「goal→機能単位のステップ（title）→description・tests→files」の分解と、テストファイルも同じステップの`files`に入れる指示に書き直した
+- masuda（develop、未push）: `cmd/masuda/client.go`の`formatGate`が`target: plan`のとき計画のJSONを`goal`・`summary`・`steps`（番号・title・description・tests・files）・`alternatives (considered, not taken)`・`risks`・`expected byproducts`の節に分けて出す（`formatPlan`）。無い項目は行ごと・節ごと省く（旧スキーマの計画も落ちない）。JSONとして解けない、または`steps`が無ければ従来どおり全文。契約テストの計画の固定値を新スキーマに、`docs/user/quickstart.md`の8節・`docs/api/flows.md`・`docs/user/cli.md`を新しい出力に合わせた
 ## 完了した契約テスト
-C-M1〜C-M8（`GOWORK=off go test -count=1 ./...`、手元とCI両方で緑）。sandboxの単体64件・契約C-S*8件（実VM）緑。live（`MASUDA_LIVE_TEST=1 go test -timeout 60m ./live/`）PASS 997秒（2026-10-03 00:27〜00:44 JST）。release.ymlの全ステップ緑（Check versions・契約一致・ビルド・pack・checksums）。公開物同士で`masuda version`が`0.1.0`/`contract: ok`、`doctor`全ok。
+C-M1〜C-M8（`go.work`で隣のengine bd9515bを使って`go test -count=1 ./...`緑）。`cmd/masuda`に新スキーマの描画・旧スキーマ・JSONでないときのテストを足した。旧スキーマの実物（`55a7dbe1b35f`の`records/gates/0000003-1.json`）も描画を目で確かめた
 ## 未完と理由
-- なし。公開物でのquickstartの1周も通り（`55a7dbe1b35f`、17分31秒、d6c2b1bで出力例を差し替え）、#59は閉じた
-- `~/.local/bin/masuda`は9月7日の旧実装のバイナリのまま（触っていない）。公開物で置き換えるのはユーザーの判断
+- go.modのengineの版上げ。engineのbd9515bがまだpushもタグもされていないため（下の注意点）
+- 実機（live・quickstart）でplannerが新スキーマの計画を書けるかは未確認
 ## 次の一手
-1. リリース手順は`.claude/skills/release/SKILL.md`（Skill `release`、bb5b03c）に移した。次のリリースはこれに従う。`scripts/precheck.sh vX.Y.Z`が速い前確認
-2. quickstart実走で見つけた課題: masuda-engine#3と#66（`expected_byproducts`のglobがengineの完全一致・ホストの`path.Match`のどちらでも効かず、Pythonでは毎ステップdeviationが開く。両方を同じ版で直す）、masuda-engine#4（テスト不足の指摘の`file`が実装側を指し、fixerが構造的にcannot_fix）
-3. #65: ゲスト→ホストのフックcurl（TcpMap経由）が1接続だけ約135秒待たされ、メインセッションが止まる。5周目とliveの2周連続で1周に2回。緩和は`internal/guest/guest.go`のフックcurlに`--connect-timeout`・`--max-time`を付けること。原因の切り分けはIssueの手順
-4. 旧設計のIssue棚卸しは完了（#62クローズ）。masudaのopenは#7 #9 #15 #23 #51（新設計の言葉で書き直し済み）、#60 #61 #63 #64 #65 #66。engineは#1〜#6、sandboxは#1〜#6
+1. engineのbd9515bをmainへpush（またはタグ）した後、`go get github.com/TadahiroYamamura/masuda-engine@<tagまたはmain> && go mod tidy`でgo.modを追従させ、`GOWORK=off go test ./...`が緑になることを確かめてコミットする
+2. 実機1周で、plannerのtitleが機能単位になるか、テストファイルが同じステップの`files`に入ってdeviationが減るかを確かめる
 ## 注意点
-- ホストで動く対象リポジトリ由来のものは作業ツリーの`.masuda/images/*/Dockerfile`の`docker build`だけ（`--branch`の定義は使わない）。脅威モデルに明記した（d6f6a12）。承認制にはしない判断
-- サブエージェントからの`scripts/gh.sh issue`の書き込みは権限判定で止まる。Issue操作はメインのセッションで行う
-- `redesign`ブランチは役目を終えた（`develop`=`main`）。以後の開発は`develop`。CLAUDE.mdの正の記述も直した
-- 自動モードの安全判定で、**強制push・タグpush・CIでのsysctl編集**はエージェントから実行できない（ユーザーが`!`で打つ）。通常のpush（develop・redesign・main新設）とコミットはできた
-- `go get masuda-engine@<tag>`はタグ直後なら`GOPROXY=direct`。今回はプロキシも数分で返した
-- liveの記録: `/tmp/masuda-live-data-451579620/workspaces/ffd7dd0f371a/`（#65の証拠。再起動で消える）
-- ゲストのClaude Code 2.1.287は`Agent`を既定でバックグラウンド起動し、メインセッションはターンを終えて通知を待つ。ループ規約（`internal/guest/loop-claude.md`）はこれを前提にしていない。#65の停止は通知の遅延として現れる
-- このセッションのdev `masuda serve`と`masuda-sandbox serve`（`node dist/cli.js`、ソケットは既定）は起動したまま。止めるならpkill
+- **masudaの`go.mod`はengine `v0.1.0`のままで、engineの新スキーマは`go.work`（gitignore済み、このセッションで作った）経由でしか入らない。** engineにタグを打つかmainへpushした後に`go get github.com/TadahiroYamamura/masuda-engine@<tagまたはmain> && go mod tidy`で追従が要る。それまで`GOWORK=off go test ./contract/`はC-M4が旧スキーマで落ちる（`valid plan rejected: ... additional properties 'title', 'tests' not allowed`）。CIも同じ理由で落ちる
+- `docs/user/quickstart.md`の8節の出力例は新しい描画の形で書いたもので、公開物（v0.1.0）の実走ではない。v0.1.0のバイナリは計画を1行のJSONで出す。次のリリースまでdocsのサイト（`0.1`）とは食い違うので、リリース時に実走の出力へ差し替えるとよい
+- 旧スキーマの計画はstepに`title`が無いので、ステップの見出しは`  1.`だけになり、descriptionがその下に5スペース字下げで続く
+- サーバー・APIは変えていない（`subject`は計画のJSONのまま。見せ方はクライアントの責任）
 ## 契約への提案
-なし。
+なし

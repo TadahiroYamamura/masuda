@@ -66,3 +66,69 @@ func TestListRow(t *testing.T) {
 		}
 	}
 }
+
+const newSchemaPlan = `{"goal":"三角形の面積と周長を求めるモジュールを追加する","summary":"shapes/triangle.py を新規追加する。\nテストは unittest で実行する","steps":[{"number":1,"title":"三角形モジュールの実装","description":"_check で辺を検証する。\narea はヘロンの公式","tests":["3,4,5 で area が 6","負の辺で ValueError"],"files":["shapes/triangle.py","tests/test_triangle.py"]},{"number":2,"title":"READMEの更新","description":"使い方を書く。ドキュメントのみなのでテストは無い","tests":[],"files":["README.md"]}],"alternatives":[{"option":"退化三角形を許容する (<=)","reason":"面積 0 が無意味"}],"risks":["浮動小数の境界誤差は未対応"],"expected_byproducts":["**/__pycache__/**","**/*.pyc"]}`
+
+func TestFormatGatePlan(t *testing.T) {
+	got := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(newSchemaPlan)})
+	want := `
+goal: 三角形の面積と周長を求めるモジュールを追加する
+
+summary:
+  shapes/triangle.py を新規追加する。
+  テストは unittest で実行する
+
+steps:
+  1. 三角形モジュールの実装
+     _check で辺を検証する。
+     area はヘロンの公式
+     tests:
+       - 3,4,5 で area が 6
+       - 負の辺で ValueError
+     files: shapes/triangle.py, tests/test_triangle.py
+  2. READMEの更新
+     使い方を書く。ドキュメントのみなのでテストは無い
+     files: README.md
+
+alternatives (considered, not taken):
+  - 退化三角形を許容する (<=): 面積 0 が無意味
+
+risks:
+  - 浮動小数の境界誤差は未対応
+
+expected byproducts: **/__pycache__/**, **/*.pyc
+
+approve: masuda gate approve abc 0003 --hash h [--comment <text>]
+`
+	if !strings.Contains(got, want) {
+		t.Fatalf("plan gate:\n%s\nwant to contain:\n%s", got, want)
+	}
+	if strings.Contains(got, `"goal"`) {
+		t.Fatalf("the raw JSON must not be shown:\n%s", got)
+	}
+}
+
+// 既存ワークスペースの記録には旧スキーマ（goal・title・tests・alternatives・risksが無い）の計画が残る。
+func TestFormatGatePlanOldSchema(t *testing.T) {
+	old := `{"summary":"アプローチ: 追加する","steps":[{"number":1,"description":"shapes/triangle.py を新規追加","files":["shapes/triangle.py"]},{"number":2,"description":"テストを追加","files":["tests/test_triangle.py"]}],"expected_byproducts":[]}`
+	got := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(old)})
+	want := "\nsummary:\n  アプローチ: 追加する\n\nsteps:\n  1.\n     shapes/triangle.py を新規追加\n     files: shapes/triangle.py\n  2.\n     テストを追加\n     files: tests/test_triangle.py\n\napprove:"
+	if !strings.Contains(got, want) {
+		t.Fatalf("old-schema plan:\n%s\nwant to contain:\n%q", got, want)
+	}
+	for _, not := range []string{"goal:", "tests:", "alternatives", "risks:", "expected byproducts"} {
+		if strings.Contains(got, not) {
+			t.Fatalf("absent sections must be omitted (%q):\n%s", not, got)
+		}
+	}
+}
+
+// 計画として解けない中身は、内容を隠さないようそのまま出す。
+func TestFormatGatePlanFallback(t *testing.T) {
+	for _, subject := range []string{"not json at all", `{"summary":"s"}`} {
+		got := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0003", Gate: "plan", Target: "plan", TargetHash: "h", Subject: []byte(subject)})
+		if !strings.Contains(got, "\n"+subject+"\n") || strings.Contains(got, "steps:") {
+			t.Fatalf("fallback for %q:\n%s", subject, got)
+		}
+	}
+}

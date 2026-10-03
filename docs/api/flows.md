@@ -122,7 +122,7 @@ function serveNotice(ev) {
 
 | ゲート | `subject` | 見せ方 |
 |---|---|---|
-| `target: "plan"` | 計画のJSON（同梱のスキーマなら`summary`・`steps[]{number, description, files}`・`expected_byproducts`） | ステップと対象ファイルの一覧。JSONとして読めなければ全文 |
+| `target: "plan"` | 計画のJSON（同梱のスキーマなら`goal`・`summary`・`steps[]{number, title, description, tests[], files[]}`・`alternatives[]{option, reason}`・`risks[]`・`expected_byproducts[]`。旧版の計画は`goal`・`title`・`tests`・`alternatives`・`risks`を持たない） | 目的・要約・ステップ（名前・内容・テスト・対象ファイル）・採らなかった案・リスクに分けて出す。無い項目は省く。JSONとして読めなければ全文 |
 | `target: "diff"` | 分岐元（`refs/masuda/base`）から`stagingCommit`までのunified diff（publishされる内容）。続けて、未コミットの変更があれば`## publishされない変更（未コミット）`の見出しの下に1行1ファイルで並ぶ | 差分ビュー（下の節）と、publishされないファイルの一覧 |
 | `target: "step-diff"` | ブランチ先頭から作業ツリーまでのunified diff（**これからcommitされる**未コミットの内容。未追跡のファイルを含む）。見出しは付かない | 差分ビュー。`diff`と取り違えないよう「publishされる内容」でなく「このステップでコミットされる内容」と明示する |
 | `target`が他のデータ名 | そのデータの中身（Markdown・JSON等） | 全文 |

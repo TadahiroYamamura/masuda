@@ -129,7 +129,7 @@ masuda gate dismiss|halt|redo <id> <occurrence> [--comment <text>]
 | サブコマンド | 動き |
 |---|---|
 | `list` | 開いているゲート（`<id>`を省くと全ワークスペース）。列はWORKSPACE・OCCURRENCE・GATE・TARGET・OPENED |
-| `show` | ゲートの種類・`target_hash`・（あれば）反映されるcommit・判断済みなら判断、と中身。`triage`は懸念の本文、`deviation`は計画外で変わったファイルの一覧を出す。差分のゲートは見出しで区別する: `target: diff`（`review`）は「publishされる内容（コミット済み）」、`target: step-diff`（`interim`）は「このステップでこれからコミットされる内容（未コミット）」。未判断なら、そのゲートで打てるコマンドを添える |
+| `show` | ゲートの種類・`target_hash`・（あれば）反映されるcommit・判断済みなら判断、と中身。`triage`は懸念の本文、`deviation`は計画外で変わったファイルの一覧を出す。`target: plan`（`plan`）は計画のJSONを、goal・summary・ステップごとの内容とテストと対象ファイル・採らなかった案・リスク・想定する副産物の節に分けて出す（JSONとして読めなければ全文）。差分のゲートは見出しで区別する: `target: diff`（`review`）は「publishされる内容（コミット済み）」、`target: step-diff`（`interim`）は「このステップでこれからコミットされる内容（未コミット）」。未判断なら、そのゲートで打てるコマンドを添える |
 | `approve` | 承認する |
 | `reject` | 却下する |
 | `dismiss`・`halt`・`redo` | `triage`ゲートへの判断。懸念を退けて続ける／実行を止める／その出現をやり直させる |
