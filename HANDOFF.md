@@ -1,33 +1,35 @@
 # HANDOFF
 ## 作業項目
-2026-10-03（午後）: マイルストーンv0.2「masudaでmasudaを作る体制」の作業項目をすべて終え、v0.2.0のリリース手順に入った（追跡Issue #73）。監督（Fable）が`docs/work-orders.md`のM14a〜M14f・engineのE12〜E13に指示書を書き、準備はOpusのサブエージェント、masuda自身の変更はmasudaのrun（予行1〜4）で監督がgate・questionを扱った。
+2026-10-03（夕）: **M14g**（同梱`develop`の見直し＝engine E14への、利用者向け文書と図の追従）。`go.work`で隣の`../masuda-engine`（E14: `a77af38`・`e0bd292`・`1c281ae`・`64a8e69`）を使った。masudaのコード・契約・`go.mod`は変えていない。
 
-- M14a（#68前半）: masuda自身の`.masuda/`をgitで追跡（旧実装の`.gitignore`で丸ごと無視されていた）。Dockerfileの版固定、`checks.test`を`GOWORK=off go build/vet/test`に、`pitfalls.jsonl`（11件）、同梱と同一だった`reviews/`14件は削除。ゲストで`unshare -Urm`が通り、契約テストもゲストで緑
-- E12（engine #8）: engineリポジトリに`.masuda/`（settings・Dockerfile・pitfalls 8件・.gitignore）
-- E13（engine、契約変更、ユーザー承認）: `Agent.Model`・`Agent.Effort`。役定義のfrontmatter`model`・`effort`（effortは`low`・`medium`・`high`・`xhigh`・`max`）。engine main `077256e`〜`9c39140`、push済み
-- M14b（#69、契約変更）: `guest.AgentFile`が`model:`・`effort:`を書く。`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行を更新。liveの`TestClaudeDirReachesSubagent`で、`model: sonnet`/`effort: low`の役はsonnet・low、無指定の役はメインのモデル（opus）・mediumを実測。`go.mod`はengine main `9c39140`に固定（`de57bb0`。リリースで`v0.2.0`へ）
-- M14e（ユーザー決定）: `settings.json`の`agents`（役の名前→`model`・`effort`の上書き。frontmatterより優先。知らない役の名前は`Run`が`InvalidArgument`、`Resume`が`FailedPrecondition`、`workflow check`が問題として出す）。masuda自身は`claudeSettings.model: sonnet`（既定の役とメインセッション）、`reviewer`・`cross-cutting-explorer`・`cross-cutting-verifier`は`opus`
-- 予行1（M14c、`workflows/fix`）: #64（`Watch`の`after_seq`が再送バッファより古いとき`OutOfRange`）。マージ`d67e735`
-- 予行2（M14d、`workflows/develop`）: #70（リリース手順に開発版との分離とハーネスの更新）。マージ`1a1d012`、残指摘の手直し`d5a1e54`
-- 予行3（`workflows/review`×3）: M14eの差分でreviewer/cross-cuttingのSonnet/Opus比較
-- 予行4（M14f、`workflows/fix`）: M14eへのレビュー指摘7点。マージ`12dd6d0`
-- ほか: `.masuda/claude/rules/`（coding・comments・testing・information-placement・communication・masuda-run）、`docs/user/workflows.md`に「まずfix」の目安、Claude Codeを2.1.288へ（`cd3203e`）
-- 計測と気づきは#68のコメント（2026-10-03）に表で書いた
+- `7ad995a` workflows.md: 同梱の表から`workflows/implement/interim-review`を削除、`implement/build-step`を「実装・テスト・コミット」に。`develop`の流れの行、途中レビューの段落を削り、plan gate却下（`revise-rejected`）とreview gate却下（`rework`→`rework-test`→`rework-commit`→`approve-review`、最終レビューはやり直さない）を追加。「まずfix」の段落を書き直し（数字は削除）。`develop`の図を取り直して差し替え（`fix`・`review`の図は差分なし）
+- `990128d` reviews.md: `trigger`は自分のワークフローで`interim-`で始まるノードにreviewerを置いたときだけ効く、同梱は最終レビューで全観点、の形に
+- `6d8ded3` concepts.md（plan・interim・reviewの行）、quickstart.md（fixの説明、8節の流れ、9節の却下）、troubleshooting.md（interimの行）
+
+それ以前（v0.2の作業項目M14a〜M14f・E12〜E13・予行1〜4）の記録は前回のHANDOFF（`9ba887c`）と#68のコメントにある。
+
 ## 完了した契約テスト
+- M14g: `go build ./... && go vet ./... && go test -count=1 ./...`（`go.work`有効、E14のengine）緑。`mkdocs`は入っていないので`mkdocs build --strict`は飛ばした。図はscratchpadのフェイクserve（一意なソケット、終了後に停止）からリポジトリ外で`workflow show`して取り直し、取り直し前の`git diff --stat docs/user/workflows.md`は空、後は`develop`の図の差し替え分のみ
+- 以下は前回（M14a〜M14f）の記録
 - `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`緑（C-M1〜C-M10無修正）。`serve`の`TestStallAfterFromLocalSettings`は一括で稀に落ちる既知のもの（単体では緑）
 - live（開発版sandbox `masuda-sandbox-dev.sock`、Claude Code 2.1.288）: `TestClaudeDirReachesSubagent`（M14b、model・effortの検査付き）、`TestGuestSubagentContinuation`（100秒）、`TestDevelopLapOnPythonRepo`（470秒）。終了後`qemu-system`は0
 - masuda-sandboxの契約テスト8件緑（1回目はC-S3の`timedOut`が落ちたが再現せず）。tarball予行ok
 - engine: `go test ./...`緑（C-E1〜C-E9）
 ## 未完と理由
+- **M14gのgo.modの固定**: E14はengineのdevelop側にあり、masudaの`go.mod`は未だ`9c39140`。`GOWORK=off`だと同梱developは旧版（途中レビューあり）のままで、文書と食い違う。engineのpush後に監督が`go get`で固定する（指示書どおり）
+- **docs/apiの残り**: `docs/api/flows.md`136行の「`target: "step-diff"`のゲート（同梱の定義では`interim`）」は同梱で使われなくなった。指示書の範囲（`docs/user/`）外なので未修正
+- `mkdocs build --strict`は未実行（mkdocs未導入）。アンカー`workflows.md#develop`は既存のもの
 - **v0.2.0のリリース**: 1-0・1-2まで済み。残りはdevelopのpush（ユーザー）→1-1 `precheck.sh v0.2.0`→engine・sandbox・masudaのタグ（ユーザー）→`go.mod`を`v0.2.0`へ→`main`をdevelopに合わせる→公開後の確認→ハーネスの更新（手順6、ユーザー）→v0.1マイルストーンを閉じる。#73のチェックボックス
 - quickstartの8・9節の出力例の実走への差し替え（任意。公開物で1周するとき）
 - #61の「特権コマンドの実機動作」は未確認のまま（今日の予行では特権コマンドを使う題材が無かった）
 ## 次の一手
+0. engineのE14をpushし、masudaの`go.mod`を固定する（M14gの文書はそれで`GOWORK=off`でも正しくなる）。ついでに`docs/api/flows.md`のinterimの記述を直すか判断する
 1. リリースの続き（上）。打つ直前に`git log origin/develop..develop`が空であること、`precheck.sh v0.2.0`が緑であることを確かめる
 2. ハーネス導入後: `~/.local/share/masuda`を日付付きで退避、`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`、既定のソケットで公開物のserveを起こす（SKILL.mdの手順6）。開発版は`masuda-dev`の場所のまま
 3. 次のdevelop周回でreviewerをSonnetに下げてよいか再確認（予行3では観点レビューの差は小さかった）
 4. v0.3の題材: #67（レビュー段階）、engine #7（withdrawn）、engine #9（fixerのcommit-message）、engine #10（却下の全工程やり直し、文書だけの途中レビュー省略）、masuda #71（liveが秘密ストアを読む）、#72（質問に補足を付ける）
 ## 注意点
+- M14gで指示書の対象外も直した: `docs/user/troubleshooting.md`の`interim`ゲートの行（同梱では開かなくなった）、workflows.mdの`fix`の節の「developとの違い」の途中レビューの行（却下の戻り先の違いに置換）、同梱の表の途中に挟まっていた「まずfix」の段落を表の後へ移した（smokeの行が表から外れていた）
 - **開発版の置き場所**: データディレクトリ`~/.local/share/masuda-dev`、ソケット`$XDG_RUNTIME_DIR/masuda-dev.sock`・`masuda-sandbox-dev.sock`。バイナリはscratchpadの`masuda-dev`（HEADから`git archive`してビルド。作業ツリーのビルドだと未コミットの変更が混ざる）。`masuda-sandbox serve`は`cd ~/work/masuda-sandbox && node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`。再起動後は落ちているので`masuda doctor --sandbox-socket ...`で見る
 - **`~/.local/bin/masuda`は旧v1のバイナリ（9月7日）**でv0.1.0の公開物は入っていない。`~/.local/share/masuda`には旧走行のワークスペース13個とM4暫定の`claude-oauth-token`。ハーネス導入時に退避する（ユーザー決定: 導入はリリース後）
 - Claudeトークンは`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（標準入力）で登録する。暫定ファイルの`cp`は安全判定で止まる。liveは暫定ファイルか`MASUDA_LIVE_CLAUDE_TOKEN`しか読まない（#71）
