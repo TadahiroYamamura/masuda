@@ -107,7 +107,8 @@ VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM�
 
 | 症状 | 原因と対処 |
 |---|---|
-| planゲートの前に`done`で終わった（`outcome out_of_scope`） | 計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。`exports/`は作られない。役が書いた理由（`feedback`）は`records/engine.json`に記録されている（`grep -o '"feedback":"[^"]*"' records/engine.json`）。課題の書き方を直して`run`し直す |
+| planゲートの前に`done`で終わった（`outcome out_of_scope`） | 計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。`exports/`は作られない。役が書いた理由（`feedback`）は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。課題の書き方を直して`run`し直す |
+| planゲートの前に`done`で終わった（`outcome needs_human`） | `workflows/fix`の計画を立てる役が、指示が曖昧で計画を立てられないと判断した。役が確かめたい疑問は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。疑問に答える形で指示書を直して`run`し直す |
 | planゲートの前に`blocked` | POSITIONの理由を読む。出力が検証で落ち続けた（`invalid`）、許可されていない通信を選んだノードがある等 |
 | `waiting_input`のまま、ゲートが開かない | 上の`waiting_input(idle)`。エージェントが画面の上で問いかけている |
 | 計画を承認したのに、もう一度planゲートが開く | あるステップの実装が行き詰まった（`stuck`）か、テストが3回通らなかった。`checks.test`を雛形のまま（必ず失敗する）にしていないか確かめる。理由（実装の役の`feedback`）は`records/engine.json`にある。計画を却下（コメント付き）して直させる |

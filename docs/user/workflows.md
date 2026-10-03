@@ -1,6 +1,6 @@
 # ワークフロー
 
-ワークフローは「どの役のエージェントに何をさせ、どこで人間に聞き、いつコミットして反映するか」を書いたYAML。masudaは2つの同梱のワークフローを持ち、対象リポジトリの`.masuda/`で上書き・追加できる。
+ワークフローは「どの役のエージェントに何をさせ、どこで人間に聞き、いつコミットして反映するか」を書いたYAML。masudaは人が始める同梱のワークフローを3つ持ち、対象リポジトリの`.masuda/`で上書き・追加できる。
 
 このページは導入と同梱の説明。キーの全仕様は[ワークフロー定義の仕様](reference/workflow-schema.md)にある。
 
@@ -81,7 +81,7 @@ outcomes:
 - `inputs`・`outputs`: 受け取る・書くデータの名前。入力はVMの`/masuda/in/<出現ID>/<名前>`にファイルとして置かれる
 - `outcomes`: 終わり方と、その意味の説明。`done`は必須。エージェントはこの中から1つを選んで報告する
 
-本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（11個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
+本文には役の仕事だけを書けばよい。masudaとのやり取り（入力の読み方、出力の書き方、報告の仕方）はmasudaがエージェントに教える。同梱のエージェント（12個）の定義は[masuda-engineの`engine/defaults/agents/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults/agents)にあり、書き方の見本になる。
 
 ## データとスキーマ
 
@@ -103,13 +103,15 @@ outcomes:
 
 ## 同梱のワークフロー
 
-`masuda workflow list`で一覧が出る。人が始めるのは`develop`と`review`で、残りはその部品。
+`masuda workflow list`で一覧が出る。人が始めるのは`develop`・`fix`・`review`で、残りはその部品。
 
 | ワークフロー | 入力 | 用途 |
 |---|---|---|
 | `workflows/develop` | `instructions` | 指示書から、調査・計画・実装・レビューをして反映する |
+| `workflows/fix` | `instructions` | 小さな修正向け。調査と計画を1つのセッションで済ませ、途中レビュー・横断チェック・レポートを省いて反映する |
 | `workflows/review` | なし | 分岐元からの差分をレビューし、レポートを残して終える（反映しない） |
 | `workflows/implement/build-step` | `step` | `develop`の部品。計画の1ステップを実装・テスト・途中レビュー・修正・コミットする |
+| `workflows/fix/build-step` | `step` | `fix`の部品。計画の1ステップを実装・テスト・コミットする（途中レビュー無し） |
 | `workflows/implement/interim-review` | `diff` | 部品。ステップの差分を、`trigger`が当てはまる観点だけで1つのセッションでレビューし、別の役が指摘の正確さを確かめる |
 | `workflows/review/perspectives` | `diff` | 部品。全レビュー観点を1つのセッションで差分に当て、別の役が指摘の正確さと見落としを確かめる |
 | `workflows/review/cross-cutting` | `diff` | 部品。観点に分けにくい横断的な問題を探して確かめる |
@@ -123,6 +125,7 @@ outcomes:
 ```
 
 - 計画を立てる役は、調査が足りなければ調査へ戻し、依頼がこのリポジトリで扱うものでなければ`out_of_scope`で終える
+- 実装する役（implementer）は計画（`plan`）に加えて調査結果（`investigation`）を読み、既存の流儀に合わせ、既にある機能を重複して作らない
 - ステップの実装は`/masuda/checks/test`（`settings.json`の`checks.test`）が通るまで、最大3回やり直す。直せなければ`stuck`で計画の承認へ戻る
 - レビューと修正は役ごとに1つのセッションで行う。レビューする役（reviewer）が観点を順に当てて指摘を台帳（`findings`）に書き、確かめる役（review-checker）が指摘の正確さを確かめる（不正確ならreviewerへ戻す）。直す役（fixer）は自動で直してよい指摘（`autofix: true`）をまとめて直し、再確認する役（rechecker）が解消を確かめる（未解決ならfixerへ戻す）
 - 途中レビューは、ステップの差分（`step-diff`）に対して、reviewerが各観点の`trigger`を見て当てはまる観点だけで行う（[レビュー観点](reviews.md)）。指摘が無ければ（`clean`）、または直す指摘が無ければ（`nothing_to_fix`）そのままコミットする。直しきれなければ`interim`ゲートで止まる
@@ -287,6 +290,127 @@ flowchart TD
   class triage engine
 ```
 
+### fix {#fix}
+
+```text
+調査と計画（1セッション） → [plan gate] → ステップごとに（実装 → テスト → コミット）
+     → 全観点レビュー → 修正 → 再確認 → コミット → [review gate] → publish
+```
+
+typoの修正や小さなバグの修正のように、計画が1〜2ステップで済む依頼向け。`develop`との違い:
+
+- 調査と計画を1つのセッション（quick-planner）で行う。quick-plannerは読み取り専用で、調査結果（`investigation`）と計画（`plan`）を書く。実装する役はどちらも読む
+- ステップごとの途中レビューと`interim`ゲートが無い。ステップは実装→テスト→コミットだけ
+- 最後のレビューは全観点レビュー（reviewer→review-checker）だけで、横断チェックが無い。指摘が無ければ（`clean`）修正と再確認を飛ばしてコミットへ進む
+- レポートを書かない。`review`ゲートでは差分と、stagingのコメント（指摘）を見て判断する。publishでexportsに書き出すものも無い
+- 指示が曖昧で計画を立てられなければ、quick-plannerは推測で計画を書かず`needs_human`で終える。実行は`outcome needs_human`の`done`になり、確かめたい疑問が理由として`masuda list`のPOSITIONに出る（[運用](operations.md#list)）。疑問に答える形で指示書を直して`run`し直す
+- 依頼がこのリポジトリで扱うものでなければ`out_of_scope`で終える（`develop`と同じ）
+
+```sh
+masuda run workflows/fix --branch fix/typo --input instructions=@task.md
+```
+
+`masuda workflow show workflows/fix`が出す図:
+
+```mermaid
+%% workflows/fix
+flowchart TD
+  entry((start)) --> w0_plan
+  subgraph w0_graph["workflows/fix"]
+    w0_plan["plan<br/>type: agent<br/>agents/quick-planner<br/>max: 3"]
+    w0_approve_plan{"approve-plan<br/>type: approval<br/>gate: plan, target: plan"}
+    w0_implement["implement<br/>type: foreach<br/>over: steps<br/>body: workflows/fix/build-step"]
+    w0_review["review<br/>type: workflow<br/>workflows/review/perspectives"]
+    w0_fix["fix<br/>type: agent<br/>agents/fixer<br/>max: 3"]
+    w0_recheck["recheck<br/>type: agent<br/>agents/rechecker<br/>max: 3"]
+    w0_review_commit["review-commit<br/>type: commit<br/>scope: plan"]
+    w0_approve_review{"approve-review<br/>type: approval<br/>gate: review, target: diff"}
+    w0_rework["rework<br/>type: agent<br/>agents/implementer<br/>max: 3"]
+    w0_rework_test["rework-test<br/>type: exec<br/>/masuda/checks/test<br/>max: 3"]
+    w0_rework_commit["rework-commit<br/>type: commit<br/>scope: plan"]
+    w0_publish["publish<br/>type: publish<br/>target: local"]
+    w0_end_done((("end")))
+    w0_end_needs_human((("end:needs_human")))
+    w0_end_out_of_scope((("end:out_of_scope")))
+    w0_end_stuck((("end:stuck")))
+  end
+  w0_plan -. "after run" .-> w0_plan_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_plan -->|"done"| w0_approve_plan
+  w0_plan -->|"needs_human"| w0_end_needs_human
+  w0_plan -->|"out_of_scope"| w0_end_out_of_scope
+  w0_approve_plan -->|"approved"| w0_implement
+  w0_approve_plan -->|"rejected"| w0_plan
+  w0_implement -->|"done"| w0_review
+  w0_implement -->|"stuck"| w0_approve_plan
+  w0_implement -. "foreach" .-> w1_implement
+  w0_review -->|"clean"| w0_review_commit
+  w0_review -->|"done"| w0_fix
+  w0_review -. "workflow" .-> w2_review
+  w0_fix -->|"cannot_fix"| w0_review_commit
+  w0_fix -->|"done"| w0_recheck
+  w0_fix -->|"exhausted"| w0_review_commit
+  w0_fix -->|"nothing_to_fix"| w0_review_commit
+  w0_recheck -. "after run" .-> w0_recheck_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w0_recheck -->|"done"| w0_review_commit
+  w0_recheck -->|"exhausted"| w0_review_commit
+  w0_recheck -->|"unresolved"| w0_fix
+  w0_review_commit -. "before commit" .-> w0_review_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
+  w0_review_commit -->|"done"| w0_approve_review
+  w0_review_commit -->|"rejected"| w0_rework
+  w0_approve_review -->|"approved"| w0_publish
+  w0_approve_review -->|"rejected"| w0_rework
+  w0_rework -->|"done"| w0_rework_test
+  w0_rework -->|"stuck"| w0_end_stuck
+  w0_rework_test -->|"done"| w0_rework_commit
+  w0_rework_test -->|"failed"| w0_rework
+  w0_rework_commit -. "before commit" .-> w0_rework_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
+  w0_rework_commit -->|"done"| w0_review
+  w0_rework_commit -->|"rejected"| w0_rework
+  w0_publish -->|"done"| w0_end_done
+  subgraph w1_graph["workflows/fix/build-step"]
+    w1_implement["implement<br/>type: agent<br/>agents/implementer<br/>max: 3"]
+    w1_test["test<br/>type: exec<br/>/masuda/checks/test<br/>max: 3"]
+    w1_commit["commit<br/>type: commit<br/>scope: step"]
+    w1_end_done((("end")))
+    w1_end_stuck((("end:stuck")))
+  end
+  w1_implement -->|"done"| w1_test
+  w1_implement -->|"exhausted"| w1_end_stuck
+  w1_implement -->|"stuck"| w1_end_stuck
+  w1_test -->|"done"| w1_commit
+  w1_test -->|"failed"| w1_implement
+  w1_commit -. "before commit" .-> w1_commit_deviation{{"deviation gate (engine)<br/>opens if files outside the plan changed"}}
+  w1_commit -->|"done"| w1_end_done
+  w1_commit -->|"rejected"| w1_implement
+  subgraph w2_graph["workflows/review/perspectives"]
+    w2_review["review<br/>type: agent<br/>agents/reviewer<br/>max: 3"]
+    w2_check_review["check-review<br/>type: agent<br/>agents/review-checker<br/>max: 3"]
+    w2_end_clean((("end:clean")))
+    w2_end_done((("end")))
+  end
+  w2_review -. "after run" .-> w2_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_review -->|"clean"| w2_check_review
+  w2_review -->|"done"| w2_check_review
+  w2_review -->|"exhausted"| w2_end_done
+  w2_check_review -. "after run" .-> w2_check_review_deviation{{"deviation gate (engine)<br/>opens if this read-only agent changed the tree"}}
+  w2_check_review -->|"clean"| w2_end_clean
+  w2_check_review -->|"done"| w2_end_done
+  w2_check_review -->|"inaccurate"| w2_review
+  triage{{"triage gate (engine)<br/>can interrupt any node when an agent reports a concern"}}
+  classDef human fill:#fde68a,stroke:#b45309
+  classDef engine stroke-dasharray: 4 3
+  class w0_approve_plan human
+  class w0_approve_review human
+  class w0_plan_deviation human
+  class w0_recheck_deviation human
+  class w0_review_commit_deviation human
+  class w0_rework_commit_deviation human
+  class w1_commit_deviation human
+  class w2_review_deviation human
+  class w2_check_review_deviation human
+  class triage engine
+```
+
 ### review
 
 ```text
@@ -365,6 +489,8 @@ flowchart TD
 | `.masuda/workflows/develop.yaml` | `workflows/develop`が自分のものになる |
 | `.masuda/agents/planner.md` | `develop`が使う計画の役が自分のものになる |
 | `.masuda/workflows/investigate.yaml` | 新しいワークフロー`workflows/investigate`が増える |
+
+同梱の実装する役（`agents/implementer`）は`plan`と`investigation`を入力に取る。自分のワークフローでimplementerを使うなら、それより前に`investigation`を書くノードを置く（無ければ検査で拒否される）。
 
 同梱の定義の元は[masuda-engineの`engine/defaults/`](https://github.com/TadahiroYamamura/masuda-engine/tree/main/engine/defaults)にある。上書きするときはそこから写して直す。
 

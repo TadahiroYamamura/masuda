@@ -24,6 +24,8 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | POSITION | ワークフローの今の位置。止まった理由（`reason`）か結果（`outcome ...`）があれば、そちらの1行目 |
 | OPEN | 開いているゲート（`gate:<ゲート名>`）と質問（`question:<出現ID>`） |
 
+`done`でも、ワークフローが`end:<ラベル>`で終わったときは`outcome`がそのラベルになる（`needs_human`・`out_of_scope`・`stuck`等）。このとき終わらせたエージェントが書いた理由（`feedback`）が`reason`に入り、POSITIONは`outcome needs_human: <理由の1行目>`の形になる。`needs_human`なら理由はエージェントが人間に確かめたい疑問なので、答える形で指示書を直して`run`し直す。理由の全文は`workspace.json`の`reason`にある（下の[ホストの記録](#host-records)）。
+
 ### 活動（ACTIVITY）
 
 | 活動 | 意味 | することは |
@@ -131,13 +133,13 @@ jq -r 'select(.kind=="invalid" or .kind=="blocked") | .detail' exports/execution
 - exportsが作られるのはpublish・discardで終わったときだけ。`stop`や`masuda serve`の再起動、`remove`ではVMが先に無くなるので、会話ログは残らない
 - 終わる前に中間の結果を見たいときは、ホストの記録を直接読む（下記）
 
-## ホストの記録
+## ホストの記録 {#host-records}
 
 ワークスペース1つは`~/.local/share/masuda/workspaces/<id>/`にまとまる。調べものに使う主なもの:
 
 | パス | 中身 |
 |---|---|
-| `workspace.json` | 対象リポジトリ・ブランチ・分岐元・ワークフロー・状態・理由・今の位置 |
+| `workspace.json` | 対象リポジトリ・ブランチ・分岐元・ワークフロー・状態・結果（`outcome`）・理由（`reason`）・今の位置 |
 | `staging.git/` | staging。`git -C staging.git log --oneline <ブランチ>`でコミットを見られる |
 | `data/<出現ID>/<データ名>` | 各ノードの出力（検証済み）。計画は`plan`、レポートは`report` |
 | `records/execution-log.jsonl` | 実行ログ（exportsのものと同じ） |

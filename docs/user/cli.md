@@ -92,7 +92,7 @@ masuda list [--repo <dir>] [--all]
 | `--repo` | 空（全リポジトリ） | そのリポジトリのワークスペースだけを出す |
 | `--all` | `false` | `done`・`stopped`も出す（`blocked`は常に出る） |
 
-列の読み方は[運用](operations.md#list)。
+列の読み方は[運用](operations.md#list)。`end:<ラベル>`で終わったワークスペース（`outcome needs_human`等）は、POSITIONに結果と、終わらせたエージェントの理由の1行目が出る。
 
 ## watch
 

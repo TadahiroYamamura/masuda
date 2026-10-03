@@ -122,6 +122,7 @@ masuda run workflows/develop --branch feat/triangle --input instructions=@task.m
 - 分岐元は、今チェックアウトしているブランチ。変えるなら`--base main`のように渡す
 - `--input instructions=@task.md`の`@`は「ファイルの中身」。`instructions=文字列`と直接書いてもよい
 - 出てきた`55a7dbe1b35f`がワークスペースのID。以下`<id>`と書く
+- typoの修正のような小さな修正なら、`workflows/develop`の代わりに`masuda run workflows/fix`を使える。調査と計画を1つのセッションで済ませ、途中レビューとレポートを省く（[ワークフロー](workflows.md#fix)）。以下の手順は同じで、9節のレポートが無い
 
 `masuda run`はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。
 
@@ -257,3 +258,4 @@ python3 -m unittest discover -s tests -v
 - `masuda list`のSTATEが`blocked`: POSITIONに理由が出る。[トラブルシューティング](troubleshooting.md)
 - ACTIVITYが`stalled`や`waiting_input`のまま: [トラブルシューティング](troubleshooting.md#stalled)
 - 計画の承認より前に`done`で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（`outcome out_of_scope`）。課題の書き方を見直す
+- `workflows/fix`で、計画の承認より前に`outcome needs_human`で終わった: 指示が曖昧で計画を立てられなかった。POSITIONに役の疑問が出るので、答える形で課題を書き直す
