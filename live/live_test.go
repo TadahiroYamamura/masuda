@@ -23,7 +23,10 @@
 // 1本1分前後: `MASUDA_LIVE_TEST=1 go test -count=1 -timeout 20m -v -run TestEngineContinuation ./live/`
 //
 // 失敗したときは、データディレクトリ（ワークスペースの記録・stagingを含む）と対象リポジトリを
-// 消さずに残し、パスをログに出す。
+// 消さずに残し、パスをログに出す。MASUDA_LIVE_KEEP=1なら成功しても残す。
+//
+// TestFixLapOnPythonRepoは同じ課題を同梱のfixで1周させる。VMを使うテストは並列にしない
+// （`-run 'TestDevelopLapOnPythonRepo|TestFixLapOnPythonRepo'`で直列に回る）。
 package live
 
 import (
@@ -110,7 +113,8 @@ func writeFiles(t *testing.T, root string, files map[string]string) {
 	}
 }
 
-// keepOnFailure はテスト用の一時ディレクトリを作り、成功したときだけ消す。
+// keepOnFailure はテスト用の一時ディレクトリを作り、成功したときだけ消す。MASUDA_LIVE_KEEP=1なら
+// 成功しても残す（1周の記録、例えば計画の`checks`やレビューの指摘を後から読むため）。
 func keepOnFailure(t *testing.T, pattern string) string {
 	t.Helper()
 	dir, err := os.MkdirTemp("", pattern)
@@ -118,7 +122,7 @@ func keepOnFailure(t *testing.T, pattern string) string {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if t.Failed() {
+		if t.Failed() || os.Getenv("MASUDA_LIVE_KEEP") == "1" {
 			t.Logf("kept %s for investigation", dir)
 			return
 		}
@@ -163,10 +167,22 @@ func connectAPI(sock string) clients {
 }
 
 // TestDevelopLapOnPythonRepo は同梱のdevelopを使い捨てのPythonリポジトリで1周させる。
-// plan・review・interimのゲートはAPIで承認し、それ以外のゲート（deviation・triage等）や
-// 質問が開いたら失敗にする。publishで実リポジトリのブランチに着地し、そのブランチで
-// テストが通ることまで確かめる。
+// plan・review・interimのゲートはAPIで承認し、計画の問い（plan-interviewerの質問）には固定の
+// 答えを返す。それ以外のゲート（deviation・triage等）が開いたら失敗にする。publishで実リポジトリの
+// ブランチに着地し、そのブランチでテストが通ることまで確かめる。
 func TestDevelopLapOnPythonRepo(t *testing.T) {
+	runLap(t, "workflows/develop", "feat/live")
+}
+
+// TestFixLapOnPythonRepo は同梱のfix（調査と計画を1セッションで済ませる軽いワークフロー）を、
+// developと同じリポジトリ・同じ課題で1周させる。検査もdevelopと同じ。
+func TestFixLapOnPythonRepo(t *testing.T) {
+	runLap(t, "workflows/fix", "feat/live-fix")
+}
+
+// runLap はworkflowを三角形の課題で1周させ、branchに着地してテストが通ることを確かめる。
+func runLap(t *testing.T, workflow, branch string) {
+	t.Helper()
 	if os.Getenv("MASUDA_LIVE_TEST") != "1" {
 		t.Skip("set MASUDA_LIVE_TEST=1 to run against the real sandbox service")
 	}
@@ -181,6 +197,7 @@ func TestDevelopLapOnPythonRepo(t *testing.T) {
 	if dl, ok := t.Deadline(); ok && time.Until(dl) < lapBudget {
 		t.Fatalf("the lap needs up to %v; run with -timeout 60m (the test deadline is in %v)", lapBudget, time.Until(dl).Round(time.Second))
 	}
+	started := time.Now()
 
 	repo := newPythonRepo(t)
 	dataDir := keepOnFailure(t, "masuda-live-data-")
@@ -203,8 +220,8 @@ func TestDevelopLapOnPythonRepo(t *testing.T) {
 
 	res, err := api.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{
 		RepoRoot: repo,
-		Workflow: "workflows/develop",
-		Branch:   "feat/live",
+		Workflow: workflow,
+		Branch:   branch,
 		Inputs:   map[string][]byte{"instructions": []byte(triangleTask)},
 	}))
 	if err != nil {
@@ -221,18 +238,18 @@ func TestDevelopLapOnPythonRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("done: outcome %q", final.Outcome)
+	t.Logf("done: outcome %q in %v", final.Outcome, time.Since(started).Round(time.Second))
 
 	// publishで実リポジトリのブランチに着地し、そのブランチでテストが通る。
-	files := run(t, repo, "git", "ls-tree", "-r", "--name-only", "feat/live")
+	files := run(t, repo, "git", "ls-tree", "-r", "--name-only", branch)
 	for _, want := range []string{"shapes/triangle.py", "tests/test_triangle.py"} {
 		if !strings.Contains(files, want) {
-			t.Fatalf("feat/live lacks %s:\n%s", want, files)
+			t.Fatalf("%s lacks %s:\n%s", branch, want, files)
 		}
 	}
 	if _, err := exec.LookPath("python3"); err == nil {
 		check := keepOnFailure(t, "masuda-live-check-")
-		run(t, repo, "git", "worktree", "add", "-q", check, "feat/live")
+		run(t, repo, "git", "worktree", "add", "-q", check, branch)
 		defer run(t, repo, "git", "worktree", "remove", "--force", check)
 		run(t, check, "python3", "-m", "unittest", "discover", "-s", "tests")
 	} else {
@@ -247,8 +264,8 @@ func TestDevelopLapOnPythonRepo(t *testing.T) {
 // approvable は人間の代わりにこのテストが承認してよいゲート。
 var approvable = map[string]bool{"plan": true, "review": true, "interim": true}
 
-// driveLap はワークスペースがDONEになるまで状態を見て、開いたゲートを承認する。
-// BLOCKED・STOPPED、承認してよくないゲート、質問、DEADは失敗として返す。
+// driveLap はワークスペースがDONEになるまで状態を見て、開いたゲートを承認し、開いた質問に答える。
+// BLOCKED・STOPPED、承認してよくないゲート、DEADは失敗として返す。
 func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1.Workspace, error) {
 	lastLine := ""
 	for {
@@ -268,7 +285,9 @@ func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1
 		case apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED, apiv1.WorkspaceState_WORKSPACE_STATE_STOPPED:
 			return nil, fmt.Errorf("workspace %s is %s: %s", id, w.State, w.Reason)
 		case apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_QUESTION:
-			return nil, fmt.Errorf("workspace %s asks a question (%v); develop on this task should not need one", id, w.OpenQuestions)
+			if err := answerOpenQuestions(ctx, t, api, id); err != nil {
+				return nil, err
+			}
 		case apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE:
 			if err := approveOpenGates(ctx, t, api, id); err != nil {
 				return nil, err
@@ -283,6 +302,38 @@ func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1
 		case <-time.After(5 * time.Second):
 		}
 	}
+}
+
+// liveAnswer はこのテストが人間の代わりに返す答え。developのplan-interviewerは計画の問いのうち
+// 計画を直す役が判断できなかったものを聞くので、計画を変えずに進められる答えにする。
+const liveAnswer = "計画のとおりでよい。判断に迷う点は安全側に倒す"
+
+// answerOpenQuestions は開いている質問のすべての問いにliveAnswerを返し、問いと答えをログに出す。
+// 選択肢のある問いには最初の選択肢を返す（選択肢の外の答えは断られるため）。
+func answerOpenQuestions(ctx context.Context, t *testing.T, api clients, id string) error {
+	open, err := api.questions.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenQuestionsRequest{WorkspaceId: id}))
+	if err != nil {
+		return err
+	}
+	for _, q := range open.Msg.Questions {
+		answers := map[string]string{}
+		for _, it := range q.Items {
+			a := liveAnswer
+			if len(it.Options) > 0 {
+				a = it.Options[0]
+			}
+			answers[it.Id] = a
+			t.Logf("question %s (occ %s):\n%s\n  -> %s", it.Id, q.Occurrence, it.Text, a)
+		}
+		_, err := api.questions.Answer(ctx, connect.NewRequest(&apiv1.AnswerRequest{WorkspaceId: id, Occurrence: q.Occurrence, Answers: answers}))
+		// 見ている間に閉じた質問は、次の周回で見直す。
+		if code := connect.CodeOf(err); code == connect.CodeFailedPrecondition || code == connect.CodeNotFound {
+			t.Logf("question occ %s: %v", q.Occurrence, err)
+		} else if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func approveOpenGates(ctx context.Context, t *testing.T, api clients, id string) error {
