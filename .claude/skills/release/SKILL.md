@@ -80,10 +80,12 @@ v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え�
 ```sh
 GOWORK=off go test -count=1 ./cmd/masuda/ ./internal/guest/ ./live/
 .claude/skills/release/scripts/precheck.sh --claude-code    # 版が雛形・liveに入り、配布元に実在する
+# 開発版のsandboxを立てる（liveは既定でハーネスのsandboxに繋ぎ、sandbox.protoが変わるリリースでは契約が合わず起動しない）
+cd ../masuda-sandbox && pnpm build && node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" &
 # 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）
-MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
+MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
 # 実機1周（15〜20分）
-MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
+MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
 ```
 
 liveのイメージはDockerfileが変われば作り直される（初回は数分余計にかかる）。この2つは下の「遅い確認」のliveを兼ねる（版を上げなかったときも下で同じ順に回す）。
@@ -105,19 +107,24 @@ liveのイメージはDockerfileが変われば作り直される（初回は数
 
 ### 1-2. 遅い確認
 
-遅い確認は手で回す。VMを使うものは同時に走らせない。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。
+遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。1-0で立てた開発版のsandboxが動いていれば、sandboxの起動行は打たない（同じソケットに2つ立てない）。
 
 ```sh
 # masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）
-cd ../masuda-sandbox && pnpm build && node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock" &
-MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox.sock" pnpm test:contract
+cd ../masuda-sandbox && pnpm build && node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" &
+MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" pnpm test:contract
 # masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす
-cd ../masuda && MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
-MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
+cd ../masuda && MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
+MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 60m -v -run TestDevelopLapOnPythonRepo ./live/
+# 開発版のsandboxを止める（下の予行のpnpm buildが走行中のserveのdistを作り直さないように。以後は使わない）
+pkill -f 'masuda-sandbox-dev.sock'
 # sandboxのtarball予行（distを一時的に版付きで作る。終わったらpnpm buildでdevに戻す）
-cd ../masuda-sandbox && cp package.json /tmp/package.json.bak && MASUDA_SANDBOX_VERSION=vX.Y.Z pnpm build \
-  && npm pkg set version=X.Y.Z && npm pack --pack-destination /tmp && cp /tmp/package.json.bak package.json \
-  && npm install -g /tmp/masuda-sandbox-X.Y.Z.tgz && masuda-sandbox --version && npm uninstall -g masuda-sandbox && pnpm build
+# ハーネスのグローバルのmasuda-sandboxを上書きしないよう--prefixで入れる。置き場はmktempの自分専用のディレクトリ（共有の/tmpの予測できる名前に置いたものは実行しない）
+t=$(mktemp -d)
+cd ../masuda-sandbox && cp package.json "$t/package.json.bak" && MASUDA_SANDBOX_VERSION=vX.Y.Z pnpm build \
+  && npm pkg set version=X.Y.Z && npm pack --pack-destination "$t" && cp "$t/package.json.bak" package.json \
+  && npm install -g --prefix "$t/prefix" "$t/masuda-sandbox-X.Y.Z.tgz" && "$t/prefix/bin/masuda-sandbox" --version && pnpm build
+rm -rf "$t"
 pgrep -af qemu-system   # 孤児が無いこと
 ```
 
@@ -205,4 +212,4 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 - **GitHubのランナー（Ubuntu 24.04）**: AppArmorが非特権ユーザー名前空間を禁じているため、フェイクsandboxの`unshare -Urm`を使うテスト（C-M7・serveの特権コマンド）が落ちる。`ci.yml`・`release.yml`に`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`のステップがある。ランナーの像が変わったら最初に疑う
 - **同じソケットに2つのserve**: 既定のソケットとデータディレクトリはハーネスが使う。確かめるもの・開発版のserveは別のソケットとデータディレクトリで立てる。データディレクトリを2つのmasuda serveで共有しない（「開発版との分離」）
 - **`docs.yml`のengineの文書**: サイトはmasuda-engineの既定ブランチ（`main`）から`workflow-schema.md`を取り込む。engineの`main`の先頭がタグと同じ時点で打てば一致する
-- **sandboxの契約テストと資産ストア**: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveと同時に走らせない
+- **sandboxの契約テストと資産ストア**: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveとも、ハーネスで走っているワークスペースとも同時に走らせない
