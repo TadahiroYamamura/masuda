@@ -265,7 +265,7 @@ func runList(args []string) error {
 }
 
 // listRow はワークスペース1つを一覧の1行（タブ区切り）にする。活動は種類と最終活動からの経過、
-// 位置は止まった理由・結果（done以外で終わったならその理由も）があればそちらを、OPENは開いているゲートと質問を出す。
+// 位置は止まった理由・結果（done以外で終わったならその理由も）があればそちらを、起動中は起動の段階を、OPENは開いているゲートと質問を出す。
 func listRow(w *apiv1.Workspace, now time.Time) string {
 	pos := w.Position
 	switch {
@@ -275,6 +275,8 @@ func listRow(w *apiv1.Workspace, now time.Time) string {
 		pos = w.Reason
 	case w.Outcome != "":
 		pos = "outcome " + w.Outcome
+	case w.State == apiv1.WorkspaceState_WORKSPACE_STATE_STARTING:
+		pos = w.Activity.GetDetail()
 	}
 	act := shortActivity(w.Activity)
 	if w.Activity != nil && w.Activity.LastActivity != nil && w.Activity.LastActivity.IsValid() {
@@ -340,6 +342,9 @@ func formatEvent(ev *apiv1.WorkspaceEvent) string {
 		s := fmt.Sprintf("%s status %s %s", head, shortState(w.State), shortActivity(w.Activity))
 		if w.Position != "" {
 			s += " " + w.Position
+		}
+		if d := w.Activity.GetDetail(); w.State == apiv1.WorkspaceState_WORKSPACE_STATE_STARTING && d != "" {
+			s += " " + d
 		}
 		if w.Reason != "" {
 			s += " reason=" + firstLine(w.Reason)

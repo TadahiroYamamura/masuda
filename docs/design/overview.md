@@ -340,7 +340,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 上から順に見て、最初に当たったものが活動になる。
 
-1. ワークスペースの状態: DONE・STOPPED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`
+1. ワークスペースの状態: DONE・STOPPED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
 2. `claude`（tmuxのセッション）が無い: `dead`。`SessionEnd`フック、sandboxの停止・失敗、`Exec`での生存確認のどれかで分かる
 3. 進行中のAPIリクエストがある: `working`
 4. ゲストの`Notification`フックが待ちを言っている（`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`input_wait`に入る）: `waiting_input`。その後にHTTP・ツール・MCPの活動があれば消える

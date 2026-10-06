@@ -21,7 +21,7 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | BRANCH | 作っているブランチ |
 | STATE | ワークスペースの状態（[概念](concepts.md#workspace)） |
 | ACTIVITY | VMの中のClaude Codeが今何をしているか（下表）と、最後に活動してからの経過 |
-| POSITION | ワークフローの今の位置。止まった理由（`reason`）か結果（`outcome ...`）があれば、そちらの1行目 |
+| POSITION | ワークフローの今の位置。止まった理由（`reason`）か結果（`outcome ...`）があれば、そちらの1行目。`starting`の間は起動の段階（`building image (log: ...)`・`booting the VM`・`preparing the guest`・`starting Claude Code`） |
 | OPEN | 開いているゲート（`gate:<ゲート名>`）と質問（`question:<出現ID>`） |
 
 `done`でも、ワークフローが`end:<ラベル>`で終わったときは`outcome`がそのラベルになる（`needs_human`・`out_of_scope`・`stuck`等）。このとき終わらせたエージェントが書いた理由（`feedback`）が`reason`に入り、POSITIONは`outcome needs_human: <理由の1行目>`の形になる。`needs_human`なら理由はエージェントが人間に確かめたい疑問なので、答える形で指示書を直して`run`し直す。理由の全文は`workspace.json`の`reason`にある（下の[ホストの記録](#host-records)）。
@@ -36,7 +36,7 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | `waiting_question` | 質問への回答待ち | `masuda question list`して答える |
 | `stalled` | 生きているが、しきい値（既定10分）を超えて何も起きていない | 画面を見る。masudaは自動では止めない |
 | `dead` | VMの中のClaude Code（tmuxのセッション）が無くなった | `stop`して`resume`する |
-| `idle` | 何もすることが無い（`done`・`stopped`・`blocked`） | — |
+| `idle` | 何もすることが無い（`done`・`stopped`・`blocked`）、またはまだ起動中（`starting`） | `starting`が長いなら[トラブルシューティング](troubleshooting.md#starting-long) |
 
 活動は、ホストが見ているClaude APIへの通信（VMの中から偽れない）を一番に信じ、VMの中のClaude Codeのフックの知らせを補助に使って決める。
 

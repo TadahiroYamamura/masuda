@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
+	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
@@ -170,4 +173,62 @@ func TestActivityKinds(t *testing.T) {
 	if k := kind(now); k != apiv1.ActivityKind_ACTIVITY_KIND_IDLE {
 		t.Fatalf("stopped: %v", k)
 	}
+	// 起動中は進行中のリクエストがあってもIDLEで、起動の段階をdetailに出す
+	w.State = workspace.StateStarting
+	a.update("w", func(act *activity) {
+		act.dead = false
+		act.inflight[2] = &inflightReq{http: &apiv1.HttpActivity{}, started: now}
+		act.detail = "booting the VM"
+	})
+	if got := a.compute(w, 10*time.Minute, now); got.Kind != apiv1.ActivityKind_ACTIVITY_KIND_IDLE || got.Detail != "booting the VM" {
+		t.Fatalf("starting: %v %q", got.Kind, got.Detail)
+	}
+}
+
+// blockingCreate はCreateSandboxに入ったことを知らせ、releaseが閉じるまで止まるsandboxクライアント。
+type blockingCreate struct {
+	sandboxv1connect.SandboxServiceClient
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (b blockingCreate) CreateSandbox(ctx context.Context, req *connect.Request[sandboxv1.CreateSandboxRequest]) (*connect.Response[sandboxv1.Sandbox], error) {
+	select {
+	case b.entered <- struct{}{}:
+	default:
+	}
+	select {
+	case <-b.release:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	return b.SandboxServiceClient.CreateSandbox(ctx, req)
+}
+
+func TestStartingShowsTheBootPhase(t *testing.T) {
+	t.Run("VMを作っている間はstartingのままIDLEで、段階をdetailに出す", func(t *testing.T) {
+		bc := blockingCreate{entered: make(chan struct{}, 1), release: make(chan struct{})}
+		var once sync.Once
+		release := func() { once.Do(func() { close(bc.release) }) }
+		t.Cleanup(release)
+		ws, _, repo := newTestAPIWith(t, func(c sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient {
+			bc.SandboxServiceClient = c
+			return bc
+		})
+		ctx := context.Background()
+		res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/x", Inputs: smokeInputs}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		<-bc.entered
+		got, err := ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: res.Msg.Id}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_STARTING || got.Msg.Activity.GetKind() != apiv1.ActivityKind_ACTIVITY_KIND_IDLE || got.Msg.Activity.GetDetail() != "booting the VM" {
+			t.Fatalf("while creating the sandbox: state %v activity %v %q", got.Msg.State, got.Msg.Activity.GetKind(), got.Msg.Activity.GetDetail())
+		}
+		release()
+		waitFor(t, ws, res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	})
 }

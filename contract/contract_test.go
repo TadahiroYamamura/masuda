@@ -539,6 +539,8 @@ func TestCM5_WatchStreamsStatusAndHookActivity(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := res.Msg.Id
+	// While STARTING the activity is IDLE (not observed yet), so the hook is posted once RUNNING.
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 10*time.Second)
 	stream, err := h.ws.Watch(ctx, connect.NewRequest(&apiv1.WatchRequest{Id: id}))
 	if err != nil {
 		t.Fatal(err)

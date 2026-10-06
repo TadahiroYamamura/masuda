@@ -62,7 +62,7 @@ masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--s
 masuda run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...
 ```
 
-ワークフローを新しいワークスペースで始め、`<id> starting`を出してすぐ返る。VMの起動は裏で進む。
+ワークフローを新しいワークスペースで始め、`<id> starting`を出してすぐ返る。VMの起動は裏で進み、どの段階にいるかは`masuda list`のPOSITIONに出る（[トラブルシューティング](troubleshooting.md#starting-long)）。
 
 | フラグ | 既定 | 意味 |
 |---|---|---|
