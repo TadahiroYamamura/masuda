@@ -87,6 +87,31 @@ VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM�
 - システムのCAバンドル（`/etc/ssl/certs/ca-certificates.crt`）を読まず、自前の証明書の束を持つツールは、証明書の検証に失敗する。そのツールの設定でシステムのバンドルを指す（例: Pythonのrequestsなら`REQUESTS_CA_BUNDLE`、Nodeなら`NODE_EXTRA_CA_CERTS`）。エージェントには`claudeSettings.env`、チェックにはコマンドの頭で渡す
 - 許可していないホストへの通信は証明書の問題ではなく拒否される。`masuda watch`に`http denied <host>`が出ていれば[egress](secrets-and-egress.md#egress)の設定を見る
 
+## 依存をイメージに入れたのに、VMの中で取りに行って失敗する {#offline-deps}
+
+実行中のVMは許可したホストへしか通信できない。イメージのビルド時に入れた依存でも、ツールによっては実行時にネットワークへ取りに行き、そこで失敗する。`masuda watch`に`http denied <host>`が出ているか、名前解決・通信のエラーで止まっていればこれ。
+
+| ツール | 実行時に取りに行くもの | 対処（Dockerfile） |
+|---|---|---|
+| `npx <パッケージ>` | `npm install -g`で入れてあっても、レジストリのメタデータ | 下を参照 |
+| Go | `go.mod`の`toolchain`行が指す版のツールチェーン、モジュール | `ENV GOTOOLCHAIN=local`と`ENV GOPROXY=off`。依存はビルド時に`go mod download`しておく |
+
+npxは、ビルド時に一度呼んでnpmのキャッシュにメタデータを残し、実行時はキャッシュだけで解決させる。
+
+```dockerfile
+USER ubuntu
+# 実行時と同じ状況（package.jsonはあるがnode_modulesは無いディレクトリ）で一度呼ぶ。
+# package.jsonの無い場所で呼ぶと、別の場所のnode_modulesの版で解決してしまい、実行時に要るメタデータが残らない
+RUN mkdir -p /tmp/npx-warmup \
+ && cp <リポジトリのpackage.jsonの写し> /tmp/npx-warmup/ \
+ && cd /tmp/npx-warmup && npx @redocly/cli --version \
+ && rm -rf /tmp/npx-warmup
+ENV npm_config_offline=true
+```
+
+- npmのキャッシュはユーザーごとなので、エージェントが動く`ubuntu`で呼ぶ
+- `npm_config_offline=true`にしたのにキャッシュに無いと`ENOTCACHED`で、設定していないと通信のエラー（`EAI_AGAIN`など）で失敗する
+
 ## 動いているはずなのに進まない（`stalled`・`waiting_input`） {#stalled}
 
 - **`stalled`**: VMの中のClaude Codeは生きているが、しきい値（既定10分）を超えて、Claude APIへの通信もツールの使用も無い。masudaは何もしない（表示だけ）。`masuda chat <id>`で画面を見る
@@ -94,6 +119,13 @@ VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM�
 - **`waiting_input(idle)`**: メインのClaude Codeがターンを終え、人の入力を待っている。多くは、エージェントがmasudaの決まり（質問は`question`ノードでだけ聞く）を外れて、画面の上であなたに問いかけて止まっている。`masuda chat`で読み、続けてよければ「続けて」等と答える。直らなければ`masuda stop`→`masuda resume`で、そのタスクをやり直させる
 - **`waiting_input(permission)`**: 道具の使用の許可を待っている。`chat`で答える
 - **`dead`**: Claude Codeのセッションが無くなった。`masuda stop`→`masuda resume`
+
+## 終わるはずのrunが`running`のまま進まない（chatにアタッチしたまま） {#chat-blocks-destroy}
+
+ワークフローがpublish・discardに着いたのに、`masuda list`が`running`のまま変わらない。`masuda chat`でアタッチしたままだと、VMの破棄が終わらない（masuda-sandboxの不具合、TadahiroYamamura/masuda-sandbox#8）。
+
+- chatの画面で`C-b d`を押して切り離す。すぐに破棄が進み、`done`になる
+- runが終わりそうなとき（reviewゲートを承認した後など）は、先に切り離しておく
 
 ## 止まった・終わった原因を調べる {#why-stopped}
 
@@ -140,7 +172,3 @@ git fetch ~/.local/share/masuda/workspaces/<id>/staging.git feat/triangle:feat/t
 ## `masuda workflow check`が同梱の定義で失敗する
 
 引数無しの`masuda workflow check`は、部品のワークフローも単独で検査するので、同梱の定義だけでも問題が出て終了コード1になる。`masuda workflow check workflows/develop`のように、始めるワークフローを指定する（[CLIリファレンス](cli.md#workflow)）。
-
-## `enable: false`にしたレビュー観点が使われる
-
-今の実装は観点の`enable`を読んでいない（[レビュー観点](reviews.md)）。

@@ -115,7 +115,7 @@ masuda watch [<id>] [--after <seq>]
 masuda chat <id>
 ```
 
-VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース（`blocked`はVMが残っているので使える）、起動中のワークスペースには使えない。`done`ではVMを壊してあるので、会話は`exports/transcripts/`で読む。
+VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（[トラブルシューティング](troubleshooting.md#chat-blocks-destroy)）。chatからゲートを閉じることはできない。動いていないワークスペース（`blocked`はVMが残っているので使える）、起動中のワークスペースには使えない。`done`ではVMを壊してあるので、会話は`exports/transcripts/`で読む。
 
 ## gate
 
