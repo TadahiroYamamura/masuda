@@ -108,10 +108,21 @@ func (s Settings) PublishRemote() string {
 // テストの生成物で`No space left on device`になった（M8）ため、masuda側で大きめに決める。
 const DefaultDiskMiB = 4096
 
+// DefaultMemoryMiB と DefaultCPUs は、ImageDecl.MemoryMiB・CPUsを省略したときのVMのメモリとCPU数。
+// sandboxの既定と同じ値にして、指定しないリポジトリの振る舞いを変えない。
+const (
+	DefaultMemoryMiB = 4096
+	DefaultCPUs      = 4
+)
+
 // ImageDecl はイメージのエントリ1つのVMの設定。
 type ImageDecl struct {
 	// DiskMiB はVMの書き込めるルートディスクの最小容量（MiB）。0なら既定（DefaultDiskMiB）。
 	DiskMiB uint32 `json:"diskMiB,omitempty"`
+	// MemoryMiB はVMのメモリ（MiB）。0なら既定（DefaultMemoryMiB）。
+	MemoryMiB uint32 `json:"memoryMiB,omitempty"`
+	// CPUs はVMのCPU数。0なら既定（DefaultCPUs）。
+	CPUs uint32 `json:"cpus,omitempty"`
 }
 
 // SecretDecl は秘密1つの宣言。値は宣言に書かず、秘密ストア（internal/secrets）に置く。
@@ -359,6 +370,22 @@ func (s Settings) DiskMiB(entry string) uint32 {
 		return d
 	}
 	return DefaultDiskMiB
+}
+
+// MemoryMiB はイメージのエントリentryで作るVMのメモリ（MiB）を返す。
+func (s Settings) MemoryMiB(entry string) uint32 {
+	if m := s.Images[entry].MemoryMiB; m > 0 {
+		return m
+	}
+	return DefaultMemoryMiB
+}
+
+// CPUs はイメージのエントリentryで作るVMのCPU数を返す。
+func (s Settings) CPUs(entry string) uint32 {
+	if c := s.Images[entry].CPUs; c > 0 {
+		return c
+	}
+	return DefaultCPUs
 }
 
 // Secret はnameの宣言を返す。
