@@ -29,6 +29,7 @@ var compFlagKinds = map[string]string{
 	"socket":         "file",
 	"sandbox-socket": "file",
 	"config":         "file",
+	"log-file":       "file",
 	"input":          "file",
 	"file":           "file",
 	"repo":           "dir",
@@ -63,7 +64,7 @@ func repoSubs(names ...string) []compNode {
 }
 
 var completionTable = []compNode{
-	leaf("serve", argNone, "socket", "data-dir", "fake-sandbox", "sandbox-socket", "stall-after", "config"),
+	leaf("serve", argNone, "socket", "data-dir", "fake-sandbox", "sandbox-socket", "stall-after", "config", "log-file"),
 	clientLeaf("run", argWorkflow, "repo", "workflow", "branch", "base", "image", "input"),
 	clientLeaf("resume", argWorkspace),
 	clientLeaf("list", argNone, "repo", "all"),

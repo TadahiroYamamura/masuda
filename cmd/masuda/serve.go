@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +23,7 @@ func runServe(args []string) error {
 	sandboxSocket := fs.String("sandbox-socket", defaultSandboxSocket(), "masuda-sandbox serveのUDSのパス")
 	stallAfter := fs.Duration("stall-after", 0, "無活動がこれだけ続いたら活動をstalledにする（0なら対象リポジトリのsettings.local.jsonのstallAfter、無ければconfig.jsonのstallAfter、既定10m）")
 	configPath := fs.String("config", config.ServeConfigPath(), "serve全体の設定ファイル（listen・sandboxSocket・stallAfter・diskWarnBytes）。無ければすべて既定")
+	logFile := fs.String("log-file", "", "ログの書き先（既定 <data-dir>/logs/masuda-serve.log。起動のたびに前のものを.1にする）。-なら標準エラー出力")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -40,6 +42,21 @@ func runServe(args []string) error {
 	}
 	defaultStall, _ := cfg.StallAfterDuration() // LoadServeが検査済み
 
+	// 端末には起動したことと、ログの置き場所だけを出す。serveの中には標準エラー出力へ直接書く所もあるので、
+	// 標準のロガーとos.Stderrの両方をログのファイルに向ける。
+	terminal := os.Stderr
+	logPath, logF := openServeLog(*logFile, *dataDir, warnTo(terminal))
+	if logF != nil {
+		defer logF.Close()
+		log.SetOutput(logF)
+		os.Stderr = logF
+		// 起動に失敗したときのエラーは、mainが標準エラー出力に書く。端末で見えるよう戻してから返す。
+		defer func() {
+			os.Stderr = terminal
+			log.SetOutput(terminal)
+		}()
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	srv, err := serve.Start(ctx, serve.Options{
@@ -56,9 +73,12 @@ func runServe(args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "masuda: serving on %s\n", *socket)
+	fmt.Fprintf(terminal, "masuda: serving on %s\n", *socket)
 	if a := srv.ListenAddr(); a != "" {
-		fmt.Fprintf(os.Stderr, "masuda: also serving on http://%s (loopback, CORS: any origin)\n", a)
+		fmt.Fprintf(terminal, "masuda: also serving on http://%s (loopback, CORS: any origin)\n", a)
+	}
+	if logPath != "" {
+		fmt.Fprintf(terminal, "masuda: logs: %s\n", logPath)
 	}
 	<-srv.Done()
 	return nil

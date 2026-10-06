@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -56,6 +57,8 @@ func runDoctor(args []string) error {
 		checkAccel(ctx),
 		checkSandbox(ctx, socket),
 		checkToken(*dataDir, *repo),
+		checkLog("masuda serveのログ", filepath.Join(*dataDir, "logs", serveLogName)),
+		checkLog("masuda-sandbox serveのログ", sandboxLogPath()),
 	}
 	if reportChecks(os.Stdout, results) {
 		return errDoctorFailed
@@ -306,4 +309,30 @@ func checkToken(dataDir, repo string) checkResult {
 		r.detail = "登録済み"
 	}
 	return r
+}
+
+// checkLog はログの既定の置き場所と最後に書かれた時刻を出す。前提の確認ではないので、いつもok。
+// serveを--log-fileで別の場所に向けたときは、ここに出る場所ではない。
+func checkLog(name, path string) checkResult {
+	r := checkResult{name: name, status: checkOK, detail: path}
+	if st, err := os.Stat(path); err == nil {
+		r.detail += "（最後に書かれたのは" + st.ModTime().Format("2006-01-02 15:04") + "）"
+	} else {
+		r.detail += "（まだ無い）"
+	}
+	return r
+}
+
+// sandboxLogPath はmasuda-sandbox serveのログの既定の置き場所。sandboxのデータディレクトリ
+// （src/datafile.ts）の決め方と揃える。
+func sandboxLogPath() string {
+	base := os.Getenv("XDG_DATA_HOME")
+	if base == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "（ホームディレクトリが分からない）"
+		}
+		base = filepath.Join(home, ".local", "share")
+	}
+	return filepath.Join(base, "masuda-sandbox", "logs", "masuda-sandbox-serve.log")
 }

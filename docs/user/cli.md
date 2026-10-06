@@ -41,7 +41,7 @@ masuda <command> [flags]
 ## serve
 
 ```text
-masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--stall-after <duration>] [--config <path>] [--fake-sandbox]
+masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--stall-after <duration>] [--config <path>] [--log-file <path>] [--fake-sandbox]
 ```
 
 常駐プロセス。Ctrl-C（SIGINT）かSIGTERMで止まる。止めると動いていたワークスペースは`stopped`になる。
@@ -53,6 +53,7 @@ masuda serve [--socket <path>] [--data-dir <dir>] [--sandbox-socket <path>] [--s
 | `--sandbox-socket` | `config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット |
 | `--stall-after` | `0` | 無活動がこれだけ続いたら活動を`stalled`にする（例 `15m`）。0なら各リポジトリの`settings.local.json`の`stallAfter`、無ければ`config.json`の`stallAfter`（既定`10m`）に従い、0以外なら全ワークスペースでこちらが勝つ |
 | `--config` | `$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`） | serve全体の設定ファイル（[設定ファイル](settings.md#serve-config)）。無ければすべて既定 |
+| `--log-file` | `<data-dir>/logs/masuda-serve.log` | ログの書き先。端末には起動したことと、ログの置き場所だけを出す。起動のたびに前のファイルを`.1`に回す（古いものは1つだけ残す）。`-`なら今までどおり端末（標準エラー出力）に出す |
 | `--fake-sandbox` | `false` | VMを使わず、プロセス内のフェイクで動かす（開発・テスト用。エージェントは動かない） |
 
 ## run
