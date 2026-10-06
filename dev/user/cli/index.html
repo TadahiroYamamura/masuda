@@ -1795,7 +1795,7 @@
 </tbody>
 </table>
 <h2 id="serve">serve<a class="headerlink" href="#serve" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>masuda serve [--socket &lt;path&gt;] [--data-dir &lt;dir&gt;] [--sandbox-socket &lt;path&gt;] [--stall-after &lt;duration&gt;] [--config &lt;path&gt;] [--fake-sandbox]
+<div class="highlight"><pre><span></span><code>masuda serve [--socket &lt;path&gt;] [--data-dir &lt;dir&gt;] [--sandbox-socket &lt;path&gt;] [--stall-after &lt;duration&gt;] [--config &lt;path&gt;] [--log-file &lt;path&gt;] [--fake-sandbox]
 </code></pre></div>
 <p>常駐プロセス。Ctrl-C（SIGINT）かSIGTERMで止まる。止めると動いていたワークスペースは<code>stopped</code>になる。</p>
 <table>
@@ -1831,6 +1831,11 @@
 <td><code>--config</code></td>
 <td><code>$XDG_CONFIG_HOME/masuda/config.json</code>（未設定なら<code>~/.config/masuda/config.json</code>）</td>
 <td>serve全体の設定ファイル（<a href="../settings/#serve-config">設定ファイル</a>）。無ければすべて既定</td>
+</tr>
+<tr>
+<td><code>--log-file</code></td>
+<td><code>&lt;data-dir&gt;/logs/masuda-serve.log</code></td>
+<td>ログの書き先。端末には起動したことと、ログの置き場所だけを出す。起動のたびに前のファイルを<code>.1</code>に回す（古いものは1つだけ残す）。<code>-</code>なら今までどおり端末（標準エラー出力）に出す</td>
 </tr>
 <tr>
 <td><code>--fake-sandbox</code></td>

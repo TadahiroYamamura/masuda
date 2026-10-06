@@ -1709,9 +1709,15 @@ masuda-sandbox<span class="w"> </span>serve<span class="w"> </span>--socket<span
 <div class="highlight"><pre><span></span><code><span class="c1"># 2つめ</span>
 masuda<span class="w"> </span>serve
 <span class="c1"># masuda: serving on /run/user/1000/masuda.sock</span>
+<span class="c1"># masuda: logs: /home/&lt;you&gt;/.local/share/masuda/logs/masuda-serve.log</span>
 </code></pre></div>
 <ul>
-<li><code>masuda serve</code>は既定で<code>$XDG_RUNTIME_DIR/masuda.sock</code>で待ち受け、<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>の<code>masuda-sandbox serve</code>に繋ぐ。状態は<code>~/.local/share/masuda/</code>（<code>$XDG_DATA_HOME/masuda</code>）に置く</li>
+<li>
+<p>どちらも、ログは端末ではなくデータディレクトリの<code>logs/</code>の下のファイルに書く（<code>masuda serve</code>は<code>~/.local/share/masuda/logs/masuda-serve.log</code>、<code>masuda-sandbox serve</code>は<code>~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log</code>）。置き場所は<code>masuda doctor</code>でも出る。端末に出したいときは<code>--log-file -</code></p>
+</li>
+<li>
+<p><code>masuda serve</code>は既定で<code>$XDG_RUNTIME_DIR/masuda.sock</code>で待ち受け、<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>の<code>masuda-sandbox serve</code>に繋ぐ。状態は<code>~/.local/share/masuda/</code>（<code>$XDG_DATA_HOME/masuda</code>）に置く</p>
+</li>
 <li><code>masuda serve</code>は起動時に<code>masuda-sandbox serve</code>のバージョンと契約を確かめ、組が合わなければ起動しない。<code>masuda-sandbox serve</code>がまだ起動していなければ警告を出して起動し、<code>masuda run</code>のときにもう一度確かめる</li>
 <li><code>masuda-sandbox serve</code>には既定のソケットが無いので、<code>--socket</code>を必ず渡す</li>
 <li><code>XDG_RUNTIME_DIR</code>が設定されていない環境（WSL2で起こる）では、masudaは代わりに<code>/tmp/masuda-&lt;uid&gt;/</code>を使う。その場合は<code>masuda-sandbox serve --socket /tmp/masuda-$(id -u)/masuda-sandbox.sock</code>のように同じ場所を渡す（先にそのディレクトリを作っておく）</li>
