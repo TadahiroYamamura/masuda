@@ -2092,7 +2092,7 @@ masuda image build [&lt;entry&gt;] [--repo &lt;dir&gt;]
 masuda workflow show &lt;workflow&gt; [--repo &lt;dir&gt;]
 masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
-<p><code>--repo</code>を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。<code>run</code>と違い、作業ツリーの<code>.masuda/</code>をその場で読む。</p>
+<p><code>--repo</code>を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。<code>run</code>と違い、作業ツリーの<code>.masuda/</code>をその場で読む。<code>masuda serve</code>は要らない（CIでも、serveを起動せずに<code>check</code>を流せる）。</p>
 <table>
 <thead>
 <tr>
