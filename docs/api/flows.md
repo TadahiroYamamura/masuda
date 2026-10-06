@@ -242,7 +242,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 
 | `kind` | いつ | 表示の指針 |
 |---|---|---|
-| `IDLE` | DONE・STOPPED・BLOCKED。または観測をまだ始めていない | 状態（`state`）だけを見せる |
+| `IDLE` | DONE・STOPPED・BLOCKED。または観測をまだ始めていない（STARTING） | 状態（`state`）だけを見せる。STARTINGなら`detail`に起動の段階が入る（下記） |
 | `WAITING_GATE` | ゲート待ち | 「判断待ち」。ゲートの画面へのリンク。もっとも目立たせる |
 | `WAITING_QUESTION` | 質問待ち | 「回答待ち」。質問の画面へのリンク。ゲートと同じく目立たせる |
 | `DEAD` | ゲストのClaude Code（tmuxのセッション）が無い、またはVMが止まった・失敗した | 異常。`detail`に理由。進まないので、利用者に`Stop`→`Resume`を案内する |
@@ -252,7 +252,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 | `WORKING`（それ以外） | 上のどれでもない | 「作業中」 |
 
 - `input_wait`: `"permission"`（ツールの許可を求めている）・`"idle"`（入力を待って止まっている）・`"question"`（Claude Codeが対話で質問している）。その後に通信・ツール・MCPの活動があれば消える
-- `detail`: 最後に分かったことの短い説明（`"tool Edit"`・`"mcp next_task"`・`"claude session ended"`・通知の本文等）。表示用で、解析しない
+- `detail`: 最後に分かったことの短い説明（`"tool Edit"`・`"mcp next_task"`・`"claude session ended"`・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（`"building image (log: <パス>)"`→`"booting the VM"`→`"preparing the guest"`→`"starting Claude Code"`）で、段階が変わるたびに`status`が流れる
 - `last_activity`: 最後に活動を観測した時刻。`status`は時刻だけの変化では流れないので、経過時間はクライアントが進める
 - 活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（`IDLE`）になり、`Resume`で観測をやり直す
 - `state`がRUNNINGのままでも`activity`が`DEAD`・`STALLED`になる。一覧では`state`より`activity`を目立たせる方が、利用者が手を打つべきものに気づきやすい

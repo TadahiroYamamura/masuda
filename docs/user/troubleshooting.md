@@ -39,6 +39,17 @@
 - **イメージのビルドに失敗した**: `records/image-build.log`を読む。`masuda image build`で同じビルドを手元で繰り返せる
 - **VMからの通信が軒並み502になる**: Nodeが24.17以上だと、Gondolinの既知の問題に当たる。`masuda-sandbox serve`を22.19以上・24.17未満のNodeで動かす
 
+## `starting`のまま進まない {#starting-long}
+
+`masuda list`のPOSITION（`masuda watch`なら`status`の行）に、起動のどの段階にいるかが出る。
+
+| 段階 | 時間がかかる理由と見るもの |
+|---|---|
+| `building image (log: <パス>)` | Dockerfileのビルド。初回や`Dockerfile`を変えた後は数分かかることがある。進み具合は括弧の中のログを`tail -f`で見る |
+| `booting the VM` | VMの起動とディスクの拡張。普段は数秒〜数十秒。長いなら`masuda-sandbox serve`のログ（`masuda doctor`が場所を出す）を見る |
+| `preparing the guest` | VMの中にブランチをcloneし、設定とチェックを置く。リポジトリが大きいと長くなる |
+| `starting Claude Code` | VMの中でClaude Codeを起動している |
+
 ## `No space left on device`
 
 VMのルートディスクが足りない。ビルドのキャッシュ（Goの`GOCACHE`、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、`blocked`で止まることがある。

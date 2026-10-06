@@ -254,10 +254,12 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 		// serveの再起動で残ったsandboxがあれば作り直す前に壊す（無ければNotFoundで何もしない）。
 		b.destroySandbox(c.id)
 	}
+	b.bootPhase(c.id, "building image (log: "+filepath.Join(w.RecordsDir(), "image-build.log")+")")
 	buildID, err := b.buildWorkspaceImage(ctx, w, c.plan.image)
 	if err != nil {
 		return err
 	}
+	b.bootPhase(c.id, "booting the VM")
 	sb, err := b.createSandbox(ctx, w, c.mcp.Addr(), c.plan, buildID)
 	if err != nil {
 		return err
@@ -269,6 +271,7 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 	}()
 	env := c.plan.guestEnv(sb.Placeholders)
 	c.runner.SetGuestEnv(env)
+	b.bootPhase(c.id, "preparing the guest")
 	if err := b.prepareGuest(ctx, w, c, sb.Placeholders); err != nil {
 		return err
 	}
@@ -280,6 +283,7 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 	if b.fake {
 		return nil
 	}
+	b.bootPhase(c.id, "starting Claude Code")
 	return guest.Launch(ctx, b.sandbox, guest.LaunchOptions{
 		SandboxID: c.id,
 		Token:     sb.Placeholders[guest.TokenEnv],
@@ -287,6 +291,12 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 		GitEmail:  c.author.Email,
 		Env:       env,
 	})
+}
+
+// bootPhase は起動の段階を活動のdetailに書き、状態のイベントで知らせる。
+func (b *backend) bootPhase(id, detail string) {
+	b.acts.update(id, func(act *activity) { act.detail = detail })
+	b.statusChanged(id)
 }
 
 // buildWorkspaceImage はワークスペースの定義の写しにあるイメージのエントリをビルドし、

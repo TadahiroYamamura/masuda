@@ -115,6 +115,18 @@ func TestListRow(t *testing.T) {
 	if got, want := listRow(done, now), "def\tfix/y\tdone\t-\toutcome needs_human: どちらの挙動に揃えるか決めてください\t-"; got != want {
 		t.Fatalf("listRow(needs_human):\n got %q\nwant %q", got, want)
 	}
+	// 起動中はPOSITIONが空なので、代わりに起動の段階（activityのdetail）を出す
+	starting := &apiv1.Workspace{
+		Id: "ghi", Branch: "feat/z", State: apiv1.WorkspaceState_WORKSPACE_STATE_STARTING,
+		Activity: &apiv1.Activity{Kind: apiv1.ActivityKind_ACTIVITY_KIND_IDLE, Detail: "building image (log: /r/image-build.log)"},
+	}
+	if got, want := listRow(starting, now), "ghi\tfeat/z\tstarting\tidle\tbuilding image (log: /r/image-build.log)\t-"; got != want {
+		t.Fatalf("listRow(starting):\n got %q\nwant %q", got, want)
+	}
+	ev := &apiv1.WorkspaceEvent{Seq: 3, Time: timestamppb.New(now), WorkspaceId: "ghi", Event: &apiv1.WorkspaceEvent_Status{Status: starting}}
+	if got := formatEvent(ev); !strings.HasSuffix(got, "status starting idle building image (log: /r/image-build.log)") {
+		t.Fatalf("formatEvent(starting) = %q", got)
+	}
 	for d, want := range map[time.Duration]string{5 * time.Second: "5s", 90 * time.Minute: "1h", 72 * time.Hour: "3d"} {
 		if got := since(d); got != want {
 			t.Fatalf("since(%v) = %s, want %s", d, got, want)

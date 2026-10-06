@@ -159,6 +159,11 @@ func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, n
 	case workspace.StateWaitingQuestion:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WAITING_QUESTION
 		return out
+	case workspace.StateStarting:
+		// エージェントがまだ動いておらず、契約の「まだ観測していない」にあたる。段階はdetailで見せる。
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
+		out.Detail = cp.detail
+		return out
 	}
 	if act == nil {
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
