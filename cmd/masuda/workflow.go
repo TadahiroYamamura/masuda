@@ -11,10 +11,14 @@ import (
 	"connectrpc.com/connect"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
+	"github.com/TadahiroYamamura/masuda/serve"
 )
 
 const workflowUsage = "workflow list [--repo <dir>] | workflow show <workflow> [--repo <dir>] | workflow check [<workflow>] [--repo <dir>]"
 
+// workflowのサブコマンドは、他のクライアントのコマンドと違いmasuda serveを叩かず、同じ処理を
+// プロセスの中で呼ぶ（serveの状態を使わないので結果は同じ。定義の検査だけのためにserveを起動しなくて済む）。
+// --socketは他のコマンドと揃えて受け付けるが、使わない（initと同じ）。
 func runWorkflow(args []string) error {
 	return subcommand(args, workflowUsage, map[string]func([]string) error{
 		"list":  workflowList,
@@ -48,7 +52,7 @@ func workflowList(args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := c.clients().workflows.List(context.Background(), connect.NewRequest(&apiv1.RepoRequest{RepoRoot: root}))
+	res, err := serve.NewWorkflowService().List(context.Background(), connect.NewRequest(&apiv1.RepoRequest{RepoRoot: root}))
 	if err != nil {
 		return err
 	}
@@ -71,7 +75,7 @@ func workflowShow(args []string) error {
 	if err != nil {
 		return err
 	}
-	res, err := c.clients().workflows.Show(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: pos[0]}))
+	res, err := serve.NewWorkflowService().Show(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: pos[0]}))
 	if err != nil {
 		return err
 	}
@@ -98,7 +102,7 @@ func workflowCheck(args []string) error {
 	if len(pos) == 1 {
 		wf = pos[0]
 	}
-	res, err := c.clients().workflows.Check(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: wf}))
+	res, err := serve.NewWorkflowService().Check(context.Background(), connect.NewRequest(&apiv1.ShowWorkflowRequest{RepoRoot: root, Workflow: wf}))
 	if err != nil {
 		return err
 	}

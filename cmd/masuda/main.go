@@ -38,7 +38,7 @@ commands:
   doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
   completion bash|zsh       シェルの補完スクリプトを標準出力に出す（serve不要）
 
-serve・init・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init・workflow・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {

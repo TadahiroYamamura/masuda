@@ -323,6 +323,6 @@ func newMux(b *backend) *http.ServeMux {
 	mux.Handle(apiv1connect.NewQuestionServiceHandler(&questionService{store: store, backend: b}))
 	mux.Handle(apiv1connect.NewStagingServiceHandler(&stagingService{store: store}))
 	mux.Handle(apiv1connect.NewConfigServiceHandler(&configService{backend: b}))
-	mux.Handle(apiv1connect.NewWorkflowServiceHandler(&workflowService{}))
+	mux.Handle(apiv1connect.NewWorkflowServiceHandler(NewWorkflowService()))
 	return mux
 }

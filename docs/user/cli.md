@@ -252,7 +252,7 @@ masuda workflow show <workflow> [--repo <dir>]
 masuda workflow check [<workflow>] [--repo <dir>]
 ```
 
-`--repo`を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。`run`と違い、作業ツリーの`.masuda/`をその場で読む。
+`--repo`を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。`run`と違い、作業ツリーの`.masuda/`をその場で読む。`masuda serve`は要らない（CIでも、serveを起動せずに`check`を流せる）。
 
 | サブコマンド | 動き |
 |---|---|

@@ -26,6 +26,10 @@ type workflowService struct {
 	apiv1connect.UnimplementedWorkflowServiceHandler
 }
 
+// NewWorkflowService はWorkflowServiceの実装を返す。serveの状態を使わないので、CLIはserveを
+// 通さずにこれを直接呼ぶ（serveが動いていなくても定義を検査できるように）。
+func NewWorkflowService() apiv1connect.WorkflowServiceHandler { return &workflowService{} }
+
 // definitionsFor はrepoRoot（空なら同梱だけ）の定義を読み込む。
 func definitionsFor(ctx context.Context, repoRoot string) (*engine.Set, error) {
 	dir := ""
