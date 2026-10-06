@@ -28,6 +28,9 @@ type bootPlan struct {
 	image string
 	// diskMiB はVMのルートディスクの最小容量（settings.jsonの`images.<entry>.diskMiB`）。
 	diskMiB uint32
+	// memoryMiB と cpus はVMのメモリ（MiB）とCPU数（`images.<entry>.memoryMiB`・`cpus`）。
+	memoryMiB uint32
+	cpus      uint32
 	// egress はノードが選んでよいホストの上限（宣言∩承認）。
 	egress []string
 	// publishRemote は`target: remote`のpublishの送り先（settings.jsonのpublish.remote、既定origin）。
@@ -87,8 +90,13 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		p.image = cfg.ImageEntry()
 	}
 	p.diskMiB = cfg.DiskMiB(p.image)
+	p.memoryMiB = cfg.MemoryMiB(p.image)
+	p.cpus = cfg.CPUs(p.image)
 	var problems []string
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
+	for _, problem := range exceedsHost(p.image, p.memoryMiB, p.cpus) {
+		add("%s", problem)
+	}
 	if p.stallAfter, err = local.StallAfterDuration(); err != nil {
 		add("%s: %v", config.SettingsLocalPath(repoRoot), err)
 	}

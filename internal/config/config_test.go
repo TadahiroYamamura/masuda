@@ -31,7 +31,7 @@ func TestLoadReadsFullSchema(t *testing.T) {
 		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60}},
 		"checks": {"test": "go test ./..."},
 		"claudeSettings": {"theme": "dark"},
-		"images": {"go": {"diskMiB": 8192}}
+		"images": {"go": {"diskMiB": 8192, "memoryMiB": 8192, "cpus": 2}}
 	}`)
 	cfg, err := Load(dir)
 	if err != nil {
@@ -54,6 +54,13 @@ func TestLoadReadsFullSchema(t *testing.T) {
 	if cfg.DiskMiB("go") != 8192 || cfg.DiskMiB("default") != DefaultDiskMiB {
 		t.Fatalf("DiskMiB(go) = %d, DiskMiB(default) = %d", cfg.DiskMiB("go"), cfg.DiskMiB("default"))
 	}
+	// 指定したエントリはその値、指定の無いエントリはsandboxの既定と同じ4096MiB・4
+	if cfg.MemoryMiB("go") != 8192 || cfg.MemoryMiB("default") != 4096 {
+		t.Fatalf("MemoryMiB(go) = %d, MemoryMiB(default) = %d", cfg.MemoryMiB("go"), cfg.MemoryMiB("default"))
+	}
+	if cfg.CPUs("go") != 2 || cfg.CPUs("default") != 4 {
+		t.Fatalf("CPUs(go) = %d, CPUs(default) = %d", cfg.CPUs("go"), cfg.CPUs("default"))
+	}
 }
 
 func TestLoadRejectsInvalidDeclarations(t *testing.T) {
@@ -73,6 +80,8 @@ func TestLoadRejectsInvalidDeclarations(t *testing.T) {
 		"claudeSettings":    `{"claudeSettings": [1]}`,
 		"bad image entry":   `{"images": {"../x": {"diskMiB": 1}}}`,
 		"negative disk":     `{"images": {"go": {"diskMiB": -1}}}`,
+		"negative memory":   `{"images": {"go": {"memoryMiB": -1}}}`,
+		"negative cpus":     `{"images": {"go": {"cpus": -1}}}`,
 		"remote as option":  `{"publish": {"remote": "--upload-pack=x"}}`,
 	}
 	for name, content := range cases {
