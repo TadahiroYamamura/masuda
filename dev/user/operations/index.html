@@ -1492,7 +1492,7 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td>POSITION</td>
-<td>ワークフローの今の位置。止まった理由（<code>reason</code>）か結果（<code>outcome ...</code>）があれば、そちらの1行目</td>
+<td>ワークフローの今の位置。止まった理由（<code>reason</code>）か結果（<code>outcome ...</code>）があれば、そちらの1行目。<code>starting</code>の間は起動の段階（<code>building image (log: ...)</code>・<code>booting the VM</code>・<code>preparing the guest</code>・<code>starting Claude Code</code>）</td>
 </tr>
 <tr>
 <td>OPEN</td>
@@ -1543,8 +1543,8 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td><code>idle</code></td>
-<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>blocked</code>）</td>
-<td>—</td>
+<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>blocked</code>）、またはまだ起動中（<code>starting</code>）</td>
+<td><code>starting</code>が長いなら<a href="../troubleshooting/#starting-long">トラブルシューティング</a></td>
 </tr>
 </tbody>
 </table>

@@ -746,6 +746,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#no-space-left-on-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1390,6 +1401,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#no-space-left-on-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1624,6 +1646,34 @@
 <li><strong>イメージのビルドに失敗した</strong>: <code>records/image-build.log</code>を読む。<code>masuda image build</code>で同じビルドを手元で繰り返せる</li>
 <li><strong>VMからの通信が軒並み502になる</strong>: Nodeが24.17以上だと、Gondolinの既知の問題に当たる。<code>masuda-sandbox serve</code>を22.19以上・24.17未満のNodeで動かす</li>
 </ul>
+<h2 id="starting-long"><code>starting</code>のまま進まない<a class="headerlink" href="#starting-long" title="Permanent link">&para;</a></h2>
+<p><code>masuda list</code>のPOSITION（<code>masuda watch</code>なら<code>status</code>の行）に、起動のどの段階にいるかが出る。</p>
+<table>
+<thead>
+<tr>
+<th>段階</th>
+<th>時間がかかる理由と見るもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>building image (log: &lt;パス&gt;)</code></td>
+<td>Dockerfileのビルド。初回や<code>Dockerfile</code>を変えた後は数分かかることがある。進み具合は括弧の中のログを<code>tail -f</code>で見る</td>
+</tr>
+<tr>
+<td><code>booting the VM</code></td>
+<td>VMの起動とディスクの拡張。普段は数秒〜数十秒。長いなら<code>masuda-sandbox serve</code>のログ（<code>masuda doctor</code>が場所を出す）を見る</td>
+</tr>
+<tr>
+<td><code>preparing the guest</code></td>
+<td>VMの中にブランチをcloneし、設定とチェックを置く。リポジトリが大きいと長くなる</td>
+</tr>
+<tr>
+<td><code>starting Claude Code</code></td>
+<td>VMの中でClaude Codeを起動している</td>
+</tr>
+</tbody>
+</table>
 <h2 id="no-space-left-on-device"><code>No space left on device</code><a class="headerlink" href="#no-space-left-on-device" title="Permanent link">&para;</a></h2>
 <p>VMのルートディスクが足りない。ビルドのキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、<code>blocked</code>で止まることがある。</p>
 <ul>

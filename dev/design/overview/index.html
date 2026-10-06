@@ -2869,7 +2869,7 @@ masuda
 <h3 id="_14">活動の決め方<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
 <p>上から順に見て、最初に当たったものが活動になる。</p>
 <ol>
-<li>ワークスペースの状態: DONE・STOPPED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code></li>
+<li>ワークスペースの状態: DONE・STOPPED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code>。STARTINGもエージェントがまだ動いていないので<code>idle</code>で、<code>detail</code>に起動の段階（<code>building image (log: ...)</code>→<code>booting the VM</code>→<code>preparing the guest</code>→<code>starting Claude Code</code>）を入れ、段階が変わるたびに<code>status</code>のイベントを流す</li>
 <li><code>claude</code>（tmuxのセッション）が無い: <code>dead</code>。<code>SessionEnd</code>フック、sandboxの停止・失敗、<code>Exec</code>での生存確認のどれかで分かる</li>
 <li>進行中のAPIリクエストがある: <code>working</code></li>
 <li>ゲストの<code>Notification</code>フックが待ちを言っている（<code>idle_prompt</code>→<code>idle</code>、<code>permission_prompt</code>→<code>permission</code>、<code>elicitation_dialog</code>→<code>question</code>。<code>input_wait</code>に入る）: <code>waiting_input</code>。その後にHTTP・ツール・MCPの活動があれば消える</li>
