@@ -7,7 +7,7 @@
 - `masuda watch <id>`の流れ
 - `masuda chat <id>`でVMの中のClaude Codeの画面
 - ホストの記録`~/.local/share/masuda/workspaces/<id>/records/`（`execution-log.jsonl`・`image-build.log`）
-- `masuda serve`と`masuda-sandbox serve`のターミナルの出力
+- `masuda serve`と`masuda-sandbox serve`のログ（`~/.local/share/masuda/logs/masuda-serve.log`と`~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log`。置き場所は`masuda doctor`でも出る。前回の起動の分は末尾が`.1`のファイル）
 
 ## `masuda run`がすぐエラーになる
 

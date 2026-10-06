@@ -120,7 +120,10 @@ masuda-sandbox serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox.sock"
 # 2つめ
 masuda serve
 # masuda: serving on /run/user/1000/masuda.sock
+# masuda: logs: /home/<you>/.local/share/masuda/logs/masuda-serve.log
 ```
+
+- どちらも、ログは端末ではなくデータディレクトリの`logs/`の下のファイルに書く（`masuda serve`は`~/.local/share/masuda/logs/masuda-serve.log`、`masuda-sandbox serve`は`~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log`）。置き場所は`masuda doctor`でも出る。端末に出したいときは`--log-file -`
 
 - `masuda serve`は既定で`$XDG_RUNTIME_DIR/masuda.sock`で待ち受け、`$XDG_RUNTIME_DIR/masuda-sandbox.sock`の`masuda-sandbox serve`に繋ぐ。状態は`~/.local/share/masuda/`（`$XDG_DATA_HOME/masuda`）に置く
 - `masuda serve`は起動時に`masuda-sandbox serve`のバージョンと契約を確かめ、組が合わなければ起動しない。`masuda-sandbox serve`がまだ起動していなければ警告を出して起動し、`masuda run`のときにもう一度確かめる
