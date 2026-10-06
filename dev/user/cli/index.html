@@ -1938,7 +1938,7 @@
 <h2 id="chat">chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda chat &lt;id&gt;
 </code></pre></div>
-<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
+<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
 <h2 id="gate">gate<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda gate list [&lt;id&gt;]
 masuda gate show &lt;id&gt; &lt;occurrence&gt;
