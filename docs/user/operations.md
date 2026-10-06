@@ -70,6 +70,7 @@ masuda chat <id>
 VMの中のtmuxのセッション`claude-work`（メインのClaude Code）に、sshでアタッチする。
 
 - `C-b d`で切り離す。切り離してもセッションは動き続ける
+- runが終わる（publish・discard）までに切り離す。アタッチしたままだとVMの破棄が終わらず、runが完了しない（[トラブルシューティング](troubleshooting.md#chat-blocks-destroy)）
 - 打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は`masuda gate`・`masuda question`で行う
 - 使えるのは動いているワークスペースと、ワークフローが進めなくなって`blocked`になったもの（VMが残っている）だけ。起動中・`stopped`・`done`には使えない。`done`ではVMが壊れているので、会話は`exports/transcripts/`で読む（[exports](#exports)）
 - 接続の鍵は`chat`のたびに作り直され、`stop`で消える
