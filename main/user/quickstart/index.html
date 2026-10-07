@@ -1696,7 +1696,7 @@ python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"
 <p>レビューのレポートと実行ログ、エージェントの会話ログは<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>に残る（<a href="../operations/#exports">運用</a>）。ワークスペースが要らなくなったら<code>masuda remove &lt;id&gt;</code>（exportsだけは残る）。</p>
 <h2 id="stuck">途中で止まったら<a class="headerlink" href="#stuck" title="Permanent link">&para;</a></h2>
 <ul>
-<li><code>masuda list</code>のSTATEが<code>blocked</code>: POSITIONに理由が出る。<a href="../troubleshooting/">トラブルシューティング</a></li>
+<li><code>masuda list</code>のSTATEが<code>suspended</code>・<code>blocked</code>: POSITIONに理由が出る。<code>suspended</code>は原因を直せば<code>masuda resume &lt;id&gt;</code>で続けられ、<code>blocked</code>は続けられない。<a href="../troubleshooting/#suspended-or-blocked">トラブルシューティング</a></li>
 <li>ACTIVITYが<code>stalled</code>や<code>waiting_input</code>のまま: <a href="../troubleshooting/#stalled">トラブルシューティング</a></li>
 <li>計画の承認より前に<code>done</code>で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（<code>outcome out_of_scope</code>）。課題の書き方を見直す</li>
 <li><code>develop</code>で、計画の承認より前に<code>waiting_question</code>（OPENに<code>question:&lt;出現ID&gt;</code>）になった: 計画に立てられた問いのうち、計画を直す役が判断できなかったものを聞いている。<code>masuda question list &lt;id&gt;</code>で問い（<code>SPEC-1</code>等のidと、問いと判断できなかった理由）を読み、<code>masuda question answer &lt;id&gt; &lt;出現ID&gt; SPEC-1=&lt;答え&gt; REGRESSION-2=&lt;答え&gt;</code>で<strong>すべての問いに</strong>答える（<code>question list</code>の最後の行に、そのまま埋めればよい形が出る）。答えを踏まえて計画が直され、plan gateが開く</li>

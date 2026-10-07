@@ -1457,7 +1457,7 @@
 
 <h1 id="_1">運用<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <h2 id="list">一覧を読む<a class="headerlink" href="#list" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>list<span class="w">          </span><span class="c1"># 動いているもの・止まったもの（blocked）</span>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>list<span class="w">          </span><span class="c1"># 動いているもの・中断したもの（suspended）・行き止まり（blocked）</span>
 masuda<span class="w"> </span>list<span class="w"> </span>--all<span class="w">    </span><span class="c1"># 終わったもの（done）・止めたもの（stopped）も</span>
 masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w"> </span>.<span class="w"> </span><span class="c1"># このリポジトリのものだけ</span>
 </code></pre></div>
@@ -1543,7 +1543,7 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td><code>idle</code></td>
-<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>blocked</code>）、またはまだ起動中（<code>starting</code>）</td>
+<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>suspended</code>・<code>blocked</code>）、またはまだ起動中（<code>starting</code>）</td>
 <td><code>starting</code>が長いなら<a href="../troubleshooting/#starting-long">トラブルシューティング</a></td>
 </tr>
 </tbody>
@@ -1605,7 +1605,7 @@ masuda<span class="w"> </span>watch<span class="w"> </span>--after<span class="w
 <li><code>C-b d</code>で切り離す。切り離してもセッションは動き続ける</li>
 <li>runが終わる（publish・discard）までに切り離す。アタッチしたままだとVMの破棄が終わらず、runが完了しない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）</li>
 <li>打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は<code>masuda gate</code>・<code>masuda question</code>で行う</li>
-<li>使えるのは動いているワークスペースと、ワークフローが進めなくなって<code>blocked</code>になったもの（VMが残っている）だけ。起動中・<code>stopped</code>・<code>done</code>には使えない。<code>done</code>ではVMが壊れているので、会話は<code>exports/transcripts/</code>で読む（<a href="#exports">exports</a>）</li>
+<li>使えるのは動いているワークスペースと、VMが残っている<code>suspended</code>（ワークフローの途中で止まったもの）・<code>blocked</code>だけ。起動中・<code>stopped</code>・<code>done</code>と、起動に失敗した<code>suspended</code>（VMが無い）には使えない。<code>done</code>ではVMが壊れているので、会話は<code>exports/transcripts/</code>で読む（<a href="#exports">exports</a>）</li>
 <li>接続の鍵は<code>chat</code>のたびに作り直され、<code>stop</code>で消える</li>
 </ul>
 <h2 id="resume">止める・再開する<a class="headerlink" href="#resume" title="Permanent link">&para;</a></h2>
@@ -1613,11 +1613,37 @@ masuda<span class="w"> </span>watch<span class="w"> </span>--after<span class="w
 masuda<span class="w"> </span>resume<span class="w"> </span>&lt;id&gt;
 </code></pre></div>
 <p><code>stop</code>は会話ログと実行ログを<code>exports/</code>へ書き出してからVMを壊し、ワークスペースを<code>stopped</code>にする。stagingと記録は残る。<code>resume</code>した後に止めたり終わったりすると、<code>exports/</code>の同じファイルは新しいもので置き換わる。</p>
-<p><code>resume</code>できるのは、<code>stopped</code>のワークスペースと、VMの起動に失敗して<code>blocked</code>になったワークスペース（理由が<code>sandbox boot failed:</code>で始まるもの）。ワークフローが進めなくなって<code>blocked</code>になったものは再開できない。</p>
+<p><code>resume</code>できるのは、<code>stopped</code>と<code>suspended</code>のワークスペース。<code>suspended</code>は<code>stop</code>を挟まずにそのまま<code>resume</code>してよい（VMが残っていれば、<code>stop</code>と同じく会話ログと実行ログを書き出してから壊す）。<code>blocked</code>は再開できない。</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>何が起きたか</th>
+<th><code>resume</code>の前にすること</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suspended</code>（理由が<code>sandbox boot failed:</code>で始まる）</td>
+<td>VMの起動に失敗した（イメージのビルド、VMの作成、ゲストの用意）</td>
+<td>理由を読んで直す（<a href="../troubleshooting/#boot-failed">トラブルシューティング</a>）</td>
+</tr>
+<tr>
+<td><code>suspended</code>（理由が<code>engine:</code>で始まる）</td>
+<td>ホストで動かすノードを動かせなかった。特権コマンドの承認が取り消されていた・宣言が変わった、ノードが選んだ通信先が承認されていない、sandbox serviceがコマンドを動かせなかった等。ワークフローの記録には何も残っていない</td>
+<td>理由に出た承認（<code>masuda privileged-command approve</code>・<code>masuda egress approve</code>等）をする、sandbox serviceを直す</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>ワークフローが行き止まりを記録した（進入回数の上限を使い切って行き先が無い、triageの<code>halt</code>等）</td>
+<td>再開できない。中身を確かめたら<code>remove</code>し、必要なら新しく<code>run</code>する</td>
+</tr>
+</tbody>
+</table>
 <p>再開すると次のように進む。</p>
 <ol>
 <li>定義（ワークフロー・エージェント・スキーマ・<code>settings.json</code>・レビュー観点）は、始めたときに写したものを使う。作業ツリーの<code>.masuda/</code>をその後に変えていても効かない</li>
-<li>承認・秘密の値・<code>stallAfter</code>は、作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す。取り消した承認、入れ替えた値はここで効く。足りないものがあれば再開を断る</li>
+<li>承認・秘密の値・<code>stallAfter</code>は、作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す。取り消した承認、入れ替えた値はここで効く。足りないもの（ワークフローが届く特権ノードの承認を含む）があれば再開を断り、何も変えない（<code>suspended</code>のVMも残る）</li>
 <li>再開前に開いていた、エージェントからの質問（<code>question</code>ノードでエージェントが聞いていたもの）は「再開で破棄」として閉じる。再開後に、新しいエージェントが改めて聞く。ワークフローに書いた固定の質問は閉じない</li>
 <li>新しいVMを作り、stagingからcloneし直す</li>
 <li>最後のスナップショット（WIP）の作業ツリーを、<strong>コミットしていない変更として</strong>戻す。ブランチ（HEAD）はコミット済みの位置のまま</li>
@@ -1626,6 +1652,7 @@ masuda<span class="w"> </span>resume<span class="w"> </span>&lt;id&gt;
 <p>VMの中にだけあったもの（gitignoreされたキャッシュや生成物、エージェントの会話の続き）は戻らない。</p>
 <h3 id="serve-restart"><code>masuda serve</code>を再起動したとき<a class="headerlink" href="#serve-restart" title="Permanent link">&para;</a></h3>
 <p><code>masuda serve</code>を止めると、動いていたワークスペースはVMごと止まり、次に起動したとき<code>stopped</code>になっている。自動では再開しない（止まっていた間にリポジトリや定義が変わっているかもしれないので、続けるかはあなたが決める）。続けるなら<code>masuda resume &lt;id&gt;</code>。</p>
+<p><code>suspended</code>・<code>blocked</code>のワークスペースはそのままの状態で残る。VMが残っていても、再起動の後は<code>masuda chat</code>できない。<code>stop</code>・<code>resume</code>・<code>remove</code>がVMを片付ける。</p>
 <h2 id="_2">片付ける<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>remove<span class="w"> </span>&lt;id&gt;<span class="w">            </span><span class="c1"># 止まっている・終わったもの</span>
 masuda<span class="w"> </span>remove<span class="w"> </span>&lt;id&gt;<span class="w"> </span>--force<span class="w">    </span><span class="c1"># 動いているものを止めてから消す</span>
@@ -1665,7 +1692,7 @@ jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'select(.ki
 <li><code>end</code>・<code>end:&lt;ラベル&gt;</code>で終わったとき（<code>needs_human</code>・<code>out_of_scope</code>・<code>stuck</code>等）は、<code>&lt;データ名&gt;</code>は無く、実行ログと会話ログだけが残る</li>
 <li><code>stop</code>（<code>remove --force</code>も）は、VMを壊す前に実行ログと会話ログを書き出す。<code>remove</code>は消す前に実行ログを書き出す（VMが既に無ければ会話ログは取れない）</li>
 <li><code>masuda serve</code>の再起動では書き出さない。残っていたVMは会話ログを写さずに壊す</li>
-<li><code>blocked</code>のときはVMを残すので、書き出されるのは実行ログだけ。会話ログは<code>stop</code>したときに写る</li>
+<li><code>blocked</code>と、ワークフローの途中で止まった<code>suspended</code>のときはVMを残すので、書き出されるのは実行ログだけ（<code>suspended</code>では書き出さない）。会話ログは<code>stop</code>（<code>suspended</code>なら<code>resume</code>でも）したときに写る</li>
 <li>終わる前に中間の結果を見たいときは、ホストの記録を直接読む（下記）</li>
 </ul>
 <h2 id="host-records">ホストの記録<a class="headerlink" href="#host-records" title="Permanent link">&para;</a></h2>

@@ -1513,7 +1513,7 @@
 <tr>
 <td></td>
 <td><code>failed_precondition</code></td>
-<td><code>settings.json</code>・<code>settings.local.json</code>が読めない（JSONとして壊れている、知らないキーがある、<code>stallAfter</code>が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、<code>plaintext</code>の秘密が未承認、イメージのDockerfileが無い、<code>envFiles</code>の公開値が<code>vars</code>に無い、ワークフローが使う<code>checks</code>が宣言されていない。sandbox serviceの契約（<code>GetServerInfo</code>の<code>contract_sha256</code>）がmasudaと違う、または<code>GetServerInfo</code>を持たない古いsandbox（理由に両方のバージョンが入る）</td>
+<td><code>settings.json</code>・<code>settings.local.json</code>が読めない（JSONとして壊れている、知らないキーがある、<code>stallAfter</code>が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、<code>plaintext</code>の秘密が未承認、イメージのDockerfileが無い、<code>envFiles</code>の公開値が<code>vars</code>に無い、ワークフローが使う<code>checks</code>が宣言されていない、ワークフロー（呼び出す部品のワークフローを含む）が届く<code>privileged</code>ノードの特権コマンドが宣言されていない・検査に通らない・承認されていない（承認の後に宣言が変わったものを含む）。sandbox serviceの契約（<code>GetServerInfo</code>の<code>contract_sha256</code>）がmasudaと違う、または<code>GetServerInfo</code>を持たない古いsandbox（理由に両方のバージョンが入る）</td>
 </tr>
 <tr>
 <td></td>
@@ -1543,7 +1543,7 @@
 <tr>
 <td></td>
 <td><code>failed_precondition</code></td>
-<td>再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは<code>Stop</code>した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの<code>settings.json</code>や<code>settings.local.json</code>が読めない。定義の写しの<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（<code>Run</code>と同じ）</td>
+<td>再開できる状態でない（STOPPEDとSUSPENDEDだけが再開できる。engineが記録したBLOCKEDは<code>Stop</code>した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの<code>settings.json</code>や<code>settings.local.json</code>が読めない。定義の写しの<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（<code>Run</code>と同じ）</td>
 </tr>
 <tr>
 <td></td>
@@ -1588,7 +1588,7 @@
 <tr>
 <td></td>
 <td><code>failed_precondition</code></td>
-<td>DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの<code>Stop</code>はエラーにせずそのまま返す。engineが止めたBLOCKEDへの<code>Stop</code>はVMを片付けてBLOCKEDのまま返す</td>
+<td>DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの<code>Stop</code>はエラーにせずそのまま返す。SUSPENDEDへの<code>Stop</code>はVMを片付けてSTOPPEDを返す。engineが記録したBLOCKEDへの<code>Stop</code>はVMを片付けてBLOCKEDのまま返す</td>
 </tr>
 <tr>
 <td><code>Remove</code></td>

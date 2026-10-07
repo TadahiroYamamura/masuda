@@ -1470,21 +1470,25 @@
 <pre class="mermaid"><code>stateDiagram-v2
   [*] --&gt; STARTING: Run
   STARTING --&gt; RUNNING: VMの起動とゲストの配置が済んだ
-  STARTING --&gt; BLOCKED: VMの起動に失敗（reasonが"sandbox boot failed: "）
+  STARTING --&gt; SUSPENDED: VMの起動に失敗（reasonが"sandbox boot failed: "）
   RUNNING --&gt; WAITING_GATE: ゲートが開いた
   RUNNING --&gt; WAITING_QUESTION: 質問が開いた
   WAITING_GATE --&gt; RUNNING: Decide
   WAITING_QUESTION --&gt; RUNNING: Answer
   RUNNING --&gt; DONE: publish・discardで終わった
   WAITING_GATE --&gt; DONE: 承認の後のpublish
-  RUNNING --&gt; BLOCKED: engineが止めた（進入回数の上限等）
+  RUNNING --&gt; SUSPENDED: ホストのノードを動かせなかった（reasonが"engine: "）
+  WAITING_GATE --&gt; SUSPENDED: 判断の後のノードを動かせなかった
+  RUNNING --&gt; BLOCKED: engineが行き止まりを記録した（進入回数の上限等）
   WAITING_GATE --&gt; BLOCKED: triageのhalt等
   STARTING --&gt; STOPPED: Stop
   RUNNING --&gt; STOPPED: Stop・serveの再起動
   WAITING_GATE --&gt; STOPPED: Stop
   WAITING_QUESTION --&gt; STOPPED: Stop
+  SUSPENDED --&gt; STOPPED: Stop
   STOPPED --&gt; STARTING: Resume
-  BLOCKED --&gt; STARTING: Resume（起動失敗のときだけ）</code></pre>
+  SUSPENDED --&gt; STARTING: Resume</code></pre>
+<p>SUSPENDEDとBLOCKEDはどちらも止まった状態で、違いは再開できるかどうか。SUSPENDEDはengineの記録の外で止まった（VMの起動の失敗、未承認の特権ノード・承認されていない通信先・execやpublishの基盤の失敗でホストのノードを動かせなかった）もので、engineは何も記録していないので、原因を直して<code>Resume</code>すれば同じノードをやり直す。BLOCKEDはengineが記録した行き止まりで、<code>Resume</code>できない（<code>Stop</code>してもBLOCKEDのまま）。どちらもVMが残っていれば<code>AttachInfo</code>で中を見られる（起動に失敗したSUSPENDEDにはVMが無い）。</p>
 <table>
 <thead>
 <tr>
@@ -1497,12 +1501,12 @@
 <tr>
 <td><code>Run</code></td>
 <td>対象リポジトリでワークフローを新しいワークスペースで始める</td>
-<td>定義の検査・前提（秘密・承認・イメージ）の確認・stagingの作成までを同期で行い、STARTINGで返る。VMの起動は返った後に裏で進むので、結果は<code>Watch</code>か<code>Get</code>で見る。起動の失敗は<code>Run</code>のエラーにならず、BLOCKED（<code>reason</code>が<code>sandbox boot failed:</code>で始まる）として現れる</td>
+<td>定義の検査・前提（秘密・承認・イメージ）の確認・stagingの作成までを同期で行い、STARTINGで返る。VMの起動は返った後に裏で進むので、結果は<code>Watch</code>か<code>Get</code>で見る。ワークフローが届く<code>privileged</code>ノードの宣言と承認もここで確かめる。起動の失敗は<code>Run</code>のエラーにならず、SUSPENDED（<code>reason</code>が<code>sandbox boot failed:</code>で始まる）として現れる</td>
 </tr>
 <tr>
 <td><code>Resume</code></td>
-<td>STOPPEDのワークスペース（と起動に失敗したBLOCKED）を、記録から計算した位置で続ける</td>
-<td>新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻す。定義は開始時の写しを使い、承認・秘密の値は今の設定から読み直す。再開前に開いていたエージェントの質問は破棄される</td>
+<td>STOPPED・SUSPENDEDのワークスペースを、記録から計算した位置で続ける</td>
+<td>新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻す。SUSPENDEDでVMが残っていれば、前提の確認が通ってから<code>Stop</code>と同じに片付ける。定義は開始時の写しを使い、承認・秘密の値（届く<code>privileged</code>ノードの承認を含む）は今の設定から読み直し、足りなければ何も変えずに断る。再開前に開いていたエージェントの質問は破棄される</td>
 </tr>
 <tr>
 <td><code>Get</code></td>
@@ -1522,7 +1526,7 @@
 <tr>
 <td><code>Stop</code></td>
 <td>VMを止める。記録とstagingは残る</td>
-<td>動いているノードは中断される。続きは<code>Resume</code>。STOPPEDへの<code>Stop</code>は何もせず返る</td>
+<td>動いているノードは中断される。続きは<code>Resume</code>。STOPPEDへの<code>Stop</code>は何もせず返る。SUSPENDEDはSTOPPEDになり、BLOCKEDはBLOCKEDのまま</td>
 </tr>
 <tr>
 <td><code>Remove</code></td>
@@ -1541,7 +1545,7 @@
 <ul>
 <li><code>state</code>はengineの位置とVMの有無から決まる。<code>activity</code>はその中で「エージェントが今何をしているか」（<a href="../flows/#activity">活動の表示</a>）</li>
 <li><code>position</code>は人間向けの現在位置（<code>"agent planner (occ 0000001)"</code>・<code>"gate review (occ 0000005)"</code>・<code>"done"</code>）。形は変わりうるので解析しない</li>
-<li><code>outcome</code>はDONEになったときの終わり方（定義の<code>end</code>のラベル等）。<code>reason</code>はBLOCKEDの理由</li>
+<li><code>outcome</code>はDONEになったときの終わり方（定義の<code>end</code>のラベル等）。<code>reason</code>はSUSPENDED・BLOCKEDの理由と、<code>done</code>以外で終わったDONEの理由（終わらせたエージェントの<code>feedback</code>）</li>
 <li><code>open_gates</code>はゲートの名前、<code>open_questions</code>は質問の出現。一覧の表示用で、判断するときは<code>GateService.ListOpen</code>・<code>QuestionService.ListOpen</code>から対象を取る</li>
 </ul>
 <h2 id="gateservice">GateService<a class="headerlink" href="#gateservice" title="Permanent link">&para;</a></h2>

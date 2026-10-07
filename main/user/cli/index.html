@@ -712,6 +712,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="privileged-command">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#run_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1640,6 +1657,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="privileged-command">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#run_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        run
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1720,13 +1754,13 @@
 <h1 id="cli">CLIリファレンス<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code>masuda &lt;command&gt; [flags]
 </code></pre></div>
-<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
+<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>・<code>privileged-command run</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
 <h2 id="_1">共通の約束<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
 <li>フラグは<code>-flag</code>でも<code>--flag</code>でもよく、位置引数の前にも後にも書ける（<code>masuda gate approve &lt;id&gt; &lt;occ&gt; --hash h</code>も<code>masuda gate approve --hash h &lt;id&gt; &lt;occ&gt;</code>も同じ）</li>
 <li><code>--repo &lt;dir&gt;</code>の既定は今いるディレクトリ（<code>workflow</code>の3つだけ既定が違う）。どのコマンドでも<strong>作業ツリーのトップ</strong>を指す必要があり、サブディレクトリを渡すとエラーになる</li>
-<li>終了コード: 成功で0、エラーで1、使い方の誤りで2。各コマンドの<code>-h</code>で使い方が出る</li>
+<li>終了コード: 成功で0、エラーで1、使い方の誤りで2（<code>privileged-command run</code>だけは特権コマンドの終了コードを返す）。各コマンドの<code>-h</code>で使い方が出る</li>
 <li><code>&lt;id&gt;</code>はワークスペースのID（<code>masuda run</code>・<code>masuda list</code>が出す12桁）、<code>&lt;occurrence&gt;</code>はゲートや質問の出現ID（<code>masuda gate list</code>・<code>masuda question list</code>が出す）</li>
 </ul>
 <h2 id="_2">一覧<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
@@ -1748,7 +1782,7 @@
 </tr>
 <tr>
 <td><a href="#resume"><code>resume</code></a></td>
-<td>止めたワークスペースを再開する</td>
+<td>止めた・中断したワークスペースを再開する</td>
 </tr>
 <tr>
 <td><a href="#list"><code>list</code></a></td>
@@ -1796,7 +1830,7 @@
 </tr>
 <tr>
 <td><a href="#privileged-command"><code>privileged-command</code></a></td>
-<td>特権コマンドの一覧・承認</td>
+<td>特権コマンドの一覧・承認・単体実行</td>
 </tr>
 <tr>
 <td><a href="#image"><code>image</code></a></td>
@@ -1919,7 +1953,8 @@
 <h2 id="resume">resume<a class="headerlink" href="#resume" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda resume &lt;id&gt;
 </code></pre></div>
-<p><code>stopped</code>のワークスペース、またはVMの起動に失敗して<code>blocked</code>になったワークスペースを、記録から再開する（<a href="../operations/#resume">運用</a>）。</p>
+<p><code>stopped</code>と<code>suspended</code>のワークスペースを、記録から再開する（<a href="../operations/#resume">運用</a>）。<code>suspended</code>でVMが残っていれば、会話ログと実行ログを書き出してから壊して作り直す。<code>blocked</code>は再開できない。</p>
+<p>再開の前に、<code>run</code>と同じ前提（秘密の値、承認、ワークフローが届く特権ノードの宣言と承認等）を確かめ直す。承認は作業ツリーの<code>settings.local.json</code>から読むので、取り消していれば断る。断ったときは何も変えない（<code>suspended</code>のVMも残る）。</p>
 <h2 id="list">list<a class="headerlink" href="#list" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda list [--repo &lt;dir&gt;] [--all]
 </code></pre></div>
@@ -1940,7 +1975,7 @@
 <tr>
 <td><code>--all</code></td>
 <td><code>false</code></td>
-<td><code>done</code>・<code>stopped</code>も出す（<code>blocked</code>は常に出る）</td>
+<td><code>done</code>・<code>stopped</code>も出す（<code>suspended</code>・<code>blocked</code>は常に出る）</td>
 </tr>
 </tbody>
 </table>
@@ -1969,7 +2004,7 @@
 <h2 id="chat">chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda chat &lt;id&gt;
 </code></pre></div>
-<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
+<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>と、ワークフローの途中で止まった<code>suspended</code>はVMが残っているので使える。起動に失敗した<code>suspended</code>にはVMが無い）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
 <h2 id="gate">gate<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda gate list [&lt;id&gt;]
 masuda gate show &lt;id&gt; &lt;occurrence&gt;
@@ -2058,7 +2093,7 @@ answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REG
 <h2 id="stop">stop<a class="headerlink" href="#stop" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda stop &lt;id&gt;
 </code></pre></div>
-<p>会話ログと実行ログを<code>exports/</code>へ書き出してからVMを壊し、<code>stopped</code>にする。stagingと記録は残り、<code>resume</code>で再開できる。既に<code>done</code>のワークスペースはエラー（VMは終わったときに壊してある）。masudaが実行を止めた<code>blocked</code>（triageの<code>halt</code>等）はVMを片付けるだけで<code>blocked</code>のまま（再開はできない）。</p>
+<p>会話ログと実行ログを<code>exports/</code>へ書き出してからVMを壊し、<code>stopped</code>にする。stagingと記録は残り、<code>resume</code>で再開できる。既に<code>done</code>のワークスペースはエラー（VMは終わったときに壊してある）。<code>suspended</code>はVMを片付けて<code>stopped</code>にする（そのまま<code>resume</code>できる）。ワークフローが記録した<code>blocked</code>（triageの<code>halt</code>等）はVMを片付けるだけで<code>blocked</code>のまま（再開はできない）。</p>
 <h2 id="remove">remove<a class="headerlink" href="#remove" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda remove &lt;id&gt; [--force]
 </code></pre></div>
@@ -2136,8 +2171,92 @@ masuda secret reject &lt;NAME&gt; [--repo &lt;dir&gt;]
 <h2 id="privileged-command">privileged-command<a class="headerlink" href="#privileged-command" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda privileged-command list [--repo &lt;dir&gt;]
 masuda privileged-command approve &lt;name&gt; [--repo &lt;dir&gt;]
+masuda privileged-command run &lt;name&gt; [--repo &lt;dir&gt;] [--ref &lt;branch|commit&gt;] [--out &lt;dir&gt;] [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;] [--data-dir &lt;dir&gt;]
 </code></pre></div>
 <p><code>settings.json</code>の<code>privilegedCommands</code>の一覧と承認の有無。APPROVEDが<code>stale</code>のものは、承認した後に宣言が変わったので承認が効いていない。<code>approve</code>はその時点の宣言の内容に承認を結びつける。取り消すコマンドは無い（<code>settings.local.json</code>の<code>privilegedCommandsApproved</code>から消す）。</p>
+<h3 id="run_1">run<a class="headerlink" href="#run_1" title="Permanent link">&para;</a></h3>
+<p>特権コマンドを、ワークフローの外から実機の特権VMで1回動かす。スクリプト（<code>.masuda/images/</code>の中身や<code>command</code>）が特権VMで動くかを、ワークフローを回す前に確かめるためのもの（<a href="../secrets-and-egress/#privileged-command-run">秘密と通信</a>）。<code>masuda serve</code>は要らない。<code>doctor</code>・<code>version</code>と同じく<code>masuda-sandbox serve</code>へ直接つなぐ。</p>
+<ul>
+<li>宣言・承認・通信先は作業ツリーの<code>.masuda/settings.json</code>と<code>settings.local.json</code>から読む。宣言が無い・承認されていない・承認の後に宣言が変わったなら断る</li>
+<li>イメージは作業ツリーの<code>.masuda/images/&lt;image&gt;/</code>からビルドする（ログは標準エラー）。ビルドの記録は<code>--data-dir</code>に書く（<code>masuda image list</code>に出る）</li>
+<li>VMの<code>/workspace</code>に置くのは、既定では作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル。ワークフローのスナップショットと同じ範囲）。<code>--ref</code>ならそのコミットのツリー</li>
+<li><code>inputs</code>は、作業ツリーの<strong>gitignoreされた</strong>ファイルのうち宣言のglobに当たるものを、同じパスへ置く（<code>.git</code>の中は見ない、シンボリックリンクは辿らない、許可ビットを保つ）</li>
+<li>利用者のリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）</li>
+<li>コマンドの標準出力・標準エラーは、そのまま端末へ流れる。終わると、拒否した通信先があればその一覧と、結果のディレクトリ（<code>exit-code</code>・<code>log</code>（末尾200KiB）・<code>outputs/</code>）の場所を標準エラーへ出す</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>フラグ</th>
+<th>既定</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--repo</code></td>
+<td><code>.</code></td>
+<td>対象リポジトリ（作業ツリーのトップ）</td>
+</tr>
+<tr>
+<td><code>--ref</code></td>
+<td>空</td>
+<td>作業ツリーの今の状態の代わりに渡すコミット（ブランチ名・コミット）</td>
+</tr>
+<tr>
+<td><code>--out</code></td>
+<td>新しい一時ディレクトリ</td>
+<td>結果を置くディレクトリ</td>
+</tr>
+<tr>
+<td><code>--sandbox-socket</code></td>
+<td><code>config.json</code>の<code>sandboxSocket</code>、無ければ<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code></td>
+<td><code>masuda-sandbox serve</code>のソケット</td>
+</tr>
+<tr>
+<td><code>--config</code></td>
+<td><code>$XDG_CONFIG_HOME/masuda/config.json</code>（未設定なら<code>~/.config/masuda/config.json</code>）</td>
+<td>serve全体の設定ファイル（<code>sandboxSocket</code>を読む）</td>
+</tr>
+<tr>
+<td><code>--data-dir</code></td>
+<td><code>$XDG_DATA_HOME/masuda</code></td>
+<td>イメージのビルドの記録を書く先（<code>masuda serve</code>の<code>--data-dir</code>と揃える）</td>
+</tr>
+</tbody>
+</table>
+<p>終了コード:</p>
+<table>
+<thead>
+<tr>
+<th>コード</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>特権コマンドの終了コード</td>
+<td>コマンドが終わった</td>
+</tr>
+<tr>
+<td>128+番号</td>
+<td>コマンドがシグナルで終わった</td>
+</tr>
+<tr>
+<td>124</td>
+<td><code>timeoutSeconds</code>を過ぎた</td>
+</tr>
+<tr>
+<td>1</td>
+<td>masuda自体の失敗（未承認、イメージのビルドの失敗、ジョブを動かせなかった等）</td>
+</tr>
+<tr>
+<td>2</td>
+<td>使い方の誤り</td>
+</tr>
+</tbody>
+</table>
+<p>ホストのエージェントには打たせない（<code>masuda init</code>がdenyに入れる）。特権VMはrootで動き、承認した通信先へ出られるため。</p>
 <h2 id="image">image<a class="headerlink" href="#image" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda image list [--repo &lt;dir&gt;]
 masuda image build [&lt;entry&gt;] [--repo &lt;dir&gt;]
@@ -2176,10 +2295,10 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <div class="highlight"><pre><span></span><code>masuda version [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;]
 </code></pre></div>
 <p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（<code>masuda init</code>の雛形が入れる版）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
-<div class="highlight"><pre><span></span><code>masuda 0.2.2 (go1.26.3 linux/amd64)
+<div class="highlight"><pre><span></span><code>masuda 0.2.3 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
   claude code: 2.1.287 (guest, verified)
-masuda-sandbox 0.2.2 (linux/amd64, gondolin 0.12.0)
+masuda-sandbox 0.2.3 (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok
 </code></pre></div>
