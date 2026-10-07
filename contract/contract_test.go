@@ -108,6 +108,14 @@ func start(t *testing.T, repoFiles map[string]string) *harness {
 	return h
 }
 
+// in returns the harness reporting failures to t, for use inside a subtest:
+// a subtest must not call FailNow on its parent's t.
+func (h *harness) in(t *testing.T) *harness {
+	c := *h
+	c.t = t
+	return &c
+}
+
 // mcp calls one tool on the workspace's guest-facing MCP endpoint, the way the
 // guest would (the fake sandbox exposes the per-workspace port on loopback and
 // GetWorkspace reports it in position metadata; here we read it from the
@@ -1070,7 +1078,7 @@ func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 	run := func() (*connect.Response[apiv1.Workspace], error) {
 		return h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/v", Inputs: map[string][]byte{"instructions": []byte("x")}}))
 	}
-	approve := func() {
+	approve := func(t *testing.T) {
 		t.Helper()
 		if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
 			t.Fatal(err)
@@ -1094,7 +1102,7 @@ func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 		}
 	})
 
-	approve()
+	approve(t)
 	res, err := run()
 	if err != nil {
 		t.Fatal(err)
@@ -1105,6 +1113,7 @@ func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 	revoke()
 
 	t.Run("実行中に承認を取り消すと特権ノードでSUSPENDEDになり、理由に承認のコマンドが出る", func(t *testing.T) {
+		h := h.in(t)
 		// next_task reports the engine's error, as it does for any host node that could not run.
 		if stopped := h.workLap(id, "ok"); stopped["error"] == nil {
 			t.Fatalf("an unapproved privileged command must stop the run: %v", stopped)
@@ -1127,7 +1136,8 @@ func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 	})
 
 	t.Run("承認してからResumeすると同じ特権ノードから進んで終わる", func(t *testing.T) {
-		approve()
+		h := h.in(t)
+		approve(t)
 		if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
 			t.Fatalf("Resume after approval: %v", err)
 		}
