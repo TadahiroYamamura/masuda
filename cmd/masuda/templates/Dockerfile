@@ -16,6 +16,8 @@ RUN apt-get update \
 # ビルド・テストのキャッシュについて:
 # - VMのルートディスクは小さい（既定はsettings.jsonの`images.<entry>.diskMiB`、4096MiB）。
 #   GOCACHE・pipやnpmのキャッシュなど大きくなるものは、tmpfsの/tmpへ向けると収まりやすい
+# - /run・/root・/tmp・/var/tmp・/var/cache・/var/logは、VMの起動のたびに空になる。
+#   ここに置いたもの（/var/run/postgresql、rootで入れた/root/goなど）はVMでは見えない
 # - このファイルのENV（例 ENV GOCACHE=/tmp/go-cache、ENV PATH=/usr/local/go/bin:$PATH）は
 #   VMの中のプロセスに引き継がれる。PATHの先頭にはいつも~/.local/bin（Claude Codeの置き場所）が
 #   足される。ENVで決めていない変数は、HOME=/home/ubuntu、XDG_*_HOMEはその下になる。

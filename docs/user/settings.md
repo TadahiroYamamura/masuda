@@ -68,6 +68,16 @@
 
 VMのイメージのエントリ。`.masuda/images/<image>/Dockerfile`からビルドする。名前は英数字で始まり、英数字・`.`・`_`・`-`だけ。`masuda run --image`で実行ごとに変えられる。
 
+VMの起動のたびに、次のディレクトリは空のtmpfsになる（VMの基盤であるGondolinの起動処理による）。Dockerfileでここに置いたものはVMの中では見えないので、別の場所に置くか、起動のたびに作る。エージェントのVMも特権コマンドのVMも同じ。
+
+| ディレクトリ | よくあるつまずき |
+|---|---|
+| `/run`（`/var/run`） | デーモンのソケット・ロックファイルの置き場所（PostgreSQLの`/var/run/postgresql`等）が無い。起動するスクリプトで`mkdir -p`するか、データの隣に置く |
+| `/root` | rootで入れた道具の設定やキャッシュ（`/root/go`、`/root/.npm`等）が消える。特権コマンドはrootで動くので効いてくる。`/usr/local`や`/opt`に置く |
+| `/tmp`・`/var/tmp`・`/var/cache`・`/var/log` | イメージに置いたものは消える（`/var/cache/apt`は空になる）。大きくなるキャッシュの置き場所としては向いている（メモリを使う） |
+
+`/home`・`/etc`・`/usr`・`/opt`・`/var/lib`（`/var/lib/docker`等）は、イメージの中身がそのまま残る。
+
 VMのClaude Codeの版は、Dockerfileのinstall行で固定されている。
 
 ```dockerfile
