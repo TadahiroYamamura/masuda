@@ -127,8 +127,10 @@ func TestRunJob(t *testing.T) {
 			}
 		}
 	})
-	t.Run("setup_shellの後にshellが動き、両方の出力が届いた順にstdoutとstderrで届く", func(t *testing.T) {
-		if r.log != "setup-out\nseedE:err\n" {
+	t.Run("setup_shellの後にshellが動き、両方の出力がstdoutとstderrに分かれて届く", func(t *testing.T) {
+		// shellのstdoutとstderrは別のパイプなので、2つの間で届く順は決まらない。
+		rest, ok := strings.CutPrefix(r.log, "setup-out\n")
+		if !ok || (rest != "seedE:err\n" && rest != "E:err\nseed") {
 			t.Fatalf("log %q", r.log)
 		}
 		f := r.finished
