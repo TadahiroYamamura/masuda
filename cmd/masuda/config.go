@@ -256,12 +256,13 @@ func readSecretValue(name string) (string, error) {
 // privileged-command
 // ---------------------------------------------------------------------------
 
-const privilegedUsage = "privileged-command list|approve <name> [--repo <dir>]"
+const privilegedUsage = "privileged-command list|approve <name>|run <name> [--repo <dir>]"
 
 func runPrivilegedCommand(args []string) error {
 	return subcommand(args, privilegedUsage, map[string]func([]string) error{
 		"list":    privilegedList,
 		"approve": privilegedApprove,
+		"run":     privilegedRun,
 	})
 }
 

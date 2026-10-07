@@ -136,6 +136,25 @@ func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
 	}
 }
 
+func TestDeclHashIgnoresDescription(t *testing.T) {
+	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", Inputs: []string{"build/**"}, Outputs: []string{"report.xml"}, TimeoutSeconds: 600}
+	// descriptionを足す前の正準JSON`{"command":"go test ./...","image":"default","inputs":["build/**"],"outputs":["report.xml"],"timeoutSeconds":600}`
+	// をsha256sumで計算した値。既存の承認の記録はこの値を持っている。
+	const recorded = "010f65a25816ce10c84e806aabc809efcff33ee47c74ba82c862721ce7461206"
+	t.Run("descriptionの無い宣言のハッシュはdescriptionを足す前と同じ値になる", func(t *testing.T) {
+		if h, err := DeclHash(decl); err != nil || h != recorded {
+			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
+		}
+	})
+	t.Run("descriptionだけを変えてもハッシュは変わらない", func(t *testing.T) {
+		d := decl
+		d.Description = "DBを立ててマイグレーションとテストを流す"
+		if h, err := DeclHash(d); err != nil || h != recorded {
+			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
+		}
+	})
+}
+
 func write(t *testing.T, dir, content string) {
 	t.Helper()
 	settingsDir := filepath.Join(dir, DirName)

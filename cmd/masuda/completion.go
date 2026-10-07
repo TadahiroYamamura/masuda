@@ -41,6 +41,8 @@ var compFlagKinds = map[string]string{
 	"comment":        "none",
 	"hash":           "none",
 	"after":          "none",
+	"ref":            "none",
+	"out":            "dir",
 	"stall-after":    "none",
 	"all":            "bool",
 	"force":          "bool",
@@ -91,7 +93,8 @@ var completionTable = []compNode{
 	clientLeaf("prime", argNone, "hook-json"),
 	{name: "egress", subs: repoSubs("list", "approve", "reject")},
 	{name: "secret", subs: repoSubs("list", "set", "approve", "reject")},
-	{name: "privileged-command", subs: repoSubs("list", "approve")},
+	{name: "privileged-command", subs: append(repoSubs("list", "approve"),
+		leaf("run", argNone, "repo", "ref", "out", "sandbox-socket", "config", "data-dir"))},
 	{name: "image", subs: []compNode{
 		clientLeaf("list", argNone, "repo"),
 		clientLeaf("build", argImage, "repo"),

@@ -4,7 +4,7 @@
 // ゲストのrootは`<Dir>/<sandbox-id>/root/`で、ゲストの`/workspace`は`root/workspace`、
 // `/home/ubuntu`は`root/home/ubuntu`に写る。Execはホストでそのまま動くので隔離は無い。
 // ゲストへ渡すコマンドは、cwdを写像するだけでコマンド文字列中の絶対パスは写像しない。ただしroot
-// 指定のExec（特権sandbox）はゲストrootへchrootして動かすので、絶対パスもゲストのものになる（exec.go）。
+// 指定のExecとRunJob（特権コマンド）はゲストrootへchrootして動かすので、絶対パスもゲストのものになる（exec.go）。
 package fakesandbox
 
 import (
@@ -135,15 +135,8 @@ func (s *Service) CreateSandbox(_ context.Context, req *connect.Request[sandboxv
 		return nil, connect.NewError(connect.CodeAlreadyExists, fmt.Errorf("sandbox %q already exists", m.Id))
 	}
 
-	// 実物のVMは使い捨てでディスクを持ち越さないので、同じidの前回のrootは消して作り直す。
-	root := s.Root(m.Id)
-	if err := os.RemoveAll(root); err != nil {
-		return nil, connect.NewError(connect.CodeInternal, err)
-	}
-	for _, d := range []string{"masuda", "tmp", "root", filepath.Join("home", user)} {
-		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
-			return nil, connect.NewError(connect.CodeInternal, err)
-		}
+	if err := initRoot(s.Root(m.Id), user); err != nil {
+		return nil, err
 	}
 
 	placeholders := map[string]string{}
@@ -176,6 +169,20 @@ func (s *Service) CreateSandbox(_ context.Context, req *connect.Request[sandboxv
 	sb.emit(sandboxv1.SandboxState_SANDBOX_STATE_RUNNING, "")
 	s.sandboxes[m.Id] = sb
 	return connect.NewResponse(proto.Clone(sb.info).(*sandboxv1.Sandbox)), nil
+}
+
+// initRoot はゲストrootを空の状態から作る。実物のVMは使い捨てでディスクを持ち越さないので、
+// 同じidの前回のrootは消して作り直す。
+func initRoot(root, user string) error {
+	if err := os.RemoveAll(root); err != nil {
+		return connect.NewError(connect.CodeInternal, err)
+	}
+	for _, d := range []string{"masuda", "tmp", "root", filepath.Join("home", user)} {
+		if err := os.MkdirAll(filepath.Join(root, d), 0o755); err != nil {
+			return connect.NewError(connect.CodeInternal, err)
+		}
+	}
+	return nil
 }
 
 func checkPolicy(p *sandboxv1.Policy, placeholders map[string]string) error {

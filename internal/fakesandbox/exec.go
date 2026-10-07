@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -19,23 +20,18 @@ import (
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 )
 
-// streamWriter はstdout/stderrを1本のサーバーストリームへ流す。ServerStream.Sendは
+// eventWriter はstdout/stderrを1本のサーバーストリームへ流す。ServerStream.Sendは
 // 並行呼び出しに対応していないので、2つのパイプからの書き込みをmuで直列化する。
-type streamWriter struct {
-	mu     *sync.Mutex
-	stream *connect.ServerStream[sandboxv1.ExecEvent]
-	stderr bool
+type eventWriter struct {
+	mu   *sync.Mutex
+	send func(data []byte) error
 }
 
-func (w *streamWriter) Write(p []byte) (int, error) {
+func (w *eventWriter) Write(p []byte) (int, error) {
 	data := append([]byte(nil), p...)
-	ev := &sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Stdout{Stdout: data}}
-	if w.stderr {
-		ev = &sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Stderr{Stderr: data}}
-	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if err := w.stream.Send(ev); err != nil {
+	if err := w.send(data); err != nil {
 		return 0, err
 	}
 	return len(p), nil
@@ -49,19 +45,57 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	if err != nil {
 		return err
 	}
+	cmd, err := prepareExec(root, defaultUser, sbEnv, m)
+	if err != nil {
+		return err
+	}
+	mu := &sync.Mutex{}
+	stdout := &eventWriter{mu: mu, send: func(b []byte) error {
+		return stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Stdout{Stdout: b}})
+	}}
+	stderr := &eventWriter{mu: mu, send: func(b []byte) error {
+		return stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Stderr{Stderr: b}})
+	}}
+	if m.Pty {
+		// ptyは割り当てないが、実物と同じく出力を1本（stdout）にまとめる。
+		stderr = stdout
+	}
+	if err := stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Started_{Started: &sandboxv1.ExecEvent_Started{}}}); err != nil {
+		return err
+	}
+	exited, err := cmd.run(ctx, stdout, stderr)
+	if err != nil {
+		return err
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	return stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Exited_{Exited: exited}})
+}
+
+// preparedExec は検査を済ませ、ゲストrootへの写像を決めたコマンド。ExecとRunJobが共有する。
+type preparedExec struct {
+	argv    []string
+	dir     string
+	env     []string
+	timeout time.Duration
+	stdin   []byte
+}
+
+// prepareExec はExecRequestを検査し、ホストで動かす形（argv・cwd・環境）にする。
+func prepareExec(root, defaultUser string, sbEnv map[string]string, m *sandboxv1.ExecRequest) (*preparedExec, error) {
 	var argv []string
 	switch {
 	case len(m.Argv) > 0 && m.Shell != "":
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("exactly one of argv and shell"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("exactly one of argv and shell"))
 	case m.Shell != "":
 		argv = []string{"/bin/sh", "-c", m.Shell}
 	case len(m.Argv) > 0:
 		if !filepath.IsAbs(m.Argv[0]) {
-			return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("argv[0] must be absolute: %q", m.Argv[0]))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("argv[0] must be absolute: %q", m.Argv[0]))
 		}
 		argv = m.Argv
 	default:
-		return connect.NewError(connect.CodeInvalidArgument, errors.New("exactly one of argv and shell"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("exactly one of argv and shell"))
 	}
 	user := m.User
 	if user == "" {
@@ -69,16 +103,16 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	}
 	home, err := hostPath(root, homeOf(user))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	cwd := home
 	if m.Cwd != "" {
 		if cwd, err = hostPath(root, m.Cwd); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() {
-		return connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cwd %q is not a directory in the guest", m.Cwd))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("cwd %q is not a directory in the guest", m.Cwd))
 	}
 	env := execEnv(home, user, sbEnv, m.Env)
 	if user == "root" {
@@ -87,47 +121,46 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 			guestCwd = m.Cwd
 		}
 		if argv, err = asRoot(root, guestCwd, argv); err != nil {
-			return err
+			return nil, err
 		}
 		cwd = root
 		env = execEnv(homeOf(user), user, sbEnv, m.Env)
 	}
+	return &preparedExec{argv: argv, dir: cwd, env: env, timeout: time.Duration(m.TimeoutMs) * time.Millisecond, stdin: m.Stdin}, nil
+}
 
+// run はコマンドを動かして終わり方を返す。ctxが取り消されたらCanceledのエラーを返す。
+func (p *preparedExec) run(ctx context.Context, stdout, stderr io.Writer) (*sandboxv1.ExecEvent_Exited, error) {
 	runCtx := ctx
-	if m.TimeoutMs > 0 {
+	if p.timeout > 0 {
 		var cancel context.CancelFunc
-		runCtx, cancel = context.WithTimeout(ctx, time.Duration(m.TimeoutMs)*time.Millisecond)
+		runCtx, cancel = context.WithTimeout(ctx, p.timeout)
 		defer cancel()
 	}
-	cmd := exec.CommandContext(runCtx, argv[0], argv[1:]...)
-	cmd.Dir = cwd
-	cmd.Env = env
+	cmd := exec.CommandContext(runCtx, p.argv[0], p.argv[1:]...)
+	cmd.Dir = p.dir
+	cmd.Env = p.env
 	// sh -cの子孫まで止めるため、プロセスグループごとkillする。
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 	// 子孫がパイプを握ったまま残っても、Waitが戻らなくならないように打ち切る。
 	cmd.WaitDelay = 2 * time.Second
-	if len(m.Stdin) > 0 {
-		cmd.Stdin = bytes.NewReader(m.Stdin)
+	if len(p.stdin) > 0 {
+		cmd.Stdin = bytes.NewReader(p.stdin)
 	}
-	mu := &sync.Mutex{}
-	cmd.Stdout = &streamWriter{mu: mu, stream: stream}
-	// ptyは割り当てないが、実物と同じく出力を1本（stdout）にまとめる。
-	cmd.Stderr = &streamWriter{mu: mu, stream: stream, stderr: !m.Pty}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 
-	if err := stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Started_{Started: &sandboxv1.ExecEvent_Started{}}}); err != nil {
-		return err
-	}
 	runErr := cmd.Run()
 	exited := &sandboxv1.ExecEvent_Exited{}
 	if errors.Is(runCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 		exited.TimedOut = true
 	}
 	if ctx.Err() != nil {
-		return connect.NewError(connect.CodeCanceled, ctx.Err())
+		return nil, connect.NewError(connect.CodeCanceled, ctx.Err())
 	}
 	if cmd.ProcessState == nil {
-		return connect.NewError(connect.CodeFailedPrecondition, runErr)
+		return nil, connect.NewError(connect.CodeFailedPrecondition, runErr)
 	}
 	ws, _ := cmd.ProcessState.Sys().(syscall.WaitStatus)
 	switch {
@@ -137,9 +170,7 @@ func (s *Service) Exec(ctx context.Context, req *connect.Request[sandboxv1.ExecR
 	default:
 		exited.ExitCode = int32(cmd.ProcessState.ExitCode())
 	}
-	mu.Lock()
-	defer mu.Unlock()
-	return stream.Send(&sandboxv1.ExecEvent{Event: &sandboxv1.ExecEvent_Exited_{Exited: exited}})
+	return exited, nil
 }
 
 // execEnv はsandbox serviceの既定の環境（sandbox.protoのExecRequest.env）を真似て組み立てる。

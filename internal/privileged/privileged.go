@@ -1,19 +1,20 @@
-// Package privileged は特権コマンド（docs/design/overview.md「特権コマンド」）の実行手順。
-// 宣言済み・承認済みのコマンドを、メインのsandboxとは別の使い捨てsandbox（root）で動かし、
+// Package privileged は特権コマンド（docs/design/overview.md「特権コマンド」）の方針と実行手順。
+// 宣言済み・承認済みのコマンドを、sandbox serviceのRunJob（使い捨てのVM、root）で動かし、
 // 結果をホストの記録とメインのゲストの`/masuda/privileged/<run-id>/`へ置く。
 //
-// 宣言の読み込み・承認の確認・イメージのビルドは呼び出し側（serve）が行い、このパッケージは
-// sandboxとstagingの操作だけを受け持つ。
+// 宣言の照合（Resolve）はこのパッケージ、宣言の読み込みとイメージのビルドは呼び出し側（serve）が行う。
+// VMの作成・ファイルの投入・回収・破棄はsandbox serviceの仕事で、ここは何をどこへ渡すかだけを決める。
 package privileged
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +43,7 @@ const (
 
 	guestWorkspace = "/workspace"
 	bundleGuest    = "/masuda/privileged.bundle"
+	heartbeatEvery = 30 * time.Second
 )
 
 // Validate は宣言の形を検査する。imageExistsはイメージのエントリがあるか（Dockerfileがあるか）。
@@ -78,15 +80,80 @@ func Validate(d config.PrivilegedCommandDecl, imageExists func(entry string) boo
 	return nil
 }
 
+// Approval は宣言1つの承認の状態。
+type Approval int
+
+const (
+	// NotApproved は承認の記録が無いこと。
+	NotApproved Approval = iota
+	// Approved は今の宣言のハッシュで承認されていること。
+	Approved
+	// Stale は承認の後に宣言が変わったこと（未承認と同じに扱う）。
+	Stale
+)
+
+// ApprovalOf は宣言dのハッシュと、localでのnameの承認の状態を返す。
+func ApprovalOf(name string, d config.PrivilegedCommandDecl, local config.LocalSettings) (string, Approval, error) {
+	hash, err := config.DeclHash(d)
+	if err != nil {
+		return "", NotApproved, err
+	}
+	a, recorded := local.PrivilegedCommandsApproved[name]
+	switch {
+	case !recorded:
+		return hash, NotApproved, nil
+	case a.DeclHash != hash:
+		return hash, Stale, nil
+	}
+	return hash, Approved, nil
+}
+
+// Resolved は動かしてよいと確かめた特権コマンド1つ。
+type Resolved struct {
+	Name string
+	Decl config.PrivilegedCommandDecl
+	// Hash は承認と一致した宣言のハッシュ。
+	Hash string
+	// Egress は特権VMに許すホスト（宣言と承認の積）。
+	Egress []string
+}
+
+// Resolve はcfgの宣言からnameを取り出し、形を検査し、localの承認と照らして、動かしてよければ返す。
+// 未宣言・形の誤り・未承認・承認後の変更はエラーにする（人間が何をすればよいかを書く）。
+func Resolve(cfg config.Settings, local config.LocalSettings, name string, imageExists func(entry string) bool) (*Resolved, error) {
+	decl, ok := cfg.PrivilegedCommands[name]
+	if !ok {
+		names := make([]string, 0, len(cfg.PrivilegedCommands))
+		for n := range cfg.PrivilegedCommands {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		return nil, fmt.Errorf("privileged command %q is not declared in privilegedCommands of .masuda/settings.json (declared: %v)", name, names)
+	}
+	if err := Validate(decl, imageExists); err != nil {
+		return nil, fmt.Errorf("privileged command %q: %w", name, err)
+	}
+	hash, state, err := ApprovalOf(name, decl, local)
+	if err != nil {
+		return nil, err
+	}
+	switch state {
+	case NotApproved:
+		return nil, fmt.Errorf("privileged command %q is not approved; a human must run `masuda privileged-command approve %s`", name, name)
+	case Stale:
+		return nil, fmt.Errorf("privileged command %q changed since it was approved; a human must run `masuda privileged-command approve %s` again", name, name)
+	}
+	return &Resolved{Name: name, Decl: decl, Hash: hash, Egress: config.AllowedEgress(cfg, local)}, nil
+}
+
 // Options は1回の実行に要るもの。
 type Options struct {
 	Sandbox sandboxv1connect.SandboxServiceClient
-	// MainID はメインのsandbox（inputsの読み出し元、結果の写しの置き先）。
-	MainID string
-	// SandboxID は作る特権sandboxのid。
-	SandboxID string
-	RunID     string
-	BuildID   string
+	// MainID はメインのsandbox（inputsの写し元、結果の写しの置き先）。空ならメインのゲストは無い
+	// （`masuda privileged-command run`）。そのときinputsはHostInputsで渡し、結果はホストにだけ置く。
+	MainID  string
+	RunID   string
+	BuildID string
 	// DiskMiB は特権sandboxのルートディスクの最小容量（宣言のイメージのエントリの設定）。
 	DiskMiB uint32
 	// MemoryMiB と CPUs は特権sandboxのメモリ（MiB）とCPU数（同じくイメージのエントリの設定）。
@@ -100,8 +167,20 @@ type Options struct {
 	SnapshotRef string
 	// HostDir は結果を残すホストのディレクトリ（`records/privileged/<run-id>`）。
 	HostDir string
+	// HostInputs はホストから/workspaceの下へ置くファイル。
+	HostInputs []HostInput
+	// Stdout と Stderr は、コマンドの出力を届いたそばから書く先（nilなら書かない）。Result.Logは
+	// これとは別に末尾を持つ。
+	Stdout, Stderr io.Writer
 	// Heartbeat は実行中に定期的に呼ばれる（活動の記録用）。nilなら呼ばない。
 	Heartbeat func()
+}
+
+// HostInput はホストの1ファイルを、特権sandboxの/workspaceからの相対パスRelへ置く指定。
+type HostInput struct {
+	HostPath string // 絶対パス
+	Rel      string // `/`区切り
+	Mode     fs.FileMode
 }
 
 // Result はrun_privileged_commandの戻り値（docs/guest-protocol.md）。
@@ -114,187 +193,173 @@ type Result struct {
 	OutputsError string   `json:"outputs_error,omitempty"`
 	TimedOut     bool     `json:"timed_out"`
 	Signal       string   `json:"signal,omitempty"`
+	// DeniedHosts は実行中に拒否した通信先。run_privileged_commandの戻り（docs/guest-protocol.md）には含めない。
+	DeniedHosts []*sandboxv1.RunJobEvent_DeniedHost `json:"-"`
 }
 
 // ResultsDir はメインのゲストでの結果の写しの場所。
 func ResultsDir(runID string) string { return GuestResultsRoot + "/" + runID + "/" }
 
-// Run は特権sandboxを作って宣言のコマンドを動かし、結果を回収して返す。特権sandboxは
-// 成否に関わらず壊す。コマンドが0以外で終わってもエラーにはしない（exit_codeで返す）。
+// snapshotRefPattern はsetup_shellに埋め込むref。staging.WIPRefが作る形だけを通し、
+// シェルの引用を要らなくする。
+var snapshotRefPattern = regexp.MustCompile(`^refs/masuda/wip/[0-9A-Za-z][0-9A-Za-z._-]*$`)
+
+// Run はRunJobで宣言のコマンドを動かし、結果を置いて返す。コマンドが0以外で終わってもエラーには
+// しない（exit_codeで返す）。スナップショットを展開できなかったときは、コマンドを動かせなかった
+// 基盤の失敗としてエラーを返す。
 func Run(ctx context.Context, o Options) (*Result, error) {
-	if err := os.MkdirAll(filepath.Join(o.HostDir, "outputs"), 0o700); err != nil {
-		return nil, err
+	if !snapshotRefPattern.MatchString(o.SnapshotRef) {
+		return nil, fmt.Errorf("snapshot ref %q is not a WIP ref", o.SnapshotRef)
 	}
-	if _, err := o.Sandbox.CreateSandbox(ctx, connect.NewRequest(&sandboxv1.CreateSandboxRequest{
-		Id:          o.SandboxID,
-		BuildId:     o.BuildID,
-		DefaultUser: User,
-		DiskMib:     o.DiskMiB,
-		MemoryMib:   o.MemoryMiB,
-		Cpus:        o.CPUs,
-		// 秘密・tcp_maps・MCPは渡さない。特権VMはAPIトークンもmasudaへの経路も持たない。
-		Policy: &sandboxv1.Policy{AllowedHosts: o.Egress},
-	})); err != nil {
-		return nil, fmt.Errorf("creating the privileged sandbox: %w", err)
-	}
-	defer func() {
-		_, _ = o.Sandbox.DestroySandbox(context.WithoutCancel(ctx), connect.NewRequest(&sandboxv1.DestroySandboxRequest{Id: o.SandboxID}))
-	}()
-
-	if err := o.checkout(ctx); err != nil {
-		return nil, err
-	}
-	if err := o.copyInputs(ctx); err != nil {
-		return nil, err
-	}
-	exited, log, err := o.exec(ctx)
+	hostDir, err := filepath.Abs(o.HostDir)
 	if err != nil {
 		return nil, err
 	}
-	res := &Result{
-		ExitCode:   int(exited.ExitCode),
-		Signal:     exited.Signal,
-		TimedOut:   exited.TimedOut,
-		Log:        string(log.bytes()),
-		Truncated:  log.truncated,
-		ResultsDir: ResultsDir(o.RunID),
-		Outputs:    []string{},
-	}
-	if exited.Signal != "" && res.ExitCode == 0 {
-		res.ExitCode = -1
-	}
-	outputs, outErr := o.collectOutputs(ctx)
-	res.Outputs = append(res.Outputs, outputs...)
-	if outErr != nil {
-		res.OutputsError = outErr.Error()
-	}
-	if err := o.place(ctx, res); err != nil {
+	outputsDir := filepath.Join(hostDir, "outputs")
+	if err := os.MkdirAll(outputsDir, 0o700); err != nil {
 		return nil, err
 	}
-	return res, nil
-}
-
-// checkout はstagingのスナップショットをbundleで特権sandboxへ渡し、`/workspace`に展開する。
-// cloneでなくinit→fetchにしているのは、スナップショットのrefが`refs/masuda/wip/…`で、
-// cloneが既定で取ってくる範囲（ブランチとタグ）に入らないため。
-func (o *Options) checkout(ctx context.Context) error {
-	tmp, err := os.CreateTemp(o.HostDir, ".bundle-*")
-	if err != nil {
-		return err
-	}
-	tmp.Close()
-	defer os.Remove(tmp.Name())
-	if err := o.Staging.CreateBundle(ctx, tmp.Name(), o.SnapshotRef); err != nil {
-		return fmt.Errorf("bundling the snapshot: %w", err)
-	}
-	f, err := os.Open(tmp.Name())
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	if err := guest.WriteFile(ctx, o.Sandbox, o.SandboxID, bundleGuest, f, 0o644); err != nil {
-		return err
-	}
-	ref := shellQuote(o.SnapshotRef)
-	bundle := shellQuote(strings.TrimPrefix(bundleGuest, "/"))
-	script := strings.Join([]string{
-		"set -e",
-		// 実VMのWriteFileは書き手に関わらず所有者を付けるので、所有者の食い違いでgitが止まらないように。
-		"git config --global --add safe.directory " + guestWorkspace,
-		"git init -q workspace",
-		"git -C workspace fetch -q --no-tags ../" + bundle + " +" + ref + ":" + ref,
-		"git -C workspace checkout -q --detach " + ref,
-		"rm -f " + bundle,
-	}, "\n")
-	if _, err := o.shell(ctx, o.SandboxID, "/", script); err != nil {
-		return fmt.Errorf("checking out the snapshot in the privileged sandbox: %w", err)
-	}
-	return nil
-}
-
-// fileEntry はゲストのファイル1つ（/workspaceからの相対パスと許可ビット）。
-type fileEntry struct {
-	rel  string
-	mode uint32
-}
-
-// listFiles はsandbox idの/workspaceの下で、patternsのどれかに当たる通常ファイルを返す。
-// 各パターンのワイルドカードを含まない先頭のディレクトリからfindし、`.git`の下は見ない。
-// シンボリックリンクは辿らず、返しもしない（/workspaceの外を指していても読まないため）。
-func (o *Options) listFiles(ctx context.Context, id string, patterns []string) ([]fileEntry, error) {
-	if len(patterns) == 0 {
-		return nil, nil
-	}
-	bases := map[string]bool{}
-	for _, p := range patterns {
-		bases[baseDir(p)] = true
-	}
-	var quoted []string
-	for b := range bases {
-		quoted = append(quoted, shellQuote(b))
-	}
-	sort.Strings(quoted)
-	script := "for b in " + strings.Join(quoted, " ") + `; do [ -e "$b" ] || continue; find "$b" -name .git -prune -o -type f -printf '%m %p\0'; done`
-	res, err := o.shell(ctx, id, guestWorkspace, script)
+	bundle, err := o.bundle(ctx, hostDir)
 	if err != nil {
 		return nil, err
 	}
-	seen := map[string]bool{}
-	var out []fileEntry
-	for _, rec := range bytes.Split(res.Stdout, []byte{0}) {
-		modeStr, p, ok := strings.Cut(string(rec), " ")
-		if !ok {
-			continue
-		}
-		rel := strings.TrimPrefix(path.Clean(p), "./")
-		if seen[rel] || rel == "." || strings.HasPrefix(rel, "../") {
-			continue
-		}
-		mode, err := strconv.ParseUint(modeStr, 8, 32)
-		if err != nil {
-			continue
-		}
-		for _, pat := range patterns {
-			if Match(pat, rel) {
-				seen[rel] = true
-				out = append(out, fileEntry{rel: rel, mode: uint32(mode) & 0o777})
-				break
-			}
-		}
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].rel < out[j].rel })
-	return out, nil
-}
+	defer os.Remove(bundle)
 
-// copyInputs はinputsに当たるファイルをメインのゲストから特権sandboxの/workspaceへ運ぶ。
-func (o *Options) copyInputs(ctx context.Context) error {
-	files, err := o.listFiles(ctx, o.MainID, o.Decl.Inputs)
-	if err != nil {
-		return fmt.Errorf("listing inputs: %w", err)
-	}
-	for _, f := range files {
-		b, err := guest.ReadFile(ctx, o.Sandbox, o.MainID, guestWorkspace+"/"+f.rel, 0)
-		if err != nil {
-			return fmt.Errorf("reading input %s: %w", f.rel, err)
-		}
-		if err := guest.WriteBytes(ctx, o.Sandbox, o.SandboxID, guestWorkspace+"/"+f.rel, b, f.mode); err != nil {
-			return fmt.Errorf("writing input %s: %w", f.rel, err)
-		}
-	}
-	return nil
-}
-
-// exec は宣言のコマンドをrootで動かし、stdoutとstderrを届いた順に1本のログにまとめる。
-func (o *Options) exec(ctx context.Context) (*sandboxv1.ExecEvent_Exited, *tailBuffer, error) {
 	timeout := time.Duration(o.Decl.TimeoutSeconds) * time.Second
 	if timeout == 0 {
 		timeout = DefaultTimeout
 	}
+	inputs := []*sandboxv1.RunJobRequest_Input{{Source: &sandboxv1.RunJobRequest_Input_HostFile{HostFile: &sandboxv1.RunJobRequest_HostFile{
+		HostPath: bundle, GuestPath: bundleGuest, Mode: 0o644,
+	}}}}
+	for _, in := range o.HostInputs {
+		inputs = append(inputs, &sandboxv1.RunJobRequest_Input{Source: &sandboxv1.RunJobRequest_Input_HostFile{HostFile: &sandboxv1.RunJobRequest_HostFile{
+			HostPath: in.HostPath, GuestPath: guestWorkspace + "/" + in.Rel, Mode: uint32(in.Mode.Perm()),
+		}}})
+	}
+	if len(o.Decl.Inputs) > 0 && o.MainID != "" {
+		inputs = append(inputs, &sandboxv1.RunJobRequest_Input{Source: &sandboxv1.RunJobRequest_Input_FromSandbox{FromSandbox: &sandboxv1.RunJobRequest_FromSandbox{
+			Id: o.MainID, Root: guestWorkspace, Patterns: o.Decl.Inputs, DestRoot: guestWorkspace,
+		}}})
+	}
+	fin, log, setupLog, err := o.runJob(ctx, &sandboxv1.RunJobRequest{
+		BuildId:   o.BuildID,
+		MemoryMib: o.MemoryMiB,
+		Cpus:      o.CPUs,
+		DiskMib:   o.DiskMiB,
+		// RunJobのVMは秘密・tcp_mapsを持たない。特権VMはAPIトークンもmasudaへの経路も持たない。
+		AllowedHosts:   o.Egress,
+		User:           User,
+		Cwd:            guestWorkspace,
+		SetupShell:     checkoutScript(o.SnapshotRef),
+		Shell:          o.Decl.Command,
+		TimeoutMs:      uint32(min(timeout.Milliseconds(), int64(^uint32(0)))),
+		Inputs:         inputs,
+		Outputs:        o.Decl.Outputs,
+		OutputsHostDir: outputsDir,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if s := fin.Setup; s == nil || s.ExitCode != 0 || s.Signal != "" || s.TimedOut {
+		return nil, fmt.Errorf("checking out the snapshot in the privileged sandbox failed (%s): %s", describeSetup(fin), strings.TrimSpace(string(setupLog.bytes())))
+	}
+
+	res := &Result{
+		Log:          string(log.bytes()),
+		Truncated:    log.truncated,
+		Outputs:      append([]string{}, fin.Outputs...),
+		OutputsError: fin.OutputsError,
+		DeniedHosts:  fin.DeniedHosts,
+	}
+	if o.MainID != "" {
+		res.ResultsDir = ResultsDir(o.RunID)
+	}
+	switch {
+	case fin.Exited != nil:
+		res.ExitCode, res.Signal, res.TimedOut = int(fin.Exited.ExitCode), fin.Exited.Signal, fin.Exited.TimedOut
+		if res.Signal != "" && res.ExitCode == 0 {
+			res.ExitCode = -1
+		}
+	case fin.JobTimedOut:
+		// コマンドの期限より後に来るはずのジョブ全体の期限が先に過ぎた（VMごと壊され、終了コードも
+		// outputsも無い）。エージェントから見ればコマンドの時間切れと同じなので、timed_outに寄せる。
+		res.ExitCode, res.TimedOut = -1, true
+		if len(o.Decl.Outputs) > 0 && res.OutputsError == "" {
+			res.OutputsError = "outputs were not collected: the job deadline passed"
+		}
+	default:
+		return nil, errors.New("running the privileged command: the job finished without running the command")
+	}
+	if err := placeHost(hostDir, res); err != nil {
+		return nil, err
+	}
+	if o.MainID != "" {
+		if err := o.placeGuest(ctx, outputsDir, res); err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+// bundle はstagingのスナップショットをホストの一時ファイルのbundleにする。sandbox serviceが
+// HostFileとして読むので、serviceと同じアカウントが読める記録のディレクトリに置く。
+func (o *Options) bundle(ctx context.Context, hostDir string) (string, error) {
+	tmp, err := os.CreateTemp(hostDir, ".bundle-*")
+	if err != nil {
+		return "", err
+	}
+	tmp.Close()
+	if err := o.Staging.CreateBundle(ctx, tmp.Name(), o.SnapshotRef); err != nil {
+		os.Remove(tmp.Name())
+		return "", fmt.Errorf("bundling the snapshot: %w", err)
+	}
+	return tmp.Name(), nil
+}
+
+// checkoutScript はbundleのスナップショットを/workspace（RunJobのcwd）へ展開するsetup_shell。
+// cloneでなくinit→fetchにしているのは、スナップショットのrefが`refs/masuda/wip/…`で、
+// cloneが既定で取ってくる範囲（ブランチとタグ）に入らないため。checkoutに-fを付けるのは、
+// RunJobがsetup_shellより先にinputsを/workspaceへ置くため。inputsが追跡対象のファイルに
+// 当たると、-fが無ければcheckoutが「上書きされる未追跡のファイル」で止まる。そのファイルは
+// スナップショットの中身になるが、どちらも同じ時点のメインの作業ツリーから来ている。
+func checkoutScript(ref string) string {
+	return strings.Join([]string{
+		"set -e",
+		// 実VMは書き手に関わらずファイルに所有者を付けるので、所有者の食い違いでgitが止まらないように。
+		"git config --global --add safe.directory " + guestWorkspace,
+		"git init -q .",
+		"git fetch -q --no-tags " + bundleGuest + " +" + ref + ":" + ref,
+		"git checkout -q -f --detach " + ref,
+		"rm -f " + bundleGuest,
+	}, "\n")
+}
+
+func describeSetup(fin *sandboxv1.RunJobEvent_Finished) string {
+	s := fin.Setup
+	switch {
+	case s == nil && fin.JobTimedOut:
+		return "the job deadline passed"
+	case s == nil:
+		return "it did not run"
+	case s.TimedOut:
+		return "timed out"
+	case s.Signal != "":
+		return "signal " + s.Signal
+	}
+	return "exit " + strconv.Itoa(int(s.ExitCode))
+}
+
+// runJob はRunJobを呼び、shellの出力（log）とsetup_shellの出力（setupLog）を分けて集める。
+// どちらもstdoutとstderrを届いた順に1本にまとめる。
+func (o *Options) runJob(ctx context.Context, req *sandboxv1.RunJobRequest) (*sandboxv1.RunJobEvent_Finished, *tailBuffer, *tailBuffer, error) {
+	// Heartbeatはイベントの到着ではなく一定の間隔で呼ぶ。テストやビルドは何分も出力せずに動くことが
+	// あり、イベントのたびに呼ぶとその間は活動が途絶えたように見えるため。
 	if o.Heartbeat != nil {
 		hbCtx, stop := context.WithCancel(ctx)
 		defer stop()
 		go func() {
-			t := time.NewTicker(30 * time.Second)
+			t := time.NewTicker(heartbeatEvery)
 			defer t.Stop()
 			for {
 				select {
@@ -306,97 +371,63 @@ func (o *Options) exec(ctx context.Context) (*sandboxv1.ExecEvent_Exited, *tailB
 			}
 		}()
 	}
-	st, err := o.Sandbox.Exec(ctx, connect.NewRequest(&sandboxv1.ExecRequest{
-		Id: o.SandboxID, Shell: o.Decl.Command, User: User, Cwd: guestWorkspace,
-		TimeoutMs: uint32(min(timeout.Milliseconds(), int64(^uint32(0)))),
-	}))
+	st, err := o.Sandbox.RunJob(ctx, connect.NewRequest(req))
 	if err != nil {
-		return nil, nil, fmt.Errorf("running the privileged command: %w", err)
+		return nil, nil, nil, fmt.Errorf("running the privileged command: %w", err)
 	}
 	defer st.Close()
 	log := &tailBuffer{max: LogTailBytes}
-	var exited *sandboxv1.ExecEvent_Exited
+	setupLog := &tailBuffer{max: LogTailBytes}
+	cur := setupLog
+	var fin *sandboxv1.RunJobEvent_Finished
 	for st.Receive() {
 		switch ev := st.Msg().Event.(type) {
-		case *sandboxv1.ExecEvent_Stdout:
-			log.write(ev.Stdout)
-		case *sandboxv1.ExecEvent_Stderr:
-			log.write(ev.Stderr)
-		case *sandboxv1.ExecEvent_Exited_:
-			exited = ev.Exited
+		case *sandboxv1.RunJobEvent_Phase_:
+			if ev.Phase.Name == "running" {
+				cur = log
+			}
+		case *sandboxv1.RunJobEvent_Stdout:
+			cur.write(ev.Stdout)
+			if cur == log && o.Stdout != nil {
+				_, _ = o.Stdout.Write(ev.Stdout)
+			}
+		case *sandboxv1.RunJobEvent_Stderr:
+			cur.write(ev.Stderr)
+			if cur == log && o.Stderr != nil {
+				_, _ = o.Stderr.Write(ev.Stderr)
+			}
+		case *sandboxv1.RunJobEvent_Finished_:
+			fin = ev.Finished
 		}
 	}
 	if err := st.Err(); err != nil {
-		return nil, nil, fmt.Errorf("running the privileged command: %w", err)
+		return nil, nil, nil, fmt.Errorf("running the privileged command: %w", err)
 	}
-	if exited == nil {
-		return nil, nil, errors.New("running the privileged command: the exec stream ended without an exit")
+	if fin == nil {
+		return nil, nil, nil, errors.New("running the privileged command: the job stream ended without Finished")
 	}
-	return exited, log, nil
+	return fin, log, setupLog, nil
 }
 
-// collectOutputs はoutputsに当たるファイルを特権sandboxから読み、ホストの`outputs/`に置く。
-// 1つも当たらなかったパターンや読めなかったファイルはエラーにまとめるが、読めたものは返す。
-// コマンドが失敗しても途中までの出力（テストのレポート等）は役に立つため、全か無かにしない。
-func (o *Options) collectOutputs(ctx context.Context) ([]string, error) {
-	files, err := o.listFiles(ctx, o.SandboxID, o.Decl.Outputs)
-	if err != nil {
-		return nil, fmt.Errorf("listing outputs: %w", err)
+// placeHost は終了コード・ログをホストの記録に書く。outputsはRunJobが既に`outputs/`へ書いている。
+func placeHost(hostDir string, res *Result) error {
+	if err := os.WriteFile(filepath.Join(hostDir, "exit-code"), exitCodeFile(res), 0o600); err != nil {
+		return err
 	}
-	var problems []string
-	for _, pat := range o.Decl.Outputs {
-		hit := false
-		for _, f := range files {
-			if Match(pat, f.rel) {
-				hit = true
-				break
-			}
-		}
-		if !hit {
-			problems = append(problems, fmt.Sprintf("no file matched %q", pat))
-		}
-	}
-	var got []string
-	for _, f := range files {
-		b, err := guest.ReadFile(ctx, o.Sandbox, o.SandboxID, guestWorkspace+"/"+f.rel, 0)
-		if err != nil {
-			problems = append(problems, fmt.Sprintf("reading %s: %v", f.rel, err))
-			continue
-		}
-		dst := filepath.Join(o.HostDir, "outputs", filepath.FromSlash(f.rel))
-		if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
-			return got, err
-		}
-		if err := os.WriteFile(dst, b, 0o600); err != nil {
-			return got, err
-		}
-		got = append(got, f.rel)
-	}
-	if len(problems) > 0 {
-		return got, errors.New(strings.Join(problems, "; "))
-	}
-	return got, nil
+	return os.WriteFile(filepath.Join(hostDir, "log"), []byte(res.Log), 0o600)
 }
 
-// place は終了コード・ログをホストに書き、ホストの結果（outputsを含む）の写しをメインの
-// ゲストの`/masuda/privileged/<run-id>/`へ置く。
-func (o *Options) place(ctx context.Context, res *Result) error {
-	exitCode := []byte(strconv.Itoa(res.ExitCode) + "\n")
-	if err := os.WriteFile(filepath.Join(o.HostDir, "exit-code"), exitCode, 0o600); err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(o.HostDir, "log"), []byte(res.Log), 0o600); err != nil {
-		return err
-	}
+// placeGuest はホストの結果（outputsを含む）の写しをメインのゲストの`/masuda/privileged/<run-id>/`へ置く。
+func (o *Options) placeGuest(ctx context.Context, outputsDir string, res *Result) error {
 	dir := strings.TrimSuffix(res.ResultsDir, "/")
-	if err := guest.WriteBytes(ctx, o.Sandbox, o.MainID, dir+"/exit-code", exitCode, 0o644); err != nil {
+	if err := guest.WriteBytes(ctx, o.Sandbox, o.MainID, dir+"/exit-code", exitCodeFile(res), 0o644); err != nil {
 		return err
 	}
 	if err := guest.WriteBytes(ctx, o.Sandbox, o.MainID, dir+"/log", []byte(res.Log), 0o644); err != nil {
 		return err
 	}
 	for _, rel := range res.Outputs {
-		b, err := os.ReadFile(filepath.Join(o.HostDir, "outputs", filepath.FromSlash(rel)))
+		b, err := os.ReadFile(filepath.Join(outputsDir, filepath.FromSlash(rel)))
 		if err != nil {
 			return err
 		}
@@ -407,16 +438,7 @@ func (o *Options) place(ctx context.Context, res *Result) error {
 	return nil
 }
 
-func (o *Options) shell(ctx context.Context, id, cwd, script string) (guest.ExecResult, error) {
-	res, err := guest.Exec(ctx, o.Sandbox, &sandboxv1.ExecRequest{Id: id, Shell: script, Cwd: cwd})
-	if err != nil {
-		return res, err
-	}
-	if res.ExitCode != 0 || res.Signal != "" || res.TimedOut {
-		return res, fmt.Errorf("guest command failed (exit %d %s): %s", res.ExitCode, res.Signal, bytes.TrimSpace(res.Stderr))
-	}
-	return res, nil
-}
+func exitCodeFile(res *Result) []byte { return []byte(strconv.Itoa(res.ExitCode) + "\n") }
 
 // tailBuffer は書かれたものの末尾maxバイトだけを持つ。書くたびに切り詰めると大量の出力で
 // コピーが嵩むので、2倍まで溜めてから詰める。
@@ -448,5 +470,3 @@ func (t *tailBuffer) bytes() []byte {
 	}
 	return append([]byte(nil), b...)
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

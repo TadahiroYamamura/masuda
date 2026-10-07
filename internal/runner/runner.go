@@ -31,6 +31,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -62,6 +63,9 @@ type Options struct {
 	OnLog func(engine.Event)
 	// PublishRemote は`target: remote`のpublishがpushする実リポジトリのremote。空ならorigin。
 	PublishRemote string
+	// RunPrivileged はprivilegedノードの出現occurrenceで、宣言の名前nameの特権コマンドを動かす。
+	// MCPのrun_privileged_commandと同じ実行の関数を渡す。nilならprivilegedノードはエラーで止まる。
+	RunPrivileged func(ctx context.Context, occurrence, name string) (*privileged.Result, error)
 }
 
 // Runner は1つのワークスペースのengine.Runner。
@@ -100,7 +104,7 @@ const (
 	// worktreeRef はstagingで「最後に取り込んだ作業ツリー」を指すref。出現の境界でない
 	// 取り込み（ChangedSince・Diff・Commitの直前）の置き場所。
 	worktreeRef = "refs/masuda/worktree"
-	// logTailBytes はexecノードの出力のうちフィードバックへ渡す末尾の長さ。
+	// logTailBytes はexec・privilegedノードの出力のうちフィードバックへ渡す末尾の長さ。
 	logTailBytes = 8 << 10
 )
 
@@ -410,6 +414,26 @@ func (r *Runner) RunCommand(ctx context.Context, t engine.CommandTask) (engine.C
 		}
 	}
 	return out, nil
+}
+
+// RunPrivileged はprivilegedノードの特権コマンドを動かし、終了コードとログの末尾（execノードと
+// 同じ長さ）を返す。未宣言・未承認・基盤の失敗はOptions.RunPrivilegedのエラーのまま返す。
+func (r *Runner) RunPrivileged(ctx context.Context, t engine.PrivilegedTask) (engine.CommandResult, error) {
+	if err := checkOcc(t.Occurrence); err != nil {
+		return engine.CommandResult{}, err
+	}
+	if r.o.RunPrivileged == nil {
+		return engine.CommandResult{}, errors.New("privileged: privileged commands cannot run in this workspace")
+	}
+	res, err := r.o.RunPrivileged(ctx, t.Occurrence, t.Name)
+	if err != nil {
+		return engine.CommandResult{}, err
+	}
+	log := res.Log
+	if len(log) > logTailBytes {
+		log = log[len(log)-logTailBytes:]
+	}
+	return engine.CommandResult{ExitCode: res.ExitCode, TimedOut: res.TimedOut, LogTail: log}, nil
 }
 
 // ---------------------------------------------------------------------------

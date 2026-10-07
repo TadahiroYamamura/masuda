@@ -54,6 +54,7 @@ var primeDenyRules = []string{
 	"Bash(masuda gate halt *)",
 	"Bash(masuda gate redo *)",
 	"Bash(masuda privileged-command approve *)",
+	"Bash(masuda privileged-command run *)",
 	"Bash(masuda remove *)",
 }
 

@@ -16,7 +16,7 @@ const usage = `usage: masuda <command> [flags]
 commands:
   serve                     公開APIを待ち受ける常駐プロセスを起動する
   run                       ワークフローを新しいワークスペースで始める
-  resume <id>               止めたワークスペースを記録から再開する
+  resume <id>               止めた（stopped）・中断した（suspended）ワークスペースを記録から再開する
   list [--all]              ワークスペースの一覧（--allで終わった・止めたものも）
   chat <id>                 ゲストのメインセッション（tmux）にsshでアタッチする
   watch [<id>]              状態とイベントを流し続ける
@@ -31,15 +31,15 @@ commands:
                             egressの宣言と承認
   secret list|set|approve|reject
                             秘密の一覧・値の登録（値は標準入力から）・plaintextの承認
-  privileged-command list|approve
-                            特権コマンドの一覧・承認
+  privileged-command list|approve|run
+                            特権コマンドの一覧・承認・単体実行（runはserve不要。masuda-sandboxへ直接つなぐ）
   image list|build          ゲストイメージの一覧・ビルド
   workflow list|show|check  ワークフローの一覧・図（Mermaid）・検査
   version                   masudaと、接続先のmasuda-sandboxのバージョンを表示する
   doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
   completion bash|zsh       シェルの補完スクリプトを標準出力に出す（serve不要）
 
-serve・init・prime・workflow・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init・prime・workflow・version・doctor・completion・privileged-command run以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -103,6 +103,10 @@ func main() {
 	}
 	if errors.Is(err, errUsage) {
 		os.Exit(2)
+	}
+	var code exitCodeError
+	if errors.As(err, &code) {
+		os.Exit(code.code)
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "masuda: %v\n", err)

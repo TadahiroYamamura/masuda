@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
+	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
@@ -157,4 +159,43 @@ func TestTaskFileContinues(t *testing.T) {
 	if strings.Index(s, "## 続き") > strings.Index(s, "## 役割の指示") {
 		t.Fatalf("the continuation section must come before the role's instructions:\n%s", s)
 	}
+}
+
+func TestRunPrivileged(t *testing.T) {
+	ws, err := workspace.NewStore(t.TempDir()).Create(workspace.Meta{RepoRoot: "/r", Branch: "b", Workflow: "workflows/w", State: workspace.StateRunning})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task := engine.PrivilegedTask{Run: "r", Occurrence: "0004", Node: "verify", Name: "itest"}
+	t.Run("出現と名前で実行の関数を呼び、終了コード・時間切れ・execと同じ長さのログの末尾を返す", func(t *testing.T) {
+		var gotOcc, gotName string
+		long := strings.Repeat("x", 9000) + "tail"
+		r := New(Options{Workspace: ws, RunPrivileged: func(_ context.Context, occ, name string) (*privileged.Result, error) {
+			gotOcc, gotName = occ, name
+			return &privileged.Result{ExitCode: 3, TimedOut: true, Log: long}, nil
+		}})
+		res, err := r.RunPrivileged(context.Background(), task)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotOcc != "0004" || gotName != "itest" || res.ExitCode != 3 || !res.TimedOut {
+			t.Fatalf("called with %q %q, result %+v", gotOcc, gotName, res)
+		}
+		if len(res.LogTail) != 8<<10 || !strings.HasSuffix(res.LogTail, "tail") {
+			t.Fatalf("log tail len %d", len(res.LogTail))
+		}
+	})
+	t.Run("実行の関数のエラーはそのまま返す", func(t *testing.T) {
+		r := New(Options{Workspace: ws, RunPrivileged: func(context.Context, string, string) (*privileged.Result, error) {
+			return nil, errors.New("not approved")
+		}})
+		if _, err := r.RunPrivileged(context.Background(), task); err == nil || err.Error() != "not approved" {
+			t.Fatalf("err %v", err)
+		}
+	})
+	t.Run("実行の関数が無ければエラーを返す", func(t *testing.T) {
+		if _, err := New(Options{Workspace: ws}).RunPrivileged(context.Background(), task); err == nil {
+			t.Fatal("no error")
+		}
+	})
 }

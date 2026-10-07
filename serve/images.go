@@ -12,6 +12,7 @@ import (
 	"connectrpc.com/connect"
 
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
+	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/secrets"
 )
 
@@ -24,32 +25,39 @@ type imageRecord struct {
 	BuiltAt   time.Time `json:"built_at"`
 }
 
-func (b *backend) imageRecordPath(repoRoot, entry string) string {
-	return filepath.Join(b.dataDir, "images", secrets.RepoHash(repoRoot), entry+".json")
+func imageRecordPath(dataDir, repoRoot, entry string) string {
+	return filepath.Join(dataDir, "images", secrets.RepoHash(repoRoot), entry+".json")
 }
 
 func (b *backend) loadImageRecord(repoRoot, entry string) (imageRecord, bool) {
 	var r imageRecord
-	data, err := os.ReadFile(b.imageRecordPath(repoRoot, entry))
+	data, err := os.ReadFile(imageRecordPath(b.dataDir, repoRoot, entry))
 	if err != nil || json.Unmarshal(data, &r) != nil || r.BuildID == "" {
 		return imageRecord{}, false
 	}
 	return r, true
 }
 
-// imageName はsandboxに記録するイメージの名前（"<repoのディレクトリ名>-<repo-hash>:<entry>"）。
-func imageName(repoRoot, entry string) string {
+// ImageName はsandboxに記録するイメージの名前（"<repoのディレクトリ名>-<repo-hash>:<entry>"）。
+func ImageName(repoRoot, entry string) string {
 	return fmt.Sprintf("%s-%s:%s", filepath.Base(repoRoot), secrets.RepoHash(repoRoot), entry)
 }
 
-// buildImage はcontextDir（Dockerfileを含む）をsandboxのBuildImageでビルドし、build_idを返す。
+func (b *backend) buildImage(ctx context.Context, repoRoot, entry, contextDir string, log func(string) error) (string, error) {
+	return BuildImage(ctx, b.sandbox, b.dataDir, repoRoot, entry, contextDir, log)
+}
+
+// BuildImage はcontextDir（Dockerfileを含む）をsandboxのBuildImageでビルドし、build_idを返す。
 // 同じDockerイメージからの再ビルドはsandbox側で既存の資産を返すので、masudaは起動のたびに
 // 呼んでよい（Dockerfileの変更を取りこぼさない方を選ぶ）。ログの各行はlogへ渡す（nil可）。
-func (b *backend) buildImage(ctx context.Context, repoRoot, entry, contextDir string, log func(string) error) (string, error) {
-	stream, err := b.sandbox.BuildImage(ctx, connect.NewRequest(&sandboxv1.BuildImageRequest{
+// ビルドの記録はdataDir（serveのDataDir）に書く。serveを通さずにビルドしたとき（`masuda
+// privileged-command run`）も書くのは、sandboxのイメージの名前が指すものと、ListImagesが答える
+// build_idを食い違わせないため。
+func BuildImage(ctx context.Context, sb sandboxv1connect.SandboxServiceClient, dataDir, repoRoot, entry, contextDir string, log func(string) error) (string, error) {
+	stream, err := sb.BuildImage(ctx, connect.NewRequest(&sandboxv1.BuildImageRequest{
 		ContextDir: contextDir,
 		Dockerfile: "Dockerfile",
-		Name:       imageName(repoRoot, entry),
+		Name:       ImageName(repoRoot, entry),
 	}))
 	if err != nil {
 		return "", err
@@ -79,7 +87,7 @@ func (b *backend) buildImage(ctx context.Context, repoRoot, entry, contextDir st
 	if err != nil {
 		return "", err
 	}
-	p := b.imageRecordPath(repoRoot, entry)
+	p := imageRecordPath(dataDir, repoRoot, entry)
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return "", err
 	}

@@ -272,7 +272,7 @@ python3 -m unittest discover -s tests -v
 
 ## 途中で止まったら {#stuck}
 
-- `masuda list`のSTATEが`blocked`: POSITIONに理由が出る。[トラブルシューティング](troubleshooting.md)
+- `masuda list`のSTATEが`suspended`・`blocked`: POSITIONに理由が出る。`suspended`は原因を直せば`masuda resume <id>`で続けられ、`blocked`は続けられない。[トラブルシューティング](troubleshooting.md#suspended-or-blocked)
 - ACTIVITYが`stalled`や`waiting_input`のまま: [トラブルシューティング](troubleshooting.md#stalled)
 - 計画の承認より前に`done`で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（`outcome out_of_scope`）。課題の書き方を見直す
 - `develop`で、計画の承認より前に`waiting_question`（OPENに`question:<出現ID>`）になった: 計画に立てられた問いのうち、計画を直す役が判断できなかったものを聞いている。`masuda question list <id>`で問い（`SPEC-1`等のidと、問いと判断できなかった理由）を読み、`masuda question answer <id> <出現ID> SPEC-1=<答え> REGRESSION-2=<答え>`で**すべての問いに**答える（`question list`の最後の行に、そのまま埋めればよい形が出る）。答えを踏まえて計画が直され、plan gateが開く

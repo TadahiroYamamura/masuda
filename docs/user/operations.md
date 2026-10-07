@@ -3,7 +3,7 @@
 ## 一覧を読む {#list}
 
 ```sh
-masuda list          # 動いているもの・止まったもの（blocked）
+masuda list          # 動いているもの・中断したもの（suspended）・行き止まり（blocked）
 masuda list --all    # 終わったもの（done）・止めたもの（stopped）も
 masuda list --repo . # このリポジトリのものだけ
 ```
@@ -36,7 +36,7 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | `waiting_question` | 質問への回答待ち | `masuda question list`して答える |
 | `stalled` | 生きているが、しきい値（既定10分）を超えて何も起きていない | 画面を見る。masudaは自動では止めない |
 | `dead` | VMの中のClaude Code（tmuxのセッション）が無くなった | `stop`して`resume`する |
-| `idle` | 何もすることが無い（`done`・`stopped`・`blocked`）、またはまだ起動中（`starting`） | `starting`が長いなら[トラブルシューティング](troubleshooting.md#starting-long) |
+| `idle` | 何もすることが無い（`done`・`stopped`・`suspended`・`blocked`）、またはまだ起動中（`starting`） | `starting`が長いなら[トラブルシューティング](troubleshooting.md#starting-long) |
 
 活動は、ホストが見ているClaude APIへの通信（VMの中から偽れない）を一番に信じ、VMの中のClaude Codeのフックの知らせを補助に使って決める。
 
@@ -72,7 +72,7 @@ VMの中のtmuxのセッション`claude-work`（メインのClaude Code）に�
 - `C-b d`で切り離す。切り離してもセッションは動き続ける
 - runが終わる（publish・discard）までに切り離す。アタッチしたままだとVMの破棄が終わらず、runが完了しない（[トラブルシューティング](troubleshooting.md#chat-blocks-destroy)）
 - 打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は`masuda gate`・`masuda question`で行う
-- 使えるのは動いているワークスペースと、ワークフローが進めなくなって`blocked`になったもの（VMが残っている）だけ。起動中・`stopped`・`done`には使えない。`done`ではVMが壊れているので、会話は`exports/transcripts/`で読む（[exports](#exports)）
+- 使えるのは動いているワークスペースと、VMが残っている`suspended`（ワークフローの途中で止まったもの）・`blocked`だけ。起動中・`stopped`・`done`と、起動に失敗した`suspended`（VMが無い）には使えない。`done`ではVMが壊れているので、会話は`exports/transcripts/`で読む（[exports](#exports)）
 - 接続の鍵は`chat`のたびに作り直され、`stop`で消える
 
 ## 止める・再開する {#resume}
@@ -84,12 +84,18 @@ masuda resume <id>
 
 `stop`は会話ログと実行ログを`exports/`へ書き出してからVMを壊し、ワークスペースを`stopped`にする。stagingと記録は残る。`resume`した後に止めたり終わったりすると、`exports/`の同じファイルは新しいもので置き換わる。
 
-`resume`できるのは、`stopped`のワークスペースと、VMの起動に失敗して`blocked`になったワークスペース（理由が`sandbox boot failed: `で始まるもの）。ワークフローが進めなくなって`blocked`になったものは再開できない。
+`resume`できるのは、`stopped`と`suspended`のワークスペース。`suspended`は`stop`を挟まずにそのまま`resume`してよい（VMが残っていれば、`stop`と同じく会話ログと実行ログを書き出してから壊す）。`blocked`は再開できない。
+
+| 状態 | 何が起きたか | `resume`の前にすること |
+|---|---|---|
+| `suspended`（理由が`sandbox boot failed: `で始まる） | VMの起動に失敗した（イメージのビルド、VMの作成、ゲストの用意） | 理由を読んで直す（[トラブルシューティング](troubleshooting.md#boot-failed)） |
+| `suspended`（理由が`engine: `で始まる） | ホストで動かすノードを動かせなかった。特権コマンドの承認が取り消されていた・宣言が変わった、ノードが選んだ通信先が承認されていない、sandbox serviceがコマンドを動かせなかった等。ワークフローの記録には何も残っていない | 理由に出た承認（`masuda privileged-command approve`・`masuda egress approve`等）をする、sandbox serviceを直す |
+| `blocked` | ワークフローが行き止まりを記録した（進入回数の上限を使い切って行き先が無い、triageの`halt`等） | 再開できない。中身を確かめたら`remove`し、必要なら新しく`run`する |
 
 再開すると次のように進む。
 
 1. 定義（ワークフロー・エージェント・スキーマ・`settings.json`・レビュー観点）は、始めたときに写したものを使う。作業ツリーの`.masuda/`をその後に変えていても効かない
-2. 承認・秘密の値・`stallAfter`は、作業ツリーの`settings.local.json`と秘密ストアから読み直す。取り消した承認、入れ替えた値はここで効く。足りないものがあれば再開を断る
+2. 承認・秘密の値・`stallAfter`は、作業ツリーの`settings.local.json`と秘密ストアから読み直す。取り消した承認、入れ替えた値はここで効く。足りないもの（ワークフローが届く特権ノードの承認を含む）があれば再開を断り、何も変えない（`suspended`のVMも残る）
 3. 再開前に開いていた、エージェントからの質問（`question`ノードでエージェントが聞いていたもの）は「再開で破棄」として閉じる。再開後に、新しいエージェントが改めて聞く。ワークフローに書いた固定の質問は閉じない
 4. 新しいVMを作り、stagingからcloneし直す
 5. 最後のスナップショット（WIP）の作業ツリーを、**コミットしていない変更として**戻す。ブランチ（HEAD）はコミット済みの位置のまま
@@ -100,6 +106,8 @@ VMの中にだけあったもの（gitignoreされたキャッシュや生成物
 ### `masuda serve`を再起動したとき {#serve-restart}
 
 `masuda serve`を止めると、動いていたワークスペースはVMごと止まり、次に起動したとき`stopped`になっている。自動では再開しない（止まっていた間にリポジトリや定義が変わっているかもしれないので、続けるかはあなたが決める）。続けるなら`masuda resume <id>`。
+
+`suspended`・`blocked`のワークスペースはそのままの状態で残る。VMが残っていても、再起動の後は`masuda chat`できない。`stop`・`resume`・`remove`がVMを片付ける。
 
 ## 片付ける
 
@@ -134,7 +142,7 @@ jq -r 'select(.kind=="invalid" or .kind=="blocked") | .detail' exports/execution
 - `end`・`end:<ラベル>`で終わったとき（`needs_human`・`out_of_scope`・`stuck`等）は、`<データ名>`は無く、実行ログと会話ログだけが残る
 - `stop`（`remove --force`も）は、VMを壊す前に実行ログと会話ログを書き出す。`remove`は消す前に実行ログを書き出す（VMが既に無ければ会話ログは取れない）
 - `masuda serve`の再起動では書き出さない。残っていたVMは会話ログを写さずに壊す
-- `blocked`のときはVMを残すので、書き出されるのは実行ログだけ。会話ログは`stop`したときに写る
+- `blocked`と、ワークフローの途中で止まった`suspended`のときはVMを残すので、書き出されるのは実行ログだけ（`suspended`では書き出さない）。会話ログは`stop`（`suspended`なら`resume`でも）したときに写る
 - 終わる前に中間の結果を見たいときは、ホストの記録を直接読む（下記）
 
 ## ホストの記録 {#host-records}

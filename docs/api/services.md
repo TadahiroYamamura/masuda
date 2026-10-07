@@ -28,31 +28,36 @@
 stateDiagram-v2
   [*] --> STARTING: Run
   STARTING --> RUNNING: VMの起動とゲストの配置が済んだ
-  STARTING --> BLOCKED: VMの起動に失敗（reasonが"sandbox boot failed: "）
+  STARTING --> SUSPENDED: VMの起動に失敗（reasonが"sandbox boot failed: "）
   RUNNING --> WAITING_GATE: ゲートが開いた
   RUNNING --> WAITING_QUESTION: 質問が開いた
   WAITING_GATE --> RUNNING: Decide
   WAITING_QUESTION --> RUNNING: Answer
   RUNNING --> DONE: publish・discardで終わった
   WAITING_GATE --> DONE: 承認の後のpublish
-  RUNNING --> BLOCKED: engineが止めた（進入回数の上限等）
+  RUNNING --> SUSPENDED: ホストのノードを動かせなかった（reasonが"engine: "）
+  WAITING_GATE --> SUSPENDED: 判断の後のノードを動かせなかった
+  RUNNING --> BLOCKED: engineが行き止まりを記録した（進入回数の上限等）
   WAITING_GATE --> BLOCKED: triageのhalt等
   STARTING --> STOPPED: Stop
   RUNNING --> STOPPED: Stop・serveの再起動
   WAITING_GATE --> STOPPED: Stop
   WAITING_QUESTION --> STOPPED: Stop
+  SUSPENDED --> STOPPED: Stop
   STOPPED --> STARTING: Resume
-  BLOCKED --> STARTING: Resume（起動失敗のときだけ）
+  SUSPENDED --> STARTING: Resume
 ```
+
+SUSPENDEDとBLOCKEDはどちらも止まった状態で、違いは再開できるかどうか。SUSPENDEDはengineの記録の外で止まった（VMの起動の失敗、未承認の特権ノード・承認されていない通信先・execやpublishの基盤の失敗でホストのノードを動かせなかった）もので、engineは何も記録していないので、原因を直して`Resume`すれば同じノードをやり直す。BLOCKEDはengineが記録した行き止まりで、`Resume`できない（`Stop`してもBLOCKEDのまま）。どちらもVMが残っていれば`AttachInfo`で中を見られる（起動に失敗したSUSPENDEDにはVMが無い）。
 
 | RPC | 何のためか | 前後関係 |
 |---|---|---|
-| `Run` | 対象リポジトリでワークフローを新しいワークスペースで始める | 定義の検査・前提（秘密・承認・イメージ）の確認・stagingの作成までを同期で行い、STARTINGで返る。VMの起動は返った後に裏で進むので、結果は`Watch`か`Get`で見る。起動の失敗は`Run`のエラーにならず、BLOCKED（`reason`が`sandbox boot failed: `で始まる）として現れる |
-| `Resume` | STOPPEDのワークスペース（と起動に失敗したBLOCKED）を、記録から計算した位置で続ける | 新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻す。定義は開始時の写しを使い、承認・秘密の値は今の設定から読み直す。再開前に開いていたエージェントの質問は破棄される |
+| `Run` | 対象リポジトリでワークフローを新しいワークスペースで始める | 定義の検査・前提（秘密・承認・イメージ）の確認・stagingの作成までを同期で行い、STARTINGで返る。VMの起動は返った後に裏で進むので、結果は`Watch`か`Get`で見る。ワークフローが届く`privileged`ノードの宣言と承認もここで確かめる。起動の失敗は`Run`のエラーにならず、SUSPENDED（`reason`が`sandbox boot failed: `で始まる）として現れる |
+| `Resume` | STOPPED・SUSPENDEDのワークスペースを、記録から計算した位置で続ける | 新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻す。SUSPENDEDでVMが残っていれば、前提の確認が通ってから`Stop`と同じに片付ける。定義は開始時の写しを使い、承認・秘密の値（届く`privileged`ノードの承認を含む）は今の設定から読み直し、足りなければ何も変えずに断る。再開前に開いていたエージェントの質問は破棄される |
 | `Get` | 1つのワークスペースの今の状態 | `activity`はその時点で計算した値 |
 | `List` | ワークスペースの一覧（作成順） | `repo_root`を渡すとそのリポジトリの分だけ。文字列として一致するものだけを返す |
 | `Watch` | 状態の変化とイベントを流し続ける | GUIは基本的にこれを開いたままにする。[典型的な流れ](flows.md#watch)を参照 |
-| `Stop` | VMを止める。記録とstagingは残る | 動いているノードは中断される。続きは`Resume`。STOPPEDへの`Stop`は何もせず返る |
+| `Stop` | VMを止める。記録とstagingは残る | 動いているノードは中断される。続きは`Resume`。STOPPEDへの`Stop`は何もせず返る。SUSPENDEDはSTOPPEDになり、BLOCKEDはBLOCKEDのまま |
 | `Remove` | ワークスペースを消す。`exports/`だけは残す | 動いているものは`force`が要る（止めてから消す）。消した後は`Get`等が`not_found`になる |
 | `AttachInfo` | ゲストのtmux（メインのClaude Codeのセッション）へ入るための`ssh`のコマンド行 | VMが起動済みのときだけ。呼ぶたびに鍵が替わる（前の接続は切れない）。返った`ssh_argv`をそのまま端末で実行する |
 
@@ -62,7 +67,7 @@ stateDiagram-v2
 
 - `state`はengineの位置とVMの有無から決まる。`activity`はその中で「エージェントが今何をしているか」（[活動の表示](flows.md#activity)）
 - `position`は人間向けの現在位置（`"agent planner (occ 0000001)"`・`"gate review (occ 0000005)"`・`"done"`）。形は変わりうるので解析しない
-- `outcome`はDONEになったときの終わり方（定義の`end`のラベル等）。`reason`はBLOCKEDの理由
+- `outcome`はDONEになったときの終わり方（定義の`end`のラベル等）。`reason`はSUSPENDED・BLOCKEDの理由と、`done`以外で終わったDONEの理由（終わらせたエージェントの`feedback`）
 - `open_gates`はゲートの名前、`open_questions`は質問の出現。一覧の表示用で、判断するときは`GateService.ListOpen`・`QuestionService.ListOpen`から対象を取る
 
 ## GateService {#gateservice}

@@ -42,6 +42,9 @@ type runCtl struct {
 	reviews map[string][]byte
 	// pitfalls は実行開始時に写した落とし穴（検査済み、注釈の行を除いたもの）。空ならゲストに置かない。
 	pitfalls []byte
+	// privilegedCommands は定義の写しの特権コマンドの宣言（ゲストの`/masuda/privileged-commands.json`）。
+	// 空ならゲストに置かない。
+	privilegedCommands []byte
 	// claude は実行開始時に写した`.masuda/claude/`（`.local`を重ねたもの）。相対パス→中身。
 	claude map[string][]byte
 
@@ -130,12 +133,14 @@ func (c *runCtl) reflect(st engine.Status, err error) {
 		// 状態をDONEに書く前に行うのは、DONEが見えた時点で書き出しが揃っているようにするため。
 		_ = c.runner.Cleanup(c.ctx, nil)
 	case err == nil && st.Kind == engine.StatusBlocked:
-		// BLOCKEDはVMを残す（Stop・Resumeできる）。実行ログだけ写し直す。
+		// BLOCKEDは再開できないが、VMは残す（chatで中を見られる。Stopで片付ける）。実行ログだけ写し直す。
 		_ = c.runner.ExportLog()
 	}
 	c.update(func(w *workspace.Workspace) {
 		if err != nil {
-			w.State = workspace.StateBlocked
+			// engineは何も記録していない（未承認の特権ノード、execの基盤の失敗等）ので、原因を直して
+			// 再開すれば同じノードをやり直せる。engineが記録したBLOCKEDと分けてSUSPENDEDにする。
+			w.State = workspace.StateSuspended
 			w.Reason = "engine: " + err.Error()
 			return
 		}

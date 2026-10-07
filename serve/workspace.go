@@ -129,7 +129,7 @@ func (s *workspaceService) Run(ctx context.Context, req *connect.Request[apiv1.R
 	}
 	s.backend.statusChanged(w.ID)
 	// VMの起動は秒単位かかるので、RunはSTARTINGで先に返し、起動はリクエストと
-	// 切り離して進める。結果は状態（RUNNING/BLOCKED）としてGetに現れる。
+	// 切り離して進める。結果は状態（RUNNING/SUSPENDED）としてGetに現れる。
 	s.backend.goBackground(func(context.Context) { s.backend.boot(c, false) })
 	return connect.NewResponse(s.backend.toProto(w)), nil
 }
@@ -268,6 +268,7 @@ var stateToProto = map[workspace.State]apiv1.WorkspaceState{
 	workspace.StateStopped:         apiv1.WorkspaceState_WORKSPACE_STATE_STOPPED,
 	workspace.StateDone:            apiv1.WorkspaceState_WORKSPACE_STATE_DONE,
 	workspace.StateBlocked:         apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED,
+	workspace.StateSuspended:       apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED,
 }
 
 // toProto はワークスペースを公開APIの形にする。活動はメモリの観測から、開いたゲート・質問は記録から埋める。

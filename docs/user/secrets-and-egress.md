@@ -169,6 +169,7 @@ APP_ENV="development"
 {
   "privilegedCommands": {
     "integration-test": {
+      "description": "PostgreSQLを起動して結合テストを流す。DBに触る変更の後に使う",
       "command": "./scripts/integration-test.sh",
       "image": "privileged",
       "inputs": ["testdata/large/**"],
@@ -188,6 +189,7 @@ masuda privileged-command approve integration-test
 ```
 
 - `image`は特権VMのイメージのエントリ（`.masuda/images/privileged/Dockerfile`等）。エージェントのVMと同じエントリでもよい
+- `description`はエージェント向けの説明（何をするコマンドか、いつ使うか）。動くものを変えないので承認には含まれず、書き換えても承認し直す必要は無い
 - 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`）に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため
 - 承認はイメージの中身（`.masuda/images/<image>/`のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは`/workspace`のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、`.masuda/images/`の変更はレビューで見る
 - 特権VMが通信できるのは、宣言かつ承認済みのegressのホスト
@@ -195,15 +197,54 @@ masuda privileged-command approve integration-test
 ### 呼ばれ方
 
 - エージェントは`run_privileged_command(<名前>)`というツールで、名前を指定して呼ぶことしかできない。コマンドの文字列を渡す口は無い
-- 同梱の実装の役（`implementer`）は、VMのcloneの`.masuda/settings.json`を読んで宣言を知る。使わせるなら`.masuda/settings.json`をコミットしておく。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて`stuck`で終える
+- 宣言は実行開始時にVMの`/masuda/privileged-commands.json`へ置かれる（名前→`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。承認の状態は含まない）。同梱の実装の役（`implementer`）はここを読んで宣言を知るので、`.masuda/settings.json`をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて`stuck`で終える
 - 呼ばれるたびに、宣言は実行開始時の写しから、承認は作業ツリーの`settings.local.json`から読む。実行中にエージェントがVMの中の宣言を書き換えても、承認と食い違って断られるだけ
 - 同じワークスペースでは1つずつ動く
+
+### ワークフローで成否を確かめる
+
+エージェントに呼ばせるだけだと、通ったかどうかはエージェントの申告になる。ワークフローに`privileged`ノードを置くと、masudaが宣言の名前でコマンドを動かし、終了コードで分岐する。0なら`done`、0以外か時間切れなら`failed`（ログの末尾が次のノードへの差し戻しになる）。
+
+```yaml title=".masuda/workflows/develop-db.yaml（抜粋）"
+nodes:
+  implement:
+    type: agent
+    role: agents/implementer
+    next: db-verify
+  db-verify:
+    type: privileged
+    name: integration-test        # privilegedCommandsの名前
+    next: {done: commit, failed: implement}
+```
+
+- ノードに書けるのは`name`と`max`（既定3。超えると`exhausted`）だけ。動かすもの・入出力・通信先・期限は宣言と承認で決まる
+- ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの宣言と承認は、`masuda run`・`masuda resume`の始めに確かめる。宣言が無い・承認されていない・承認の後に宣言が変わったものがあれば、何も作らずに断り、必要な`masuda privileged-command approve <名前>`をまとめて出す
+- 実行の途中で承認を取り消すと（`settings.local.json`は呼ばれるたびに読む）、そのノードで実行が`suspended`で止まり、理由に必要な`masuda privileged-command approve <名前>`が出る。結果は記録されないので、承認して`masuda resume <id>`すると同じノードからやり直す
+- エージェントのVMの作業ツリーは変えないので、計画外の変更の検出の基準にはならない
 
 ### 何が渡り、何が返るか
 
 1. 呼ばれた時点のVMの作業ツリーのスナップショット（gitで追跡しているもの）を特権VMへ渡し、`/workspace`に展開する
-2. gitで運ばれないファイル（gitignoreされた生成物やデータ）のうち、`inputs`のglobに当たるものをエージェントのVMから特権VMへ写す。gitignoreの中身が黙って境界を決めることは無い
+2. gitで運ばれないファイル（gitignoreされた生成物やデータ）のうち、`inputs`のglobに当たるものをエージェントのVMから特権VMへ直接写す（ホストを経由しない）。gitignoreの中身が黙って境界を決めることは無い
 3. rootで`command`を`/workspace`から動かす（`timeoutSeconds`で打ち切り、既定1時間）
 4. 終了コード・ログの末尾・`outputs`に当たるファイルを回収し、写しをエージェントのVMの`/masuda/privileged/<run-id>/`（`exit-code`・`log`・`outputs/`）へ置く。特権VMは壊す
 
-特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの`workspaces/<id>/records/privileged/<run-id>/`に残る（`result.json`に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明）。
+特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの`workspaces/<id>/records/privileged/<run-id>/`に残る（`result.json`に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、`privileged`ノードから動いたときはその出現）。
+
+### 単体で試す（`masuda privileged-command run`） {#privileged-command-run}
+
+ワークフローを回す前に、特権コマンドのスクリプトが実機の特権VMで動くかを確かめる。ホストのDockerで通っても、特権VMでは起動のたびに空になるディレクトリ（`/run`等）やカーネルの違いで落ちることがある。
+
+```sh
+masuda privileged-command run integration-test            # 作業ツリーの今の状態で
+masuda privileged-command run integration-test --ref main # mainのコミットで
+masuda privileged-command run integration-test --out ./privileged-out
+```
+
+- `masuda serve`は要らない（`masuda-sandbox serve`へ直接つなぐ）。ワークスペースもClaudeも使わない
+- 宣言・承認・通信先は作業ツリーの`.masuda/settings.json`と`settings.local.json`から読む。承認が無ければ断る。イメージも作業ツリーの`.masuda/images/<image>/`からビルドするので、スクリプトを直すたびに流し直せる
+- `/workspace`に置くのは作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル）。`--ref`ならそのコミットのツリー。あなたのリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）。gitignoreの判定には`.gitignore`・`.git/info/exclude`・`core.excludesFile`が効く
+- `inputs`は作業ツリーのgitignoreされたファイルから運ぶ（ワークフローではエージェントのVMから）
+- コマンドの出力はそのまま端末に流れる。終了コードは特権コマンドのもの（シグナルなら128+番号、時間切れは124、masuda自体の失敗は1）。拒否した通信先があれば最後に一覧が出る。`exit-code`・`log`・`outputs/`は`--out`（無ければ新しい一時ディレクトリ）に置き、その場所を最後に出す
+- 走っているワークフローと同じ`masuda-sandbox serve`を使うので、VMのメモリ・CPUを取り合う。重いコマンドは、走っているワークスペースが無いときに試す
+- 人間が打つコマンド。`masuda init`はホストのエージェントからは打てないようにする

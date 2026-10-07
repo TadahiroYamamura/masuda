@@ -150,7 +150,7 @@ func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, n
 		out.LastActivity = timestamppb.New(cp.last)
 	}
 	switch w.State {
-	case workspace.StateDone, workspace.StateStopped, workspace.StateBlocked:
+	case workspace.StateDone, workspace.StateStopped, workspace.StateBlocked, workspace.StateSuspended:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
 		return out
 	case workspace.StateWaitingGate:

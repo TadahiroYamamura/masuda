@@ -78,6 +78,7 @@ masuda
 | `refs/heads/<branch>` | ワークスペースのブランチ。commitノードが進める。新しいブランチなら分岐元と同じコミットから、既存のブランチ（下記）ならその先頭から始まる |
 | `refs/masuda/wip/<出現ID>` | ノード境界のWIPスナップショット（作業ツリー全体を`git add -A`したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う |
 | `refs/masuda/base` | 分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base） |
+| `refs/masuda/latest-wip` | 最後に取り込んだ`refs/masuda/wip/*`を指すシンボリックref。再開で作業ツリーへ戻すWIPを決める（コミットの日時は時計が戻ると当てにならないため） |
 
 ### 既存のブランチで動かす
 
@@ -106,7 +107,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `exports/transcripts/<project>/…/*.jsonl` | ゲストのClaude Codeの会話ログ。ゲストの`~/.claude/projects/`からの相対パスのまま写す |
 
 - 会話ログは、ゲストのホームをcwdにして`find .claude/projects -type f -name '*.jsonl'`を`Exec`し、各ファイルを`ReadFile`で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに`kind: export-warning`として記録し、publish・discardは止めない
-- 会話ログを回収するのは、DONE（publish・discard・`end`）とStop（`Remove`の`force`を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す
+- 会話ログを回収するのは、DONE（publish・discard・`end`）とStop（`Remove`の`force`を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す（SUSPENDEDは写さない。Stop・Resumeで書き出す）。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す
 - 再開後に書き出すと、同じパスのファイルは新しいもので置き換わる
 - `masuda remove`はワークスペースのディレクトリのうち`exports/`だけを残して消す
 
@@ -136,10 +137,19 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 ### 再開
 
-`Resume`できるのは、STOPPEDのワークスペースと、sandboxの起動に失敗してBLOCKEDになったワークスペース（理由が`sandbox boot failed: `で始まるもの）。engineが止めたBLOCKEDは再開できない（`Resume`は`FailedPrecondition`）。engineが止めたBLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。起動失敗のBLOCKEDはsandboxも実行の窓口も既に無く、記録は起動前のままなので、Stopを挟まずに再開できる。
+止まった状態は2つに分ける。
+
+| 状態 | いつ | 再開 |
+|---|---|---|
+| SUSPENDED | engineの記録の外で止まった。sandboxの起動の失敗（`reason`が`sandbox boot failed: `）と、engineへの呼び出し（`Advance`等）のエラー（`reason`が`engine: `。未承認の特権ノード、承認されていない通信先を選んだノード、execやpublishの基盤の失敗等） | できる。engineは何も記録していないので、原因を直して再開すれば同じノードをやり直す |
+| BLOCKED | engineが記録した行き止まり（`engine.StatusBlocked`。進入回数の上限を使い切って行き先が無い、triageの`halt`等） | できない（`Resume`は`FailedPrecondition`）。再開してもengineがまたBLOCKEDを返すだけ |
+
+`Resume`できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（`chat`で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの`Stop`はVMを壊してSTOPPEDにする。BLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。
+
+ゲストの`next_task`には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（`blocked`とは返さない）。ループ規約は`done`・`blocked`でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に`next_task`を呼び直せばResumeを待たずに進むこともある。
 
 1. 定義は`records/definitions/`の写しから読み直す。作業ツリーの`.masuda/`がその後変わっていても、始めたときと同じ定義で進む
-2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）
+2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（`Run`と同じ）
 3. 再開前に開いていた`ask_human`の質問を、記録に理由「再開で破棄」を書いて閉じる。聞いていたサブエージェントは前のVMと共に無くなっており、再開後はengineが同じ出現のタスクを渡し直すので、新しいエージェントが改めて聞く。`questions:`を書いた固定の質問はengine自身が待っているので閉じない
 4. 新しいVMを作り、stagingから再cloneする
 5. 最新の`refs/masuda/wip/<出現ID>`のtreeを`git read-tree -m -u HEAD <wip>`で作業ツリーへ戻す。HEADはブランチのまま動かさず、コミットしていない作業はindexに載った変更として戻る。engineの基準点（WIPスナップショット）と作業ツリーを揃えるため
@@ -210,7 +220,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 ### VM
 
 - Gondolin（QEMU、LinuxはKVM、macOSはHVF）。1ワークスペースにつき1VM。メモリ・CPUは設定で決める（既定4GiB・4）
-- VMの書き込めるルートディスクの最小容量は`settings.json`の`images.<entry>.diskMiB`（既定4096MiB）。`CreateSandbox`の`disk_mib`として渡す。特権VMも、使うイメージのエントリの値で作る
+- VMの書き込めるルートディスクの最小容量は`settings.json`の`images.<entry>.diskMiB`（既定4096MiB）。`CreateSandbox`の`disk_mib`として渡す。特権VMも、使うイメージのエントリの値で作る（`RunJob`の`disk_mib`）
 - ゲストイメージは対象リポジトリの`.masuda/images/<entry>/Dockerfile`からDockerでビルドし、Gondolinの`oci.image`で資産化する。カーネルと起動層はGondolinのAlpine資産で、ホストに依存しない
 - イメージに必要なもの: Claude Code（native）、tmux、git、openssh-server、非rootユーザー`ubuntu`（uid 1000）、`ca-certificates`。masudaがrootfsへ注入するものは無い
 - ゲストの中にmasudaのバイナリは無い。ゲストが知っているのはMCPのURLとループ規約だけ
@@ -226,6 +236,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`） | ホスト |
 | `/masuda/reviews/*.md` | 実行開始時に固定したレビュー観点 | ホスト（起動時） |
 | `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの | ホスト（起動時） |
+| `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない | ホスト（起動時） |
 | `~/.claude/CLAUDE.md`、`~/.claude/agents/` | ループ規約、サブエージェント定義 | ホスト（起動時） |
 
 ホストはゲストが書いた場所を読むとき、そのノードの出力ディレクトリ以外は読まない。読んだものは必ず検証を通す。
@@ -252,16 +263,18 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 対象リポジトリのテストがrootやDockerを要する場合、その実行だけを**2つ目のVM**（root、使い捨て）へ切り出す。
 
 - 宣言: `privilegedCommands`に名前・イメージエントリ・コマンド・`inputs`（gitignore対象で運ぶ必要があるパスのglob）・`outputs`・タイムアウト。承認はローカル
-- 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、bundleで特権VMへ渡して`checkout`する。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルはメインVMから`ReadFile`→`WriteFile`で運ぶ。gitignoreの内容が暗黙に境界を決めることはない
-- 結果: 終了コード・ログ・`outputs`をホストが回収し、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
-- 呼び出し口はMCPツール`run_privileged_command(name)`。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる
+- 実行: sandbox serviceの`RunJob`を1回呼ぶ。VMの作成・ファイルの投入・実行・`outputs`の回収・破棄はsandboxが持ち、masudaは方針（宣言・承認・通信先・どのツリーを渡すか・結果の置き先）だけを持つ
+- 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、ホストの一時ファイルのbundleにして`RunJob`の`HostFile`で特権VMへ置く。前処理（`setup_shell`）で`/workspace`へ`git init`→`fetch`→`checkout`して展開し、bundleを消す。展開に失敗したらコマンドは動かさず、基盤の失敗としてエラーにする。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルは`RunJob`の`FromSandbox`で、sandboxの中でメインVMから特権VMへ直接写す（masudaのプロセスを通らない）。gitignoreの内容が暗黙に境界を決めることはない
+- 結果: `outputs`は`RunJob`がホストの`records/privileged/<run-id>/outputs/`へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
+- 呼び出し口はMCPツール`run_privileged_command(name)`と、ワークフローの`privileged`ノード（`name`で宣言を指し、終了コードで`done`/`failed`に分岐する。engineの`Runner.RunPrivileged`）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの名前は、`Run`・`Resume`の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（`privileged.Resolve`）、足りなければ何も作らずにまとめて`FailedPrecondition`で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の`Resume`（または`Advance`）で同じ出現をやり直す
+- 宣言（承認の状態を除く）は実行開始時にゲストの`/masuda/privileged-commands.json`へ置く（[guest-protocol.md](../guest-protocol.md)）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない
 - 同じワークスペースでは1つずつ動かす。`<run-id>`は`0001`からの連番
 
 ホストの記録は`records/privileged/<run-id>/`に置く。
 
 | ファイル | 中身 |
 |---|---|
-| `result.json` | 名前・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
+| `result.json` | 名前・呼んだ`privileged`ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
 | `exit-code` | 終了コード |
 | `log` | 標準出力と標準エラーの末尾 |
 | `outputs/` | 回収した`outputs`のファイル |
@@ -281,7 +294,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `egress` | ゲストが届いてよいホストの宣言（先頭の`*.`だけワイルドカード） |
 | `secrets` | 秘密の宣言（`name`・`hosts`・`mode`・`in`）。`CLAUDE_CODE_OAUTH_TOKEN`は予約済みで宣言できない |
 | `envFiles` | ゲストの作業ツリーに生成するdotenv（`path`・`vars`）。`.git/`の下と作業ツリーの外は書けない |
-| `privilegedCommands` | 特権コマンドの宣言（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`） |
+| `privilegedCommands` | 特権コマンドの宣言（`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。`description`は承認のハッシュに含めない） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |
 | `agents` | 役の名前→`model`・`effort`の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は`run`・`resume`・`workflow check`が断る |
@@ -340,7 +353,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 上から順に見て、最初に当たったものが活動になる。
 
-1. ワークスペースの状態: DONE・STOPPED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
+1. ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
 2. `claude`（tmuxのセッション）が無い: `dead`。`SessionEnd`フック、sandboxの停止・失敗、`Exec`での生存確認のどれかで分かる
 3. 進行中のAPIリクエストがある: `working`
 4. ゲストの`Notification`フックが待ちを言っている（`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`input_wait`に入る）: `waiting_input`。その後にHTTP・ツール・MCPの活動があれば消える
@@ -412,13 +425,13 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 
 ### CLI
 
-`masuda serve`・`masuda init`・`masuda version`・`masuda doctor`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
+`masuda serve`・`masuda init`・`masuda version`・`masuda doctor`・`masuda privileged-command run`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
 
 | コマンド | 動き |
 |---|---|
 | `masuda run <workflow>` | ワークフローを新しいワークスペースで始める（`--repo`・`--branch`・`--base`・`--image`・`--input <名前>=<値>`／`<名前>=@<ファイル>`） |
 | `masuda resume <id>` | 再開 |
-| `masuda list [--all] [--repo <dir>]` | `--repo`を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、BLOCKEDは常に出す |
+| `masuda list [--all] [--repo <dir>]` | `--repo`を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、SUSPENDED・BLOCKEDは常に出す |
 | `masuda chat <id>` | `AttachInfo`の`ssh_argv`を`exec`する。`Unimplemented`なら「このsandboxではsshで接続できません（フェイクsandbox等）」 |
 | `masuda watch [<id>]` | 状態とイベントを流し続ける。`workspace_id`が空のイベントは種類と本文だけで出す |
 | `masuda gate list / show / approve / reject / dismiss / halt / redo` | ゲートの一覧・内容・判断。`dismiss`・`halt`・`redo`は`<id> <出現ID> [--comment]`で`target_hash`を要らない。`show`はtriageなら懸念の本文を字下げで、deviationなら対象外のファイルを箇条書きで出し、未判断ならそのゲートで打てるコマンドを添える |
@@ -426,6 +439,7 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 | `masuda stop <id>` / `masuda remove <id>` | sandboxを止める（記録は残す）／exports以外を消す（動いているものは`--force`で止めて消す） |
 | `masuda workflow list / show / check [<workflow>] [--repo <dir>]` | `--repo`を省略すると今いる作業ツリーのトップ（`git rev-parse --show-toplevel`）、作業ツリーの外なら同梱だけ。`check`は問題があれば終了コード1 |
 | `masuda egress / secret / privileged-command / image ...` | 宣言の一覧と承認、秘密の値の登録（標準入力から）、イメージのビルド |
+| `masuda privileged-command run <name>` | 特権コマンドの単体実行。serveを通さず`masuda-sandbox serve`へ直接つなぐ（`doctor`と同じ）。宣言・承認・通信先は作業ツリーの`settings.json`・`settings.local.json`から`privileged.Resolve`で、イメージは作業ツリーの`.masuda/images/`から（`serve.BuildImage`。ビルドの記録は`--data-dir`へ）。ツリーは一時ディレクトリへcloneしたリポジトリで作り（`staging.SnapshotWorktree`。GIT_DIRを一時リポジトリ、GIT_WORK_TREEを利用者の作業ツリー、GIT_INDEX_FILEを一時ファイルにして`add -A`→`write-tree`→`commit-tree`）、利用者のリポジトリにrefもオブジェクトも書かない。`inputs`は作業ツリーのgitignoreされたファイルから`HostFile`で渡す。実行は`privileged.Run`（メインのゲストが無いので結果はホストにだけ置く）。終了コードは特権コマンドのもの（シグナルは128+番号、時間切れは124、masuda自体の失敗は1） |
 | `masuda init` | 対象リポジトリに`.masuda/`の雛形を置く |
 | `masuda serve` | 常駐プロセス（`--socket`・`--data-dir`・`--sandbox-socket`・`--stall-after`・`--config`・`--fake-sandbox`） |
 | `masuda version` | masudaのバージョン（`-ldflags -X main.version`）・Goの版・sandbox.protoのSHA-256と、届けば接続先のsandboxの`GetServerInfo`と契約の一致 |

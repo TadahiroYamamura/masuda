@@ -22,7 +22,8 @@
    - `starting`・`running`: 作業中。待つ
    - `waiting_gate`: `masuda gate show <id> <出現ID>`で中身を読み、要点を人間に伝えて判断を待つ
    - `waiting_question`: `masuda question list <id>`で問いを読む。文脈から答えられるなら`masuda question answer`で答えてよい（打つ前に人間に確かめられる）。判断がつかなければ人間に伝えて答えを待つ
-   - `blocked`: 止まった。POSITIONに理由が出る
+   - `suspended`: 中断した。POSITIONに理由が出る。人間が原因を直せば`masuda resume <id>`で同じところから続けられるので、理由を人間に伝える
+   - `blocked`: 行き止まりで、再開できない。POSITIONに理由が出る
    - `done`: 終わった。POSITIONに結果が出る
 5. 結果を見る。反映するワークフローなら、承認されたコミットがこのリポジトリの`--branch`のブランチに入っている。ワークフローが書き出すデータ（計画、レポート等）と実行ログは`~/.local/share/masuda/workspaces/<id>/exports/`（`masuda serve`の`--data-dir`を変えていればその下）に残る
 6. 止めるのは`masuda stop <id>`、続けるのは`masuda resume <id>`
@@ -34,7 +35,7 @@
 - `masuda gate approve|reject|comment|dismiss|halt|redo`
 - `masuda egress approve|reject`
 - `masuda secret set|approve|reject`
-- `masuda privileged-command approve`
+- `masuda privileged-command approve|run`（`run`は特権VMをrootで動かす）
 - `masuda remove`（ワークスペースの記録を消す）
 
 ## 使わないもの

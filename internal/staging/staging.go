@@ -26,9 +26,18 @@ func GateRef(occurrence string) string { return "refs/masuda/gates/" + occurrenc
 // WIPRef はノード境界のWIPスナップショットのref名を返す。
 func WIPRef(occurrence string) string { return "refs/masuda/wip/" + occurrence }
 
-// LatestWIP は最も新しいWIPスナップショット（`refs/masuda/wip/*`のうちコミットの日時が最新のもの）の
-// refを返す。無ければ空。同じ秒のものは出現IDの大きい方を新しいとみなす（出現IDは桁を揃えた連番）。
+// latestWIPRef は最後に取り込んだWIPスナップショットのrefを指すシンボリックref。
+// コミットの日時で選ばないのは、日時がゲストの壁時計（秒単位）で、時計が戻ると
+// （NTPの補正、WSL2の時計のずれ等）前のスナップショットを最新と取り違えるため。
+const latestWIPRef = "refs/masuda/latest-wip"
+
+// LatestWIP は最後に取り込んだWIPスナップショット（`refs/masuda/wip/*`）のrefを返す。無ければ空。
 func (r *Repo) LatestWIP(ctx context.Context) (string, error) {
+	if out, err := r.git(ctx, "symbolic-ref", "--quiet", latestWIPRef); err == nil {
+		return strings.TrimSpace(out), nil
+	}
+	// latestWIPRefを書く前の版で取り込んだWIPしか無いワークスペース（止めたまま版を上げた等）は、
+	// 以前と同じくコミットの日時で選ぶ。同じ秒のものは出現IDの大きい方を新しいとみなす。
 	out, err := r.git(ctx, "for-each-ref", "--count=1", "--sort=-refname", "--sort=-committerdate",
 		"--format=%(refname)", "refs/masuda/wip/")
 	if err != nil {
@@ -293,6 +302,7 @@ func (r *Repo) ImportBundle(ctx context.Context, bundlePath, srcRef, occurrence 
 }
 
 // FetchBundle はbundleのsrcRefをstagingのdstRefへ取り込み、そのコミットを返す。dstRefは上書きする。
+// dstRefがWIPスナップショットなら、最後に取り込んだWIP（LatestWIP）としても記録する。
 func (r *Repo) FetchBundle(ctx context.Context, bundlePath, srcRef, dstRef string) (string, error) {
 	if err := validRev(srcRef); err != nil {
 		return "", err
@@ -305,6 +315,11 @@ func (r *Repo) FetchBundle(ctx context.Context, bundlePath, srcRef, dstRef strin
 	}
 	if _, err := r.git(ctx, "fetch", "--quiet", "--no-tags", "--", bundlePath, "+"+srcRef+":"+dstRef); err != nil {
 		return "", err
+	}
+	if strings.HasPrefix(dstRef, WIPRef("")) {
+		if _, err := r.git(ctx, "symbolic-ref", latestWIPRef, dstRef); err != nil {
+			return "", err
+		}
 	}
 	return r.ResolveCommit(ctx, dstRef)
 }
