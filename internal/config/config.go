@@ -163,6 +163,9 @@ type EnvFile struct {
 // PrivilegedCommandDecl は特権コマンド1つの宣言。エージェントが渡せるのは名前だけで、
 // 実際に動くものは常にこの宣言から来る。宣言の検証と実行はinternal/privileged。
 type PrivilegedCommandDecl struct {
+	// Description はエージェント向けの説明（いつ使うか等）。動くものを変えないので承認の対象に
+	// しない（DeclHash）。説明を直すたびに承認し直させないため。
+	Description    string   `json:"description,omitempty"`
 	Command        string   `json:"command"`
 	Image          string   `json:"image"`
 	Inputs         []string `json:"inputs,omitempty"`
@@ -178,9 +181,12 @@ type PinnedDecl interface {
 
 // DeclHash は宣言の正準JSONのsha256を返す。承認と一緒に記録し、一致しなければ
 // 未承認と同じに扱う。名前だけで承認すると、承認済みの宣言の中身をコミットで
-// 差し替えられてしまう。
+// 差し替えられてしまう。Descriptionは空にした写しで取るので、説明だけの変更では失効せず、
+// Descriptionを足す前に記録した承認のハッシュもそのまま通る。
 func DeclHash[T PinnedDecl](decl T) (string, error) {
-	data, err := json.Marshal(decl)
+	d := PrivilegedCommandDecl(decl)
+	d.Description = ""
+	data, err := json.Marshal(d)
 	if err != nil {
 		return "", err
 	}

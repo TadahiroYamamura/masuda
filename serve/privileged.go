@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"time"
 
@@ -29,12 +28,26 @@ func imageExistsIn(dir string) func(string) bool {
 	}
 }
 
-// RunPrivilegedCommand は宣言済み・承認済みの特権コマンドを2つ目のsandboxで動かす。
+// RunPrivilegedCommand はMCPのrun_privileged_commandの口。ノードからの呼び出し（runner.Options.RunPrivileged）と
+// 同じrunPrivilegedを通る。
+func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, error) {
+	c.touch("run_privileged_command")
+	res, err := c.runPrivileged(ctx, "", name)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// runPrivileged は宣言済み・承認済みの特権コマンドを2つ目のsandboxで動かす。occurrenceは
+// privilegedノードから呼ばれたときのその出現（MCPからなら空）で、記録に残す。
 // 宣言は定義の写し（実行の開始時点のもの）から、承認は作業ツリーのsettings.local.jsonから読む。
 // 定義の写しから読むのは、実行中にエージェントが作業ツリーの宣言を書き換えても、
 // 承認済みのハッシュと食い違って断られるだけで、書き換えた宣言が動くことはないようにするため。
-func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, error) {
-	c.touch("run_privileged_command")
+//
+// privilegedノードはadvanceがc.muを持ったまま呼ぶので、ここからc.muを取るもの（c.status・
+// waitingAgent・engineの呼び出し）を呼ばない。
+func (c *runCtl) runPrivileged(ctx context.Context, occurrence, name string) (*privileged.Result, error) {
 	if !c.isBooted() {
 		return nil, errors.New("the workspace is still starting")
 	}
@@ -46,31 +59,13 @@ func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, er
 	if err != nil {
 		return nil, err
 	}
-	decl, ok := cfg.PrivilegedCommands[name]
-	if !ok {
-		names := make([]string, 0, len(cfg.PrivilegedCommands))
-		for n := range cfg.PrivilegedCommands {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf("privileged command %q is not declared in privilegedCommands of .masuda/settings.json (declared: %v)", name, names)
-	}
-	if err := privileged.Validate(decl, imageExistsIn(w.DefinitionsDir())); err != nil {
-		return nil, fmt.Errorf("privileged command %q: %w", name, err)
-	}
 	local, err := config.LoadLocal(w.RepoRoot)
 	if err != nil {
 		return nil, err
 	}
-	hash, err := config.DeclHash(decl)
+	cmd, err := privileged.Resolve(cfg, local, name, imageExistsIn(w.DefinitionsDir()))
 	if err != nil {
 		return nil, err
-	}
-	switch a, recorded := local.PrivilegedCommandsApproved[name]; {
-	case !recorded:
-		return nil, fmt.Errorf("privileged command %q is not approved; a human must run `masuda privileged-command approve %s`", name, name)
-	case a.DeclHash != hash:
-		return nil, fmt.Errorf("privileged command %q changed since it was approved; a human must run `masuda privileged-command approve %s` again", name, name)
 	}
 
 	// 同じワークスペースでは1つずつ動かす。run-idの採番と、メインの作業ツリーのスナップショットが
@@ -91,27 +86,26 @@ func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, er
 	if err != nil {
 		return nil, err
 	}
-	buildID, err := c.b.buildWorkspaceImage(ctx, w, decl.Image)
+	buildID, err := c.b.buildWorkspaceImage(ctx, w, cmd.Decl.Image)
 	if err != nil {
 		return nil, err
 	}
 	res, err := privileged.Run(ctx, privileged.Options{
 		Sandbox:     c.b.sandbox,
 		MainID:      c.id,
-		SandboxID:   c.id + "-p" + runID,
 		RunID:       runID,
 		BuildID:     buildID,
-		DiskMiB:     cfg.DiskMiB(decl.Image),
-		MemoryMiB:   cfg.MemoryMiB(decl.Image),
-		CPUs:        cfg.CPUs(decl.Image),
-		Egress:      config.AllowedEgress(cfg, local),
-		Decl:        decl,
+		DiskMiB:     cfg.DiskMiB(cmd.Decl.Image),
+		MemoryMiB:   cfg.MemoryMiB(cmd.Decl.Image),
+		CPUs:        cfg.CPUs(cmd.Decl.Image),
+		Egress:      cmd.Egress,
+		Decl:        cmd.Decl,
 		Staging:     c.runner.Staging(),
 		SnapshotRef: ref,
 		HostDir:     hostDir,
 		Heartbeat:   func() { c.touch("run_privileged_command " + name) },
 	})
-	rec := privilegedRecord{Name: name, DeclHash: hash, Snapshot: ref, StartedAt: started, FinishedAt: time.Now().UTC()}
+	rec := privilegedRecord{Name: name, Occurrence: occurrence, DeclHash: cmd.Hash, Snapshot: ref, StartedAt: started, FinishedAt: time.Now().UTC()}
 	if err != nil {
 		rec.Error = err.Error()
 	} else {
@@ -128,7 +122,9 @@ func (c *runCtl) RunPrivilegedCommand(ctx context.Context, name string) (any, er
 
 // privilegedRecord は`records/privileged/<run-id>/result.json`。ログと出力は同じディレクトリの別ファイル。
 type privilegedRecord struct {
-	Name         string    `json:"name"`
+	Name string `json:"name"`
+	// Occurrence はprivilegedノードから呼ばれたときのその出現。MCPから呼ばれたときは空。
+	Occurrence   string    `json:"occurrence,omitempty"`
 	DeclHash     string    `json:"decl_hash"`
 	Snapshot     string    `json:"snapshot"`
 	StartedAt    time.Time `json:"started_at"`

@@ -66,19 +66,3 @@ func matchSegs(pat, name []string) bool {
 	}
 	return len(name) == 0
 }
-
-// baseDir はpatternのうちワイルドカードを含まない先頭のセグメント（findを始める場所）。
-// 先頭からワイルドカードなら"."。
-func baseDir(pattern string) string {
-	var lit []string
-	for _, seg := range strings.Split(pattern, "/") {
-		if seg == "**" || strings.ContainsAny(seg, `*?[\`) {
-			break
-		}
-		lit = append(lit, seg)
-	}
-	if len(lit) == 0 {
-		return "."
-	}
-	return strings.Join(lit, "/")
-}

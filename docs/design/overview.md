@@ -210,7 +210,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 ### VM
 
 - Gondolin（QEMU、LinuxはKVM、macOSはHVF）。1ワークスペースにつき1VM。メモリ・CPUは設定で決める（既定4GiB・4）
-- VMの書き込めるルートディスクの最小容量は`settings.json`の`images.<entry>.diskMiB`（既定4096MiB）。`CreateSandbox`の`disk_mib`として渡す。特権VMも、使うイメージのエントリの値で作る
+- VMの書き込めるルートディスクの最小容量は`settings.json`の`images.<entry>.diskMiB`（既定4096MiB）。`CreateSandbox`の`disk_mib`として渡す。特権VMも、使うイメージのエントリの値で作る（`RunJob`の`disk_mib`）
 - ゲストイメージは対象リポジトリの`.masuda/images/<entry>/Dockerfile`からDockerでビルドし、Gondolinの`oci.image`で資産化する。カーネルと起動層はGondolinのAlpine資産で、ホストに依存しない
 - イメージに必要なもの: Claude Code（native）、tmux、git、openssh-server、非rootユーザー`ubuntu`（uid 1000）、`ca-certificates`。masudaがrootfsへ注入するものは無い
 - ゲストの中にmasudaのバイナリは無い。ゲストが知っているのはMCPのURLとループ規約だけ
@@ -226,6 +226,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`） | ホスト |
 | `/masuda/reviews/*.md` | 実行開始時に固定したレビュー観点 | ホスト（起動時） |
 | `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの | ホスト（起動時） |
+| `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない | ホスト（起動時） |
 | `~/.claude/CLAUDE.md`、`~/.claude/agents/` | ループ規約、サブエージェント定義 | ホスト（起動時） |
 
 ホストはゲストが書いた場所を読むとき、そのノードの出力ディレクトリ以外は読まない。読んだものは必ず検証を通す。
@@ -252,16 +253,18 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 対象リポジトリのテストがrootやDockerを要する場合、その実行だけを**2つ目のVM**（root、使い捨て）へ切り出す。
 
 - 宣言: `privilegedCommands`に名前・イメージエントリ・コマンド・`inputs`（gitignore対象で運ぶ必要があるパスのglob）・`outputs`・タイムアウト。承認はローカル
-- 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、bundleで特権VMへ渡して`checkout`する。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルはメインVMから`ReadFile`→`WriteFile`で運ぶ。gitignoreの内容が暗黙に境界を決めることはない
-- 結果: 終了コード・ログ・`outputs`をホストが回収し、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
-- 呼び出し口はMCPツール`run_privileged_command(name)`。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる
+- 実行: sandbox serviceの`RunJob`を1回呼ぶ。VMの作成・ファイルの投入・実行・`outputs`の回収・破棄はsandboxが持ち、masudaは方針（宣言・承認・通信先・どのツリーを渡すか・結果の置き先）だけを持つ
+- 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、ホストの一時ファイルのbundleにして`RunJob`の`HostFile`で特権VMへ置く。前処理（`setup_shell`）で`/workspace`へ`git init`→`fetch`→`checkout`して展開し、bundleを消す。展開に失敗したらコマンドは動かさず、基盤の失敗としてエラーにする。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルは`RunJob`の`FromSandbox`で、sandboxの中でメインVMから特権VMへ直接写す（masudaのプロセスを通らない）。gitignoreの内容が暗黙に境界を決めることはない
+- 結果: `outputs`は`RunJob`がホストの`records/privileged/<run-id>/outputs/`へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
+- 呼び出し口はMCPツール`run_privileged_command(name)`と、ワークフローの`privileged`ノード（`name`で宣言を指し、終了コードで`done`/`failed`に分岐する。engineの`Runner.RunPrivileged`）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。未宣言・未承認のとき、ノードはengineのエラーとして実行をBLOCKEDで止め、承認の後の`Advance`で同じ出現をやり直す
+- 宣言（承認の状態を除く）は実行開始時にゲストの`/masuda/privileged-commands.json`へ置く（[guest-protocol.md](../guest-protocol.md)）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない
 - 同じワークスペースでは1つずつ動かす。`<run-id>`は`0001`からの連番
 
 ホストの記録は`records/privileged/<run-id>/`に置く。
 
 | ファイル | 中身 |
 |---|---|
-| `result.json` | 名前・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
+| `result.json` | 名前・呼んだ`privileged`ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
 | `exit-code` | 終了コード |
 | `log` | 標準出力と標準エラーの末尾 |
 | `outputs/` | 回収した`outputs`のファイル |
@@ -281,7 +284,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `egress` | ゲストが届いてよいホストの宣言（先頭の`*.`だけワイルドカード） |
 | `secrets` | 秘密の宣言（`name`・`hosts`・`mode`・`in`）。`CLAUDE_CODE_OAUTH_TOKEN`は予約済みで宣言できない |
 | `envFiles` | ゲストの作業ツリーに生成するdotenv（`path`・`vars`）。`.git/`の下と作業ツリーの外は書けない |
-| `privilegedCommands` | 特権コマンドの宣言（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`） |
+| `privilegedCommands` | 特権コマンドの宣言（`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。`description`は承認のハッシュに含めない） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |
 | `agents` | 役の名前→`model`・`effort`の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は`run`・`resume`・`workflow check`が断る |

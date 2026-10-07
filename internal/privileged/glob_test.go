@@ -39,11 +39,3 @@ func TestValidatePattern(t *testing.T) {
 		}
 	}
 }
-
-func TestBaseDir(t *testing.T) {
-	for pat, want := range map[string]string{"build/**": "build", "**/*.xml": ".", "a/b/*.txt": "a/b", "out.txt": "out.txt"} {
-		if got := baseDir(pat); got != want {
-			t.Errorf("baseDir(%q) = %q, want %q", pat, got, want)
-		}
-	}
-}

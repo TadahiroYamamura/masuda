@@ -21,6 +21,8 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
 | `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |
 | `/masuda/pitfalls.jsonl` | プロジェクト固有の落とし穴。ホストの`.masuda/pitfalls.jsonl`を実行開始時に写して検査し、空行と`#`の行を除いたもの（1行1件`{id, category, trigger, question, background}`）。無ければ置かない。同梱のplan-questionsが読む |
+| `/masuda/privileged-commands.json` | 特権コマンドの宣言。実行開始時に定義の写し（`records/definitions/`）の`privilegedCommands`から作る。名前→`{description?, command, image, inputs, outputs, timeoutSeconds}`（`timeoutSeconds`は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの`settings.local.json`の承認で行う） |
+| `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`）。`run_privileged_command`か`privileged`ノードで動かすたびに置く。`<run-id>`は`0001`からの連番 |
 | `~/.claude/.mcp.json`相当 | `masuda`サーバー1つ（`http://masuda.internal:7000/mcp`） |
 
 環境変数（tmuxサーバーに継承させる）: `CLAUDE_CODE_OAUTH_TOKEN=<プレースホルダ>`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`、`GIT_AUTHOR_*`/`GIT_COMMITTER_*`。

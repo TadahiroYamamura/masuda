@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -23,6 +24,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
 	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/pitfalls"
+	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/runner"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -71,6 +73,46 @@ func loadPitfalls(dir string) ([]byte, error) {
 		return nil, fmt.Errorf("%s/%s: %w", config.DirName, pitfalls.FileName, err)
 	}
 	return out, nil
+}
+
+// guestPrivilegedCommand はゲストの`/masuda/privileged-commands.json`の1項目。
+type guestPrivilegedCommand struct {
+	Description    string   `json:"description,omitempty"`
+	Command        string   `json:"command"`
+	Image          string   `json:"image"`
+	Inputs         []string `json:"inputs"`
+	Outputs        []string `json:"outputs"`
+	TimeoutSeconds int      `json:"timeoutSeconds"`
+}
+
+// privilegedCommandsForGuest はdir（定義の写し）の特権コマンドの宣言を、ゲストへ置くJSONにする。
+// 宣言が無ければnil。承認の状態（settings.local.json）は写さない。timeoutSecondsは省略時の
+// 既定を埋めた値にする（エージェントが実際の上限を知れるように）。写しから作るので、再開しても
+// 実行開始時と同じ中身になる。
+func privilegedCommandsForGuest(dir string) ([]byte, error) {
+	cfg, err := config.LoadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	if len(cfg.PrivilegedCommands) == 0 {
+		return nil, nil
+	}
+	out := map[string]guestPrivilegedCommand{}
+	for name, d := range cfg.PrivilegedCommands {
+		timeout := d.TimeoutSeconds
+		if timeout == 0 {
+			timeout = int(privileged.DefaultTimeout.Seconds())
+		}
+		out[name] = guestPrivilegedCommand{
+			Description: d.Description, Command: d.Command, Image: d.Image,
+			Inputs: append([]string{}, d.Inputs...), Outputs: append([]string{}, d.Outputs...), TimeoutSeconds: timeout,
+		}
+	}
+	b, err := json.MarshalIndent(out, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(b, '\n'), nil
 }
 
 // copyDefinitions は対象リポジトリの`.masuda/`をdstへ写す（無ければ空のdstを作る）。
@@ -143,6 +185,10 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 	if err != nil {
 		return nil, err
 	}
+	privCmds, err := privilegedCommandsForGuest(w.DefinitionsDir())
+	if err != nil {
+		return nil, err
+	}
 	claude, err := claudedir.Load(filepath.Join(w.DefinitionsDir(), claudedir.SharedDir))
 	if err != nil {
 		return nil, err
@@ -152,6 +198,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 		return nil, err
 	}
 	author := gitIdentity(b.ctx, w.RepoRoot)
+	var c *runCtl
 	r := runner.New(runner.Options{
 		Workspace:     w,
 		Sandbox:       b.sandbox,
@@ -165,10 +212,13 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 		Secrets:       plan.placeholderNames,
 		Plaintext:     sortedKeys(plan.plaintext),
 		OnLog:         func(e engine.Event) { b.publishEngine(id, e) },
+		RunPrivileged: func(ctx context.Context, occurrence, name string) (*privileged.Result, error) {
+			return c.runPrivileged(ctx, occurrence, name)
+		},
 	})
 	ctx, cancel := context.WithCancel(b.ctx)
-	c := &runCtl{
-		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews, pitfalls: pits, claude: claude,
+	c = &runCtl{
+		b: b, id: id, set: set, runner: r, author: author, plan: plan, reviews: reviews, pitfalls: pits, privilegedCommands: privCmds, claude: claude,
 		changed: make(chan struct{}), ctx: ctx, cancel: cancel, bootDone: make(chan struct{}),
 	}
 	c.eng = engine.New(set, store, r, engine.Options{})
@@ -341,7 +391,7 @@ func (b *backend) createSandbox(ctx context.Context, w *workspace.Workspace, mcp
 }
 
 // prepareGuest はstagingのブランチをゲストへcloneさせ、ループ規約・サブエージェント定義・
-// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点と落とし穴と
+// フック設定（claudeSettingsと合成）・envFilesから生成したファイル・チェック・観点と落とし穴と特権コマンドの宣言と
 // `.masuda/claude/`の写しを置く。サブエージェントは、この実行のワークフローが使うものだけを定義から生成する。
 func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *runCtl, placeholders map[string]string) error {
 	set, plan := c.set, c.plan
@@ -373,16 +423,17 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		agents = append(agents, guest.AgentFile(withOverride(a, plan.agents[name])))
 	}
 	return guest.Prepare(ctx, b.sandbox, guest.Layout{
-		SandboxID:      w.ID,
-		Branch:         w.Branch,
-		Bundle:         bundle,
-		Agents:         agents,
-		ClaudeSettings: plan.claudeSettings,
-		EnvFiles:       plan.guestEnvFiles(placeholders),
-		Checks:         plan.checks,
-		Reviews:        c.reviews,
-		Pitfalls:       c.pitfalls,
-		Claude:         c.claude,
+		SandboxID:          w.ID,
+		Branch:             w.Branch,
+		Bundle:             bundle,
+		Agents:             agents,
+		ClaudeSettings:     plan.claudeSettings,
+		EnvFiles:           plan.guestEnvFiles(placeholders),
+		Checks:             plan.checks,
+		Reviews:            c.reviews,
+		Pitfalls:           c.pitfalls,
+		PrivilegedCommands: c.privilegedCommands,
+		Claude:             c.claude,
 	})
 }
 

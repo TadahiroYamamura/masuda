@@ -42,6 +42,9 @@ type runCtl struct {
 	reviews map[string][]byte
 	// pitfalls は実行開始時に写した落とし穴（検査済み、注釈の行を除いたもの）。空ならゲストに置かない。
 	pitfalls []byte
+	// privilegedCommands は定義の写しの特権コマンドの宣言（ゲストの`/masuda/privileged-commands.json`）。
+	// 空ならゲストに置かない。
+	privilegedCommands []byte
 	// claude は実行開始時に写した`.masuda/claude/`（`.local`を重ねたもの）。相対パス→中身。
 	claude map[string][]byte
 

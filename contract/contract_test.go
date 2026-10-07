@@ -931,3 +931,166 @@ func TestCM10_ClaudeDirPlacedInGuest(t *testing.T) {
 	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
 	check()
 }
+
+// ---------------------------------------------------------------------------
+// C-M11: privileged node (fake sandbox)
+// ---------------------------------------------------------------------------
+
+const privilegedWorkflow = `version: 1
+inputs: [instructions]
+start: plan
+nodes:
+  plan: {type: agent, role: agents/smoke-planner, inputs: [instructions], outputs: [plan], next: approve}
+  approve: {type: approval, gate: plan, target: plan, next: {approved: work, rejected: plan}}
+  work: {type: agent, role: agents/smoke-implementer, outputs: [commit-message], next: verify}
+  verify: {type: privileged, name: itest, next: {done: end, failed: work}}
+`
+
+const privilegedSettings = `{"image":"default","egress":[],"secrets":[],"checks":{},"privilegedCommands":{"itest":{"image":"default","command":"echo answer=$(cat answer.txt); test \"$(cat answer.txt)\" = ok"}}}`
+
+// privilegedResult reads records/privileged/<runID>/result.json of the workspace.
+func (h *harness) privilegedResult(wsID, runID string) map[string]any {
+	h.t.Helper()
+	var found string
+	_ = filepath.WalkDir(h.dataDir, func(p string, d os.DirEntry, err error) error {
+		if err == nil && strings.HasSuffix(p, filepath.Join(wsID, "records", "privileged", runID, "result.json")) {
+			found = p
+		}
+		return nil
+	})
+	b, err := os.ReadFile(found)
+	if err != nil {
+		h.t.Fatalf("result.json of privileged run %s: %v", runID, err)
+	}
+	out := map[string]any{}
+	_ = json.Unmarshal(b, &out)
+	return out
+}
+
+// planAndApprove gets the run past the planner and the plan gate.
+func (h *harness) planAndApprove(id string) {
+	h.t.Helper()
+	ctx := context.Background()
+	task := h.mcp(id, "next_task", nil)
+	occ := task["occurrence"].(string)
+	plan := `{"goal":"answer","summary":"answer","steps":[{"number":1,"title":"answer","description":"write answer.txt","tests":[],"files":["answer.txt"]}],"alternatives":[],"risks":[],"expected_byproducts":[],"checks":[]}`
+	if r := h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "plan", "content": plan}); r["accepted"] != true {
+		h.t.Fatalf("plan rejected: %v", r)
+	}
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+		h.t.Fatalf("report_result: %v", r)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	open, err := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
+	if err != nil || len(open.Msg.Gates) != 1 {
+		h.t.Fatalf("open gates: %v %+v", err, open)
+	}
+	g := open.Msg.Gates[0]
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); err != nil {
+		h.t.Fatalf("Decide: %v", err)
+	}
+}
+
+// workLap does one lap of the agent node: writes answer.txt in the guest
+// worktree, reports done, and returns what next_task gives next.
+func (h *harness) workLap(id, answer string) map[string]any {
+	h.t.Helper()
+	task := h.mcp(id, "next_task", nil)
+	if task["role"] != "smoke-implementer" {
+		h.t.Fatalf("expected the work task: %v", task)
+	}
+	occ := task["occurrence"].(string)
+	h.guestWrite(id, "workspace/answer.txt", answer)
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: answer"})
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+		h.t.Fatalf("report_result: %v", r)
+	}
+	return h.mcp(id, "next_task", nil)
+}
+
+// A privileged node runs the declared command by name and branches on its exit:
+// non-zero goes to failed with the log tail as the feedback of the next task,
+// zero goes to done. The record names the occurrence that ran it.
+func TestCM11_PrivilegedNodeBranchesOnExit(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = privilegedSettings
+	files[".masuda/workflows/verify.yaml"] = privilegedWorkflow
+	h := start(t, files)
+	ctx := context.Background()
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+		t.Fatal(err)
+	}
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/v", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApprove(id)
+
+	retry := h.workLap(id, "bad")
+	if retry["role"] != "smoke-implementer" {
+		t.Fatalf("a failed privileged command must send the run back to work: %v", retry)
+	}
+	task, _ := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", retry["task_path"].(string)))
+	if !strings.Contains(string(task), "前回からの差し戻し") || !strings.Contains(string(task), `特権コマンド"itest"`) || !strings.Contains(string(task), "answer=bad") {
+		t.Fatalf("the retry's feedback must carry the log tail:\n%s", task)
+	}
+	if rec := h.privilegedResult(id, "0001"); rec["occurrence"] == nil || rec["occurrence"] == "" || rec["exit_code"] != float64(1) {
+		t.Fatalf("record of the node's run: %v", rec)
+	}
+
+	// The retried task is the one next_task already returned; finish it.
+	occ := retry["occurrence"].(string)
+	h.guestWrite(id, "workspace/answer.txt", "ok")
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: answer"})
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+	if done := h.mcp(id, "next_task", nil); done["kind"] != "done" {
+		t.Fatalf("a passing privileged command must end the run: %v", done)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
+	if rec := h.privilegedResult(id, "0002"); rec["exit_code"] != float64(0) {
+		t.Fatalf("record of the passing run: %v", rec)
+	}
+}
+
+// An unapproved command stops the run as BLOCKED, naming the approval to give,
+// without recording a result. Once approved, the next next_task runs the same
+// node again.
+func TestCM11_PrivilegedNodeBlocksUntilApproved(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = privilegedSettings
+	files[".masuda/workflows/verify.yaml"] = privilegedWorkflow
+	h := start(t, files)
+	ctx := context.Background()
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/v", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApprove(id)
+
+	// next_task reports the engine's error, as it does for any host node that could not run.
+	if blocked := h.workLap(id, "ok"); blocked["error"] == nil {
+		t.Fatalf("an unapproved privileged command must stop the run: %v", blocked)
+	}
+	w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED, 15*time.Second)
+	if !strings.Contains(w.Reason, "masuda privileged-command approve itest") {
+		t.Fatalf("reason must name the approval: %q", w.Reason)
+	}
+
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+		t.Fatal(err)
+	}
+	if again := h.mcp(id, "next_task", nil); again["kind"] != "done" {
+		t.Fatalf("after approval the privileged node must run and end the run: %v", again)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
+	// The refused attempt took no run id: the first record is the approved run.
+	if rec := h.privilegedResult(id, "0001"); rec["exit_code"] != float64(0) || rec["occurrence"] == nil {
+		t.Fatalf("record of the approved run: %v", rec)
+	}
+}

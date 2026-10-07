@@ -2,6 +2,7 @@ package serve
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -66,6 +67,13 @@ func TestPrivilegedCommandFailuresAndApproval(t *testing.T) {
 			t.Errorf("host record %s: %v", f, err)
 		}
 	}
+	var rec map[string]any
+	if b, err := os.ReadFile(filepath.Join(host, "result.json")); err != nil || json.Unmarshal(b, &rec) != nil {
+		t.Fatalf("result.json: %v", err)
+	}
+	if _, ok := rec["occurrence"]; ok || rec["name"] != "fail" {
+		t.Fatalf("MCPから呼んだ記録には出現を書かない: %v", rec)
+	}
 	guestCode, _ := os.ReadFile(filepath.Join(FakeDir(dataDir), id, "root", "masuda/privileged/0001/exit-code"))
 	if string(guestCode) != "3\n" {
 		t.Fatalf("guest exit-code %q", guestCode)
@@ -80,4 +88,81 @@ func TestPrivilegedCommandFailuresAndApproval(t *testing.T) {
 	if _, err := c.RunPrivilegedCommand(ctx, "fail"); err == nil || !strings.Contains(err.Error(), "changed since it was approved") {
 		t.Fatalf("stale approval: %v", err)
 	}
+}
+
+// 特権コマンドの宣言は定義の写しからゲストの`/masuda/privileged-commands.json`へ置かれる。承認の状態は
+// 写さず、timeoutSecondsは既定を埋める。再開では、作業ツリーの宣言が変わっていても実行開始時の写しから置き直す。
+func TestRunPlacesPrivilegedCommandsInGuest(t *testing.T) {
+	dataDir := t.TempDir()
+	srv, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	writeRepoFile(t, repo, ".masuda/settings.json", `{"checks": {"test": "true"}, "privilegedCommands": {
+		"itest": {"description": "DBを立てて結合テストを流す", "image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["report.xml"], "timeoutSeconds": 600},
+		"lint":  {"image": "default", "command": "make lint"}
+	}}`)
+	cs := &configService{backend: srv.backend}
+	ctx := context.Background()
+	if _, err := cs.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: repo, Name: "itest"})); err != nil {
+		t.Fatal(err)
+	}
+	const want = `{
+  "itest": {
+    "description": "DBを立てて結合テストを流す",
+    "command": "make itest",
+    "image": "default",
+    "inputs": [
+      "build/**"
+    ],
+    "outputs": [
+      "report.xml"
+    ],
+    "timeoutSeconds": 600
+  },
+  "lint": {
+    "command": "make lint",
+    "image": "default",
+    "inputs": [],
+    "outputs": [],
+    "timeoutSeconds": 3600
+  }
+}
+`
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/pc", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	guestFile := filepath.Join(FakeDir(dataDir), id, "root", "masuda", "privileged-commands.json")
+	t.Run("宣言を名前ごとに置き、承認の状態は含めず、timeoutSecondsの省略は既定の3600で埋める", func(t *testing.T) {
+		got, err := os.ReadFile(guestFile)
+		if err != nil || string(got) != want {
+			t.Fatalf("guest file %v:\n%s", err, got)
+		}
+	})
+	t.Run("再開では作業ツリーの宣言が変わっていても実行開始時の写しから置き直す", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"checks": {"test": "true"}, "privilegedCommands": {"other": {"image": "default", "command": "true"}}}`)
+		stopAndResume(t, ws, id)
+		waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+		got, err := os.ReadFile(guestFile)
+		if err != nil || string(got) != want {
+			t.Fatalf("guest file after resume %v:\n%s", err, got)
+		}
+	})
+}
+
+func TestRunWithoutPrivilegedCommandsPlacesNothing(t *testing.T) {
+	dataDir := t.TempDir()
+	_, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	res, err := ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/pc", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, ws, res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	t.Run("宣言が無ければ/masuda/privileged-commands.jsonを置かない", func(t *testing.T) {
+		if _, err := os.Stat(filepath.Join(FakeDir(dataDir), res.Msg.Id, "root", "masuda", "privileged-commands.json")); !os.IsNotExist(err) {
+			t.Fatalf("placed: %v", err)
+		}
+	})
 }

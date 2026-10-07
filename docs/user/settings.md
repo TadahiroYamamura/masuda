@@ -37,6 +37,7 @@
   ],
   "privilegedCommands": {
     "integration-test": {
+      "description": "PostgreSQLを起動して結合テストを流す",
       "command": "./scripts/integration-test.sh",
       "image": "privileged",
       "inputs": ["testdata/fixtures/**"],
@@ -152,6 +153,7 @@ rootやDockerが要るコマンドを、別の使い捨てVM（root）で動か�
 
 | キー | 型 | 既定 | 意味 |
 |---|---|---|---|
+| `description` | 文字列 | 空 | エージェント向けの説明（何をするか、いつ使うか）。VMの`/masuda/privileged-commands.json`に写る。承認の対象ではない |
 | `command` | 文字列 | （必須） | rootのシェルで`/workspace`から動かすコマンド |
 | `image` | 文字列 | （必須） | 特権VMのイメージのエントリ。`.masuda/images/<image>/Dockerfile`が要る |
 | `inputs` | globの配列 | 空 | gitで運ばれない（gitignoreされた）ファイルのうち、特権VMへ運ぶもの |

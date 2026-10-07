@@ -278,17 +278,16 @@ func privilegedEntries(cfg config.Settings, local config.LocalSettings) (*apiv1.
 	out := &apiv1.ListPrivilegedCommandsResponse{}
 	for _, name := range names {
 		d := cfg.PrivilegedCommands[name]
-		hash, err := config.DeclHash(d)
+		_, state, err := privileged.ApprovalOf(name, d, local)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
-		a, recorded := local.PrivilegedCommandsApproved[name]
 		out.Entries = append(out.Entries, &apiv1.PrivilegedCommandEntry{
 			Name:     name,
 			Image:    d.Image,
 			Command:  d.Command,
-			Approved: recorded && a.DeclHash == hash,
-			Stale:    recorded && a.DeclHash != hash,
+			Approved: state == privileged.Approved,
+			Stale:    state == privileged.Stale,
 		})
 	}
 	return out, nil

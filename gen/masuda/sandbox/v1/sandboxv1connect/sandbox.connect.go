@@ -51,6 +51,9 @@ const (
 	// SandboxServiceListImagesProcedure is the fully-qualified name of the SandboxService's ListImages
 	// RPC.
 	SandboxServiceListImagesProcedure = "/masuda.sandbox.v1.SandboxService/ListImages"
+	// SandboxServiceDeleteImageProcedure is the fully-qualified name of the SandboxService's
+	// DeleteImage RPC.
+	SandboxServiceDeleteImageProcedure = "/masuda.sandbox.v1.SandboxService/DeleteImage"
 	// SandboxServiceCreateSandboxProcedure is the fully-qualified name of the SandboxService's
 	// CreateSandbox RPC.
 	SandboxServiceCreateSandboxProcedure = "/masuda.sandbox.v1.SandboxService/CreateSandbox"
@@ -82,6 +85,8 @@ const (
 	// SandboxServiceWatchEventsProcedure is the fully-qualified name of the SandboxService's
 	// WatchEvents RPC.
 	SandboxServiceWatchEventsProcedure = "/masuda.sandbox.v1.SandboxService/WatchEvents"
+	// SandboxServiceRunJobProcedure is the fully-qualified name of the SandboxService's RunJob RPC.
+	SandboxServiceRunJobProcedure = "/masuda.sandbox.v1.SandboxService/RunJob"
 )
 
 // SandboxServiceClient is a client for the masuda.sandbox.v1.SandboxService service.
@@ -95,6 +100,12 @@ type SandboxServiceClient interface {
 	// stream carries build log lines and ends with a Built event.
 	BuildImage(context.Context, *connect.Request[v1.BuildImageRequest]) (*connect.ServerStreamForClient[v1.BuildImageEvent], error)
 	ListImages(context.Context, *connect.Request[v1.ListImagesRequest]) (*connect.Response[v1.ListImagesResponse], error)
+	// Deletes an image: its record, its Gondolin assets, and the Docker image
+	// BuildImage made for it (tag and OCI digest; kept while another record of
+	// the same digest remains). FailedPrecondition while a sandbox booted from it
+	// is STARTING or RUNNING (RunJob's VMs included). A build_id with no record
+	// is a no-op (idempotent).
+	DeleteImage(context.Context, *connect.Request[v1.DeleteImageRequest]) (*connect.Response[v1.DeleteImageResponse], error)
 	// Creates and boots a VM. Returns once the guest accepts Exec. The id is
 	// chosen by the caller (masuda uses the workspace id) and must be unique
 	// among live sandboxes.
@@ -127,6 +138,15 @@ type SandboxServiceClient interface {
 	// guest makes through the policy layer (start, finish, denial) and VM state
 	// changes. This is the activity signal the guest cannot fake.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest]) (*connect.ServerStreamForClient[v1.SandboxEvent], error)
+	// Runs one job in a throwaway VM: creates the VM, puts the inputs in, runs
+	// setup_shell then shell, collects the outputs and destroys the VM, all in
+	// one call. The VM is always destroyed: on success, on failure, on
+	// cancellation (the client going away) and when the job deadline passes.
+	// The stream carries phases, output and denied requests, and ends with
+	// exactly one Finished (not sent on cancellation). A non-zero exit is not an
+	// error. If booting or putting the inputs in fails, the VM is destroyed and
+	// the RPC ends with that error.
+	RunJob(context.Context, *connect.Request[v1.RunJobRequest]) (*connect.ServerStreamForClient[v1.RunJobEvent], error)
 }
 
 // NewSandboxServiceClient constructs a client for the masuda.sandbox.v1.SandboxService service. By
@@ -156,6 +176,12 @@ func NewSandboxServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			httpClient,
 			baseURL+SandboxServiceListImagesProcedure,
 			connect.WithSchema(sandboxServiceMethods.ByName("ListImages")),
+			connect.WithClientOptions(opts...),
+		),
+		deleteImage: connect.NewClient[v1.DeleteImageRequest, v1.DeleteImageResponse](
+			httpClient,
+			baseURL+SandboxServiceDeleteImageProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("DeleteImage")),
 			connect.WithClientOptions(opts...),
 		),
 		createSandbox: connect.NewClient[v1.CreateSandboxRequest, v1.Sandbox](
@@ -224,6 +250,12 @@ func NewSandboxServiceClient(httpClient connect.HTTPClient, baseURL string, opts
 			connect.WithSchema(sandboxServiceMethods.ByName("WatchEvents")),
 			connect.WithClientOptions(opts...),
 		),
+		runJob: connect.NewClient[v1.RunJobRequest, v1.RunJobEvent](
+			httpClient,
+			baseURL+SandboxServiceRunJobProcedure,
+			connect.WithSchema(sandboxServiceMethods.ByName("RunJob")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
@@ -232,6 +264,7 @@ type sandboxServiceClient struct {
 	getServerInfo  *connect.Client[v1.GetServerInfoRequest, v1.ServerInfo]
 	buildImage     *connect.Client[v1.BuildImageRequest, v1.BuildImageEvent]
 	listImages     *connect.Client[v1.ListImagesRequest, v1.ListImagesResponse]
+	deleteImage    *connect.Client[v1.DeleteImageRequest, v1.DeleteImageResponse]
 	createSandbox  *connect.Client[v1.CreateSandboxRequest, v1.Sandbox]
 	getSandbox     *connect.Client[v1.GetSandboxRequest, v1.Sandbox]
 	listSandboxes  *connect.Client[v1.ListSandboxesRequest, v1.ListSandboxesResponse]
@@ -243,6 +276,7 @@ type sandboxServiceClient struct {
 	readFile       *connect.Client[v1.ReadFileRequest, v1.FileChunk]
 	writeFile      *connect.Client[v1.WriteFileRequest, v1.WriteFileResponse]
 	watchEvents    *connect.Client[v1.WatchEventsRequest, v1.SandboxEvent]
+	runJob         *connect.Client[v1.RunJobRequest, v1.RunJobEvent]
 }
 
 // GetServerInfo calls masuda.sandbox.v1.SandboxService.GetServerInfo.
@@ -258,6 +292,11 @@ func (c *sandboxServiceClient) BuildImage(ctx context.Context, req *connect.Requ
 // ListImages calls masuda.sandbox.v1.SandboxService.ListImages.
 func (c *sandboxServiceClient) ListImages(ctx context.Context, req *connect.Request[v1.ListImagesRequest]) (*connect.Response[v1.ListImagesResponse], error) {
 	return c.listImages.CallUnary(ctx, req)
+}
+
+// DeleteImage calls masuda.sandbox.v1.SandboxService.DeleteImage.
+func (c *sandboxServiceClient) DeleteImage(ctx context.Context, req *connect.Request[v1.DeleteImageRequest]) (*connect.Response[v1.DeleteImageResponse], error) {
+	return c.deleteImage.CallUnary(ctx, req)
 }
 
 // CreateSandbox calls masuda.sandbox.v1.SandboxService.CreateSandbox.
@@ -315,6 +354,11 @@ func (c *sandboxServiceClient) WatchEvents(ctx context.Context, req *connect.Req
 	return c.watchEvents.CallServerStream(ctx, req)
 }
 
+// RunJob calls masuda.sandbox.v1.SandboxService.RunJob.
+func (c *sandboxServiceClient) RunJob(ctx context.Context, req *connect.Request[v1.RunJobRequest]) (*connect.ServerStreamForClient[v1.RunJobEvent], error) {
+	return c.runJob.CallServerStream(ctx, req)
+}
+
 // SandboxServiceHandler is an implementation of the masuda.sandbox.v1.SandboxService service.
 type SandboxServiceHandler interface {
 	// Reports the service's version and the contract it implements, so that a
@@ -326,6 +370,12 @@ type SandboxServiceHandler interface {
 	// stream carries build log lines and ends with a Built event.
 	BuildImage(context.Context, *connect.Request[v1.BuildImageRequest], *connect.ServerStream[v1.BuildImageEvent]) error
 	ListImages(context.Context, *connect.Request[v1.ListImagesRequest]) (*connect.Response[v1.ListImagesResponse], error)
+	// Deletes an image: its record, its Gondolin assets, and the Docker image
+	// BuildImage made for it (tag and OCI digest; kept while another record of
+	// the same digest remains). FailedPrecondition while a sandbox booted from it
+	// is STARTING or RUNNING (RunJob's VMs included). A build_id with no record
+	// is a no-op (idempotent).
+	DeleteImage(context.Context, *connect.Request[v1.DeleteImageRequest]) (*connect.Response[v1.DeleteImageResponse], error)
 	// Creates and boots a VM. Returns once the guest accepts Exec. The id is
 	// chosen by the caller (masuda uses the workspace id) and must be unique
 	// among live sandboxes.
@@ -358,6 +408,15 @@ type SandboxServiceHandler interface {
 	// guest makes through the policy layer (start, finish, denial) and VM state
 	// changes. This is the activity signal the guest cannot fake.
 	WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.SandboxEvent]) error
+	// Runs one job in a throwaway VM: creates the VM, puts the inputs in, runs
+	// setup_shell then shell, collects the outputs and destroys the VM, all in
+	// one call. The VM is always destroyed: on success, on failure, on
+	// cancellation (the client going away) and when the job deadline passes.
+	// The stream carries phases, output and denied requests, and ends with
+	// exactly one Finished (not sent on cancellation). A non-zero exit is not an
+	// error. If booting or putting the inputs in fails, the VM is destroyed and
+	// the RPC ends with that error.
+	RunJob(context.Context, *connect.Request[v1.RunJobRequest], *connect.ServerStream[v1.RunJobEvent]) error
 }
 
 // NewSandboxServiceHandler builds an HTTP handler from the service implementation. It returns the
@@ -383,6 +442,12 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 		SandboxServiceListImagesProcedure,
 		svc.ListImages,
 		connect.WithSchema(sandboxServiceMethods.ByName("ListImages")),
+		connect.WithHandlerOptions(opts...),
+	)
+	sandboxServiceDeleteImageHandler := connect.NewUnaryHandler(
+		SandboxServiceDeleteImageProcedure,
+		svc.DeleteImage,
+		connect.WithSchema(sandboxServiceMethods.ByName("DeleteImage")),
 		connect.WithHandlerOptions(opts...),
 	)
 	sandboxServiceCreateSandboxHandler := connect.NewUnaryHandler(
@@ -451,6 +516,12 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 		connect.WithSchema(sandboxServiceMethods.ByName("WatchEvents")),
 		connect.WithHandlerOptions(opts...),
 	)
+	sandboxServiceRunJobHandler := connect.NewServerStreamHandler(
+		SandboxServiceRunJobProcedure,
+		svc.RunJob,
+		connect.WithSchema(sandboxServiceMethods.ByName("RunJob")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/masuda.sandbox.v1.SandboxService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case SandboxServiceGetServerInfoProcedure:
@@ -459,6 +530,8 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 			sandboxServiceBuildImageHandler.ServeHTTP(w, r)
 		case SandboxServiceListImagesProcedure:
 			sandboxServiceListImagesHandler.ServeHTTP(w, r)
+		case SandboxServiceDeleteImageProcedure:
+			sandboxServiceDeleteImageHandler.ServeHTTP(w, r)
 		case SandboxServiceCreateSandboxProcedure:
 			sandboxServiceCreateSandboxHandler.ServeHTTP(w, r)
 		case SandboxServiceGetSandboxProcedure:
@@ -481,6 +554,8 @@ func NewSandboxServiceHandler(svc SandboxServiceHandler, opts ...connect.Handler
 			sandboxServiceWriteFileHandler.ServeHTTP(w, r)
 		case SandboxServiceWatchEventsProcedure:
 			sandboxServiceWatchEventsHandler.ServeHTTP(w, r)
+		case SandboxServiceRunJobProcedure:
+			sandboxServiceRunJobHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -500,6 +575,10 @@ func (UnimplementedSandboxServiceHandler) BuildImage(context.Context, *connect.R
 
 func (UnimplementedSandboxServiceHandler) ListImages(context.Context, *connect.Request[v1.ListImagesRequest]) (*connect.Response[v1.ListImagesResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.ListImages is not implemented"))
+}
+
+func (UnimplementedSandboxServiceHandler) DeleteImage(context.Context, *connect.Request[v1.DeleteImageRequest]) (*connect.Response[v1.DeleteImageResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.DeleteImage is not implemented"))
 }
 
 func (UnimplementedSandboxServiceHandler) CreateSandbox(context.Context, *connect.Request[v1.CreateSandboxRequest]) (*connect.Response[v1.Sandbox], error) {
@@ -544,4 +623,8 @@ func (UnimplementedSandboxServiceHandler) WriteFile(context.Context, *connect.Cl
 
 func (UnimplementedSandboxServiceHandler) WatchEvents(context.Context, *connect.Request[v1.WatchEventsRequest], *connect.ServerStream[v1.SandboxEvent]) error {
 	return connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.WatchEvents is not implemented"))
+}
+
+func (UnimplementedSandboxServiceHandler) RunJob(context.Context, *connect.Request[v1.RunJobRequest], *connect.ServerStream[v1.RunJobEvent]) error {
+	return connect.NewError(connect.CodeUnimplemented, errors.New("masuda.sandbox.v1.SandboxService.RunJob is not implemented"))
 }

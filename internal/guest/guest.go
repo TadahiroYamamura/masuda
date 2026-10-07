@@ -78,6 +78,8 @@ type Layout struct {
 	Reviews map[string][]byte
 	// Pitfalls は落とし穴（検査済みのJSON Lines）。空でなければPitfallsPathへ置く。
 	Pitfalls []byte
+	// PrivilegedCommands は特権コマンドの宣言の写し（JSON）。空でなければPrivilegedCommandsPathへ置く。
+	PrivilegedCommands []byte
 	// Claude は`.masuda/claude/`に`.local`を重ねたもの（相対パス→中身）。`CLAUDE.md`は
 	// ループ規約の後ろに連結し、`rules/`・`skills/`の下は`~/.claude/`の同じ相対パスへ置く。
 	Claude map[string][]byte
@@ -100,6 +102,11 @@ const ReviewsDir = "/masuda/reviews"
 
 // PitfallsPath は落とし穴を置くゲストのパス。同梱のplan-questionsはここを読み、無ければ飛ばす。
 const PitfallsPath = "/masuda/pitfalls.jsonl"
+
+// PrivilegedCommandsPath は特権コマンドの宣言の写しを置くゲストのパス。同梱のimplementerはここを読む。
+// エージェントが使える名前を知らせるためだけのもので、ホストはこのファイルを読み戻さない。
+// 実行の判断は定義の写し（records/definitions/）と作業ツリーの承認から行う（ゲストは書き換えられるため）。
+const PrivilegedCommandsPath = "/masuda/privileged-commands.json"
 
 // bundleGuestPath はbundleを置くゲストのパス。cloneが終わったら消す。
 const bundleGuestPath = "/masuda/bootstrap.bundle"
@@ -158,7 +165,12 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 		return err
 	}
 	if len(l.Pitfalls) > 0 {
-		return WriteBytes(ctx, c, l.SandboxID, PitfallsPath, l.Pitfalls, 0o644)
+		if err := WriteBytes(ctx, c, l.SandboxID, PitfallsPath, l.Pitfalls, 0o644); err != nil {
+			return err
+		}
+	}
+	if len(l.PrivilegedCommands) > 0 {
+		return WriteBytes(ctx, c, l.SandboxID, PrivilegedCommandsPath, l.PrivilegedCommands, 0o644)
 	}
 	return nil
 }
