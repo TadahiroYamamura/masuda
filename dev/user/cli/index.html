@@ -704,6 +704,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        env
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#privileged-command" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1649,6 +1660,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        env
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#privileged-command" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1827,6 +1849,10 @@
 <tr>
 <td><a href="#secret"><code>secret</code></a></td>
 <td>秘密の一覧・値の登録・平文の承認</td>
+</tr>
+<tr>
+<td><a href="#env"><code>env</code></a></td>
+<td><code>.env</code>の値を秘密と公開値へまとめて取り込む</td>
 </tr>
 <tr>
 <td><a href="#privileged-command"><code>privileged-command</code></a></td>
@@ -2117,7 +2143,7 @@ answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REG
 </tr>
 <tr>
 <td><code>.claude/settings.local.json</code></td>
-<td><code>hooks.SessionStart</code>に<code>masuda prime --hook-json</code>。<code>permissions.deny</code>に、人間が判断することを前提にしたコマンド（<code>secret set・approve・reject</code>、<code>egress approve・reject</code>、<code>gate approve・reject・comment・dismiss・halt・redo</code>、<code>privileged-command approve</code>、<code>remove</code>）。<code>permissions.ask</code>に<code>question answer</code>。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする</td>
+<td><code>hooks.SessionStart</code>に<code>masuda prime --hook-json</code>。<code>permissions.deny</code>に、人間が判断することを前提にしたコマンド（<code>secret set・approve・reject</code>、<code>env import</code>、<code>egress approve・reject</code>、<code>gate approve・reject・comment・dismiss・halt・redo</code>、<code>privileged-command approve</code>、<code>remove</code>）。<code>permissions.ask</code>に<code>question answer</code>。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする</td>
 </tr>
 </tbody>
 </table>
@@ -2168,6 +2194,56 @@ masuda secret reject &lt;NAME&gt; [--repo &lt;dir&gt;]
 <p>値をコマンドライン引数で受け取らないのは、シェルの履歴やプロセス一覧に残さないため。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>LINEAR_API_KEY<span class="w"> </span>&lt;<span class="w"> </span>~/linear-key.txt
 </code></pre></div>
+<h2 id="env">env<a class="headerlink" href="#env" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda env import &lt;file&gt; [--repo &lt;dir&gt;]
+</code></pre></div>
+<p><code>.env</code>形式のファイルの値を、名前ごとに振り分けて取り込む（<a href="../secrets-and-egress/#env-import">秘密・egress・特権コマンド</a>）。</p>
+<table>
+<thead>
+<tr>
+<th>名前</th>
+<th>行き先</th>
+<th>RESULT</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>settings.json</code>の<code>secrets</code>で宣言した名前</td>
+<td>秘密ストア（<code>secret set</code>と同じ。<code>plaintext</code>の承認は別に<code>secret approve</code>）</td>
+<td><code>secret</code></td>
+</tr>
+<tr>
+<td>秘密ではないが、<code>envFiles</code>のどれかの<code>vars</code>にある名前</td>
+<td><code>settings.local.json</code>の<code>vars</code></td>
+<td><code>var</code></td>
+</tr>
+<tr>
+<td><code>CLAUDE_CODE_OAUTH_TOKEN</code>と、<code>claudeToken</code>で選んだ名前</td>
+<td>取り込まない（<code>secret set</code>で登録する）</td>
+<td><code>skipped: Claude token ...</code></td>
+</tr>
+<tr>
+<td>どちらでもない名前</td>
+<td>取り込まない。標準エラーに一覧が出る。秘密なら<code>secrets</code>に宣言、そうでなければ<code>envFiles</code>の<code>vars</code>に足してから打ち直す</td>
+<td><code>skipped: not declared</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>値はどこにも表示しない。出すのは名前と行き先だけ</li>
+<li>秘密を含むときだけ<code>masuda serve</code>が要る。<code>vars</code>だけならserveを通さず<code>settings.local.json</code>を直接書く（他の項目は残す）</li>
+<li>書式の誤り（行番号付き）・同じ名前の2回目・宣言した秘密の空の値があれば、何も取り込まずにエラーにする</li>
+<li>秘密の登録が途中で失敗したら、そこで止める（それより前の秘密は登録済み、後の秘密と<code>vars</code>は書かない）。どこまで入ったかは名前ごとのRESULT（<code>secret</code>・<code>failed</code>・<code>not imported</code>）で分かる。登録はどれも上書きなので、原因を直して同じコマンドを打ち直せばよい</li>
+</ul>
+<p>ファイルの書き方:</p>
+<ul>
+<li>1行に<code>NAME=VALUE</code>。空行と<code>#</code>で始まる行は無視し、先頭の<code>export</code>は読み飛ばす。<code>NAME</code>と<code>=</code>の前後の空白は無視する</li>
+<li>クォートしない値は前後の空白を落とし、空白に続く<code>#</code>から後をコメントとして捨てる（<code>a#b</code>はそのまま）</li>
+<li><code>'...'</code>は中身をそのまま使う。<code>"..."</code>は<code>\n</code>・<code>\r</code>・<code>\t</code>・<code>\\</code>・<code>\"</code>・<code>\$</code>・<code>\`</code>だけを解き、それ以外の<code>\</code>はエラー。<code>masuda run</code>がVMに生成する<code>.env</code>と同じ書き方</li>
+<li>クォートは1行の中で閉じる（複数行の値は書けない。改行は<code>"..."</code>の中の<code>\n</code>で書く）。閉じた後には空白とコメントだけを置ける</li>
+<li><code>${VAR}</code>等の展開はしない</li>
+<li>値が空の行は、<code>vars</code>なら空文字として書く。宣言した秘密ならエラー</li>
+</ul>
 <h2 id="privileged-command">privileged-command<a class="headerlink" href="#privileged-command" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda privileged-command list [--repo &lt;dir&gt;]
 masuda privileged-command approve &lt;name&gt; [--repo &lt;dir&gt;]

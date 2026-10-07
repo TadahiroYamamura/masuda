@@ -773,6 +773,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#env-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .envをまとめて取り込む
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1502,6 +1513,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#env-import" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        .envをまとめて取り込む
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1719,6 +1741,19 @@ masuda<span class="w"> </span>secret<span class="w"> </span>list
 <ul>
 <li>秘密として宣言した名前はプレースホルダ（<code>plaintext</code>なら本物の値）、それ以外は<code>settings.local.json</code>の<code>vars</code>の値。どちらでもない変数があれば<code>masuda run</code>が断る</li>
 <li>生成したファイルはVMのgitから除外され、コミットされない</li>
+</ul>
+<h3 id="env-import"><code>.env</code>をまとめて取り込む<a class="headerlink" href="#env-import" title="Permanent link">&para;</a></h3>
+<p>手元に<code>.env</code>があるなら、秘密の値と<code>vars</code>を1つずつ登録しなくても、まとめて取り込める。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>env<span class="w"> </span>import<span class="w"> </span>.env
+<span class="c1"># NAME            RESULT</span>
+<span class="c1"># LINEAR_API_KEY  secret</span>
+<span class="c1"># APP_ENV         var</span>
+<span class="c1"># OLD_FLAG        skipped: not declared</span>
+</code></pre></div>
+<ul>
+<li><code>secrets</code>で宣言した名前は秘密ストアへ（<code>masuda secret set</code>と同じ）、<code>envFiles</code>の<code>vars</code>にだけある名前は<code>settings.local.json</code>の<code>vars</code>へ入る。どちらでもない名前は取り込まない</li>
+<li>値は表示しない。書式の誤りがあれば何も取り込まない</li>
+<li>書き方の細かい決まりは<a href="../cli/#env">CLIリファレンス</a></li>
 </ul>
 <h2 id="privileged">特権コマンド<a class="headerlink" href="#privileged" title="Permanent link">&para;</a></h2>
 <p>テストがrootやDockerを要するとき、そのコマンドだけを<strong>別の使い捨てVM（rootで動く）</strong>で実行させる仕組み。エージェントが動くVMはrootにしない。</p>
