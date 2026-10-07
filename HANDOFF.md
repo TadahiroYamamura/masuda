@@ -1,54 +1,44 @@
 # HANDOFF
 ## 作業項目
-2026-10-07: ホストで動くClaude Codeにmasudaの使い方を教える仕組みを入れた（Beadsの`bd prime`・`bd setup claude`を参考にした）。develop `96124b5`（`0c6c5fa`のマージ）。push済み。
+2026-10-07（1日分）。次のセッションは**v0.3.0**（特権コマンドまわりの作り直し）から始める。
 
-| 追加・変更 | 内容 |
+| 段 | 内容 |
 |---|---|
-| `masuda prime [--hook-json]` | ホストのエージェント向けの使い方（`cmd/masuda/templates/prime.md`、約5.2KB）を出す。`--hook-json`でSessionStartフックの`additionalContext`の形 |
-| `masuda init` | `CLAUDE.local.md`に`<!-- BEGIN MASUDA -->`の短い節。`.claude/settings.local.json`にSessionStartフック（`masuda prime --hook-json`）、`permissions.deny`13件（gate・secret・egress・privileged-commandの判断系とremove）、`permissions.ask`1件（question answer）。`.gitignore`に両ファイル |
+| `masuda prime`と`init` | ホストのClaude Codeに使い方を教える。`init`が`CLAUDE.local.md`と`.claude/settings.local.json`（SessionStartフック、`permissions.deny`13件、`ask`1件）を書く（`96124b5`）。決まったこと: 個人用ファイルに書く（共有ファイルはcloneでゲストに届くため）、Claude Codeだけ、人間が判断するコマンドはdeny、`question answer`はask、serveはエージェントがバックグラウンドで起動してよい、`watch`はバックグラウンドでだけ |
+| v0.2.3 | 公開した（追跡#97）。masuda `ce39569`・engine `64a8e69`・sandbox `34577e9`、ゲストのClaude Code 2.1.292。releaseは1回目にCM5の後片付けで落ち（#98）、Webで再実行して通った。**手順6（ハーネスの更新）だけ保留** |
+| ハーネス（oncall-pf-template-20）との相談 | 特権コマンドを実機で初めて動かした（`cfc91fb026a7`で`db-verify`が通った。起動・受け渡し・rootでの実行・回収を確認。特権VMの中のdockerdは未確認）。そこから出た件を下のIssueに切った |
+| 文書 | 特権コマンドへ渡すスナップショット（`7a581d7`、v0.2.3に入った）。VMの起動のたびに空になるディレクトリ（`/run`・`/tmp`・`/root`・`/var/tmp`・`/var/cache`・`/var/log`。GondolinのROOTFS_INIT_SCRIPTより）・承認の範囲（イメージの中身を含まない）・「実機では未検証」の書き換え（`5c7d562`、v0.3.0に入る） |
 
-決まったこと（ユーザーの判断）:
-- 書き先は個人用ファイル。共有の`CLAUDE.md`・`.claude/settings.json`はcloneでゲストに届き、ゲストにはmasudaのバイナリが無いため。Beadsは共有ファイル（`settings.local.json`は旧方式として移行元）なので、逆の判断
-- 対象はClaude Codeだけ（AGENTS.mdには個人用ファイルもimportも無い）。primeは固定文面（serveの状態は載せない）、英訳しない
-- 人間が承認する前提のコマンドはdeny。`gate show`・各`list`は打てる。`question answer`はエージェントが打ってよいがask
-- serveはエージェントがバックグラウンドで起動してよい（セッションを閉じると止まりうる旨をprimeに書いた）。`watch`はバックグラウンドでだけ、詳細はワークスペースの記録を読む
-- 並行ワークスペースのdevelopへの取り込みは人間の仕事とし、primeにも書かない
+起票したIssue: #92（サブディレクトリでの`--repo`）、#93（`workflow list`に出すものをYAMLで）、#94（`masuda doc`）、#95（特権コマンドの宣言をゲストへ）、#96（承認済みのコミットだけを秘密付きで）、#98（CM5がたまに落ちる）、#99（特権コマンドの成否をワークフローで扱う）、#100（特権コマンドの単体実行）、masuda-sandbox#10（`RunJob`）。
 
-新規Issue: #92（サブディレクトリで`--repo`を省くと、`init`は黙ってそこに書き、他はエラー。解決したら`prime.md`の「トップで打つ」を消す）、#93（`workflow list`に出すワークフローをYAMLで選べるように。定義はengineの持ち物）、#94（`masuda doc`。リリースのビルドでサイトのHTMLと準備後のMarkdownを埋め込み、Markdownは標準出力へ、HTMLは`--serve`で`127.0.0.1`に公開。埋め込みの無いビルドは版のURLを案内。`doctor`の案内と`prime.md`も合わせて直す）。#95（特権コマンドの宣言をゲストへ写す。契約の変更でv0.3.0。下の「契約への提案」）。#96（reviewゲートで承認したコミットだけを、新しいVMで秘密付きで動かす。ハーネスから「特権コマンドで秘密を使いたい」と依頼があったが、承認するのはcommandの文字列だけで動くのはエージェントのコードなので取りやめた。当面はモック相手のE2EとCIでの本物との結合を勧めた）。`docs/design/overview.md`の特権コマンドの受け渡しの記述を実装に合わせた（`7a581d7`、v0.2.3に入れる）。
-
-前回（2026-10-06〜07）の#78〜#86の対応と上記を含めて、**v0.2.3を公開した**（追跡#97）。masuda `ce39569`・engine `64a8e69`（v0.2.2と同じ）・sandbox `34577e9`。ゲストのClaude Codeは2.1.292（`1de0bd2`）。masudaのreleaseは1回目に契約テストCM5の後片付けで落ち（#98、たまに起きる）、Webで失敗したジョブを再実行して通った。**ハーネスの更新は保留**（下の「未完と理由」）。
+ユーザーの判断:
+- 特権コマンドに秘密を渡す案は取りやめた。承認するのは`command`の文字列だけで、動くのはエージェントが書き換えられる`/workspace`のコードだから。代わりにモック相手のE2Eと、CIでの本物との結合（#96は将来の案）
+- 記録（`records/definitions/`）は不変の扱い。ハーネスが手で書き換えたのは例外として止めない
+- 特権コマンドの仕組みはmasuda-sandboxの`RunJob`へ移し、masudaは方針（宣言・承認・通信先・どのツリーか・結果の置き先）だけを持つ（下の「契約への提案」）。#100はその上に作るのでv0.3.0。「観察してから承認する」一般の道具（学習モード）はsandboxの仕事
 ## 完了した契約テスト
-- v0.2.3の打つ前の確認: 継続テスト・実機1周（2.1.292）、sandbox契約テスト8件、`precheck.sh v0.2.3`、tarballの予行。公開物を一時ディレクトリに入れて`version`（0.2.3、`contract: ok`）・`doctor`・`prime`を確かめた
-- `go build ./... && go vet ./... && go test ./...`を`go.work`あり・`GOWORK=off`の両方で緑（develop `96124b5`）
-- initの新しい分岐（マーカー・フック・規則の重複、型の検査、書き直さない条件、deny/askの振り分け）は、壊すとすべてテストが落ちることを確かめた
-- 一時ディレクトリで実際のバイナリの`init`を2回流し、2回目は何も変えないことを確かめた
-- liveは回していない
+- `go build ./... && go vet ./... && go test ./...`を`go.work`あり・`GOWORK=off`の両方で緑（`96124b5`の時点。その後の変更は文書と雛形のDockerfileのコメントだけで、`go test ./cmd/masuda/`は緑）
+- v0.2.3の打つ前の確認一式（継続テスト・実機1周・sandbox契約テスト・`precheck.sh`・tarballの予行）と公開後の確認
 ## 未完と理由
-- **v0.2.3へのハーネスの更新（手順6）**: ハーネスで`oncall_pf_template`のワークスペース`cfc91fb026a7`（ONCALL-1321/db-1）が走行中。更新の前に全ワークスペースをremoveする決まりなので、終わるまで待つ。oncall-pf-template-20が終了（publishか終了）を知らせてくる
-- リリースの確認がハーネスの`cfc91fb026a7`と約3分重なった（16:41〜16:43のsandbox契約テスト）。oncall-pf-template-20が異常（特に特権VMの初回起動）を見ている。異常が出たらstop→resume、だめならログが来る
-- #98（契約テストCM5がたまに後片付けで落ちる）
-- 実物のClaude Codeで、SessionStartフックの出力が末尾まで読み込まれるか・deny/askが効くかは確かめていない
-- #92・#93・#94・#96: 起票だけ
-- #95: 契約の変更のため、v0.2.3の後にv0.3.0で実装する
-- #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
-- #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある
-- Gondolinの#155〜#160: メンテナの返事待ち（返事の論点はB1〜B9）。`.claude/settings.local.json`のSessionStartフック（`~/.claude/scripts/gondolin-watch.py`）が動きを知らせる。外部への書き込み（コメント・PRの更新）は、毎回ユーザーの了解を取ってから。英文は日本語の草案の承認後に訳す
-- #87・#88・#89・#91: 手を付けていない
+- **v0.2.3へのハーネスの更新（Skill `release`の手順6）**: ハーネスで`cfc91fb026a7`（oncall_pf_template、ONCALL-1321/db-1）が走行中。更新の前に全ワークスペースをremoveする決まりなので、oncall-pf-template-20が終了を知らせてくるのを待っている
+- **v0.3.0**: #95・#99・#100とmasuda-sandbox#10。契約（`sandbox.proto`・`guest-protocol.md`）の変更なので、下の「契約への提案」の承認を得てから。sandbox側の実装はmasuda-sandboxでの作業
+- 実物のClaude Codeで、primeのSessionStartフックが末尾まで読み込まれるか・deny/askが効くかは確かめていない
+- #85・#83のC案（下の提案）、#84（sandbox#8待ち）、Gondolinの#155〜#160（メンテナの返事待ち。`gondolin-watch.py`のSessionStartフックが知らせる。外部への書き込みは毎回ユーザーの了解、英文は日本語の草案の承認後）
+- #87・#88・#89・#91〜#94・#96・#98: 手を付けていない
 ## 次の一手
-1. このリポジトリ（またはハーネス）で`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
-2. `cfc91fb026a7`の終了の連絡が来たら、v0.2.3へハーネスを更新する（Skill `release`の手順6。ユーザーが打つ）。終わったら追跡#97の6を埋めて閉じる
-3. 下の提案の承認を得たら、#85・#83のC案を実装する
-4. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正（`~/work/gondolin-notes/harness-hotfix/`のREADMEに戻し方）を外し、sandboxのgondolinを上げる
+1. v0.3.0の設計: 下の「`RunJob`」「#95」の提案と#99（ゲストの`/masuda/bin/run-privileged`案b）を、1つの設計としてまとめてユーザーの承認を得る。`/masuda/`の配置（#95の`privileged-commands.json`、#99の`bin/`）は一緒に決める
+2. `cfc91fb026a7`の終了の連絡が来たら、ハーネスをv0.2.3へ更新する（ユーザーが打つ）。終わったら#97の6を埋めて閉じる
+3. このリポジトリで`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
+4. 下の#85・#83の提案の承認を得たら実装する
 ## 注意点
-- VMを使う確認（live・sandbox契約テスト）は、各段の直前にハーネスで`masuda list`し、走行中のワークスペースが無いことを確かめてから回す（今回は確かめ直さずに重なった）
+- VMを使う確認（live・sandbox契約テスト）は、各段の直前にハーネスで`masuda list`し、走行中のワークスペースが無いことを確かめてから回す（2026-10-07は確かめ直さずに約3分重なった。影響は出なかった）
 - `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
-- `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す（denyはallowで例外を作れないので、サブコマンドごとに並べている）
+- `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す（#100の`privileged-command run`も足す）
 - deny規則はコマンドの文面に対する歯止めで、フルパスや`sh -c`では迂回できる
+- ほかのセッションとはSendMessageで話せる（このリポジトリのセッションは`masuda-d3`、ハーネスは`oncall-pf-template-20`）。相手の依頼でIssueを起票・返事するときは、こちらのユーザーの判断を取ってから
 - Gondolinの作業の記録は`~/work/gondolin-notes/`（README.mdが入口）。cloneは`~/work/gondolin`、forkはremote `fork`（SSHの`github.com_my`）。PRのブランチのworktreeは`~/work/gondolin-wt/a1〜a5`
 - この端末の`~/.gitconfig`は会社用。masuda・masuda-sandbox・masuda-engine・gondolinのcloneにはローカルで個人用の作者を入れてある。新しいcloneでは確かめる
-- `scripts/gh.sh`のトークンはmasuda関連のリポジトリにしか使えない（Gondolinへの投稿はユーザーがWebで行った）
-- ハーネスのgondolin（`~/.nvm/versions/node/v24.16.0/lib/node_modules/masuda-sandbox/node_modules/@earendil-works/gondolin/dist/src/qemu/`の`network-stack.js`・`net.js`）は手で差し替えてある。masuda-sandboxを入れ直すと元に戻る
-- masuda-sandboxはgondolinをbundleしない（external）ので、`pnpm patch`では利用者に届かない
+- `scripts/gh.sh`のトークンはmasuda関連のリポジトリにしか使えない
+- ハーネスのgondolin（`~/.nvm/versions/node/v24.16.0/lib/node_modules/masuda-sandbox/node_modules/@earendil-works/gondolin/dist/src/qemu/`の`network-stack.js`・`net.js`）は手で差し替えてある。masuda-sandboxを入れ直すと元に戻る（v0.2.3への更新でも戻る。`~/work/gondolin-notes/harness-hotfix/`の手順で当て直す）
 - 「`masuda serve`がsandboxを子プロセスとして起動する」案は、ユーザーの判断で取りやめた
 ## 契約への提案
 ### 長い待ちを「待ちを返して起こしてもらう」に変える（#85・#83、ユーザー承認済みの案。契約の変更として判断待ち）
@@ -86,3 +76,14 @@
 | `docs/user/settings.md`・`secrets-and-egress.md` | `description`と、「コミットしておく」の記述 |
 
 守る条件: ホストはこのファイルを読み戻さない（実行の判断は今どおり名前・`records/definitions/`・作業ツリーの`settings.local.json`の`DeclHash`）。承認の状態は写さない。
+
+### 特権コマンドの仕組みをmasuda-sandboxの`RunJob`へ移す（masuda-sandbox#10・#100、ユーザー承認済みの方向。v0.3.0）
+
+使い捨てVMの作成→ファイル投入→実行→`outputs`の回収→破棄を、sandboxの1つのRPC（仮称`RunJob`）にする。今はmasudaの`internal/privileged`が低水準のRPCを組み合わせている。
+
+| 持ち主 | 持つもの |
+|---|---|
+| sandbox（`RunJob`） | VMの作成・破棄、ホストからのファイル投入、**VMからVMへの直接の写し**（今は`inputs`をmasudaのプロセス経由で運んでいる）、実行中のログの中継、時間切れ、通信の観測（拒否した通信先。学習モードの材料）、`outputs`の回収。sandboxのCLI（`masuda-sandbox run`仮）から単体でも呼べる |
+| masuda | 宣言の読み込み、承認（`DeclHash`）との照合、通信先の計算、どのツリーを渡すか（stagingのスナップショット・作業ツリー・承認済みのコミット）、結果の置き先（ゲストの`/masuda/privileged/<run-id>/`、ホストの`records/privileged/`） |
+
+`masuda privileged-command run`（#100）は、作業ツリーの宣言と承認を照らして`RunJob`を呼ぶだけになる（CLIからsandboxへ直接。公開APIは変えない）。#100で決めた細部: 利用者のリポジトリにrefもオブジェクトも書かない、`inputs`はホストの作業ツリーから、結果は既定で一時ディレクトリ（`--out`）、CLIの終了コードは特権コマンドと同じ、イメージは作業ツリーの`.masuda/images/`から。
