@@ -2651,7 +2651,7 @@ masuda
 <p>対象リポジトリのテストがrootやDockerを要する場合、その実行だけを<strong>2つ目のVM</strong>（root、使い捨て）へ切り出す。</p>
 <ul>
 <li>宣言: <code>privilegedCommands</code>に名前・イメージエントリ・コマンド・<code>inputs</code>（gitignore対象で運ぶ必要があるパスのglob）・<code>outputs</code>・タイムアウト。承認はローカル</li>
-<li>受け渡し: 直近のWIPスナップショット（<code>refs/masuda/wip/&lt;occ&gt;</code>）をbundleで特権VMへ渡して<code>checkout</code>し、<code>inputs</code>に当たるファイルをメインVMから<code>ReadFile</code>→<code>WriteFile</code>で運ぶ。gitignoreの内容が暗黙に境界を決めることはない</li>
+<li>受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（<code>refs/masuda/wip/privileged-&lt;run-id&gt;</code>）、bundleで特権VMへ渡して<code>checkout</code>する。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。<code>inputs</code>に当たるファイルはメインVMから<code>ReadFile</code>→<code>WriteFile</code>で運ぶ。gitignoreの内容が暗黙に境界を決めることはない</li>
 <li>結果: 終了コード・ログ・<code>outputs</code>をホストが回収し、写しをメインVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>へ置く。特権VMはAPIトークンもMCPも持たない</li>
 <li>呼び出し口はMCPツール<code>run_privileged_command(name)</code>。コマンド文字列を渡す口は無い。宣言は<code>records/definitions/</code>の写しから読み、承認は作業ツリーの<code>settings.local.json</code>のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる</li>
 <li>同じワークスペースでは1つずつ動かす。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</li>
