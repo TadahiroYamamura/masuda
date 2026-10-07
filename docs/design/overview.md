@@ -252,7 +252,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 対象リポジトリのテストがrootやDockerを要する場合、その実行だけを**2つ目のVM**（root、使い捨て）へ切り出す。
 
 - 宣言: `privilegedCommands`に名前・イメージエントリ・コマンド・`inputs`（gitignore対象で運ぶ必要があるパスのglob）・`outputs`・タイムアウト。承認はローカル
-- 受け渡し: 直近のWIPスナップショット（`refs/masuda/wip/<occ>`）をbundleで特権VMへ渡して`checkout`し、`inputs`に当たるファイルをメインVMから`ReadFile`→`WriteFile`で運ぶ。gitignoreの内容が暗黙に境界を決めることはない
+- 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、bundleで特権VMへ渡して`checkout`する。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルはメインVMから`ReadFile`→`WriteFile`で運ぶ。gitignoreの内容が暗黙に境界を決めることはない
 - 結果: 終了コード・ログ・`outputs`をホストが回収し、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
 - 呼び出し口はMCPツール`run_privileged_command(name)`。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる
 - 同じワークスペースでは1つずつ動かす。`<run-id>`は`0001`からの連番
