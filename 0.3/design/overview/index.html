@@ -1,0 +1,3193 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/0.3/design/overview/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../contracts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>全体設計 - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              全体設計
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../user/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../user/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 部品
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 契約
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 1つのタスクの流れ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. ワークスペースとstaging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. ワークスペースとstaging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stagingref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stagingのref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        既存のブランチで動かす
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commitpublish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        commitとpublish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        exports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ホスト側のディレクトリ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        再開
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. ワークフロー
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. ワークフロー">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ノードの種類
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        データ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ノード単位の方針
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エンジンが固定する不変条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        定義の置き場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. サンドボックス
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. サンドボックス">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ゲスト内の配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ネットワークとegress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        秘密
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権コマンド
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設定ファイル
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. ゲストとホストの間
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 活動の観測と停止の検知
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 活動の観測と停止の検知">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        活動の決め方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        無活動のしきい値
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ディスク使用量
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 公開API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. 公開API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gateの判断
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attachinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AttachInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 脅威モデル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 対応プラットフォームと依存
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. 対応プラットフォームと依存">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sandboxとの互換性
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 旧設計から残すもの・捨てるもの
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. マイルストーン
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 部品
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 契約
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 1つのタスクの流れ
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-staging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. ワークスペースとstaging
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. ワークスペースとstaging">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#stagingref" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        stagingのref
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        既存のブランチで動かす
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#commitpublish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        commitとpublish
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#exports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        exports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ホスト側のディレクトリ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        再開
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. ワークフロー
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. ワークフロー">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ノードの種類
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        データ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ノード単位の方針
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        エンジンが固定する不変条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        定義の置き場所
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. サンドボックス
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. サンドボックス">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ゲスト内の配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#egress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ネットワークとegress
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        秘密
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権コマンド
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        設定ファイル
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. ゲストとホストの間
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 活動の観測と停止の検知
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 活動の観測と停止の検知">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        活動の決め方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_15" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        無活動のしきい値
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ディスク使用量
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 公開API
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. 公開API">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Watch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gateの判断
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#workflow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Workflow
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attachinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AttachInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 脅威モデル
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 対応プラットフォームと依存
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="11. 対応プラットフォームと依存">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        sandboxとの互換性
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 旧設計から残すもの・捨てるもの
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. マイルストーン
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">全体設計<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>masudaは、Claude Codeに調査・計画・実装・レビューなどの作業をさせ、人間が要所で判断する流れを、ローカルPC上のVMで無人実行するためのツール群。実行はClaude Code CLIをサブスクリプション認証のままtmux上で自己ループさせる方式で行い、Anthropic APIを直接は呼ばない。</p>
+<p>本書は3つのリポジトリにまたがる全体像を1か所にまとめる。各リポジトリ内部の設計は、それぞれのリポジトリの<code>docs/</code>にある。</p>
+<h2 id="1">1. 部品<a class="headerlink" href="#1" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>部品</th>
+<th>リポジトリ・言語</th>
+<th>動き方</th>
+<th>責務</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>sandbox service</strong></td>
+<td><code>masuda-sandbox</code>、TypeScript</td>
+<td>ホストで常駐する1プロセス（<code>masuda-sandbox serve</code>）。Gondolinを<code>@earendil-works/gondolin</code>として取り込む</td>
+<td>VMの作成・破棄、VM内でのコマンド実行、SSHアタッチ、ノード単位のegress/秘密の方針切替、ゲスト↔ホストのファイル転送、APIリクエストの観測、イメージのビルド</td>
+</tr>
+<tr>
+<td><strong>workflow engine</strong></td>
+<td><code>masuda-engine</code>、Go</td>
+<td>ライブラリ。masudaのプロセス内で動く</td>
+<td>ワークフロー定義（YAML）とエージェント定義（Markdown）の読み込み・検査、記録からの現在位置の計算、次に何をするかの決定。VMもgitも知らず、<code>Runner</code>インターフェース越しに外へ出る</td>
+</tr>
+<tr>
+<td><strong>masuda</strong></td>
+<td><code>masuda</code>、Go</td>
+<td>ホストで常駐する1プロセス（<code>masuda serve</code>）と、それを叩くCLI（<code>masuda run</code>等）</td>
+<td>ワークスペース（staging bareリポジトリ、publish）、<code>Runner</code>の実装（engineの要求をsandbox serviceとgitへ翻訳）、ゲスト向けMCPエンドポイント、公開API（Connect）、秘密と承認のローカル保存</td>
+</tr>
+<tr>
+<td>UI</td>
+<td>別リポジトリ（任意）</td>
+<td>ブラウザ等</td>
+<td>公開APIのクライアント。CLIと同じAPIを使う</td>
+</tr>
+<tr>
+<td>メインエージェント</td>
+<td>VM内</td>
+<td>tmux上の<code>claude</code>。ループ規約（<code>CLAUDE.md</code>）に従う</td>
+<td>MCPツール<code>next_task</code>で受け取ったタスクをサブエージェントへ渡し、結果を報告するだけ。自分では作業しない</td>
+</tr>
+<tr>
+<td>サブエージェント</td>
+<td>VM内</td>
+<td>Claude Codeのサブエージェント</td>
+<td>役割ごとに1つのタスクをこなし、<code>write_output</code>と<code>report_result</code>で報告する</td>
+</tr>
+</tbody>
+</table>
+<p>ホストで常駐するプロセスは<code>masuda serve</code>と<code>masuda-sandbox serve</code>の2つだけ。ワークスペースごとのプロセスは持たない。</p>
+<h2 id="2">2. 契約<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p>部品の間は3つの契約で結ぶ。詳細と変更手続きは<a href="../contracts/">contracts.md</a>。</p>
+<table>
+<thead>
+<tr>
+<th>契約</th>
+<th>所有</th>
+<th>形</th>
+<th>使う側</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sandbox API</td>
+<td><code>masuda-sandbox</code></td>
+<td><code>proto/masuda/sandbox/v1/sandbox.proto</code>（Connect、h2c、ローカルのUDSまたはループバック）</td>
+<td>masuda</td>
+</tr>
+<tr>
+<td>engine API</td>
+<td><code>masuda-engine</code></td>
+<td>Goパッケージ<code>engine</code>の公開型（<code>Runner</code>・<code>Store</code>・<code>Engine</code>）と、ワークフロー定義のYAMLスキーマ、エージェント定義のfrontmatter</td>
+<td>masuda、ユーザー（定義を書く）</td>
+</tr>
+<tr>
+<td>masuda API</td>
+<td><code>masuda</code></td>
+<td><code>proto/masuda/api/v1/masuda.proto</code>（Connect、UIとCLIが叩く）</td>
+<td>CLI、UI</td>
+</tr>
+</tbody>
+</table>
+<p>ゲスト内のエージェントとmasudaの間はMCP（HTTP）で、これはmasudaのリポジトリが<code>docs/guest-protocol.md</code>で定義する。</p>
+<h2 id="3-1">3. 1つのタスクの流れ<a class="headerlink" href="#3-1" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>人間  masuda run workflows/develop --branch feat/x --input instructions=@todo.md
+  │
+masuda
+  ├─ 定義を読み込み検査（問題があればここで止まる）
+  ├─ ワークスペース作成: id、staging bare repo（実リポジトリから clone --bare）、入力をホスト側に保存
+  ├─ 定義・設定・入力をスナップショットとして固定
+  ├─ sandbox service に CreateSandbox（イメージ・env・初期方針・tcp対応付け）
+  ├─ ゲストへ staging の bundle を書き込み、/workspace に clone させる
+  └─ ゲストで tmux 上の claude を起動（ループ規約）
+  │
+ゲスト（メインエージェント）         ホスト（masuda / engine）
+  next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
+  ◀──── タスクファイルのパス ─────  /masuda/in/&lt;occ&gt;/ に入力を書き込み済み
+  サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
+  （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
+  write_output / report_result ──▶ /masuda/out/&lt;occ&gt;/ をホストが読み出し、スキーマ検証
+                                   ノード境界: WIPスナップショットを staging へ pull
+                                   次ノード: egress/秘密の方針を SetPolicy で切替
+  ...
+  （approval ノード）              ゲートを開き、人間の判断を待つ（API/CLI）
+  （exec ノード）                  sandbox.Exec で決定論コマンドを実行、出力を検証
+  （commit ノード）                staging 上でホストがコミットを作る（計画の範囲内のみ）
+  （publish ノード）               staging → 実リポジトリへ fast-forward、または remote へ push
+                                   → exports を書き出し、VM 破棄
+</code></pre></div>
+<ul>
+<li>入口は<code>masuda run &lt;workflow&gt;</code>だけ。途中で止まったタスクは<code>masuda resume &lt;workspace-id&gt;</code>で、記録から計算した位置で再開する。VMは使い捨てなので、再開時は新しいVMにstagingから再cloneする（「再開」の節）</li>
+<li><code>masuda chat &lt;workspace-id&gt;</code>は、sandbox serviceのSSH経由でゲストのtmuxのメインセッション（<code>claude-work</code>）へアタッチする。<code>C-b d</code>で切り離せばセッションは動き続ける。chatからゲートは閉じられない</li>
+</ul>
+<h2 id="4-staging">4. ワークスペースとstaging<a class="headerlink" href="#4-staging" title="Permanent link">&para;</a></h2>
+<p>ワークスペースは、ID・staging bareリポジトリ・ホスト側の状態ディレクトリ・（稼働中なら）サンドボックス1つ、の組。</p>
+<ul>
+<li><strong>staging</strong>は<code>$XDG_DATA_HOME/masuda/workspaces/&lt;id&gt;/staging.git</code>。実リポジトリから<code>git clone --bare --local</code>で作る。masudaだけが読み書きする</li>
+<li><strong>ゲストのclone</strong>は<code>/workspace</code>。VM内ディスクにあり、ホストとは共有しない。ゲストはstagingへpushする権利を持たない</li>
+<li><strong>ゲスト→ホスト</strong>は常にホストが取りに行く。<code>git bundle create</code>をゲストで実行し、sandbox APIの<code>ReadFile</code>でホストが読み、stagingへ<code>fetch</code>する</li>
+<li><strong>ホスト→ゲスト</strong>はbundleを<code>WriteFile</code>で置き、ゲストで<code>fetch</code>する</li>
+<li><strong>実リポジトリに触るのはpublishだけ</strong></li>
+</ul>
+<h3 id="stagingref">stagingのref<a class="headerlink" href="#stagingref" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>ref</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>refs/heads/&lt;branch&gt;</code></td>
+<td>ワークスペースのブランチ。commitノードが進める。新しいブランチなら分岐元と同じコミットから、既存のブランチ（下記）ならその先頭から始まる</td>
+</tr>
+<tr>
+<td><code>refs/masuda/wip/&lt;出現ID&gt;</code></td>
+<td>ノード境界のWIPスナップショット（作業ツリー全体を<code>git add -A</code>したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う</td>
+</tr>
+<tr>
+<td><code>refs/masuda/base</code></td>
+<td>分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base）</td>
+</tr>
+<tr>
+<td><code>refs/masuda/latest-wip</code></td>
+<td>最後に取り込んだ<code>refs/masuda/wip/*</code>を指すシンボリックref。再開で作業ツリーへ戻すWIPを決める（コミットの日時は時計が戻ると当てにならないため）</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_2">既存のブランチで動かす<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
+<p>publishノードを含まないワークフロー（rootから辿れるワークフローのどれにもpublishが無いもの。engineの<code>Set.Reachable</code>で判定）に限り、<code>Run</code>の<code>branch</code>に実リポジトリに既にあるブランチを指定できる。実リポジトリには書かないので上書きの心配が無く、既にある変更のレビュー（<code>workflows/review</code>）に使う。</p>
+<ul>
+<li>stagingの<code>refs/heads/&lt;branch&gt;</code>は実リポジトリのそのブランチの先頭</li>
+<li>分岐元は<code>base</code>、空なら実リポジトリの既定のブランチ（originのHEADが指すもの、<code>init.defaultBranch</code>、<code>main</code>・<code>master</code>の順に、実在してそのブランチ自身でないもの）。<code>refs/masuda/base</code>はその分岐元とブランチのmerge-baseに置く。分岐の後に分岐元へ入った変更を差分に混ぜないため</li>
+<li>publishを含むワークフローで既存のブランチを指定すると<code>AlreadyExists</code></li>
+</ul>
+<h3 id="commitpublish">commitとpublish<a class="headerlink" href="#commitpublish" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>commit</strong>（エンジン固定ノード）: 最新のWIP treeと<code>HEAD</code>の差分を取り、計画の対象ファイル（<code>scope: step</code>ならそのステップ、<code>plan</code>なら計画全体）だけからなるtreeをホストが<code>commit-tree</code>で作り、<code>refs/heads/&lt;branch&gt;</code>を進める。対象外の変更があれば<code>deviation</code>ゲートで人間に回す。ゲストには<code>fetch</code>と<code>reset --soft</code>で新しいHEADを知らせる（作業ツリーは触らない）</li>
+<li><strong>publish</strong>: <code>target: local</code>なら実リポジトリの同名ブランチへfast-forward、<code>target: remote</code>なら<code>settings.json</code>の<code>publish.remote</code>（既定<code>origin</code>）が指す実リポジトリのremoteへpush（PR作成は将来のオプション）。publishするcommitハッシュはreview gateで承認されたものと同じでなければならず、違えばpublishしない</li>
+<li><strong>discard</strong>: 反映せずに片付ける</li>
+</ul>
+<p>publishとdiscardの最後に、exportsを書き出してからVMを破棄し、ワークスペースを閉じる。<code>end</code>で終わった（publish・discardを通らない）実行も、DONEを状態に写す前に同じ順で会話ログと実行ログを書き出してVMを破棄する（<code>Runner.Cleanup</code>に1つにまとめてあり、壊した後に呼ぶと実行ログの写し直しだけになる）。DONEのVMは再開にも使わない（Resumeは新しいVMを作る）ので残す理由が無く、残すとDONEにはStopが効かないためRemoveまで残り続ける。stagingは<code>masuda remove</code>まで残す。</p>
+<h3 id="exports">exports<a class="headerlink" href="#exports" title="Permanent link">&para;</a></h3>
+<p>置き場所は<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/exports/</code>。中身は次の3つ。</p>
+<table>
+<thead>
+<tr>
+<th>パス</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exports/&lt;データ名&gt;</code></td>
+<td>publish・discardノードの<code>export:</code>に書いたデータの最新の値</td>
+</tr>
+<tr>
+<td><code>exports/execution-log.jsonl</code></td>
+<td>実行ログ（<code>records/execution-log.jsonl</code>の写し）</td>
+</tr>
+<tr>
+<td><code>exports/transcripts/&lt;project&gt;/…/*.jsonl</code></td>
+<td>ゲストのClaude Codeの会話ログ。ゲストの<code>~/.claude/projects/</code>からの相対パスのまま写す</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>会話ログは、ゲストのホームをcwdにして<code>find .claude/projects -type f -name '*.jsonl'</code>を<code>Exec</code>し、各ファイルを<code>ReadFile</code>で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに<code>kind: export-warning</code>として記録し、publish・discardは止めない</li>
+<li>会話ログを回収するのは、DONE（publish・discard・<code>end</code>）とStop（<code>Remove</code>の<code>force</code>を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す（SUSPENDEDは写さない。Stop・Resumeで書き出す）。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す</li>
+<li>再開後に書き出すと、同じパスのファイルは新しいもので置き換わる</li>
+<li><code>masuda remove</code>はワークスペースのディレクトリのうち<code>exports/</code>だけを残して消す</li>
+</ul>
+<h3 id="_3">ホスト側のディレクトリ<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
+<p><code>&lt;DataDir&gt;</code>は<code>$XDG_DATA_HOME/masuda</code>（未設定なら<code>~/.local/share/masuda</code>）。ワークスペース1つは<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/</code>にまとまる。</p>
+<table>
+<thead>
+<tr>
+<th>パス</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>workspace.json</code></td>
+<td>ID・対象リポジトリ・ブランチ・分岐元・ワークフロー・イメージ・状態・結果・理由・現在位置</td>
+</tr>
+<tr>
+<td><code>staging.git/</code></td>
+<td>staging bareリポジトリ</td>
+</tr>
+<tr>
+<td><code>data/_run/&lt;名前&gt;</code></td>
+<td>実行開始時の入力データ</td>
+</tr>
+<tr>
+<td><code>data/&lt;出現ID&gt;/&lt;名前&gt;</code></td>
+<td>各ノードの出力データ（検証済み）</td>
+</tr>
+<tr>
+<td><code>records/engine.json</code></td>
+<td>engineの記録（<code>Store</code>の実体）。現在位置はここから計算する</td>
+</tr>
+<tr>
+<td><code>records/execution-log.jsonl</code></td>
+<td>実行ログ。engineのイベントと<code>export-warning</code>等</td>
+</tr>
+<tr>
+<td><code>records/hooks.jsonl</code></td>
+<td>ゲストのClaude Codeフックの受信記録</td>
+</tr>
+<tr>
+<td><code>records/gates/&lt;出現ID&gt;-&lt;seq&gt;.json</code></td>
+<td>開いたゲートと判断</td>
+</tr>
+<tr>
+<td><code>records/questions/&lt;出現ID&gt;-&lt;seq&gt;.json</code></td>
+<td>開いた質問と回答（または閉じた理由）</td>
+</tr>
+<tr>
+<td><code>records/comments.jsonl</code></td>
+<td>stagingの差分へのコメント</td>
+</tr>
+<tr>
+<td><code>records/committed-steps.json</code></td>
+<td><code>scope: step</code>のcommitでコミットした計画のステップ。再開時にforeachがコミット済みのステップを飛ばすのに使う</td>
+</tr>
+<tr>
+<td><code>records/definitions/</code></td>
+<td>実行開始時に写した対象リポジトリの<code>.masuda/</code></td>
+</tr>
+<tr>
+<td><code>records/reviews/</code></td>
+<td>実行開始時に固定したレビュー観点</td>
+</tr>
+<tr>
+<td><code>records/privileged/&lt;run-id&gt;/</code></td>
+<td>特権コマンドの記録（「特権コマンド」の節）</td>
+</tr>
+<tr>
+<td><code>records/image-build.log</code></td>
+<td>ゲストイメージのビルドログ</td>
+</tr>
+<tr>
+<td><code>ssh/id</code></td>
+<td><code>masuda chat</code>用の秘密鍵（0600）。<code>AttachInfo</code>のたびに書き直し、Stopで消す</td>
+</tr>
+<tr>
+<td><code>exports/</code></td>
+<td>上記</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">再開<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<p>止まった状態は2つに分ける。</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>いつ</th>
+<th>再開</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SUSPENDED</td>
+<td>engineの記録の外で止まった。sandboxの起動の失敗（<code>reason</code>が<code>sandbox boot failed:</code>）と、engineへの呼び出し（<code>Advance</code>等）のエラー（<code>reason</code>が<code>engine:</code>。未承認の特権ノード、承認されていない通信先を選んだノード、execやpublishの基盤の失敗等）</td>
+<td>できる。engineは何も記録していないので、原因を直して再開すれば同じノードをやり直す</td>
+</tr>
+<tr>
+<td>BLOCKED</td>
+<td>engineが記録した行き止まり（<code>engine.StatusBlocked</code>。進入回数の上限を使い切って行き先が無い、triageの<code>halt</code>等）</td>
+<td>できない（<code>Resume</code>は<code>FailedPrecondition</code>）。再開してもengineがまたBLOCKEDを返すだけ</td>
+</tr>
+</tbody>
+</table>
+<p><code>Resume</code>できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（<code>chat</code>で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの<code>Stop</code>はVMを壊してSTOPPEDにする。BLOCKEDへの<code>Stop</code>はVMを壊すだけで状態はBLOCKEDのまま残し、<code>Stop</code>を挟んで再開できてしまうことを防ぐ。</p>
+<p>ゲストの<code>next_task</code>には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（<code>blocked</code>とは返さない）。ループ規約は<code>done</code>・<code>blocked</code>でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に<code>next_task</code>を呼び直せばResumeを待たずに進むこともある。</p>
+<ol>
+<li>定義は<code>records/definitions/</code>の写しから読み直す。作業ツリーの<code>.masuda/</code>がその後変わっていても、始めたときと同じ定義で進む</li>
+<li>承認・秘密の値・<code>stallAfter</code>は作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（<code>Run</code>と同じ）</li>
+<li>再開前に開いていた<code>ask_human</code>の質問を、記録に理由「再開で破棄」を書いて閉じる。聞いていたサブエージェントは前のVMと共に無くなっており、再開後はengineが同じ出現のタスクを渡し直すので、新しいエージェントが改めて聞く。<code>questions:</code>を書いた固定の質問はengine自身が待っているので閉じない</li>
+<li>新しいVMを作り、stagingから再cloneする</li>
+<li>最新の<code>refs/masuda/wip/&lt;出現ID&gt;</code>のtreeを<code>git read-tree -m -u HEAD &lt;wip&gt;</code>で作業ツリーへ戻す。HEADはブランチのまま動かさず、コミットしていない作業はindexに載った変更として戻る。engineの基準点（WIPスナップショット）と作業ツリーを揃えるため</li>
+<li>engineを1回進め、位置に応じてゲート待ち・質問待ち・RUNNINGになる</li>
+</ol>
+<p><code>masuda serve</code>を再起動すると、前のプロセスで動いていたワークスペースはSTOPPEDになる。自動では再開しない（止まっていた間に対象リポジトリや定義が変わっているかもしれず、再開するかは人間が決める）。</p>
+<h2 id="5">5. ワークフロー<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<h3 id="_5">ノードの種類<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>type</th>
+<th>誰が動かすか</th>
+<th>書けるキー</th>
+<th>概要</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>agent</code></td>
+<td>エージェント</td>
+<td><code>role</code>、<code>max</code>、<code>inputs</code>、<code>outputs</code>、<code>egress</code>、<code>secrets</code></td>
+<td>役割（エージェント定義）に1つのタスクをさせる</td>
+</tr>
+<tr>
+<td><code>exec</code></td>
+<td>エンジン（サンドボックス内で実行）</td>
+<td><code>command</code>、<code>inputs</code>、<code>outputs</code>、<code>max</code>、<code>egress</code>、<code>secrets</code>、<code>timeout</code></td>
+<td>決定論のコマンド。<code>/workspace</code>をcwdに、入力を<code>/masuda/in/&lt;occ&gt;/</code>、出力を<code>/masuda/out/&lt;occ&gt;/</code>で受け渡す。終了コード0で<code>done</code>、それ以外で<code>failed</code></td>
+</tr>
+<tr>
+<td><code>approval</code></td>
+<td>人間</td>
+<td><code>gate</code>、<code>target</code></td>
+<td>人間の承認を待つ。<code>target</code>は<code>plan</code>・<code>diff</code>（publishされるコミット済みの差分。commitの後の承認）・<code>step-diff</code>（これからcommitされる差分。commitの前の承認）・任意のデータ名</td>
+</tr>
+<tr>
+<td><code>question</code></td>
+<td>人間</td>
+<td><code>role</code>または<code>questions</code>、<code>outputs</code></td>
+<td>エージェント（または固定の質問）が構造化した質問を出し、人間がAPIで答える。答えは次ノードの入力データになる</td>
+</tr>
+<tr>
+<td><code>foreach</code></td>
+<td>エンジン</td>
+<td><code>over</code>、<code>body</code>、<code>on_incomplete</code>、<code>with</code>、<code>max</code></td>
+<td>項目ごとに<code>body</code>のワークフローを直列に実行する</td>
+</tr>
+<tr>
+<td><code>workflow</code></td>
+<td>エンジン</td>
+<td><code>workflow</code>、<code>with</code>、<code>max</code></td>
+<td>別のワークフローを呼ぶ</td>
+</tr>
+<tr>
+<td><code>commit</code></td>
+<td>エンジン（ホスト）</td>
+<td><code>scope</code></td>
+<td>上記</td>
+</tr>
+<tr>
+<td><code>publish</code></td>
+<td>エンジン（ホスト）</td>
+<td><code>target</code>、<code>export</code></td>
+<td>上記</td>
+</tr>
+<tr>
+<td><code>discard</code></td>
+<td>エンジン（ホスト）</td>
+<td><code>export</code></td>
+<td>上記</td>
+</tr>
+</tbody>
+</table>
+<p>旧設計の工程型（investigate/plan/implement/review）は廃止し、同梱ワークフローが<code>agent</code>と<code>exec</code>の組み合わせとして同じ流れを提供する。コードを変えないワークフロー（外部サービスから課題を取り、調査し、人間と議論して書き戻す等）も同じ語彙で書ける。</p>
+<h3 id="_6">データ<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<p>ワークフローの中で受け渡すものはすべて<strong>名前付きのデータ</strong>で、実体はホスト側のファイル。</p>
+<ul>
+<li>ワークフローは<code>inputs:</code>で受け取るデータ名を宣言し、ノードは<code>outputs:</code>で書くデータ名を宣言する</li>
+<li>データ名には任意で<strong>JSON Schema</strong>を結びつけられる（<code>.masuda/schemas/&lt;name&gt;.json</code>）。スキーマがあるデータは、エンジンが受け取る境界で検証し、通らなければそのノードへ差し戻す。スキーマがないデータは空でないことだけ確かめる</li>
+<li>エンジンが自分で用意するデータ: <code>diff</code>（baseからの差分）、<code>step-diff</code>（HEADからの差分）、<code>fix-diff</code>（修正開始時点からの差分）。これらはstagingのrefから計算する</li>
+<li>同梱の定義が使う<code>plan</code>・<code>findings</code>・<code>commit-message</code>・<code>selected-perspectives</code>は、同梱のスキーマを持つ普通のデータであって、エンジンの特別扱いではない</li>
+</ul>
+<h3 id="_7">ノード単位の方針<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p><code>egress:</code>（許可ホスト）と<code>secrets:</code>（使える秘密の名前）はノードに書く。エンジンはノードに入るたびに<code>Runner.SetPolicy</code>を呼び、sandbox serviceがVMの許可リストと置換対象を切り替える。書かなければ、Claude APIへの経路以外は閉じている。</p>
+<h3 id="_8">エンジンが固定する不変条件<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>ユーザーが書くのは方針だけで、次はエンジンが常に適用し、定義で外せない。</p>
+<ul>
+<li><strong>triage</strong>: エージェントが<code>report_concern</code>で懸念を報告したら、どの状態からでも割り込んで<code>triage</code>ゲートを開く</li>
+<li><strong>計画外変更の検出</strong>: <code>commit</code>の直前に必ず走り、対象外の変更は<code>deviation</code>ゲートへ</li>
+<li><strong>書き込めるエージェントの判定</strong>: エージェント定義の自己申告でなく<code>tools</code>から判定する。書き込めないエージェントの実行中に作業ツリーが変われば<code>deviation</code>ゲートを開く</li>
+<li><strong>進入回数の上限</strong>（<code>max</code>、既定3）と、設定できない<strong>ヒューズ</strong>（1実行の出現20000）</li>
+<li><strong>実行場所</strong>: エージェントも<code>exec</code>もすべてサンドボックス内。commit/publish/discardだけがホストで動く</li>
+<li><strong>出力は未検証データ</strong>: サンドボックスから出てくるものはすべて検証を経る。ホストFSへ届く経路はcommit/publishだけ</li>
+</ul>
+<p><code>masuda workflow show</code>は、ユーザーの定義にエンジンが差し込む割り込みを合成した図を出す。</p>
+<h3 id="_9">定義の置き場所<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>種類</th>
+<th>同梱</th>
+<th>対象リポジトリでの上書き</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ワークフロー</td>
+<td>masuda-engineに埋め込み</td>
+<td><code>.masuda/workflows/**.yaml</code></td>
+</tr>
+<tr>
+<td>エージェント</td>
+<td>同上</td>
+<td><code>.masuda/agents/**.md</code></td>
+</tr>
+<tr>
+<td>スキーマ</td>
+<td>同上</td>
+<td><code>.masuda/schemas/*.json</code></td>
+</tr>
+<tr>
+<td>レビュー観点</td>
+<td>masudaに埋め込み（<code>masuda init</code>が書き出す）</td>
+<td><code>.masuda/reviews/*.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>同じパスのファイルがリポジトリにあれば同梱のものを丸ごと置き換える。タスク開始時にすべてホスト側へスナップショットし、以後そのタスクは固定した定義だけを使う。</p>
+<ul>
+<li>ワークフロー・エージェント・スキーマ・設定は、作業ツリーの<code>.masuda/</code>を<code>records/definitions/</code>へ写したものから読む</li>
+<li>レビュー観点は、同梱の観点に<code>records/definitions/reviews/</code>を重ねたものを<code>records/reviews/</code>へ固定する。ホストが返す観点の一覧（<code>Runner.Items(perspectives)</code>）と、ゲストの<code>/masuda/reviews/</code>はどちらもこの写しから作る。ゲストのcloneの<code>.masuda/reviews/</code>は使わない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</li>
+</ul>
+<h2 id="6">6. サンドボックス<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<h3 id="vm">VM<a class="headerlink" href="#vm" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Gondolin（QEMU、LinuxはKVM、macOSはHVF）。1ワークスペースにつき1VM。メモリ・CPUは設定で決める（既定4GiB・4）</li>
+<li>VMの書き込めるルートディスクの最小容量は<code>settings.json</code>の<code>images.&lt;entry&gt;.diskMiB</code>（既定4096MiB）。<code>CreateSandbox</code>の<code>disk_mib</code>として渡す。特権VMも、使うイメージのエントリの値で作る（<code>RunJob</code>の<code>disk_mib</code>）</li>
+<li>ゲストイメージは対象リポジトリの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>からDockerでビルドし、Gondolinの<code>oci.image</code>で資産化する。カーネルと起動層はGondolinのAlpine資産で、ホストに依存しない</li>
+<li>イメージに必要なもの: Claude Code（native）、tmux、git、openssh-server、非rootユーザー<code>ubuntu</code>（uid 1000）、<code>ca-certificates</code>。masudaがrootfsへ注入するものは無い</li>
+<li>ゲストの中にmasudaのバイナリは無い。ゲストが知っているのはMCPのURLとループ規約だけ</li>
+<li>VMは使い捨て。停止・クラッシュ・ホスト再起動の後は新しいVMをstagingから作り直す。VM内ディスクに残したものは失われる前提</li>
+</ul>
+<h3 id="_10">ゲスト内の配置<a class="headerlink" href="#_10" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>パス</th>
+<th>中身</th>
+<th>誰が書くか</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/workspace</code></td>
+<td>stagingからのclone</td>
+<td>ゲスト</td>
+</tr>
+<tr>
+<td><code>/masuda/in/&lt;出現ID&gt;/</code></td>
+<td>そのノードの入力データ・タスクファイル</td>
+<td>ホスト（<code>WriteFile</code>）</td>
+</tr>
+<tr>
+<td><code>/masuda/out/&lt;出現ID&gt;/</code></td>
+<td>そのノードの出力データ</td>
+<td>ゲスト。ホストが<code>ReadFile</code>で読み出して検証する</td>
+</tr>
+<tr>
+<td><code>/masuda/privileged/&lt;run-id&gt;/</code></td>
+<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）</td>
+<td>ホスト</td>
+</tr>
+<tr>
+<td><code>/masuda/reviews/*.md</code></td>
+<td>実行開始時に固定したレビュー観点</td>
+<td>ホスト（起動時）</td>
+</tr>
+<tr>
+<td><code>/masuda/checks/&lt;名前&gt;</code></td>
+<td><code>settings.json</code>の<code>checks</code>を実行可能スクリプトにしたもの</td>
+<td>ホスト（起動時）</td>
+</tr>
+<tr>
+<td><code>/masuda/privileged-commands.json</code></td>
+<td>特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない</td>
+<td>ホスト（起動時）</td>
+</tr>
+<tr>
+<td><code>~/.claude/CLAUDE.md</code>、<code>~/.claude/agents/</code></td>
+<td>ループ規約、サブエージェント定義</td>
+<td>ホスト（起動時）</td>
+</tr>
+</tbody>
+</table>
+<p>ホストはゲストが書いた場所を読むとき、そのノードの出力ディレクトリ以外は読まない。読んだものは必ず検証を通す。</p>
+<h3 id="egress">ネットワークとegress<a class="headerlink" href="#egress" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Gondolinのユーザー空間ネットワークスタックが、HTTP/1.xとTLS（MITM）以外を落とす。DNSは合成モード。ゲストには汎用NATが無い</li>
+<li>許可ホストは<strong>宣言</strong>（<code>.masuda/settings.json</code>の<code>egress</code>）と<strong>承認</strong>（<code>.masuda/settings.local.json</code>）の積集合が上限で、各ノードの<code>egress:</code>がその部分集合を選ぶ。Claude APIのホストは常に許可</li>
+<li>ゲスト→ホストは<code>tcp.hosts</code>で<code>masuda.internal</code>→そのワークスペース専用のローカルポートへ対応付ける。ポートはサンドボックスごとに別で、別のVMからは届かない</li>
+<li>git over SSHが要る場合はGondolinのSSHプロキシ（exec専用、ホスト鍵検証はホスト側）を使い、<code>execPolicy</code>で「pushできるのは自分のブランチだけ」を強制する</li>
+</ul>
+<h3 id="_11">秘密<a class="headerlink" href="#_11" title="Permanent link">&para;</a></h3>
+<p>本物の秘密はゲストに入れない。</p>
+<ul>
+<li>宣言: <code>.masuda/settings.json</code>の<code>secrets</code>に、名前・送ってよいホスト・置換場所（<code>header</code>既定、<code>body</code>は明示）・モード（<code>placeholder</code>既定、<code>plaintext</code>は例外）を書く</li>
+<li>値: <code>masuda secret set &lt;NAME&gt;</code>で<code>$XDG_DATA_HOME/masuda/secrets/&lt;repo-hash&gt;/&lt;NAME&gt;</code>（0600）に置く。チームメイトごとに別の値を持てる</li>
+<li>Claude APIのトークンも同じ仕組みの1つ（名前<code>CLAUDE_CODE_OAUTH_TOKEN</code>、ホスト<code>api.anthropic.com</code>）。<code>claudeToken</code>でどの登録トークンを使うかを選ぶ。トークンはアカウントに付くものなので、既定の置き場所はユーザー単位の<code>$XDG_DATA_HOME/masuda/secrets/_user/&lt;NAME&gt;</code>（<code>SetSecret</code>の<code>repo_root</code>が空、<code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>の<code>--repo</code>無し）。リポジトリの置き場所に同じ名前があればそちらを優先する</li>
+<li><code>.env</code>はコピーしない。<code>envFiles</code>の宣言から、秘密はプレースホルダ・公開値は実値で<strong>生成</strong>する</li>
+<li><code>plaintext</code>モードはローカルの承認が無ければ起動を拒否し、<code>masuda secret list</code>で一目で分かる</li>
+</ul>
+<h3 id="_12">特権コマンド<a class="headerlink" href="#_12" title="Permanent link">&para;</a></h3>
+<p>対象リポジトリのテストがrootやDockerを要する場合、その実行だけを<strong>2つ目のVM</strong>（root、使い捨て）へ切り出す。</p>
+<ul>
+<li>宣言: <code>privilegedCommands</code>に名前・イメージエントリ・コマンド・<code>inputs</code>（gitignore対象で運ぶ必要があるパスのglob）・<code>outputs</code>・タイムアウト。承認はローカル</li>
+<li>実行: sandbox serviceの<code>RunJob</code>を1回呼ぶ。VMの作成・ファイルの投入・実行・<code>outputs</code>の回収・破棄はsandboxが持ち、masudaは方針（宣言・承認・通信先・どのツリーを渡すか・結果の置き先）だけを持つ</li>
+<li>受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（<code>refs/masuda/wip/privileged-&lt;run-id&gt;</code>）、ホストの一時ファイルのbundleにして<code>RunJob</code>の<code>HostFile</code>で特権VMへ置く。前処理（<code>setup_shell</code>）で<code>/workspace</code>へ<code>git init</code>→<code>fetch</code>→<code>checkout</code>して展開し、bundleを消す。展開に失敗したらコマンドは動かさず、基盤の失敗としてエラーにする。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。<code>inputs</code>に当たるファイルは<code>RunJob</code>の<code>FromSandbox</code>で、sandboxの中でメインVMから特権VMへ直接写す（masudaのプロセスを通らない）。gitignoreの内容が暗黙に境界を決めることはない</li>
+<li>結果: <code>outputs</code>は<code>RunJob</code>がホストの<code>records/privileged/&lt;run-id&gt;/outputs/</code>へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>へ置く。特権VMはAPIトークンもMCPも持たない</li>
+<li>呼び出し口はMCPツール<code>run_privileged_command(name)</code>と、ワークフローの<code>privileged</code>ノード（<code>name</code>で宣言を指し、終了コードで<code>done</code>/<code>failed</code>に分岐する。engineの<code>Runner.RunPrivileged</code>）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は<code>records/definitions/</code>の写しから読み、承認は作業ツリーの<code>settings.local.json</code>のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く<code>privileged</code>ノードの名前は、<code>Run</code>・<code>Resume</code>の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（<code>privileged.Resolve</code>）、足りなければ何も作らずにまとめて<code>FailedPrecondition</code>で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の<code>Resume</code>（または<code>Advance</code>）で同じ出現をやり直す</li>
+<li>宣言（承認の状態を除く）は実行開始時にゲストの<code>/masuda/privileged-commands.json</code>へ置く（<a href="../../guest-protocol/">guest-protocol.md</a>）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない</li>
+<li>同じワークスペースでは1つずつ動かす。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</li>
+</ul>
+<p>ホストの記録は<code>records/privileged/&lt;run-id&gt;/</code>に置く。</p>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>中身</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>result.json</code></td>
+<td>名前・呼んだ<code>privileged</code>ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した<code>outputs</code>・<code>outputs_error</code>、または失敗の理由</td>
+</tr>
+<tr>
+<td><code>exit-code</code></td>
+<td>終了コード</td>
+</tr>
+<tr>
+<td><code>log</code></td>
+<td>標準出力と標準エラーの末尾</td>
+</tr>
+<tr>
+<td><code>outputs/</code></td>
+<td>回収した<code>outputs</code>のファイル</td>
+</tr>
+</tbody>
+</table>
+<p><code>outputs_error</code>は、宣言した<code>outputs</code>のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は<code>outputs</code>に入る。</p>
+<h3 id="_13">設定ファイル<a class="headerlink" href="#_13" title="Permanent link">&para;</a></h3>
+<p>対象リポジトリの<code>.masuda/</code>に2つ置く。<code>settings.json</code>はコミットされる宣言で無条件には信頼せず、<code>settings.local.json</code>（gitignore対象）の利用者ごとの承認と揃ったときだけ効く。どちらも知らないキーがあれば読み込みを断る。</p>
+<p><code>settings.json</code>（宣言）:</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>image</code></td>
+<td>ゲストイメージのエントリ（<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>）。既定<code>default</code></td>
+</tr>
+<tr>
+<td><code>images.&lt;entry&gt;.diskMiB</code></td>
+<td>そのエントリで作るVMのルートディスクの最小容量。既定4096</td>
+</tr>
+<tr>
+<td><code>egress</code></td>
+<td>ゲストが届いてよいホストの宣言（先頭の<code>*.</code>だけワイルドカード）</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td>秘密の宣言（<code>name</code>・<code>hosts</code>・<code>mode</code>・<code>in</code>）。<code>CLAUDE_CODE_OAUTH_TOKEN</code>は予約済みで宣言できない</td>
+</tr>
+<tr>
+<td><code>envFiles</code></td>
+<td>ゲストの作業ツリーに生成するdotenv（<code>path</code>・<code>vars</code>）。<code>.git/</code>の下と作業ツリーの外は書けない</td>
+</tr>
+<tr>
+<td><code>privilegedCommands</code></td>
+<td>特権コマンドの宣言（<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。<code>description</code>は承認のハッシュに含めない）</td>
+</tr>
+<tr>
+<td><code>checks</code></td>
+<td>チェック名→シェルコマンド。ゲストの<code>/masuda/checks/&lt;名前&gt;</code>になる</td>
+</tr>
+<tr>
+<td><code>claudeSettings</code></td>
+<td>ゲストの<code>~/.claude/settings.json</code>へ合成するオブジェクト（フックはmasudaのものが優先）</td>
+</tr>
+<tr>
+<td><code>agents</code></td>
+<td>役の名前→<code>model</code>・<code>effort</code>の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は<code>run</code>・<code>resume</code>・<code>workflow check</code>が断る</td>
+</tr>
+<tr>
+<td><code>publish.remote</code></td>
+<td><code>target: remote</code>のpublishがpushする実リポジトリのremoteの名前。既定<code>origin</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>settings.local.json</code>（利用者ごとの承認と値）:</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>egressApproved</code></td>
+<td><code>egress</code>のうち承認したホスト。宣言との積集合が許可の上限</td>
+</tr>
+<tr>
+<td><code>secretsApproved</code></td>
+<td><code>plaintext</code>モードの秘密のうち、本物の値をゲストに置いてよいと承認した名前</td>
+</tr>
+<tr>
+<td><code>privilegedCommandsApproved.&lt;名前&gt;.declHash</code></td>
+<td>特権コマンドの承認。承認した時点の宣言の正準JSONのsha256で、宣言が変われば失効する</td>
+</tr>
+<tr>
+<td><code>claudeToken</code></td>
+<td>Claude APIのトークンとして使う秘密ストアの名前。既定<code>CLAUDE_CODE_OAUTH_TOKEN</code></td>
+</tr>
+<tr>
+<td><code>vars</code></td>
+<td><code>envFiles</code>の公開値（秘密として宣言していない変数の値）</td>
+</tr>
+<tr>
+<td><code>stallAfter</code></td>
+<td>無活動のしきい値（Goのduration）のこのリポジトリでの上書き。無ければ<code>config.json</code>の値（「活動の観測と停止の検知」の節）</td>
+</tr>
+</tbody>
+</table>
+<p>秘密の値はどちらにも置かない（<code>&lt;DataDir&gt;/secrets/&lt;repo-hash&gt;/&lt;NAME&gt;</code>、Claudeのトークンは既定で<code>&lt;DataDir&gt;/secrets/_user/&lt;NAME&gt;</code>）。</p>
+<p>リポジトリに依らない<code>masuda serve</code>全体の設定は<code>$XDG_CONFIG_HOME/masuda/config.json</code>（未設定なら<code>~/.config/masuda/config.json</code>。<code>masuda serve --config</code>で変えられる）。無ければすべて既定で、知らないキーがあれば<code>masuda serve</code>は起動しない。</p>
+<table>
+<thead>
+<tr>
+<th>キー</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>listen</code></td>
+<td>UDSに加えてConnectを待ち受けるループバックのアドレス（例<code>"127.0.0.1:7788"</code>）。ループバック以外は断る。無ければUDSだけ（「9. 公開API」の節）</td>
+</tr>
+<tr>
+<td><code>sandboxSocket</code></td>
+<td><code>masuda-sandbox serve</code>のUDS。既定<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>。<code>--sandbox-socket</code>を明示すればそちらが勝つ</td>
+</tr>
+<tr>
+<td><code>stallAfter</code></td>
+<td>無活動のしきい値の既定（Goのduration）。既定<code>10m</code></td>
+</tr>
+<tr>
+<td><code>diskWarnBytes</code></td>
+<td>ワークスペース置き場の使用量の警告しきい値（バイト）。既定20GiB。置き場はserve全体で1つなのでここだけに置く</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7">7. ゲストとホストの間<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<p>ゲストのエージェントが使うMCPツール（<code>masuda.internal</code>経由、HTTP）。中身は<code>docs/guest-protocol.md</code>。</p>
+<table>
+<thead>
+<tr>
+<th>ツール</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>next_task</code></td>
+<td>メインエージェントが次のタスクを受け取る。ゲート待ち・質問待ちの間はブロックする</td>
+</tr>
+<tr>
+<td><code>write_output(name, content)</code></td>
+<td>サブエージェントが出力データを書く。ホストが検証して受け付ける</td>
+</tr>
+<tr>
+<td><code>report_result(outcome, feedback?)</code></td>
+<td>ノードの終わり方を報告する</td>
+</tr>
+<tr>
+<td><code>report_concern(text)</code></td>
+<td>セキュリティ上の懸念を自己申告する（triage）</td>
+</tr>
+<tr>
+<td><code>ask_human(questions)</code></td>
+<td><code>question</code>ノードの質問を出す</td>
+</tr>
+<tr>
+<td><code>run_privileged_command(name)</code></td>
+<td>上記</td>
+</tr>
+</tbody>
+</table>
+<p>同じエンドポイントに<code>POST /hooks</code>があり、ゲストのClaude Codeフック（<code>Notification</code>・<code>PostToolUse</code>・<code>Stop</code>・<code>SessionEnd</code>）がイベントを送る。</p>
+<h2 id="8">8. 活動の観測と停止の検知<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
+<p>ワークスペースの活動は<code>working / waiting_input / waiting_gate / waiting_question / stalled / dead / idle</code>と最終活動時刻で表し、公開APIの<code>Watch</code>で配信する。次の情報源を合成する。</p>
+<table>
+<thead>
+<tr>
+<th>情報源</th>
+<th>分かること</th>
+<th>信頼性</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sandbox serviceのHTTPフック（Claude APIへの全リクエストがホストを通る）</td>
+<td>推論中（リクエスト進行中）、ツール実行中（直近に完了）、無活動の継続時間</td>
+<td>ゲストが汚染されていても偽装できない</td>
+</tr>
+<tr>
+<td>ゲストのClaude Codeフック（<code>/hooks</code>）</td>
+<td>許可待ち、idle、質問の内容、正常終了</td>
+<td>ゲストの協力が前提</td>
+</tr>
+<tr>
+<td>sandbox serviceの<code>Exec</code>でのプロセス確認</td>
+<td>tmuxセッションと<code>claude</code>の生存</td>
+<td>確実</td>
+</tr>
+</tbody>
+</table>
+<p>無活動がしきい値を超えれば<code>stalled</code>、プロセスが無ければ<code>dead</code>。「ツールを呼び続けるが進捗がない」暴走は活動として見えるので、進入回数の上限で止める。</p>
+<h3 id="_14">活動の決め方<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
+<p>上から順に見て、最初に当たったものが活動になる。</p>
+<ol>
+<li>ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code>。STARTINGもエージェントがまだ動いていないので<code>idle</code>で、<code>detail</code>に起動の段階（<code>building image (log: ...)</code>→<code>booting the VM</code>→<code>preparing the guest</code>→<code>starting Claude Code</code>）を入れ、段階が変わるたびに<code>status</code>のイベントを流す</li>
+<li><code>claude</code>（tmuxのセッション）が無い: <code>dead</code>。<code>SessionEnd</code>フック、sandboxの停止・失敗、<code>Exec</code>での生存確認のどれかで分かる</li>
+<li>進行中のAPIリクエストがある: <code>working</code></li>
+<li>ゲストの<code>Notification</code>フックが待ちを言っている（<code>idle_prompt</code>→<code>idle</code>、<code>permission_prompt</code>→<code>permission</code>、<code>elicitation_dialog</code>→<code>question</code>。<code>input_wait</code>に入る）: <code>waiting_input</code>。その後にHTTP・ツール・MCPの活動があれば消える</li>
+<li>RUNNINGで、最終活動からしきい値を超えた: <code>stalled</code></li>
+<li>それ以外: <code>working</code></li>
+</ol>
+<p>APIリクエストを入力待ちより先に見るのは、フックがゲストの協力を前提とする補助情報で、ホストが観測したリクエストの方が確かなため。ただしsandboxはクライアントが応答前に切ったリクエストの終わりを知らせないので、進行中のリクエストは次のように打ち切る。</p>
+<ul>
+<li>始まってから2分を超えたものは進行中とみなさない</li>
+<li><code>idle_prompt</code>の通知が来たら、その60秒より前に始まって終わっていないものを捨てる（Claude Codeは入力待ちが60秒続くと<code>idle_prompt</code>を出すので、それより前のリクエストは切られている）</li>
+</ul>
+<p>活動の観測はメモリにだけ持つ。serveを再起動したワークスペースはSTOPPED（活動は<code>idle</code>）になり、Resumeで観測をやり直す。</p>
+<h3 id="_15">無活動のしきい値<a class="headerlink" href="#_15" title="Permanent link">&para;</a></h3>
+<ul>
+<li><code>config.json</code>の<code>stallAfter</code>（Goのduration、既定<code>10m</code>）を、対象リポジトリの<code>settings.local.json</code>の<code>stallAfter</code>が上書きする。何分黙れば異常かは利用者のマシンの速さやClaudeのプランで変わるので、コミットされる<code>settings.json</code>には置かない</li>
+<li><code>masuda serve --stall-after</code>が0でなければ、全ワークスペースでそちらが勝つ。既定は0（設定に従う）</li>
+<li>読むのはRun・Resumeで実行を組み立てるとき。読めない値・正でない値はFailedPreconditionで断る。変更はResumeか次のRunから効く</li>
+<li>見回りの間隔は最も短いしきい値の1/4（1秒〜30秒）</li>
+</ul>
+<h3 id="_16">ディスク使用量<a class="headerlink" href="#_16" title="Permanent link">&para;</a></h3>
+<ul>
+<li>serveは60秒ごとに<code>&lt;DataDir&gt;/workspaces/</code>の通常ファイルの合計と、その内数の<code>&lt;id&gt;/exports/</code>の合計を測る</li>
+<li>しきい値は<code>config.json</code>の<code>diskWarnBytes</code>（既定20GiB）。置き場はserve全体で1つなので、リポジトリごとの設定には置かない</li>
+<li>下回っていた状態から超えたときにだけ、標準エラーへのログとWatchの<code>ServeNotice{kind: "disk-warning", value: 使用量}</code>（<code>workspace_id</code>が空）を1回出す。超えたままなら繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）</li>
+<li>何も消さない。何を残すかは利用者が<code>masuda remove</code>で決める</li>
+</ul>
+<h2 id="9-api">9. 公開API<a class="headerlink" href="#9-api" title="Permanent link">&para;</a></h2>
+<p><code>masuda serve</code>がConnectで提供する。UIもCLIも同じAPIを使う。Protobufで定義し、gRPCとHTTP+JSONの両方で呼べる。</p>
+<ul>
+<li>Workspace: <code>Run</code>、<code>Resume</code>、<code>Get</code>、<code>List</code>、<code>Watch</code>（状態とイベントのストリーム）、<code>Stop</code>、<code>Remove</code>、<code>AttachInfo</code></li>
+<li>Gate: <code>ListOpen</code>、<code>Get</code>、<code>Decide</code>（approved/rejected/dismiss/halt/redo、コメント付き）</li>
+<li>Question: <code>ListOpen</code>、<code>Answer</code></li>
+<li>Staging: <code>ListRefs</code>、<code>GetCommit</code>、<code>Diff</code>、<code>GetBlob</code>、<code>ListComments</code>、<code>AddComment</code>（commit+file+line）</li>
+<li>Config: <code>ListEgress</code>/<code>ApproveEgress</code>/<code>RejectEgress</code>、<code>ListSecrets</code>/<code>SetSecret</code>/<code>ApproveSecret</code>/<code>RejectSecret</code>、<code>ListPrivilegedCommands</code>/<code>ApprovePrivilegedCommand</code>、<code>ListImages</code>/<code>BuildImage</code></li>
+<li>Workflow: <code>List</code>、<code>Show</code>（合成した図）、<code>Check</code></li>
+</ul>
+<p>認証はローカル利用のみを前提とする。<code>$XDG_RUNTIME_DIR/masuda.sock</code>（UDS）で待ち受け、<code>config.json</code>に<code>listen</code>があるときだけ、そのループバックのアドレスでも同じハンドラで待ち受ける（ブラウザのGUIはUDSに繋げないため）。ループバックの待ち受けはCORSで任意のオリジンを許し、<code>Host</code>ヘッダーがループバックの名前でない要求は断る（DNS rebinding対策）。リモートから使う場合はユーザーがリバースプロキシ等で守る。</p>
+<h3 id="watch">Watch<a class="headerlink" href="#watch" title="Permanent link">&para;</a></h3>
+<ul>
+<li>イベントの<code>seq</code>は全ワークスペースで1本の通し番号。<code>after_seq</code>を渡せばその続きから受け取れる。再送用にメモリに持つのは直近10000件だけで、<code>after_seq</code>の次のイベントがそこに残っていなければ<code>OutOfRange</code>で終わる（黙って最古から続けると、取りこぼしにクライアントが気づけない）。serveを再起動すると再送できるのは再起動後のイベントだけになる（実行記録そのものは<code>records/execution-log.jsonl</code>に残る）</li>
+<li><code>after_seq</code>が0（新しいものだけ）でも、最初に対象のワークスペースごとの今の<code>status</code>を1つずつ送る。この<code>status</code>は新しい番号を振らず、<code>seq</code>に今の最新の番号を入れる。購読の開始と状態の変化が前後しても、変化を取りこぼしたまま次の変化まで何も見えなくなることがない</li>
+<li><code>status</code>は内容が前に流したものと変わったときだけ流す。時刻（<code>updated_at</code>・<code>last_activity</code>）だけの違いでは流さない</li>
+<li><code>workspace_id</code>が空のイベントはserve全体についての通知（<code>ServeNotice{kind, detail, value}</code>）で、どのワークスペースを指定したWatchにも届く。今出すのはディスク使用量の警告（<code>disk-warning</code>）だけ</li>
+<li><code>after_seq</code>が最新の<code>seq</code>より大きい（serveの再起動で番号が振り直された後に古い番号で繋いだ等）か、<code>after_seq+1</code>が再送できる最古の<code>seq</code>より小さければ<code>OutOfRange</code>で終わる。後者の理由には再送できる最古の<code>seq</code>を入れる。クライアントは<code>after_seq: 0</code>で繋ぎ直し、最初の<code>status</code>で状態を組み立て直す。<code>after_seq: 0</code>は常に通る</li>
+</ul>
+<h3 id="gate">Gateの判断<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h3>
+<ul>
+<li>判断は<code>approved</code>・<code>rejected</code>・<code>dismiss</code>・<code>halt</code>・<code>redo</code>。<code>dismiss</code>・<code>halt</code>・<code>redo</code>はtriageゲートへの判断</li>
+<li><code>approved</code>のときだけ<code>target_hash</code>がゲートのものと一致しなければならない（見た内容と違うものを承認させない）。triageの判断に<code>target_hash</code>は要らない</li>
+<li>判断済みのゲートへの<code>Decide</code>はFailedPrecondition</li>
+</ul>
+<h3 id="workflow">Workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h3>
+<p><code>Run</code>と違い写しは取らず、作業ツリーの<code>.masuda/</code>（と同梱の定義）を直接読む。<code>repo_root</code>が空なら同梱だけを読む。</p>
+<ul>
+<li><code>List</code>: ワークフローごとに、どこから来たか（<code>origin</code>、engineの<code>Set.Origins</code>）と受け取る<code>inputs</code></li>
+<li><code>Show</code>: engineが割り込みを合成したMermaidの図（<code>Set.Mermaid</code>）</li>
+<li><code>Check</code>: <code>Set.Check</code>の問題の一覧。<code>workflow</code>が空ならrootのワークフロー（他のどのワークフローの<code>Set.Reachable</code>にも含まれないもの）をそれぞれ検査し、重複を除く。部品はrootから辿って検査される。定義が読み込めないときはエラーにせず、その理由を問題の1つとして返す</li>
+</ul>
+<h3 id="attachinfo">AttachInfo<a class="headerlink" href="#attachinfo" title="Permanent link">&para;</a></h3>
+<ul>
+<li>sandboxの<code>EnableSsh</code>（ユーザー<code>ubuntu</code>）を呼び、返った秘密鍵を<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/ssh/id</code>へ0600で置く。sandbox serviceが書いた鍵ファイルは使わない（置き場所と寿命がsandbox側の都合で決まり、masudaから見えないため）</li>
+<li>返す<code>ssh_argv</code>は、<code>-i</code>をその鍵へ差し替え、接続先の前に<code>-t</code>、後ろに<code>tmux attach -t claude-work</code>を置いたもの</li>
+<li>鍵は<code>EnableSsh</code>のたびに替わる。前の接続はそのまま残る。鍵はStopで消す</li>
+<li>起動中（boot前）・止まっているワークスペースはFailedPrecondition。フェイクsandboxは<code>Unimplemented</code>を返す</li>
+</ul>
+<h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h3>
+<p><code>masuda serve</code>・<code>masuda init</code>・<code>masuda version</code>・<code>masuda doctor</code>・<code>masuda privileged-command run</code>以外のサブコマンドは、<code>--socket</code>で指定した<code>masuda serve</code>の公開APIを叩くだけのクライアント。</p>
+<table>
+<thead>
+<tr>
+<th>コマンド</th>
+<th>動き</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>masuda run &lt;workflow&gt;</code></td>
+<td>ワークフローを新しいワークスペースで始める（<code>--repo</code>・<code>--branch</code>・<code>--base</code>・<code>--image</code>・<code>--input &lt;名前&gt;=&lt;値&gt;</code>／<code>&lt;名前&gt;=@&lt;ファイル&gt;</code>）</td>
+</tr>
+<tr>
+<td><code>masuda resume &lt;id&gt;</code></td>
+<td>再開</td>
+</tr>
+<tr>
+<td><code>masuda list [--all] [--repo &lt;dir&gt;]</code></td>
+<td><code>--repo</code>を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで<code>ID BRANCH STATE ACTIVITY POSITION OPEN</code>。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（<code>gate:&lt;名前&gt;</code>・<code>question:&lt;出現ID&gt;</code>）。DONE・STOPPEDは<code>--all</code>のときだけ出し、SUSPENDED・BLOCKEDは常に出す</td>
+</tr>
+<tr>
+<td><code>masuda chat &lt;id&gt;</code></td>
+<td><code>AttachInfo</code>の<code>ssh_argv</code>を<code>exec</code>する。<code>Unimplemented</code>なら「このsandboxではsshで接続できません（フェイクsandbox等）」</td>
+</tr>
+<tr>
+<td><code>masuda watch [&lt;id&gt;]</code></td>
+<td>状態とイベントを流し続ける。<code>workspace_id</code>が空のイベントは種類と本文だけで出す</td>
+</tr>
+<tr>
+<td><code>masuda gate list / show / approve / reject / dismiss / halt / redo</code></td>
+<td>ゲートの一覧・内容・判断。<code>dismiss</code>・<code>halt</code>・<code>redo</code>は<code>&lt;id&gt; &lt;出現ID&gt; [--comment]</code>で<code>target_hash</code>を要らない。<code>show</code>はtriageなら懸念の本文を字下げで、deviationなら対象外のファイルを箇条書きで出し、未判断ならそのゲートで打てるコマンドを添える</td>
+</tr>
+<tr>
+<td><code>masuda question list / answer</code></td>
+<td>質問の一覧・回答</td>
+</tr>
+<tr>
+<td><code>masuda stop &lt;id&gt;</code> / <code>masuda remove &lt;id&gt;</code></td>
+<td>sandboxを止める（記録は残す）／exports以外を消す（動いているものは<code>--force</code>で止めて消す）</td>
+</tr>
+<tr>
+<td><code>masuda workflow list / show / check [&lt;workflow&gt;] [--repo &lt;dir&gt;]</code></td>
+<td><code>--repo</code>を省略すると今いる作業ツリーのトップ（<code>git rev-parse --show-toplevel</code>）、作業ツリーの外なら同梱だけ。<code>check</code>は問題があれば終了コード1</td>
+</tr>
+<tr>
+<td><code>masuda egress / secret / privileged-command / image ...</code></td>
+<td>宣言の一覧と承認、秘密の値の登録（標準入力から）、イメージのビルド</td>
+</tr>
+<tr>
+<td><code>masuda privileged-command run &lt;name&gt;</code></td>
+<td>特権コマンドの単体実行。serveを通さず<code>masuda-sandbox serve</code>へ直接つなぐ（<code>doctor</code>と同じ）。宣言・承認・通信先は作業ツリーの<code>settings.json</code>・<code>settings.local.json</code>から<code>privileged.Resolve</code>で、イメージは作業ツリーの<code>.masuda/images/</code>から（<code>serve.BuildImage</code>。ビルドの記録は<code>--data-dir</code>へ）。ツリーは一時ディレクトリへcloneしたリポジトリで作り（<code>staging.SnapshotWorktree</code>。GIT_DIRを一時リポジトリ、GIT_WORK_TREEを利用者の作業ツリー、GIT_INDEX_FILEを一時ファイルにして<code>add -A</code>→<code>write-tree</code>→<code>commit-tree</code>）、利用者のリポジトリにrefもオブジェクトも書かない。<code>inputs</code>は作業ツリーのgitignoreされたファイルから<code>HostFile</code>で渡す。実行は<code>privileged.Run</code>（メインのゲストが無いので結果はホストにだけ置く）。終了コードは特権コマンドのもの（シグナルは128+番号、時間切れは124、masuda自体の失敗は1）</td>
+</tr>
+<tr>
+<td><code>masuda init</code></td>
+<td>対象リポジトリに<code>.masuda/</code>の雛形を置く</td>
+</tr>
+<tr>
+<td><code>masuda serve</code></td>
+<td>常駐プロセス（<code>--socket</code>・<code>--data-dir</code>・<code>--sandbox-socket</code>・<code>--stall-after</code>・<code>--config</code>・<code>--fake-sandbox</code>）</td>
+</tr>
+<tr>
+<td><code>masuda version</code></td>
+<td>masudaのバージョン（<code>-ldflags -X main.version</code>）・Goの版・sandbox.protoのSHA-256と、届けば接続先のsandboxの<code>GetServerInfo</code>と契約の一致</td>
+</tr>
+<tr>
+<td><code>masuda doctor</code></td>
+<td>前提（config.json・git・Docker・Node・QEMU・KVM/HVF・sandbox serviceの到達と契約・Claudeトークン）を確かめ、足りないものと直し方を出す。足りなければ終了コード1</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10">10. 脅威モデル<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
+<p>Gondolinの前提をそのまま採り、masudaの不変条件を足す。</p>
+<ul>
+<li><strong>守るもの</strong>: ホストのファイルシステム、ホストの秘密（APIトークン、外部サービスの認証情報）、実リポジトリとリモート</li>
+<li><strong>敵</strong>: ゲスト内のコード全部。プロンプトインジェクション等で汚染されたエージェントが、ゲスト内のroot相当を取ったとしても成り立つこと</li>
+<li><strong>信頼するもの</strong>: ホストOS、<code>masuda serve</code>と<code>masuda-sandbox serve</code>のプロセス、QEMUの隔離、ゲストイメージの供給元</li>
+<li><strong>ホストで動く対象リポジトリ由来のもの</strong>: 作業ツリーの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>を<code>docker build</code>することだけ（<code>RUN</code>はホストのDockerの中で、egressの制限なしに動く）。定義は<code>masuda run</code>を打った作業ツリーの<code>.masuda/</code>から写し、<code>--branch</code>で指したブランチの<code>.masuda/</code>は使わない。したがってホストで動くのは、人間が自分でチェックアウトした定義だけで、チェックアウトしたリポジトリでビルドツールを打つのと同じ信頼になる。信頼できないブランチは作業ツリーに取り出さず<code>--branch</code>で指す。定義をブランチから取る設計に変えるなら、承認を挟むのではなく、特権コマンドと同じく使い捨てVMの中でビルドする（sandboxの契約変更）</li>
+<li><strong>守備範囲外</strong>: QEMU/KVM/HVFの脆弱性によるVM脱出、同じホストアカウントの別プロセス、サイドチャネル、DoS（VM内のCPU/メモリ消費、ホストのNodeプロセスへの負荷、stagingの肥大）。masudaはstagingとexportsのディスク使用量だけ監視する</li>
+<li><strong>不変条件</strong>: 秘密はゲストに入らない。ゲストが書いたものはすべて未検証データ。ホストFSへの経路はcommit/publishと宣言した<code>outputs</code>だけ。外部への経路は許可リストとSSHの<code>execPolicy</code>だけ。許可したホストへは、ゲストが読めるものは何でも送れる（これは許容する）</li>
+</ul>
+<h2 id="11">11. 対応プラットフォームと依存<a class="headerlink" href="#11" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Linux x86_64（WSL2含む）</th>
+<th>macOS arm64</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仮想化</td>
+<td>QEMU + KVM（<code>/dev/kvm</code>）</td>
+<td>QEMU + HVF</td>
+</tr>
+<tr>
+<td>必要なもの</td>
+<td><code>qemu-system-x86</code>、<code>qemu-utils</code>、Node 22.19以上、Docker（イメージビルド）、git</td>
+<td><code>brew install qemu node</code>、Docker Desktop等</td>
+</tr>
+<tr>
+<td>sudo</td>
+<td>不要</td>
+<td>不要</td>
+</tr>
+</tbody>
+</table>
+<p>masuda自身の開発にはGo 1.26以上とbuf。</p>
+<h3 id="sandbox">sandboxとの互換性<a class="headerlink" href="#sandbox" title="Permanent link">&para;</a></h3>
+<p>masudaとmasuda-sandboxは同じタグでリリースし、組で使う（<a href="../release/">リリース手順</a>）。組が合っているかは契約の文面で確かめる。masudaはビルド時に、sandboxクライアントの生成元<code>sandbox.proto</code>のSHA-256を<code>internal/sandboxcontract</code>の定数に埋める（<code>go generate ./internal/sandboxcontract/</code>、CIが生成し直して差分が無いことを確かめる）。sandbox serviceは<code>GetServerInfo</code>の<code>contract_sha256</code>に自分の生成元の同じ値を返す。</p>
+<ul>
+<li><code>masuda serve</code>は起動時に<code>GetServerInfo</code>を呼ぶ。値が違えば（<code>GetServerInfo</code>を持たない古いsandboxも）起動しない。届かないだけなら警告を出して起動を続ける（sandboxを後から起動する順序も許すため）</li>
+<li><code>Run</code>・<code>Resume</code>はワークスペースを作る・STARTINGにする前にもう一度呼ぶ。値が違えば<code>FailedPrecondition</code>（理由に両方のバージョン）、届かなければ<code>Unavailable</code></li>
+<li>フェイクsandboxは常にmasudaの値を返す</li>
+<li><code>masuda version</code>・<code>masuda doctor</code>も同じ確認をして表示する</li>
+</ul>
+<h2 id="12">12. 旧設計から残すもの・捨てるもの<a class="headerlink" href="#12" title="Permanent link">&para;</a></h2>
+<p><strong>残す（アイデアまたは移植）</strong>: ワークフローエンジンの中核（定義・検査・出現IDによる記録、<code>v1-frozen-workflow-engine</code>の<code>internal/workflow</code>）、14のレビュー観点とchecker/fixerの往復、ゲートとtriageの意味論、<code>git clone --bare --local</code>とfast-forward publish、宣言と承認の二重構造。</p>
+<p><strong>捨てる</strong>: <code>internal/microvm</code>、rootfsビルダー、<code>internal/egressproxy</code>、<code>masuda-net-helper</code>、<code>setup-vm-host.sh</code>、APIゲートウェイ、mcp-relay、trusted/写しの照合、<code>sharedfs</code>、ワークスペースごとの状態デーモン、Python資産、ADR群。</p>
+<h2 id="13">13. マイルストーン<a class="headerlink" href="#13" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>内容</th>
+<th>状態（2026-10-02）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M1</td>
+<td>契約の凍結。3つの契約・契約テスト・作業指示書</td>
+<td>完了</td>
+</tr>
+<tr>
+<td>M2</td>
+<td>sandbox serviceとengineの並列実装。masudaはstagingとworkspace</td>
+<td>完了（契約テスト3リポジトリとも全部緑）</td>
+</tr>
+<tr>
+<td>M3</td>
+<td>masudaで結線。<code>masuda run</code>で同梱developワークフローが実機で1周する</td>
+<td>完了（2周。各リポジトリの<code>docs/work-orders.md</code>のM8とliveテスト）</td>
+</tr>
+<tr>
+<td>M4</td>
+<td>ドキュメント（利用者・統合開発者・開発者の3系統）、設定の整理、ストリーミングの復旧</td>
+<td>進行中</td>
+</tr>
+<tr>
+<td>M5</td>
+<td>macOSでの検証</td>
+<td>未着手（チームメイトの環境で1周）</td>
+</tr>
+</tbody>
+</table>
+<p>細かい作業単位は各リポジトリの<code>docs/work-orders.md</code>にある。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
