@@ -66,6 +66,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	// 人間が判断することを前提にしたコマンドはdeny、質問への回答はask。list・showは打てるまま。
 	wantDeny := []string{"Bash(rm *)", "Bash(masuda remove *)",
 		"Bash(masuda secret set *)", "Bash(masuda secret approve *)", "Bash(masuda secret reject *)",
+		"Bash(masuda env import *)",
 		"Bash(masuda egress approve *)", "Bash(masuda egress reject *)",
 		"Bash(masuda gate approve *)", "Bash(masuda gate reject *)", "Bash(masuda gate comment *)",
 		"Bash(masuda gate dismiss *)", "Bash(masuda gate halt *)", "Bash(masuda gate redo *)",

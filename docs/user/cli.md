@@ -32,6 +32,7 @@ masuda <command> [flags]
 | [`prime`](#prime) | ホストのエージェント向けのmasudaの使い方を出す |
 | [`egress`](#egress) | 通信先の宣言の一覧と承認 |
 | [`secret`](#secret) | 秘密の一覧・値の登録・平文の承認 |
+| [`env`](#env) | `.env`の値を秘密と公開値へまとめて取り込む |
 | [`privileged-command`](#privileged-command) | 特権コマンドの一覧・承認・単体実行 |
 | [`image`](#image) | イメージの一覧・ビルド |
 | [`workflow`](#workflow) | ワークフローの一覧・図・検査 |
@@ -203,7 +204,7 @@ masuda init [--repo <dir>]
 | ファイル | 足すもの |
 |---|---|
 | `CLAUDE.local.md` | `<!-- BEGIN MASUDA -->`〜`<!-- END MASUDA -->`で囲んだ短い節（`masuda prime`への案内）。この印があれば足さない |
-| `.claude/settings.local.json` | `hooks.SessionStart`に`masuda prime --hook-json`。`permissions.deny`に、人間が判断することを前提にしたコマンド（`secret set・approve・reject`、`egress approve・reject`、`gate approve・reject・comment・dismiss・halt・redo`、`privileged-command approve`、`remove`）。`permissions.ask`に`question answer`。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする |
+| `.claude/settings.local.json` | `hooks.SessionStart`に`masuda prime --hook-json`。`permissions.deny`に、人間が判断することを前提にしたコマンド（`secret set・approve・reject`、`env import`、`egress approve・reject`、`gate approve・reject・comment・dismiss・halt・redo`、`privileged-command approve`、`remove`）。`permissions.ask`に`question answer`。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする |
 
 `.gitignore`にはこの2つも足す（`.claude/`ごと無視する行があれば`.claude/settings.local.json`は足さない）。
 
@@ -248,6 +249,35 @@ masuda secret reject <NAME> [--repo <dir>]
 ```sh
 masuda secret set LINEAR_API_KEY < ~/linear-key.txt
 ```
+
+## env
+
+```text
+masuda env import <file> [--repo <dir>]
+```
+
+`.env`形式のファイルの値を、名前ごとに振り分けて取り込む（[秘密・egress・特権コマンド](secrets-and-egress.md#env-import)）。
+
+| 名前 | 行き先 | RESULT |
+|---|---|---|
+| `settings.json`の`secrets`で宣言した名前 | 秘密ストア（`secret set`と同じ。`plaintext`の承認は別に`secret approve`） | `secret` |
+| 秘密ではないが、`envFiles`のどれかの`vars`にある名前 | `settings.local.json`の`vars` | `var` |
+| `CLAUDE_CODE_OAUTH_TOKEN`と、`claudeToken`で選んだ名前 | 取り込まない（`secret set`で登録する） | `skipped: Claude token ...` |
+| どちらでもない名前 | 取り込まない。標準エラーに一覧が出る。秘密なら`secrets`に宣言、そうでなければ`envFiles`の`vars`に足してから打ち直す | `skipped: not declared` |
+
+- 値はどこにも表示しない。出すのは名前と行き先だけ
+- 秘密を含むときだけ`masuda serve`が要る。`vars`だけならserveを通さず`settings.local.json`を直接書く（他の項目は残す）
+- 書式の誤り（行番号付き）・同じ名前の2回目・宣言した秘密の空の値があれば、何も取り込まずにエラーにする
+- 秘密の登録が途中で失敗したら、そこで止める（それより前の秘密は登録済み、後の秘密と`vars`は書かない）。どこまで入ったかは名前ごとのRESULT（`secret`・`failed`・`not imported`）で分かる。登録はどれも上書きなので、原因を直して同じコマンドを打ち直せばよい
+
+ファイルの書き方:
+
+- 1行に`NAME=VALUE`。空行と`#`で始まる行は無視し、先頭の`export `は読み飛ばす。`NAME`と`=`の前後の空白は無視する
+- クォートしない値は前後の空白を落とし、空白に続く`#`から後をコメントとして捨てる（`a#b`はそのまま）
+- `'...'`は中身をそのまま使う。`"..."`は`\n`・`\r`・`\t`・`\\`・`\"`・`\$`・`` \` ``だけを解き、それ以外の`\`はエラー。`masuda run`がVMに生成する`.env`と同じ書き方
+- クォートは1行の中で閉じる（複数行の値は書けない。改行は`"..."`の中の`\n`で書く）。閉じた後には空白とコメントだけを置ける
+- `${VAR}`等の展開はしない
+- 値が空の行は、`vars`なら空文字として書く。宣言した秘密ならエラー
 
 ## privileged-command
 

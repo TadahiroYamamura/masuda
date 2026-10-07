@@ -35,6 +35,7 @@
 - `masuda gate approve|reject|comment|dismiss|halt|redo`
 - `masuda egress approve|reject`
 - `masuda secret set|approve|reject`
+- `masuda env import`（秘密の値を扱う）
 - `masuda privileged-command approve|run`（`run`は特権VMをrootで動かす）
 - `masuda remove`（ワークスペースの記録を消す）
 

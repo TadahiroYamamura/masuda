@@ -31,6 +31,7 @@ commands:
                             egressの宣言と承認
   secret list|set|approve|reject
                             秘密の一覧・値の登録（値は標準入力から）・plaintextの承認
+  env import <file>         .envの値を、宣言済みの秘密は秘密ストアへ、envFilesの公開値はsettings.local.jsonのvarsへ取り込む
   privileged-command list|approve|run
                             特権コマンドの一覧・承認・単体実行（runはserve不要。masuda-sandboxへ直接つなぐ）
   image list|build          ゲストイメージの一覧・ビルド
@@ -79,6 +80,8 @@ func main() {
 		err = runEgress(os.Args[2:])
 	case "secret":
 		err = runSecret(os.Args[2:])
+	case "env":
+		err = runEnv(os.Args[2:])
 	case "privileged-command":
 		err = runPrivilegedCommand(os.Args[2:])
 	case "image":
