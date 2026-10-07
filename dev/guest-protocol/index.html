@@ -1441,6 +1441,14 @@
 <td>プロジェクト固有の落とし穴。ホストの<code>.masuda/pitfalls.jsonl</code>を実行開始時に写して検査し、空行と<code>#</code>の行を除いたもの（1行1件<code>{id, category, trigger, question, background}</code>）。無ければ置かない。同梱のplan-questionsが読む</td>
 </tr>
 <tr>
+<td><code>/masuda/privileged-commands.json</code></td>
+<td>特権コマンドの宣言。実行開始時に定義の写し（<code>records/definitions/</code>）の<code>privilegedCommands</code>から作る。名前→<code>{description?, command, image, inputs, outputs, timeoutSeconds}</code>（<code>timeoutSeconds</code>は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの<code>settings.local.json</code>の承認で行う）</td>
+</tr>
+<tr>
+<td><code>/masuda/privileged/&lt;run-id&gt;/</code></td>
+<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。<code>run_privileged_command</code>か<code>privileged</code>ノードで動かすたびに置く。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</td>
+</tr>
+<tr>
 <td><code>~/.claude/.mcp.json</code>相当</td>
 <td><code>masuda</code>サーバー1つ（<code>http://masuda.internal:7000/mcp</code>）</td>
 </tr>

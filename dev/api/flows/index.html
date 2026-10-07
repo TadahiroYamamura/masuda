@@ -1642,8 +1642,8 @@
 <li><code>inputs</code>の値は<code>bytes</code>なのでbase64。必要な入力の名前は<code>WorkflowService.List</code>の<code>inputs</code>にある</li>
 <li><code>base</code>を省くと、実リポジトリのHEADが指すブランチから分岐する。<code>image</code>を省くと<code>settings.json</code>の<code>image</code></li>
 <li>publishを含まないワークフロー（<code>workflows/review</code>等）では、<code>branch</code>に実リポジトリに既にあるブランチを指定できる。stagingのブランチはその先頭から始まり、<code>refs/masuda/base</code>は<code>base</code>（省けば実リポジトリの既定のブランチ）とブランチの分岐点になる。publishを含むワークフローで既存のブランチを指定すると<code>already_exists</code></li>
-<li><code>Run</code>はSTARTINGの<code>Workspace</code>を返す。VMの起動は返った後に進み、成功すればRUNNING、失敗すればBLOCKED（<code>reason</code>が<code>sandbox boot failed:</code>で始まる）になる。どちらも<code>Watch</code>の<code>status</code>で分かる</li>
-<li>前提が欠けていると<code>failed_precondition</code>で、足りないもの（秘密の値、承認、Dockerfile等）が<code>;</code>区切りでまとめて返る。そのまま利用者に見せ、<a href="#config">設定</a>の画面へ案内する</li>
+<li><code>Run</code>はSTARTINGの<code>Workspace</code>を返す。VMの起動は返った後に進み、成功すればRUNNING、失敗すればSUSPENDED（<code>reason</code>が<code>sandbox boot failed:</code>で始まる。原因を直せば<code>Resume</code>できる）になる。どちらも<code>Watch</code>の<code>status</code>で分かる</li>
+<li>前提が欠けていると<code>failed_precondition</code>で、足りないもの（秘密の値、承認、ワークフローが届く<code>privileged</code>ノードの宣言と承認、Dockerfile等）が<code>;</code>区切りでまとめて返る。そのまま利用者に見せ、<a href="#config">設定</a>の画面へ案内する</li>
 </ul>
 <h3 id="watch_1"><code>Watch</code>を読む<a class="headerlink" href="#watch_1" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="err">POST /masuda.api.v1.WorkspaceService/Watch</span>
@@ -1929,7 +1929,7 @@
 <tbody>
 <tr>
 <td><code>IDLE</code></td>
-<td>DONE・STOPPED・BLOCKED。または観測をまだ始めていない（STARTING）</td>
+<td>DONE・STOPPED・SUSPENDED・BLOCKED。または観測をまだ始めていない（STARTING）</td>
 <td>状態（<code>state</code>）だけを見せる。STARTINGなら<code>detail</code>に起動の段階が入る（下記）</td>
 </tr>
 <tr>
@@ -1989,24 +1989,25 @@
 <tr>
 <td><code>Stop</code></td>
 <td>DONE以外</td>
-<td>VMを壊してSTOPPEDにする。記録・staging・WIPスナップショットは残る。STOPPEDへの<code>Stop</code>は何もしない。engineが止めたBLOCKEDはVMを壊すだけでBLOCKEDのまま（再開できないことが変わらないように）</td>
+<td>VMを壊してSTOPPEDにする（SUSPENDEDも）。記録・staging・WIPスナップショットは残る。STOPPEDへの<code>Stop</code>は何もしない。engineが記録したBLOCKEDはVMを壊すだけでBLOCKEDのまま（再開できないことが変わらないように）</td>
 </tr>
 <tr>
 <td><code>Resume</code></td>
-<td>STOPPED、起動に失敗したBLOCKED（<code>reason</code>が<code>sandbox boot failed:</code>で始まる）</td>
-<td>新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻して続ける。位置に応じてRUNNING・WAITING_GATE・WAITING_QUESTIONになる</td>
+<td>STOPPED・SUSPENDED</td>
+<td>新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻して続ける。SUSPENDEDでVMが残っていれば、前提の確認が通ってから<code>Stop</code>と同じに片付ける。位置に応じてRUNNING・WAITING_GATE・WAITING_QUESTIONになる</td>
 </tr>
 <tr>
 <td><code>Remove</code></td>
-<td>動いていない（STOPPED・DONE・BLOCKED）。動いているものは<code>force: true</code></td>
+<td>動いていない（STOPPED・DONE・SUSPENDED・BLOCKED）。動いているものは<code>force: true</code></td>
 <td><code>exports/</code>だけを残してワークスペースを消す。以後そのIDは<code>not_found</code></td>
 </tr>
 </tbody>
 </table>
 <ul>
-<li>engineが止めたBLOCKED（triageの<code>halt</code>、進入回数の上限等）は再開できない。中身を確かめたら<code>Remove</code>する</li>
+<li>SUSPENDEDはengineの記録の外で止まったもの（VMの起動の失敗、未承認の特権ノード・承認されていない通信先・execやpublishの基盤の失敗）で、engineは何も記録していない。原因を直して<code>Resume</code>すれば同じノードをやり直す。利用者には<code>reason</code>を見せ、直したら<code>Resume</code>するよう案内する</li>
+<li>engineが記録したBLOCKED（triageの<code>halt</code>、進入回数の上限等）は再開できない。中身を確かめたら<code>Remove</code>する</li>
 <li><code>Resume</code>は定義を開始時の写しから読む（作業ツリーの<code>.masuda/</code>を書き換えても効かない）。承認・秘密の値・<code>stallAfter</code>は今の設定から読み直す</li>
-<li><code>Resume</code>の前提が欠けていれば<code>Run</code>と同じく<code>failed_precondition</code>で、足りないものがまとめて返る</li>
+<li><code>Resume</code>の前提が欠けていれば<code>Run</code>と同じく<code>failed_precondition</code>で、足りないもの（届く<code>privileged</code>ノードの承認を含む）がまとめて返る。このとき状態は変えない（SUSPENDEDのVMも残る）</li>
 <li>実行記録とexportsは<code>&lt;DataDir&gt;/workspaces/&lt;id&gt;/</code>にある（<code>DataDir</code>は<code>$XDG_DATA_HOME/masuda</code>）。APIからは読めない</li>
 </ul>
 <h2 id="config">設定<a class="headerlink" href="#config" title="Permanent link">&para;</a></h2>

@@ -1649,6 +1649,7 @@
 <span class="w">  </span><span class="p">],</span>
 <span class="w">  </span><span class="nt">"privilegedCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"integration-test"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PostgreSQLを起動して結合テストを流す"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"./scripts/integration-test.sh"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"privileged"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"inputs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"testdata/fixtures/**"</span><span class="p">],</span>
@@ -1687,6 +1688,30 @@
 </tbody>
 </table>
 <p>VMのイメージのエントリ。<code>.masuda/images/&lt;image&gt;/Dockerfile</code>からビルドする。名前は英数字で始まり、英数字・<code>.</code>・<code>_</code>・<code>-</code>だけ。<code>masuda run --image</code>で実行ごとに変えられる。</p>
+<p>VMの起動のたびに、次のディレクトリは空のtmpfsになる（VMの基盤であるGondolinの起動処理による）。Dockerfileでここに置いたものはVMの中では見えないので、別の場所に置くか、起動のたびに作る。エージェントのVMも特権コマンドのVMも同じ。</p>
+<table>
+<thead>
+<tr>
+<th>ディレクトリ</th>
+<th>よくあるつまずき</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>/run</code>（<code>/var/run</code>）</td>
+<td>デーモンのソケット・ロックファイルの置き場所（PostgreSQLの<code>/var/run/postgresql</code>等）が無い。起動するスクリプトで<code>mkdir -p</code>するか、データの隣に置く</td>
+</tr>
+<tr>
+<td><code>/root</code></td>
+<td>rootで入れた道具の設定やキャッシュ（<code>/root/go</code>、<code>/root/.npm</code>等）が消える。特権コマンドはrootで動くので効いてくる。<code>/usr/local</code>や<code>/opt</code>に置く</td>
+</tr>
+<tr>
+<td><code>/tmp</code>・<code>/var/tmp</code>・<code>/var/cache</code>・<code>/var/log</code></td>
+<td>イメージに置いたものは消える（<code>/var/cache/apt</code>は空になる）。大きくなるキャッシュの置き場所としては向いている（メモリを使う）</td>
+</tr>
+</tbody>
+</table>
+<p><code>/home</code>・<code>/etc</code>・<code>/usr</code>・<code>/opt</code>・<code>/var/lib</code>（<code>/var/lib/docker</code>等）は、イメージの中身がそのまま残る。</p>
 <p>VMのClaude Codeの版は、Dockerfileのinstall行で固定されている。</p>
 <div class="highlight"><pre><span></span><code><span class="k">RUN</span><span class="w"> </span>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://claude.ai/install.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>bash<span class="w"> </span>-s<span class="w"> </span>--<span class="w"> </span><span class="m">2</span>.1.287
 </code></pre></div>
@@ -1871,6 +1896,12 @@
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>description</code></td>
+<td>文字列</td>
+<td>空</td>
+<td>エージェント向けの説明（何をするか、いつ使うか）。VMの<code>/masuda/privileged-commands.json</code>に写る。承認の対象ではない</td>
+</tr>
 <tr>
 <td><code>command</code></td>
 <td>文字列</td>

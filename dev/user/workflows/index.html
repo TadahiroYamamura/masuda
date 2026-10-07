@@ -1578,6 +1578,10 @@
 <td>決まったコマンドをVMの中で動かす（例 <code>command: ["/masuda/checks/test"]</code>）。終了コード0で<code>done</code>、それ以外で<code>failed</code></td>
 </tr>
 <tr>
+<td><code>privileged</code></td>
+<td><code>settings.json</code>で宣言し承認した特権コマンドを、名前（<code>name</code>）で別の使い捨てVM（root）で動かす。終了コード0で<code>done</code>、それ以外か時間切れで<code>failed</code>（<a href="../secrets-and-egress/#privileged">特権コマンド</a>）</td>
+</tr>
+<tr>
 <td><code>approval</code></td>
 <td>人間の承認を待つ（ゲート）。<code>gate</code>にゲートの名前、<code>target</code>に見せるもの（<code>plan</code>・<code>diff</code>＝publishされるコミット済みの差分・<code>step-diff</code>＝これからcommitされる未コミットの差分・データ名）</td>
 </tr>
@@ -1608,7 +1612,7 @@
 </tbody>
 </table>
 <p><code>agent</code>ノードに<code>continues: agents/&lt;役&gt;</code>を書くと、そのタスクを、この実行でその役が最後に担当したサブエージェントに続きとして渡す（前の作業の記憶を持ったまま次の仕事をさせる）。同梱のdevelop・fixでは、指摘を直す<code>fix</code>ノード（fixer）が、直前に実装したimplementerを続ける。続きは成り立たないこともある（<code>resume</code>でVMを作り直した後など）ので、そのときは新しいサブエージェントが入力だけから進める。続ける役の入力は、記憶が無くても仕事ができるだけのものを渡すこと。また、続ける側の役の<code>tools</code>は続けられる側の<code>tools</code>の一部でなければならない（<code>tools</code>の省略は続けられる側も省略のときだけ可）。サブエージェントの道具は起動時に決まり、続きで増やせないためで、満たさないと検査で拒否される。</p>
-<p><code>next</code>は「終わり方→行き先」の対応で、行き先はノード名か<code>end</code>（<code>end:&lt;ラベル&gt;</code>で終わり方に名前を付けられる）。<code>max</code>（<code>agent</code>・<code>exec</code>の既定3）は同じノードに入れる回数の上限で、超えると<code>exhausted</code>という終わり方になる。</p>
+<p><code>next</code>は「終わり方→行き先」の対応で、行き先はノード名か<code>end</code>（<code>end:&lt;ラベル&gt;</code>で終わり方に名前を付けられる）。<code>max</code>（<code>agent</code>・<code>exec</code>・<code>privileged</code>の既定3）は同じノードに入れる回数の上限で、超えると<code>exhausted</code>という終わり方になる。</p>
 <p>ノードごとに<code>egress:</code>（そのノードの間だけ開く通信先）と<code>secrets:</code>（そのノードの間だけ使える秘密）を書ける。どちらも<code>settings.json</code>の宣言とあなたの承認の範囲の中からしか選べない（<a href="../secrets-and-egress/">秘密・egress・特権コマンド</a>）。</p>
 <h3 id="masuda">masudaが必ず差し込むもの<a class="headerlink" href="#masuda" title="Permanent link">&para;</a></h3>
 <p>ワークフローに書かなくても、次は常に働き、外せない。</p>

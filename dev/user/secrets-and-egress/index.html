@@ -816,7 +816,29 @@
   <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
+        ワークフローで成否を確かめる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
         何が渡り、何が返るか
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#privileged-command-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        単体で試す（masuda privileged-command run）
       
     </span>
   </a>
@@ -1523,7 +1545,29 @@
   <a href="#_8" class="md-nav__link">
     <span class="md-ellipsis">
       
+        ワークフローで成否を確かめる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
         何が渡り、何が返るか
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#privileged-command-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        単体で試す（masuda privileged-command run）
       
     </span>
   </a>
@@ -1680,12 +1724,13 @@ masuda<span class="w"> </span>secret<span class="w"> </span>list
 <p>テストがrootやDockerを要するとき、そのコマンドだけを<strong>別の使い捨てVM（rootで動く）</strong>で実行させる仕組み。エージェントが動くVMはrootにしない。</p>
 <div class="admonition note">
 <p class="admonition-title">実機での確認</p>
-<p>特権コマンドはフェイクのsandboxでの契約テストまでで、実際のVMではまだ1周させていない。</p>
+<p>特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、まだ実機で確かめていない。</p>
 </div>
 <h3 id="_6">宣言と承認<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <div class="highlight"><span class="filename">.masuda/settings.json</span><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"privilegedCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"integration-test"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"description"</span><span class="p">:</span><span class="w"> </span><span class="s2">"PostgreSQLを起動して結合テストを流す。DBに触る変更の後に使う"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"./scripts/integration-test.sh"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"privileged"</span><span class="p">,</span>
 <span class="w">      </span><span class="nt">"inputs"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"testdata/large/**"</span><span class="p">],</span>
@@ -1703,24 +1748,59 @@ masuda<span class="w"> </span>privileged-command<span class="w"> </span>approve<
 </code></pre></div>
 <ul>
 <li><code>image</code>は特権VMのイメージのエントリ（<code>.masuda/images/privileged/Dockerfile</code>等）。エージェントのVMと同じエントリでもよい</li>
+<li><code>description</code>はエージェント向けの説明（何をするコマンドか、いつ使うか）。動くものを変えないので承認には含まれず、書き換えても承認し直す必要は無い</li>
 <li>承認は、その時点の宣言の内容（<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>）に結びつく。宣言が1文字でも変わると、<code>list</code>のAPPROVEDが<code>stale</code>になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため</li>
+<li>承認はイメージの中身（<code>.masuda/images/&lt;image&gt;/</code>のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは<code>/workspace</code>のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、<code>.masuda/images/</code>の変更はレビューで見る</li>
 <li>特権VMが通信できるのは、宣言かつ承認済みのegressのホスト</li>
 </ul>
 <h3 id="_7">呼ばれ方<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>エージェントは<code>run_privileged_command(&lt;名前&gt;)</code>というツールで、名前を指定して呼ぶことしかできない。コマンドの文字列を渡す口は無い</li>
-<li>同梱の実装の役（<code>implementer</code>）は、VMのcloneの<code>.masuda/settings.json</code>を読んで宣言を知る。使わせるなら<code>.masuda/settings.json</code>をコミットしておく。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて<code>stuck</code>で終える</li>
+<li>宣言は実行開始時にVMの<code>/masuda/privileged-commands.json</code>へ置かれる（名前→<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。承認の状態は含まない）。同梱の実装の役（<code>implementer</code>）はここを読んで宣言を知るので、<code>.masuda/settings.json</code>をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて<code>stuck</code>で終える</li>
 <li>呼ばれるたびに、宣言は実行開始時の写しから、承認は作業ツリーの<code>settings.local.json</code>から読む。実行中にエージェントがVMの中の宣言を書き換えても、承認と食い違って断られるだけ</li>
 <li>同じワークスペースでは1つずつ動く</li>
 </ul>
-<h3 id="_8">何が渡り、何が返るか<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<h3 id="_8">ワークフローで成否を確かめる<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h3>
+<p>エージェントに呼ばせるだけだと、通ったかどうかはエージェントの申告になる。ワークフローに<code>privileged</code>ノードを置くと、masudaが宣言の名前でコマンドを動かし、終了コードで分岐する。0なら<code>done</code>、0以外か時間切れなら<code>failed</code>（ログの末尾が次のノードへの差し戻しになる）。</p>
+<div class="highlight"><span class="filename">.masuda/workflows/develop-db.yaml（抜粋）</span><pre><span></span><code><span class="nt">nodes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">implement</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agent</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">agents/implementer</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db-verify</span>
+<span class="w">  </span><span class="nt">db-verify</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">privileged</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">integration-test</span><span class="w">        </span><span class="c1"># privilegedCommandsの名前</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">done</span><span class="p">:</span><span class="w"> </span><span class="nv">commit</span><span class="p p-Indicator">,</span><span class="nt"> failed</span><span class="p">:</span><span class="w"> </span><span class="nv">implement</span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<ul>
+<li>ノードに書けるのは<code>name</code>と<code>max</code>（既定3。超えると<code>exhausted</code>）だけ。動かすもの・入出力・通信先・期限は宣言と承認で決まる</li>
+<li>ワークフロー（呼び出す部品のワークフローを含む）が届く<code>privileged</code>ノードの宣言と承認は、<code>masuda run</code>・<code>masuda resume</code>の始めに確かめる。宣言が無い・承認されていない・承認の後に宣言が変わったものがあれば、何も作らずに断り、必要な<code>masuda privileged-command approve &lt;名前&gt;</code>をまとめて出す</li>
+<li>実行の途中で承認を取り消すと（<code>settings.local.json</code>は呼ばれるたびに読む）、そのノードで実行が<code>suspended</code>で止まり、理由に必要な<code>masuda privileged-command approve &lt;名前&gt;</code>が出る。結果は記録されないので、承認して<code>masuda resume &lt;id&gt;</code>すると同じノードからやり直す</li>
+<li>エージェントのVMの作業ツリーは変えないので、計画外の変更の検出の基準にはならない</li>
+</ul>
+<h3 id="_9">何が渡り、何が返るか<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h3>
 <ol>
 <li>呼ばれた時点のVMの作業ツリーのスナップショット（gitで追跡しているもの）を特権VMへ渡し、<code>/workspace</code>に展開する</li>
-<li>gitで運ばれないファイル（gitignoreされた生成物やデータ）のうち、<code>inputs</code>のglobに当たるものをエージェントのVMから特権VMへ写す。gitignoreの中身が黙って境界を決めることは無い</li>
+<li>gitで運ばれないファイル（gitignoreされた生成物やデータ）のうち、<code>inputs</code>のglobに当たるものをエージェントのVMから特権VMへ直接写す（ホストを経由しない）。gitignoreの中身が黙って境界を決めることは無い</li>
 <li>rootで<code>command</code>を<code>/workspace</code>から動かす（<code>timeoutSeconds</code>で打ち切り、既定1時間）</li>
 <li>終了コード・ログの末尾・<code>outputs</code>に当たるファイルを回収し、写しをエージェントのVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）へ置く。特権VMは壊す</li>
 </ol>
-<p>特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの<code>workspaces/&lt;id&gt;/records/privileged/&lt;run-id&gt;/</code>に残る（<code>result.json</code>に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明）。</p>
+<p>特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの<code>workspaces/&lt;id&gt;/records/privileged/&lt;run-id&gt;/</code>に残る（<code>result.json</code>に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、<code>privileged</code>ノードから動いたときはその出現）。</p>
+<h3 id="privileged-command-run">単体で試す（<code>masuda privileged-command run</code>）<a class="headerlink" href="#privileged-command-run" title="Permanent link">&para;</a></h3>
+<p>ワークフローを回す前に、特権コマンドのスクリプトが実機の特権VMで動くかを確かめる。ホストのDockerで通っても、特権VMでは起動のたびに空になるディレクトリ（<code>/run</code>等）やカーネルの違いで落ちることがある。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>privileged-command<span class="w"> </span>run<span class="w"> </span>integration-test<span class="w">            </span><span class="c1"># 作業ツリーの今の状態で</span>
+masuda<span class="w"> </span>privileged-command<span class="w"> </span>run<span class="w"> </span>integration-test<span class="w"> </span>--ref<span class="w"> </span>main<span class="w"> </span><span class="c1"># mainのコミットで</span>
+masuda<span class="w"> </span>privileged-command<span class="w"> </span>run<span class="w"> </span>integration-test<span class="w"> </span>--out<span class="w"> </span>./privileged-out
+</code></pre></div>
+<ul>
+<li><code>masuda serve</code>は要らない（<code>masuda-sandbox serve</code>へ直接つなぐ）。ワークスペースもClaudeも使わない</li>
+<li>宣言・承認・通信先は作業ツリーの<code>.masuda/settings.json</code>と<code>settings.local.json</code>から読む。承認が無ければ断る。イメージも作業ツリーの<code>.masuda/images/&lt;image&gt;/</code>からビルドするので、スクリプトを直すたびに流し直せる</li>
+<li><code>/workspace</code>に置くのは作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル）。<code>--ref</code>ならそのコミットのツリー。あなたのリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）。gitignoreの判定には<code>.gitignore</code>・<code>.git/info/exclude</code>・<code>core.excludesFile</code>が効く</li>
+<li><code>inputs</code>は作業ツリーのgitignoreされたファイルから運ぶ（ワークフローではエージェントのVMから）</li>
+<li>コマンドの出力はそのまま端末に流れる。終了コードは特権コマンドのもの（シグナルなら128+番号、時間切れは124、masuda自体の失敗は1）。拒否した通信先があれば最後に一覧が出る。<code>exit-code</code>・<code>log</code>・<code>outputs/</code>は<code>--out</code>（無ければ新しい一時ディレクトリ）に置き、その場所を最後に出す</li>
+<li>走っているワークフローと同じ<code>masuda-sandbox serve</code>を使うので、VMのメモリ・CPUを取り合う。重いコマンドは、走っているワークスペースが無いときに試す</li>
+<li>人間が打つコマンド。<code>masuda init</code>はホストのエージェントからは打てないようにする</li>
+</ul>
 
 
 

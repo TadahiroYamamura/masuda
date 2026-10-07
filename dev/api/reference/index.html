@@ -4894,13 +4894,13 @@ API traffic (trustworthy) and guest hooks (informative).</p>
 <td>outcome</td>
 <td><a href="#string">string</a></td>
 <td></td>
-<td>Set when state is DONE or BLOCKED.</td>
+<td>Set when state is DONE: how the run ended (&#34;done&#34;, &#34;needs_human&#34;, ...).</td>
 </tr>
 <tr>
 <td>reason</td>
 <td><a href="#string">string</a></td>
 <td></td>
-<td></td>
+<td>Why the run stopped. Set when state is SUSPENDED or BLOCKED, and when DONE with an outcome other than &#34;done&#34;.</td>
 </tr>
 <tr>
 <td>open_gates</td>
@@ -5030,7 +5030,7 @@ whatever id it asked for.</p>
 <tr>
 <td>ACTIVITY_KIND_IDLE</td>
 <td>7</td>
-<td>nothing to do (done/stopped)</td>
+<td>nothing to do (done/stopped/blocked/suspended)</td>
 </tr>
 </tbody>
 </table>
@@ -5083,7 +5083,12 @@ whatever id it asked for.</p>
 <tr>
 <td>WORKSPACE_STATE_BLOCKED</td>
 <td>7</td>
-<td></td>
+<td>A dead end: the engine recorded that the run cannot go on (e.g. a node used up its max with nowhere to go, or a triage halted it). Cannot be resumed. The sandbox is kept until Stop or Remove.</td>
+</tr>
+<tr>
+<td>WORKSPACE_STATE_SUSPENDED</td>
+<td>8</td>
+<td>Paused on a failure outside the engine&#39;s records: the sandbox failed to boot, or a host node could not run (an unapproved privileged command, the sandbox service failing an exec). Nothing was recorded for the node, so once the cause is fixed, Resume continues from the same node. The sandbox is kept (when it booted) so the guest can be inspected; Stop destroys it and makes the workspace STOPPED.</td>
 </tr>
 </tbody>
 </table>
@@ -5329,7 +5334,7 @@ whatever id it asked for.</p>
 <td>Resume</td>
 <td><a href="#masuda-api-v1-ResumeRequest">ResumeRequest</a></td>
 <td><a href="#masuda-api-v1-Workspace">Workspace</a></td>
-<td>Resumes a stopped workspace from its records (new sandbox, re-clone).</td>
+<td>Resumes a STOPPED or SUSPENDED workspace from its records (new sandbox, re-clone; a SUSPENDED workspace&#39;s sandbox is destroyed first). A BLOCKED workspace cannot be resumed.</td>
 </tr>
 <tr>
 <td>Get</td>
@@ -5353,7 +5358,7 @@ whatever id it asked for.</p>
 <td>Stop</td>
 <td><a href="#masuda-api-v1-StopRequest">StopRequest</a></td>
 <td><a href="#masuda-api-v1-Workspace">Workspace</a></td>
-<td>Stops the sandbox but keeps records and staging; Resume continues.</td>
+<td>Stops the sandbox but keeps records and staging; Resume continues. A BLOCKED workspace stays BLOCKED (its sandbox is destroyed).</td>
 </tr>
 <tr>
 <td>Remove</td>

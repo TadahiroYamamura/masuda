@@ -2309,6 +2309,10 @@ masuda
 <td><code>refs/masuda/base</code></td>
 <td>分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base）</td>
 </tr>
+<tr>
+<td><code>refs/masuda/latest-wip</code></td>
+<td>最後に取り込んだ<code>refs/masuda/wip/*</code>を指すシンボリックref。再開で作業ツリーへ戻すWIPを決める（コミットの日時は時計が戻ると当てにならないため）</td>
+</tr>
 </tbody>
 </table>
 <h3 id="_2">既存のブランチで動かす<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h3>
@@ -2351,7 +2355,7 @@ masuda
 </table>
 <ul>
 <li>会話ログは、ゲストのホームをcwdにして<code>find .claude/projects -type f -name '*.jsonl'</code>を<code>Exec</code>し、各ファイルを<code>ReadFile</code>で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに<code>kind: export-warning</code>として記録し、publish・discardは止めない</li>
-<li>会話ログを回収するのは、DONE（publish・discard・<code>end</code>）とStop（<code>Remove</code>の<code>force</code>を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す</li>
+<li>会話ログを回収するのは、DONE（publish・discard・<code>end</code>）とStop（<code>Remove</code>の<code>force</code>を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す（SUSPENDEDは写さない。Stop・Resumeで書き出す）。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す</li>
 <li>再開後に書き出すと、同じパスのファイルは新しいもので置き換わる</li>
 <li><code>masuda remove</code>はワークスペースのディレクトリのうち<code>exports/</code>だけを残して消す</li>
 </ul>
@@ -2436,10 +2440,33 @@ masuda
 </tbody>
 </table>
 <h3 id="_4">再開<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
-<p><code>Resume</code>できるのは、STOPPEDのワークスペースと、sandboxの起動に失敗してBLOCKEDになったワークスペース（理由が<code>sandbox boot failed:</code>で始まるもの）。engineが止めたBLOCKEDは再開できない（<code>Resume</code>は<code>FailedPrecondition</code>）。engineが止めたBLOCKEDへの<code>Stop</code>はVMを壊すだけで状態はBLOCKEDのまま残し、<code>Stop</code>を挟んで再開できてしまうことを防ぐ。起動失敗のBLOCKEDはsandboxも実行の窓口も既に無く、記録は起動前のままなので、Stopを挟まずに再開できる。</p>
+<p>止まった状態は2つに分ける。</p>
+<table>
+<thead>
+<tr>
+<th>状態</th>
+<th>いつ</th>
+<th>再開</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SUSPENDED</td>
+<td>engineの記録の外で止まった。sandboxの起動の失敗（<code>reason</code>が<code>sandbox boot failed:</code>）と、engineへの呼び出し（<code>Advance</code>等）のエラー（<code>reason</code>が<code>engine:</code>。未承認の特権ノード、承認されていない通信先を選んだノード、execやpublishの基盤の失敗等）</td>
+<td>できる。engineは何も記録していないので、原因を直して再開すれば同じノードをやり直す</td>
+</tr>
+<tr>
+<td>BLOCKED</td>
+<td>engineが記録した行き止まり（<code>engine.StatusBlocked</code>。進入回数の上限を使い切って行き先が無い、triageの<code>halt</code>等）</td>
+<td>できない（<code>Resume</code>は<code>FailedPrecondition</code>）。再開してもengineがまたBLOCKEDを返すだけ</td>
+</tr>
+</tbody>
+</table>
+<p><code>Resume</code>できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（<code>chat</code>で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの<code>Stop</code>はVMを壊してSTOPPEDにする。BLOCKEDへの<code>Stop</code>はVMを壊すだけで状態はBLOCKEDのまま残し、<code>Stop</code>を挟んで再開できてしまうことを防ぐ。</p>
+<p>ゲストの<code>next_task</code>には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（<code>blocked</code>とは返さない）。ループ規約は<code>done</code>・<code>blocked</code>でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に<code>next_task</code>を呼び直せばResumeを待たずに進むこともある。</p>
 <ol>
 <li>定義は<code>records/definitions/</code>の写しから読み直す。作業ツリーの<code>.masuda/</code>がその後変わっていても、始めたときと同じ定義で進む</li>
-<li>承認・秘密の値・<code>stallAfter</code>は作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）</li>
+<li>承認・秘密の値・<code>stallAfter</code>は作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（<code>Run</code>と同じ）</li>
 <li>再開前に開いていた<code>ask_human</code>の質問を、記録に理由「再開で破棄」を書いて閉じる。聞いていたサブエージェントは前のVMと共に無くなっており、再開後はengineが同じ出現のタスクを渡し直すので、新しいエージェントが改めて聞く。<code>questions:</code>を書いた固定の質問はengine自身が待っているので閉じない</li>
 <li>新しいVMを作り、stagingから再cloneする</li>
 <li>最新の<code>refs/masuda/wip/&lt;出現ID&gt;</code>のtreeを<code>git read-tree -m -u HEAD &lt;wip&gt;</code>で作業ツリーへ戻す。HEADはブランチのまま動かさず、コミットしていない作業はindexに載った変更として戻る。engineの基準点（WIPスナップショット）と作業ツリーを揃えるため</li>
@@ -2577,7 +2604,7 @@ masuda
 <h3 id="vm">VM<a class="headerlink" href="#vm" title="Permanent link">&para;</a></h3>
 <ul>
 <li>Gondolin（QEMU、LinuxはKVM、macOSはHVF）。1ワークスペースにつき1VM。メモリ・CPUは設定で決める（既定4GiB・4）</li>
-<li>VMの書き込めるルートディスクの最小容量は<code>settings.json</code>の<code>images.&lt;entry&gt;.diskMiB</code>（既定4096MiB）。<code>CreateSandbox</code>の<code>disk_mib</code>として渡す。特権VMも、使うイメージのエントリの値で作る</li>
+<li>VMの書き込めるルートディスクの最小容量は<code>settings.json</code>の<code>images.&lt;entry&gt;.diskMiB</code>（既定4096MiB）。<code>CreateSandbox</code>の<code>disk_mib</code>として渡す。特権VMも、使うイメージのエントリの値で作る（<code>RunJob</code>の<code>disk_mib</code>）</li>
 <li>ゲストイメージは対象リポジトリの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>からDockerでビルドし、Gondolinの<code>oci.image</code>で資産化する。カーネルと起動層はGondolinのAlpine資産で、ホストに依存しない</li>
 <li>イメージに必要なもの: Claude Code（native）、tmux、git、openssh-server、非rootユーザー<code>ubuntu</code>（uid 1000）、<code>ca-certificates</code>。masudaがrootfsへ注入するものは無い</li>
 <li>ゲストの中にmasudaのバイナリは無い。ゲストが知っているのはMCPのURLとループ規約だけ</li>
@@ -2624,6 +2651,11 @@ masuda
 <td>ホスト（起動時）</td>
 </tr>
 <tr>
+<td><code>/masuda/privileged-commands.json</code></td>
+<td>特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない</td>
+<td>ホスト（起動時）</td>
+</tr>
+<tr>
 <td><code>~/.claude/CLAUDE.md</code>、<code>~/.claude/agents/</code></td>
 <td>ループ規約、サブエージェント定義</td>
 <td>ホスト（起動時）</td>
@@ -2651,9 +2683,11 @@ masuda
 <p>対象リポジトリのテストがrootやDockerを要する場合、その実行だけを<strong>2つ目のVM</strong>（root、使い捨て）へ切り出す。</p>
 <ul>
 <li>宣言: <code>privilegedCommands</code>に名前・イメージエントリ・コマンド・<code>inputs</code>（gitignore対象で運ぶ必要があるパスのglob）・<code>outputs</code>・タイムアウト。承認はローカル</li>
-<li>受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（<code>refs/masuda/wip/privileged-&lt;run-id&gt;</code>）、bundleで特権VMへ渡して<code>checkout</code>する。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。<code>inputs</code>に当たるファイルはメインVMから<code>ReadFile</code>→<code>WriteFile</code>で運ぶ。gitignoreの内容が暗黙に境界を決めることはない</li>
-<li>結果: 終了コード・ログ・<code>outputs</code>をホストが回収し、写しをメインVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>へ置く。特権VMはAPIトークンもMCPも持たない</li>
-<li>呼び出し口はMCPツール<code>run_privileged_command(name)</code>。コマンド文字列を渡す口は無い。宣言は<code>records/definitions/</code>の写しから読み、承認は作業ツリーの<code>settings.local.json</code>のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる</li>
+<li>実行: sandbox serviceの<code>RunJob</code>を1回呼ぶ。VMの作成・ファイルの投入・実行・<code>outputs</code>の回収・破棄はsandboxが持ち、masudaは方針（宣言・承認・通信先・どのツリーを渡すか・結果の置き先）だけを持つ</li>
+<li>受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（<code>refs/masuda/wip/privileged-&lt;run-id&gt;</code>）、ホストの一時ファイルのbundleにして<code>RunJob</code>の<code>HostFile</code>で特権VMへ置く。前処理（<code>setup_shell</code>）で<code>/workspace</code>へ<code>git init</code>→<code>fetch</code>→<code>checkout</code>して展開し、bundleを消す。展開に失敗したらコマンドは動かさず、基盤の失敗としてエラーにする。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。<code>inputs</code>に当たるファイルは<code>RunJob</code>の<code>FromSandbox</code>で、sandboxの中でメインVMから特権VMへ直接写す（masudaのプロセスを通らない）。gitignoreの内容が暗黙に境界を決めることはない</li>
+<li>結果: <code>outputs</code>は<code>RunJob</code>がホストの<code>records/privileged/&lt;run-id&gt;/outputs/</code>へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>へ置く。特権VMはAPIトークンもMCPも持たない</li>
+<li>呼び出し口はMCPツール<code>run_privileged_command(name)</code>と、ワークフローの<code>privileged</code>ノード（<code>name</code>で宣言を指し、終了コードで<code>done</code>/<code>failed</code>に分岐する。engineの<code>Runner.RunPrivileged</code>）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は<code>records/definitions/</code>の写しから読み、承認は作業ツリーの<code>settings.local.json</code>のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く<code>privileged</code>ノードの名前は、<code>Run</code>・<code>Resume</code>の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（<code>privileged.Resolve</code>）、足りなければ何も作らずにまとめて<code>FailedPrecondition</code>で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の<code>Resume</code>（または<code>Advance</code>）で同じ出現をやり直す</li>
+<li>宣言（承認の状態を除く）は実行開始時にゲストの<code>/masuda/privileged-commands.json</code>へ置く（<a href="../../guest-protocol/">guest-protocol.md</a>）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない</li>
 <li>同じワークスペースでは1つずつ動かす。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</li>
 </ul>
 <p>ホストの記録は<code>records/privileged/&lt;run-id&gt;/</code>に置く。</p>
@@ -2667,7 +2701,7 @@ masuda
 <tbody>
 <tr>
 <td><code>result.json</code></td>
-<td>名前・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した<code>outputs</code>・<code>outputs_error</code>、または失敗の理由</td>
+<td>名前・呼んだ<code>privileged</code>ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した<code>outputs</code>・<code>outputs_error</code>、または失敗の理由</td>
 </tr>
 <tr>
 <td><code>exit-code</code></td>
@@ -2717,7 +2751,7 @@ masuda
 </tr>
 <tr>
 <td><code>privilegedCommands</code></td>
-<td>特権コマンドの宣言（<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>）</td>
+<td>特権コマンドの宣言（<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。<code>description</code>は承認のハッシュに含めない）</td>
 </tr>
 <tr>
 <td><code>checks</code></td>
@@ -2869,7 +2903,7 @@ masuda
 <h3 id="_14">活動の決め方<a class="headerlink" href="#_14" title="Permanent link">&para;</a></h3>
 <p>上から順に見て、最初に当たったものが活動になる。</p>
 <ol>
-<li>ワークスペースの状態: DONE・STOPPED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code>。STARTINGもエージェントがまだ動いていないので<code>idle</code>で、<code>detail</code>に起動の段階（<code>building image (log: ...)</code>→<code>booting the VM</code>→<code>preparing the guest</code>→<code>starting Claude Code</code>）を入れ、段階が変わるたびに<code>status</code>のイベントを流す</li>
+<li>ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code>。STARTINGもエージェントがまだ動いていないので<code>idle</code>で、<code>detail</code>に起動の段階（<code>building image (log: ...)</code>→<code>booting the VM</code>→<code>preparing the guest</code>→<code>starting Claude Code</code>）を入れ、段階が変わるたびに<code>status</code>のイベントを流す</li>
 <li><code>claude</code>（tmuxのセッション）が無い: <code>dead</code>。<code>SessionEnd</code>フック、sandboxの停止・失敗、<code>Exec</code>での生存確認のどれかで分かる</li>
 <li>進行中のAPIリクエストがある: <code>working</code></li>
 <li>ゲストの<code>Notification</code>フックが待ちを言っている（<code>idle_prompt</code>→<code>idle</code>、<code>permission_prompt</code>→<code>permission</code>、<code>elicitation_dialog</code>→<code>question</code>。<code>input_wait</code>に入る）: <code>waiting_input</code>。その後にHTTP・ツール・MCPの活動があれば消える</li>
@@ -2936,7 +2970,7 @@ masuda
 <li>起動中（boot前）・止まっているワークスペースはFailedPrecondition。フェイクsandboxは<code>Unimplemented</code>を返す</li>
 </ul>
 <h3 id="cli">CLI<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h3>
-<p><code>masuda serve</code>・<code>masuda init</code>・<code>masuda version</code>・<code>masuda doctor</code>以外のサブコマンドは、<code>--socket</code>で指定した<code>masuda serve</code>の公開APIを叩くだけのクライアント。</p>
+<p><code>masuda serve</code>・<code>masuda init</code>・<code>masuda version</code>・<code>masuda doctor</code>・<code>masuda privileged-command run</code>以外のサブコマンドは、<code>--socket</code>で指定した<code>masuda serve</code>の公開APIを叩くだけのクライアント。</p>
 <table>
 <thead>
 <tr>
@@ -2955,7 +2989,7 @@ masuda
 </tr>
 <tr>
 <td><code>masuda list [--all] [--repo &lt;dir&gt;]</code></td>
-<td><code>--repo</code>を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで<code>ID BRANCH STATE ACTIVITY POSITION OPEN</code>。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（<code>gate:&lt;名前&gt;</code>・<code>question:&lt;出現ID&gt;</code>）。DONE・STOPPEDは<code>--all</code>のときだけ出し、BLOCKEDは常に出す</td>
+<td><code>--repo</code>を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで<code>ID BRANCH STATE ACTIVITY POSITION OPEN</code>。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（<code>gate:&lt;名前&gt;</code>・<code>question:&lt;出現ID&gt;</code>）。DONE・STOPPEDは<code>--all</code>のときだけ出し、SUSPENDED・BLOCKEDは常に出す</td>
 </tr>
 <tr>
 <td><code>masuda chat &lt;id&gt;</code></td>
@@ -2984,6 +3018,10 @@ masuda
 <tr>
 <td><code>masuda egress / secret / privileged-command / image ...</code></td>
 <td>宣言の一覧と承認、秘密の値の登録（標準入力から）、イメージのビルド</td>
+</tr>
+<tr>
+<td><code>masuda privileged-command run &lt;name&gt;</code></td>
+<td>特権コマンドの単体実行。serveを通さず<code>masuda-sandbox serve</code>へ直接つなぐ（<code>doctor</code>と同じ）。宣言・承認・通信先は作業ツリーの<code>settings.json</code>・<code>settings.local.json</code>から<code>privileged.Resolve</code>で、イメージは作業ツリーの<code>.masuda/images/</code>から（<code>serve.BuildImage</code>。ビルドの記録は<code>--data-dir</code>へ）。ツリーは一時ディレクトリへcloneしたリポジトリで作り（<code>staging.SnapshotWorktree</code>。GIT_DIRを一時リポジトリ、GIT_WORK_TREEを利用者の作業ツリー、GIT_INDEX_FILEを一時ファイルにして<code>add -A</code>→<code>write-tree</code>→<code>commit-tree</code>）、利用者のリポジトリにrefもオブジェクトも書かない。<code>inputs</code>は作業ツリーのgitignoreされたファイルから<code>HostFile</code>で渡す。実行は<code>privileged.Run</code>（メインのゲストが無いので結果はホストにだけ置く）。終了コードは特権コマンドのもの（シグナルは128+番号、時間切れは124、masuda自体の失敗は1）</td>
 </tr>
 <tr>
 <td><code>masuda init</code></td>

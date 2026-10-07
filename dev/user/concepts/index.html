@@ -1662,11 +1662,16 @@
 <td>ワークフローが終わった（publishやdiscardを含む）</td>
 </tr>
 <tr>
+<td><code>suspended</code></td>
+<td>中断した。VMの起動に失敗した、またはホストで動かすノード（<code>privileged</code>・<code>exec</code>等）を動かせなかった（特権コマンドの承認が取り消されていた、sandbox serviceが失敗した等）。ワークフローの記録には何も残っていないので、原因を直して<code>masuda resume</code>すれば同じノードからやり直す。理由は<code>masuda list</code>のPOSITION等に出る</td>
+</tr>
+<tr>
 <td><code>blocked</code></td>
-<td>進めなくなって止まった。理由は<code>masuda list</code>のPOSITION等に出る</td>
+<td>行き止まり。ワークフローが「これ以上進めない」と記録した（進入回数の上限を使い切って行き先が無い、triageの<code>halt</code>等）。<code>resume</code>しても同じところで止まるので、再開はできない。理由は<code>masuda list</code>のPOSITION等に出る</td>
 </tr>
 </tbody>
 </table>
+<p><code>suspended</code>と<code>blocked</code>はどちらも止まった状態だが、<code>suspended</code>は直せば続けられ、<code>blocked</code>は続けられない。どちらもVMが残っていれば<code>masuda chat</code>で中を見られ、<code>masuda stop</code>で片付けられる（<code>suspended</code>は<code>stopped</code>になり、<code>blocked</code>は<code>blocked</code>のまま）。</p>
 <h2 id="staging">staging<a class="headerlink" href="#staging" title="Permanent link">&para;</a></h2>
 <p>masudaだけが読み書きする、ワークスペースごとのgitのbareリポジトリ（<code>workspaces/&lt;id&gt;/staging.git</code>）。始めるときにあなたのリポジトリから複製して作る。</p>
 <ul>

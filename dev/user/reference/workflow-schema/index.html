@@ -657,6 +657,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権コマンド（privileged）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#continues" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1409,6 +1420,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権コマンド（privileged）
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#continues" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1579,6 +1601,10 @@
 <span class="w">    </span><span class="nt">secrets</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">LINEAR_API_KEY</span><span class="p p-Indicator">]</span>
 <span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span>
 <span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">done</span><span class="p">:</span><span class="w"> </span><span class="nv">investigate</span><span class="p p-Indicator">,</span><span class="nt"> failed</span><span class="p">:</span><span class="w"> </span><span class="nv">end</span><span class="p p-Indicator">:</span><span class="nv">fetch_failed</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">db-verify</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">privileged</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">db-verify</span><span class="w">                </span><span class="c1"># masudaのsettings.jsonのprivilegedCommandsの名前</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">done</span><span class="p">:</span><span class="w"> </span><span class="nv">commit</span><span class="p p-Indicator">,</span><span class="nt"> failed</span><span class="p">:</span><span class="w"> </span><span class="nv">implement</span><span class="p p-Indicator">}</span>
 <span class="w">  </span><span class="nt">ask</span><span class="p">:</span>
 <span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">question</span>
 <span class="w">    </span><span class="nt">questions</span><span class="p">:</span>
@@ -1590,7 +1616,7 @@
 <ul>
 <li>ノード名は<code>[a-z0-9-]+</code>。<code>end</code>は予約</li>
 <li><code>next</code>はoutcome→行き先。文字列1つは<code>{done: x}</code>の省略形。行き先はノード名、<code>end</code>、<code>end:&lt;ラベル&gt;</code></li>
-<li><code>max</code>は進入回数の上限。<code>agent</code>と<code>exec</code>は省略時3。上限で<code>exhausted</code>。<code>exhausted</code>に行き先が無ければ実行はblockedで止まる</li>
+<li><code>max</code>は進入回数の上限。<code>agent</code>・<code>exec</code>・<code>privileged</code>は省略時3。上限で<code>exhausted</code>。<code>exhausted</code>に行き先が無ければ実行はblockedで止まる</li>
 <li><code>inputs</code>/<code>outputs</code>はデータ名の配列。データ名は<code>[a-z][a-z0-9-]*</code></li>
 </ul>
 <h3 id="_4">種類ごとのキー<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
@@ -1614,6 +1640,12 @@
 <td><code>exec</code></td>
 <td><code>command</code>（絶対パスのargv配列）</td>
 <td><code>inputs</code>、<code>outputs</code>、<code>max</code>、<code>egress</code>、<code>secrets</code>、<code>timeout</code>（Go duration）</td>
+<td><code>done</code>（exit 0）、<code>failed</code>、<code>exhausted</code></td>
+</tr>
+<tr>
+<td><code>privileged</code></td>
+<td><code>name</code>（特権コマンドの宣言の名前）</td>
+<td><code>max</code></td>
 <td><code>done</code>（exit 0）、<code>failed</code>、<code>exhausted</code></td>
 </tr>
 <tr>
@@ -1675,6 +1707,16 @@
 <li><code>question.role</code>を書くと、エージェントがタスクとして質問を組み立て、<code>ask_human</code>（ホストが<code>Engine.Answer</code>へ仲介する）で人間に聞く。1タスク中に複数回聞いてよく、エンジンは答えをその出現に溜める。エージェントが<code>done</code>で報告したとき、溜まった答え（id→answer、後勝ち）を<code>outputs</code>の1つめに保存し、ノードは<code>answered</code>で遷移する（<code>done</code>は<code>answered</code>に読み替える）。答えが1つも無いまま<code>done</code>なら無効な結果として差し戻す。答えの保存は<code>done</code>のときだけで、<code>done</code>以外で終えたときは溜まった答えを保存しない（エージェント定義が宣言した出力は下の「出力の受け付け」に従う）。エージェント定義の<code>outcomes</code>は<code>done</code>のみでよい</li>
 <li>ゲート名<code>triage</code>・<code>deviation</code>は予約</li>
 <li><code>agent.continues</code>は役の参照（<code>agents/&lt;役&gt;</code>）。下の「続き」を参照</li>
+<li><code>privileged</code>は下の「特権コマンド」を参照</li>
+</ul>
+<h3 id="privileged">特権コマンド（privileged）<a class="headerlink" href="#privileged" title="Permanent link">&para;</a></h3>
+<ul>
+<li>意味: ホスト（masuda）が宣言・承認済みの特権コマンドを<code>name</code>で呼び、終了コードで分岐する。エンジンが<code>Runner.RunPrivileged</code>で同期的に実行する。エージェントの自己申告ではなく、ワークフローが成否を確かめるために使う</li>
+<li><code>name</code>はmasudaの<code>settings.json</code>の<code>privilegedCommands</code>の名前と同じ形（<code>[A-Za-z0-9][A-Za-z0-9._-]*</code>）。エンジンは形だけ検査し、宣言の有無・承認・中身（コマンド・イメージ・入出力・通信先・期限）は知らない。宣言と承認の側で決まるので、ノードは<code>inputs</code>・<code>outputs</code>・<code>egress</code>・<code>secrets</code>・<code>timeout</code>を持たない</li>
+<li>終わり方: 終了コード0で時間切れでなければ<code>done</code>、それ以外は<code>failed</code>（feedbackにログの末尾）、<code>max</code>超えで<code>exhausted</code></li>
+<li>実行できなかった場合（未宣言・未承認、ホストの失敗）は<code>Runner.RunPrivileged</code>のエラーになり、<code>exec</code>の基盤の失敗と同じく結果を記録せずに<code>Advance</code>がエラーを返す（masudaでは実行がblockedになる）。原因を直した後の<code>Advance</code>で同じ出現をもう一度実行する。<code>exec</code>と同じく、繰り返して安全な前提で、終わるまで何も記録しない</li>
+<li>メインの作業ツリーを変えないので、<code>Runner.Snapshot</code>を取らず（下の「スナップショット」）、<code>Runner.SetPolicy</code>も呼ばない（メインのsandboxは直前の方針のまま）</li>
+<li>承認済み計画の前に置いてよい（下の「読み込み時の検査」の「書き込める」ノードに当たらない）</li>
 </ul>
 <h3 id="continues">続き（continues）<a class="headerlink" href="#continues" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><span class="w">  </span><span class="nt">fix</span><span class="p">:</span>
@@ -1689,7 +1731,7 @@
 <li>続きが成立したサブエージェントは起動時の<code>model</code>・<code>effort</code>のまま動く。続ける側の役の<code>model</code>・<code>effort</code>は使われない（新しく起動したときだけ使われる）</li>
 </ul>
 <h3 id="_5">スナップショットと計画外変更の検出の基準点<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
-<p>エンジンは<code>agent</code>・<code>exec</code>の出現が終わるたびに<code>Runner.Snapshot</code>を取る。</p>
+<p>エンジンは<code>agent</code>・<code>exec</code>の出現が終わるたびに<code>Runner.Snapshot</code>を取る。<code>privileged</code>の出現は作業ツリーを変えないので取らず、計画外変更の検出の基準点にもならない（基準はその前の境界のまま）。</p>
 <ul>
 <li><strong>書き込めないエージェント</strong>は、進入時と終了時の<code>ChangedSince(基準)</code>の結果（ハッシュ）を比べ、違っていれば<code>deviation</code>ゲートを開く。基準はフレーム内の直前の境界のスナップショットで、無ければ進入時に取る</li>
 <li><strong><code>commit</code>の計画外変更の検出</strong>と、<strong><code>target: diff</code>の承認で添える「publishされない変更」の一覧</strong>は、<code>ChangedSince("")</code>（基準はブランチ先頭＝未コミットの変更すべて）で見る。スナップショットを基準にすると、フレーム内の古い境界を拾ってコミット済みのファイルが並んだり、前から残る未コミットのファイルが抜けたりするため</li>
