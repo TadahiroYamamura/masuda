@@ -35,11 +35,20 @@ created .masuda/reviews/n-plus-one-query.md
 created .masuda/reviews/nil-check-gaps.md
 created .masuda/reviews/resource-leak.md
 created .masuda/reviews/secret-hardcode.md
+created CLAUDE.local.md
+created .claude/settings.local.json (SessionStart: masuda prime --hook-json)
+created .claude/settings.local.json (permissions.deny: 13 rules)
+created .claude/settings.local.json (permissions.ask: 1 rule)
 created .gitignore (.masuda/settings.local.json)
+created .gitignore (.masuda/claude.local/)
+created .gitignore (CLAUDE.local.md)
+created .gitignore (.claude/settings.local.json)
 note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json
 ```
 
 `masuda init`は`masuda serve`無しで動く。既にあるファイルは上書きせず、足りないものだけ足す。`.gitignore`には利用者ごとの承認を書く`.masuda/settings.local.json`を足す（`.masuda/`ごと無視している行があれば足さない）。
+
+`CLAUDE.local.md`と`.claude/settings.local.json`は、ホストのClaude Codeにmasudaの使い方を読ませるためのもの。このリポジトリで開いたClaude Codeに「この課題をmasudaで実装して」のように頼めば、ワークフローの選択と`masuda run`から判断待ちの報告までを任せられる（ゲートの承認、秘密・egressの承認などはエージェントに打たせない。質問への回答は打つ前にあなたに確かめる）。中身は`masuda prime`で見られる（[CLI](cli.md#init)）。
 
 `.masuda/`はコミットしてもしなくてもよい。masudaは実行を始めるときに作業ツリーの`.masuda/`を読む。チームで共有するならコミットする。
 
