@@ -1929,8 +1929,8 @@
 <tbody>
 <tr>
 <td><code>IDLE</code></td>
-<td>DONE・STOPPED・BLOCKED。または観測をまだ始めていない</td>
-<td>状態（<code>state</code>）だけを見せる</td>
+<td>DONE・STOPPED・BLOCKED。または観測をまだ始めていない（STARTING）</td>
+<td>状態（<code>state</code>）だけを見せる。STARTINGなら<code>detail</code>に起動の段階が入る（下記）</td>
 </tr>
 <tr>
 <td><code>WAITING_GATE</code></td>
@@ -1971,7 +1971,7 @@
 </table>
 <ul>
 <li><code>input_wait</code>: <code>"permission"</code>（ツールの許可を求めている）・<code>"idle"</code>（入力を待って止まっている）・<code>"question"</code>（Claude Codeが対話で質問している）。その後に通信・ツール・MCPの活動があれば消える</li>
-<li><code>detail</code>: 最後に分かったことの短い説明（<code>"tool Edit"</code>・<code>"mcp next_task"</code>・<code>"claude session ended"</code>・通知の本文等）。表示用で、解析しない</li>
+<li><code>detail</code>: 最後に分かったことの短い説明（<code>"tool Edit"</code>・<code>"mcp next_task"</code>・<code>"claude session ended"</code>・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（<code>"building image (log: &lt;パス&gt;)"</code>→<code>"booting the VM"</code>→<code>"preparing the guest"</code>→<code>"starting Claude Code"</code>）で、段階が変わるたびに<code>status</code>が流れる</li>
 <li><code>last_activity</code>: 最後に活動を観測した時刻。<code>status</code>は時刻だけの変化では流れないので、経過時間はクライアントが進める</li>
 <li>活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（<code>IDLE</code>）になり、<code>Resume</code>で観測をやり直す</li>
 <li><code>state</code>がRUNNINGのままでも<code>activity</code>が<code>DEAD</code>・<code>STALLED</code>になる。一覧では<code>state</code>より<code>activity</code>を目立たせる方が、利用者が手を打つべきものに気づきやすい</li>

@@ -1492,7 +1492,7 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td>POSITION</td>
-<td>ワークフローの今の位置。止まった理由（<code>reason</code>）か結果（<code>outcome ...</code>）があれば、そちらの1行目</td>
+<td>ワークフローの今の位置。止まった理由（<code>reason</code>）か結果（<code>outcome ...</code>）があれば、そちらの1行目。<code>starting</code>の間は起動の段階（<code>building image (log: ...)</code>・<code>booting the VM</code>・<code>preparing the guest</code>・<code>starting Claude Code</code>）</td>
 </tr>
 <tr>
 <td>OPEN</td>
@@ -1543,8 +1543,8 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td><code>idle</code></td>
-<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>blocked</code>）</td>
-<td>—</td>
+<td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>blocked</code>）、またはまだ起動中（<code>starting</code>）</td>
+<td><code>starting</code>が長いなら<a href="../troubleshooting/#starting-long">トラブルシューティング</a></td>
 </tr>
 </tbody>
 </table>
@@ -1603,6 +1603,7 @@ masuda<span class="w"> </span>watch<span class="w"> </span>--after<span class="w
 <p>VMの中のtmuxのセッション<code>claude-work</code>（メインのClaude Code）に、sshでアタッチする。</p>
 <ul>
 <li><code>C-b d</code>で切り離す。切り離してもセッションは動き続ける</li>
+<li>runが終わる（publish・discard）までに切り離す。アタッチしたままだとVMの破棄が終わらず、runが完了しない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）</li>
 <li>打ち込めば、Claude Codeに直接話しかけられる。ただしゲートや質問はchatからは閉じられない。判断は<code>masuda gate</code>・<code>masuda question</code>で行う</li>
 <li>使えるのは動いているワークスペースと、ワークフローが進めなくなって<code>blocked</code>になったもの（VMが残っている）だけ。起動中・<code>stopped</code>・<code>done</code>には使えない。<code>done</code>ではVMが壊れているので、会話は<code>exports/transcripts/</code>で読む（<a href="#exports">exports</a>）</li>
 <li>接続の鍵は<code>chat</code>のたびに作り直され、<code>stop</code>で消える</li>
