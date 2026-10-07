@@ -12,6 +12,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -115,8 +116,19 @@ func runGit(ctx context.Context, dir string, args ...string) (string, error) {
 	return gitCmd{dir: dir, args: args}.run(ctx)
 }
 
+// stagingMaintenance は、stagingへのgitの自動メンテナンス（fetch等の後に走る
+// `git maintenance run --auto`）を、呼び出しから戻る前に済ませる設定。既定では親から
+// 切り離して裏で動くので、gitから戻った後もstaging.gitのpackを書き換え、直後の
+// ワークスペースの削除（os.RemoveAll）が「directory not empty」で失敗しうる。git 2.54以降は
+// 既定の方式がgeometricになり、packが2つになっただけで再パックするので、bundleを2回取り込めば起きる。
+// 自動メンテナンスそのもの（maintenance.auto=false）は止めない。WIPの取り込みごとにpackが
+// 増え続けるのを抑えたいので、取り込みが再パックの分だけ遅くなる方を選ぶ。
+// maintenance.autoDetachは古いgit（2.43等）には無く、gitは無ければgc.autoDetachを見るので両方置く。
+// 実リポジトリ（publish等）には付けない。利用者のリポジトリの保守は利用者の設定に任せる。
+var stagingMaintenance = []string{"-c", "maintenance.autoDetach=false", "-c", "gc.autoDetach=false"}
+
 func (r *Repo) git(ctx context.Context, args ...string) (string, error) {
-	return runGit(ctx, r.Dir, args...)
+	return runGit(ctx, r.Dir, slices.Concat(stagingMaintenance, args)...)
 }
 
 // validRev はrevがgitのオプションとして解釈されないことを確かめる。APIから来た
