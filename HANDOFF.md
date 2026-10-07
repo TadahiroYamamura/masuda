@@ -16,13 +16,17 @@
 
 新規Issue: #92（サブディレクトリで`--repo`を省くと、`init`は黙ってそこに書き、他はエラー。解決したら`prime.md`の「トップで打つ」を消す）、#93（`workflow list`に出すワークフローをYAMLで選べるように。定義はengineの持ち物）、#94（`masuda doc`。リリースのビルドでサイトのHTMLと準備後のMarkdownを埋め込み、Markdownは標準出力へ、HTMLは`--serve`で`127.0.0.1`に公開。埋め込みの無いビルドは版のURLを案内。`doctor`の案内と`prime.md`も合わせて直す）。#95（特権コマンドの宣言をゲストへ写す。契約の変更でv0.3.0。下の「契約への提案」）。#96（reviewゲートで承認したコミットだけを、新しいVMで秘密付きで動かす。ハーネスから「特権コマンドで秘密を使いたい」と依頼があったが、承認するのはcommandの文字列だけで動くのはエージェントのコードなので取りやめた。当面はモック相手のE2EとCIでの本物との結合を勧めた）。`docs/design/overview.md`の特権コマンドの受け渡しの記述を実装に合わせた（`7a581d7`、v0.2.3に入れる）。
 
-前回（2026-10-06〜07）の#78〜#86の対応はdevelopにマージ済み。mainとタグ（v0.2.2）より後のコミットはまだリリースしていない。
+前回（2026-10-06〜07）の#78〜#86の対応と上記を含めて、**v0.2.3を公開した**（追跡#97）。masuda `ce39569`・engine `64a8e69`（v0.2.2と同じ）・sandbox `34577e9`。ゲストのClaude Codeは2.1.292（`1de0bd2`）。masudaのreleaseは1回目に契約テストCM5の後片付けで落ち（#98、たまに起きる）、Webで失敗したジョブを再実行して通った。**ハーネスの更新は保留**（下の「未完と理由」）。
 ## 完了した契約テスト
+- v0.2.3の打つ前の確認: 継続テスト・実機1周（2.1.292）、sandbox契約テスト8件、`precheck.sh v0.2.3`、tarballの予行。公開物を一時ディレクトリに入れて`version`（0.2.3、`contract: ok`）・`doctor`・`prime`を確かめた
 - `go build ./... && go vet ./... && go test ./...`を`go.work`あり・`GOWORK=off`の両方で緑（develop `96124b5`）
 - initの新しい分岐（マーカー・フック・規則の重複、型の検査、書き直さない条件、deny/askの振り分け）は、壊すとすべてテストが落ちることを確かめた
 - 一時ディレクトリで実際のバイナリの`init`を2回流し、2回目は何も変えないことを確かめた
 - liveは回していない
 ## 未完と理由
+- **v0.2.3へのハーネスの更新（手順6）**: ハーネスで`oncall_pf_template`のワークスペース`cfc91fb026a7`（ONCALL-1321/db-1）が走行中。更新の前に全ワークスペースをremoveする決まりなので、終わるまで待つ。oncall-pf-template-20が終了（publishか終了）を知らせてくる
+- リリースの確認がハーネスの`cfc91fb026a7`と約3分重なった（16:41〜16:43のsandbox契約テスト）。oncall-pf-template-20が異常（特に特権VMの初回起動）を見ている。異常が出たらstop→resume、だめならログが来る
+- #98（契約テストCM5がたまに後片付けで落ちる）
 - 実物のClaude Codeで、SessionStartフックの出力が末尾まで読み込まれるか・deny/askが効くかは確かめていない
 - #92・#93・#94・#96: 起票だけ
 - #95: 契約の変更のため、v0.2.3の後にv0.3.0で実装する
@@ -32,10 +36,12 @@
 - #87・#88・#89・#91: 手を付けていない
 ## 次の一手
 1. このリポジトリ（またはハーネス）で`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
-2. developをハーネスに入れるならリリース（Skill `release`）。masuda-sandboxも`34577e9`（ログのファイル化）を含む版を出す
+2. `cfc91fb026a7`の終了の連絡が来たら、v0.2.3へハーネスを更新する（Skill `release`の手順6。ユーザーが打つ）。終わったら追跡#97の6を埋めて閉じる
 3. 下の提案の承認を得たら、#85・#83のC案を実装する
 4. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正（`~/work/gondolin-notes/harness-hotfix/`のREADMEに戻し方）を外し、sandboxのgondolinを上げる
 ## 注意点
+- VMを使う確認（live・sandbox契約テスト）は、各段の直前にハーネスで`masuda list`し、走行中のワークスペースが無いことを確かめてから回す（今回は確かめ直さずに重なった）
+- `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
 - `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す（denyはallowで例外を作れないので、サブコマンドごとに並べている）
 - deny規則はコマンドの文面に対する歯止めで、フルパスや`sh -c`では迂回できる
 - Gondolinの作業の記録は`~/work/gondolin-notes/`（README.mdが入口）。cloneは`~/work/gondolin`、forkはremote `fork`（SSHの`github.com_my`）。PRのブランチのworktreeは`~/work/gondolin-wt/a1〜a5`
