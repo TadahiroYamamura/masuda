@@ -93,6 +93,7 @@ var completionTable = []compNode{
 	clientLeaf("prime", argNone, "hook-json"),
 	{name: "egress", subs: repoSubs("list", "approve", "reject")},
 	{name: "secret", subs: repoSubs("list", "set", "approve", "reject")},
+	{name: "env", subs: repoSubs("import")},
 	{name: "privileged-command", subs: append(repoSubs("list", "approve"),
 		leaf("run", argNone, "repo", "ref", "out", "sandbox-socket", "config", "data-dir"))},
 	{name: "image", subs: []compNode{

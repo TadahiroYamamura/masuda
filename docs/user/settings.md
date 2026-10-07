@@ -243,7 +243,7 @@ VMの中のClaude Codeの`~/.claude/settings.json`へ合成する内容。`env`�
 | `secretsApproved` | 文字列の配列 | 空 | `plaintext`モードの秘密のうち、本物の値をVMに置いてよいと承認した名前 | `masuda secret approve`・`reject` |
 | `privilegedCommandsApproved` | オブジェクト（コマンド名→`{"declHash": "..."}`） | 空 | 特権コマンドの承認。承認した時点の宣言の内容のハッシュで、宣言が変わると効かなくなる | `masuda privileged-command approve` |
 | `claudeToken` | 文字列 | `"CLAUDE_CODE_OAUTH_TOKEN"` | Claudeのトークンとして使う秘密の名前。複数のアカウントを使い分けるとき、別の名前で登録したトークンを選ぶ | 手で書く |
-| `vars` | オブジェクト（名前→値） | 空 | `envFiles`の公開値（秘密として宣言していない変数の値）。`envFiles`の変数で、秘密でもなくここにも無いものがあれば`masuda run`が断る | 手で書く |
+| `vars` | オブジェクト（名前→値） | 空 | `envFiles`の公開値（秘密として宣言していない変数の値）。`envFiles`の変数で、秘密でもなくここにも無いものがあれば`masuda run`が断る | 手で書く。手元の`.env`からは`masuda env import`でまとめて書ける |
 | `stallAfter` | 文字列（Goのduration。`10m`・`1h30m`等） | `config.json`の`stallAfter`（それも無ければ`"10m"`） | 無活動がこれだけ続いたら活動を`stalled`と表示する、このリポジトリでの上書き。何分黙れば異常かはマシンの速さやClaudeのプランで変わるので、ここに置ける。正でない値・読めない値は`run`・`resume`がエラーにする。`masuda serve --stall-after`があればそちらが勝つ | 手で書く |
 
 `claudeToken`を変えたら、その名前で`masuda secret set <名前>`して値を登録する。

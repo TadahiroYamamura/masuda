@@ -156,6 +156,22 @@ APP_ENV="development"
 - 秘密として宣言した名前はプレースホルダ（`plaintext`なら本物の値）、それ以外は`settings.local.json`の`vars`の値。どちらでもない変数があれば`masuda run`が断る
 - 生成したファイルはVMのgitから除外され、コミットされない
 
+### `.env`をまとめて取り込む {#env-import}
+
+手元に`.env`があるなら、秘密の値と`vars`を1つずつ登録しなくても、まとめて取り込める。
+
+```sh
+masuda env import .env
+# NAME            RESULT
+# LINEAR_API_KEY  secret
+# APP_ENV         var
+# OLD_FLAG        skipped: not declared
+```
+
+- `secrets`で宣言した名前は秘密ストアへ（`masuda secret set`と同じ）、`envFiles`の`vars`にだけある名前は`settings.local.json`の`vars`へ入る。どちらでもない名前は取り込まない
+- 値は表示しない。書式の誤りがあれば何も取り込まない
+- 書き方の細かい決まりは[CLIリファレンス](cli.md#env)
+
 ## 特権コマンド {#privileged}
 
 テストがrootやDockerを要するとき、そのコマンドだけを**別の使い捨てVM（rootで動く）**で実行させる仕組み。エージェントが動くVMはrootにしない。

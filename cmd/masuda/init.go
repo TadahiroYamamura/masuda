@@ -45,6 +45,7 @@ var primeDenyRules = []string{
 	"Bash(masuda secret set *)",
 	"Bash(masuda secret approve *)",
 	"Bash(masuda secret reject *)",
+	"Bash(masuda env import *)",
 	"Bash(masuda egress approve *)",
 	"Bash(masuda egress reject *)",
 	"Bash(masuda gate approve *)",
