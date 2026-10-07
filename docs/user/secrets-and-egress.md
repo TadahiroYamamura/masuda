@@ -230,3 +230,21 @@ nodes:
 4. 終了コード・ログの末尾・`outputs`に当たるファイルを回収し、写しをエージェントのVMの`/masuda/privileged/<run-id>/`（`exit-code`・`log`・`outputs/`）へ置く。特権VMは壊す
 
 特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの`workspaces/<id>/records/privileged/<run-id>/`に残る（`result.json`に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、`privileged`ノードから動いたときはその出現）。
+
+### 単体で試す（`masuda privileged-command run`） {#privileged-command-run}
+
+ワークフローを回す前に、特権コマンドのスクリプトが実機の特権VMで動くかを確かめる。ホストのDockerで通っても、特権VMでは起動のたびに空になるディレクトリ（`/run`等）やカーネルの違いで落ちることがある。
+
+```sh
+masuda privileged-command run integration-test            # 作業ツリーの今の状態で
+masuda privileged-command run integration-test --ref main # mainのコミットで
+masuda privileged-command run integration-test --out ./privileged-out
+```
+
+- `masuda serve`は要らない（`masuda-sandbox serve`へ直接つなぐ）。ワークスペースもClaudeも使わない
+- 宣言・承認・通信先は作業ツリーの`.masuda/settings.json`と`settings.local.json`から読む。承認が無ければ断る。イメージも作業ツリーの`.masuda/images/<image>/`からビルドするので、スクリプトを直すたびに流し直せる
+- `/workspace`に置くのは作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル）。`--ref`ならそのコミットのツリー。あなたのリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）。gitignoreの判定には`.gitignore`・`.git/info/exclude`・`core.excludesFile`が効く
+- `inputs`は作業ツリーのgitignoreされたファイルから運ぶ（ワークフローではエージェントのVMから）
+- コマンドの出力はそのまま端末に流れる。終了コードは特権コマンドのもの（シグナルなら128+番号、時間切れは124、masuda自体の失敗は1）。拒否した通信先があれば最後に一覧が出る。`exit-code`・`log`・`outputs/`は`--out`（無ければ新しい一時ディレクトリ）に置き、その場所を最後に出す
+- 走っているワークフローと同じ`masuda-sandbox serve`を使うので、VMのメモリ・CPUを取り合う。重いコマンドは、走っているワークスペースが無いときに試す
+- 人間が打つコマンド。`masuda init`はホストのエージェントからは打てないようにする

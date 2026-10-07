@@ -10,6 +10,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -147,7 +149,8 @@ func Resolve(cfg config.Settings, local config.LocalSettings, name string, image
 // Options は1回の実行に要るもの。
 type Options struct {
 	Sandbox sandboxv1connect.SandboxServiceClient
-	// MainID はメインのsandbox（inputsの写し元、結果の写しの置き先）。
+	// MainID はメインのsandbox（inputsの写し元、結果の写しの置き先）。空ならメインのゲストは無い
+	// （`masuda privileged-command run`）。そのときinputsはHostInputsで渡し、結果はホストにだけ置く。
 	MainID  string
 	RunID   string
 	BuildID string
@@ -164,8 +167,20 @@ type Options struct {
 	SnapshotRef string
 	// HostDir は結果を残すホストのディレクトリ（`records/privileged/<run-id>`）。
 	HostDir string
+	// HostInputs はホストから/workspaceの下へ置くファイル。
+	HostInputs []HostInput
+	// Stdout と Stderr は、コマンドの出力を届いたそばから書く先（nilなら書かない）。Result.Logは
+	// これとは別に末尾を持つ。
+	Stdout, Stderr io.Writer
 	// Heartbeat は実行中に定期的に呼ばれる（活動の記録用）。nilなら呼ばない。
 	Heartbeat func()
+}
+
+// HostInput はホストの1ファイルを、特権sandboxの/workspaceからの相対パスRelへ置く指定。
+type HostInput struct {
+	HostPath string // 絶対パス
+	Rel      string // `/`区切り
+	Mode     fs.FileMode
 }
 
 // Result はrun_privileged_commandの戻り値（docs/guest-protocol.md）。
@@ -178,6 +193,8 @@ type Result struct {
 	OutputsError string   `json:"outputs_error,omitempty"`
 	TimedOut     bool     `json:"timed_out"`
 	Signal       string   `json:"signal,omitempty"`
+	// DeniedHosts は実行中に拒否した通信先。run_privileged_commandの戻り（docs/guest-protocol.md）には含めない。
+	DeniedHosts []*sandboxv1.RunJobEvent_DeniedHost `json:"-"`
 }
 
 // ResultsDir はメインのゲストでの結果の写しの場所。
@@ -215,7 +232,12 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	inputs := []*sandboxv1.RunJobRequest_Input{{Source: &sandboxv1.RunJobRequest_Input_HostFile{HostFile: &sandboxv1.RunJobRequest_HostFile{
 		HostPath: bundle, GuestPath: bundleGuest, Mode: 0o644,
 	}}}}
-	if len(o.Decl.Inputs) > 0 {
+	for _, in := range o.HostInputs {
+		inputs = append(inputs, &sandboxv1.RunJobRequest_Input{Source: &sandboxv1.RunJobRequest_Input_HostFile{HostFile: &sandboxv1.RunJobRequest_HostFile{
+			HostPath: in.HostPath, GuestPath: guestWorkspace + "/" + in.Rel, Mode: uint32(in.Mode.Perm()),
+		}}})
+	}
+	if len(o.Decl.Inputs) > 0 && o.MainID != "" {
 		inputs = append(inputs, &sandboxv1.RunJobRequest_Input{Source: &sandboxv1.RunJobRequest_Input_FromSandbox{FromSandbox: &sandboxv1.RunJobRequest_FromSandbox{
 			Id: o.MainID, Root: guestWorkspace, Patterns: o.Decl.Inputs, DestRoot: guestWorkspace,
 		}}})
@@ -246,9 +268,12 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	res := &Result{
 		Log:          string(log.bytes()),
 		Truncated:    log.truncated,
-		ResultsDir:   ResultsDir(o.RunID),
 		Outputs:      append([]string{}, fin.Outputs...),
 		OutputsError: fin.OutputsError,
+		DeniedHosts:  fin.DeniedHosts,
+	}
+	if o.MainID != "" {
+		res.ResultsDir = ResultsDir(o.RunID)
 	}
 	switch {
 	case fin.Exited != nil:
@@ -269,8 +294,10 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	if err := placeHost(hostDir, res); err != nil {
 		return nil, err
 	}
-	if err := o.placeGuest(ctx, outputsDir, res); err != nil {
-		return nil, err
+	if o.MainID != "" {
+		if err := o.placeGuest(ctx, outputsDir, res); err != nil {
+			return nil, err
+		}
 	}
 	return res, nil
 }
@@ -361,8 +388,14 @@ func (o *Options) runJob(ctx context.Context, req *sandboxv1.RunJobRequest) (*sa
 			}
 		case *sandboxv1.RunJobEvent_Stdout:
 			cur.write(ev.Stdout)
+			if cur == log && o.Stdout != nil {
+				_, _ = o.Stdout.Write(ev.Stdout)
+			}
 		case *sandboxv1.RunJobEvent_Stderr:
 			cur.write(ev.Stderr)
+			if cur == log && o.Stderr != nil {
+				_, _ = o.Stderr.Write(ev.Stderr)
+			}
 		case *sandboxv1.RunJobEvent_Finished_:
 			fin = ev.Finished
 		}

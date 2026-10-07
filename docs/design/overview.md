@@ -424,13 +424,13 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 
 ### CLI
 
-`masuda serve`・`masuda init`・`masuda version`・`masuda doctor`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
+`masuda serve`・`masuda init`・`masuda version`・`masuda doctor`・`masuda privileged-command run`以外のサブコマンドは、`--socket`で指定した`masuda serve`の公開APIを叩くだけのクライアント。
 
 | コマンド | 動き |
 |---|---|
 | `masuda run <workflow>` | ワークフローを新しいワークスペースで始める（`--repo`・`--branch`・`--base`・`--image`・`--input <名前>=<値>`／`<名前>=@<ファイル>`） |
 | `masuda resume <id>` | 再開 |
-| `masuda list [--all] [--repo <dir>]` | `--repo`を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、BLOCKEDは常に出す |
+| `masuda list [--all] [--repo <dir>]` | `--repo`を付けるとそのリポジトリのワークスペースだけ。1行1ワークスペースで`ID BRANCH STATE ACTIVITY POSITION OPEN`。ACTIVITYは活動の種類と最終活動からの経過、OPENは開いているもの（`gate:<名前>`・`question:<出現ID>`）。DONE・STOPPEDは`--all`のときだけ出し、SUSPENDED・BLOCKEDは常に出す |
 | `masuda chat <id>` | `AttachInfo`の`ssh_argv`を`exec`する。`Unimplemented`なら「このsandboxではsshで接続できません（フェイクsandbox等）」 |
 | `masuda watch [<id>]` | 状態とイベントを流し続ける。`workspace_id`が空のイベントは種類と本文だけで出す |
 | `masuda gate list / show / approve / reject / dismiss / halt / redo` | ゲートの一覧・内容・判断。`dismiss`・`halt`・`redo`は`<id> <出現ID> [--comment]`で`target_hash`を要らない。`show`はtriageなら懸念の本文を字下げで、deviationなら対象外のファイルを箇条書きで出し、未判断ならそのゲートで打てるコマンドを添える |
@@ -438,6 +438,7 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 | `masuda stop <id>` / `masuda remove <id>` | sandboxを止める（記録は残す）／exports以外を消す（動いているものは`--force`で止めて消す） |
 | `masuda workflow list / show / check [<workflow>] [--repo <dir>]` | `--repo`を省略すると今いる作業ツリーのトップ（`git rev-parse --show-toplevel`）、作業ツリーの外なら同梱だけ。`check`は問題があれば終了コード1 |
 | `masuda egress / secret / privileged-command / image ...` | 宣言の一覧と承認、秘密の値の登録（標準入力から）、イメージのビルド |
+| `masuda privileged-command run <name>` | 特権コマンドの単体実行。serveを通さず`masuda-sandbox serve`へ直接つなぐ（`doctor`と同じ）。宣言・承認・通信先は作業ツリーの`settings.json`・`settings.local.json`から`privileged.Resolve`で、イメージは作業ツリーの`.masuda/images/`から（`serve.BuildImage`。ビルドの記録は`--data-dir`へ）。ツリーは一時ディレクトリへcloneしたリポジトリで作り（`staging.SnapshotWorktree`。GIT_DIRを一時リポジトリ、GIT_WORK_TREEを利用者の作業ツリー、GIT_INDEX_FILEを一時ファイルにして`add -A`→`write-tree`→`commit-tree`）、利用者のリポジトリにrefもオブジェクトも書かない。`inputs`は作業ツリーのgitignoreされたファイルから`HostFile`で渡す。実行は`privileged.Run`（メインのゲストが無いので結果はホストにだけ置く）。終了コードは特権コマンドのもの（シグナルは128+番号、時間切れは124、masuda自体の失敗は1） |
 | `masuda init` | 対象リポジトリに`.masuda/`の雛形を置く |
 | `masuda serve` | 常駐プロセス（`--socket`・`--data-dir`・`--sandbox-socket`・`--stall-after`・`--config`・`--fake-sandbox`） |
 | `masuda version` | masudaのバージョン（`-ldflags -X main.version`）・Goの版・sandbox.protoのSHA-256と、届けば接続先のsandboxの`GetServerInfo`と契約の一致 |

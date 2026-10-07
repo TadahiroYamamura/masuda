@@ -1,10 +1,16 @@
 package privileged
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/TadahiroYamamura/masuda/internal/staging"
 )
 
 // ValidatePattern はinputs・outputsの1項目を検査する。/workspaceからの相対パスで、`..`・`.`・
@@ -65,4 +71,37 @@ func matchSegs(pat, name []string) bool {
 		pat, name = pat[1:], name[1:]
 	}
 	return len(name) == 0
+}
+
+// WorktreeInputs はホストの作業ツリーrepoRootから、inputsのpatternsに当たるgitignoreされた
+// 通常ファイルを返す（`masuda privileged-command run`）。gitignoreされていないファイルはツリーの
+// スナップショットに入るので含めない。メインのゲストからの写し（RunJobのFromSandbox）と同じく、
+// `.git`の中は見ず、シンボリックリンクは辿らず、許可ビットを保つ。
+func WorktreeInputs(ctx context.Context, repoRoot string, patterns []string) ([]HostInput, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+	files, err := staging.IgnoredFiles(ctx, repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []HostInput
+	for _, rel := range files {
+		if slices.Contains(strings.Split(rel, "/"), ".git") {
+			continue
+		}
+		if !slices.ContainsFunc(patterns, func(p string) bool { return Match(p, rel) }) {
+			continue
+		}
+		p := filepath.Join(repoRoot, filepath.FromSlash(rel))
+		st, err := os.Lstat(p)
+		if err != nil {
+			return nil, err
+		}
+		if !st.Mode().IsRegular() {
+			continue
+		}
+		out = append(out, HostInput{HostPath: p, Rel: rel, Mode: st.Mode().Perm()})
+	}
+	return out, nil
 }

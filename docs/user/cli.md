@@ -4,14 +4,14 @@
 masuda <command> [flags]
 ```
 
-`serve`・`init`・`prime`・`version`・`doctor`・`completion`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
+`serve`・`init`・`prime`・`version`・`doctor`・`completion`・`privileged-command run`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
 
 ## 共通の約束
 
 - `--socket <path>`: どのクライアントコマンドでも受け付ける。`masuda serve`の待ち受けるUnixソケット。既定は`$XDG_RUNTIME_DIR/masuda.sock`（`XDG_RUNTIME_DIR`が無ければ`/tmp/masuda-<uid>/masuda.sock`）
 - フラグは`-flag`でも`--flag`でもよく、位置引数の前にも後にも書ける（`masuda gate approve <id> <occ> --hash h`も`masuda gate approve --hash h <id> <occ>`も同じ）
 - `--repo <dir>`の既定は今いるディレクトリ（`workflow`の3つだけ既定が違う）。どのコマンドでも**作業ツリーのトップ**を指す必要があり、サブディレクトリを渡すとエラーになる
-- 終了コード: 成功で0、エラーで1、使い方の誤りで2。各コマンドの`-h`で使い方が出る
+- 終了コード: 成功で0、エラーで1、使い方の誤りで2（`privileged-command run`だけは特権コマンドの終了コードを返す）。各コマンドの`-h`で使い方が出る
 - `<id>`はワークスペースのID（`masuda run`・`masuda list`が出す12桁）、`<occurrence>`はゲートや質問の出現ID（`masuda gate list`・`masuda question list`が出す）
 
 ## 一覧
@@ -32,7 +32,7 @@ masuda <command> [flags]
 | [`prime`](#prime) | ホストのエージェント向けのmasudaの使い方を出す |
 | [`egress`](#egress) | 通信先の宣言の一覧と承認 |
 | [`secret`](#secret) | 秘密の一覧・値の登録・平文の承認 |
-| [`privileged-command`](#privileged-command) | 特権コマンドの一覧・承認 |
+| [`privileged-command`](#privileged-command) | 特権コマンドの一覧・承認・単体実行 |
 | [`image`](#image) | イメージの一覧・ビルド |
 | [`workflow`](#workflow) | ワークフローの一覧・図・検査 |
 | [`version`](#version) | masudaと接続先のmasuda-sandboxのバージョンを出す |
@@ -82,7 +82,9 @@ masuda run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <en
 masuda resume <id>
 ```
 
-`stopped`のワークスペース、またはVMの起動に失敗して`blocked`になったワークスペースを、記録から再開する（[運用](operations.md#resume)）。
+`stopped`と`suspended`のワークスペースを、記録から再開する（[運用](operations.md#resume)）。`suspended`でVMが残っていれば、会話ログと実行ログを書き出してから壊して作り直す。`blocked`は再開できない。
+
+再開の前に、`run`と同じ前提（秘密の値、承認、ワークフローが届く特権ノードの宣言と承認等）を確かめ直す。承認は作業ツリーの`settings.local.json`から読むので、取り消していれば断る。断ったときは何も変えない（`suspended`のVMも残る）。
 
 ## list
 
@@ -252,9 +254,42 @@ masuda secret set LINEAR_API_KEY < ~/linear-key.txt
 ```text
 masuda privileged-command list [--repo <dir>]
 masuda privileged-command approve <name> [--repo <dir>]
+masuda privileged-command run <name> [--repo <dir>] [--ref <branch|commit>] [--out <dir>] [--sandbox-socket <path>] [--config <path>] [--data-dir <dir>]
 ```
 
 `settings.json`の`privilegedCommands`の一覧と承認の有無。APPROVEDが`stale`のものは、承認した後に宣言が変わったので承認が効いていない。`approve`はその時点の宣言の内容に承認を結びつける。取り消すコマンドは無い（`settings.local.json`の`privilegedCommandsApproved`から消す）。
+
+### run
+
+特権コマンドを、ワークフローの外から実機の特権VMで1回動かす。スクリプト（`.masuda/images/`の中身や`command`）が特権VMで動くかを、ワークフローを回す前に確かめるためのもの（[秘密と通信](secrets-and-egress.md#privileged-command-run)）。`masuda serve`は要らない。`doctor`・`version`と同じく`masuda-sandbox serve`へ直接つなぐ。
+
+- 宣言・承認・通信先は作業ツリーの`.masuda/settings.json`と`settings.local.json`から読む。宣言が無い・承認されていない・承認の後に宣言が変わったなら断る
+- イメージは作業ツリーの`.masuda/images/<image>/`からビルドする（ログは標準エラー）。ビルドの記録は`--data-dir`に書く（`masuda image list`に出る）
+- VMの`/workspace`に置くのは、既定では作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル。ワークフローのスナップショットと同じ範囲）。`--ref`ならそのコミットのツリー
+- `inputs`は、作業ツリーの**gitignoreされた**ファイルのうち宣言のglobに当たるものを、同じパスへ置く（`.git`の中は見ない、シンボリックリンクは辿らない、許可ビットを保つ）
+- 利用者のリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）
+- コマンドの標準出力・標準エラーは、そのまま端末へ流れる。終わると、拒否した通信先があればその一覧と、結果のディレクトリ（`exit-code`・`log`（末尾200KiB）・`outputs/`）の場所を標準エラーへ出す
+
+| フラグ | 既定 | 意味 |
+|---|---|---|
+| `--repo` | `.` | 対象リポジトリ（作業ツリーのトップ） |
+| `--ref` | 空 | 作業ツリーの今の状態の代わりに渡すコミット（ブランチ名・コミット） |
+| `--out` | 新しい一時ディレクトリ | 結果を置くディレクトリ |
+| `--sandbox-socket` | `config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット |
+| `--config` | `$XDG_CONFIG_HOME/masuda/config.json`（未設定なら`~/.config/masuda/config.json`） | serve全体の設定ファイル（`sandboxSocket`を読む） |
+| `--data-dir` | `$XDG_DATA_HOME/masuda` | イメージのビルドの記録を書く先（`masuda serve`の`--data-dir`と揃える） |
+
+終了コード:
+
+| コード | 意味 |
+|---|---|
+| 特権コマンドの終了コード | コマンドが終わった |
+| 128+番号 | コマンドがシグナルで終わった |
+| 124 | `timeoutSeconds`を過ぎた |
+| 1 | masuda自体の失敗（未承認、イメージのビルドの失敗、ジョブを動かせなかった等） |
+| 2 | 使い方の誤り |
+
+ホストのエージェントには打たせない（`masuda init`がdenyに入れる）。特権VMはrootで動き、承認した通信先へ出られるため。
 
 ## image
 

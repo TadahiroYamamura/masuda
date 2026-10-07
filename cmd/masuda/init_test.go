@@ -69,7 +69,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 		"Bash(masuda egress approve *)", "Bash(masuda egress reject *)",
 		"Bash(masuda gate approve *)", "Bash(masuda gate reject *)", "Bash(masuda gate comment *)",
 		"Bash(masuda gate dismiss *)", "Bash(masuda gate halt *)", "Bash(masuda gate redo *)",
-		"Bash(masuda privileged-command approve *)"}
+		"Bash(masuda privileged-command approve *)", "Bash(masuda privileged-command run *)"}
 	if !slices.Equal(ls.Permissions["deny"], wantDeny) {
 		t.Errorf("permissions.deny = %q", ls.Permissions["deny"])
 	}
