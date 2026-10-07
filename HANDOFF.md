@@ -1,43 +1,68 @@
 # HANDOFF
 ## 作業項目
-2026-10-03（午後〜夕方）: マイルストーンv0.2「masudaでmasudaを作る体制」の作業項目をすべて終え、計測を受けて同梱`develop`を見直し（engine E14）、v0.2.0のリリース手順に入った（追跡Issue #73）。監督（Fable）が`docs/work-orders.md`のM14a〜M14g・engineのE12〜E14に指示書を書き、準備はOpusのサブエージェント、masuda自身の変更はmasudaのrun（予行1〜4）で監督がgate・questionを扱った。
+2026-10-07: ホストで動くClaude Codeにmasudaの使い方を教える仕組みを入れた（Beadsの`bd prime`・`bd setup claude`を参考にした）。develop `96124b5`（`0c6c5fa`のマージ）。push済み。
 
-- M14a（#68前半）: masuda自身の`.masuda/`をgitで追跡（旧実装の`.gitignore`で丸ごと無視されていた）。Dockerfileの版固定、`checks.test`を`GOWORK=off go build/vet/test`に、`pitfalls.jsonl`（11件）、同梱と同一の`reviews/`14件は削除。ゲストで`unshare -Urm`が通り、契約テストもゲストで緑
-- E12（engine #8）: engineに`.masuda/`
-- E13（engine、契約変更、ユーザー承認）: `Agent.Model`・`Agent.Effort`（effortは`low`・`medium`・`high`・`xhigh`・`max`）
-- M14b（#69、契約変更）: `guest.AgentFile`が`model:`・`effort:`を書く。`docs/guest-protocol.md`の`~/.claude/agents/*.md`の行。liveの`TestClaudeDirReachesSubagent`で実測（指定した役はsonnet・low、無指定はメインのモデル・medium）
-- M14e（ユーザー決定）: `settings.json`の`agents`（役名→`model`・`effort`。frontmatterより優先。知らない役名は`Run`が`InvalidArgument`、`Resume`が`FailedPrecondition`、`workflow check`が問題に）。masuda自身は`claudeSettings.model: sonnet`、`reviewer`・`cross-cutting-explorer`・`cross-cutting-verifier`は`opus`
-- E14（engine、ユーザー決定）: 同梱`develop`からステップごとの途中レビューと途中の自動修正・interim gateを外し（`implement/build-step`は`implement`→`test`→`commit`、`implement/interim-review`は削除）、plan gateの却下は`revise-rejected`（plan-reviser）へ、review gateの却下は`rework`（implementerの続き）→`rework-test`→`rework-commit`→`approve-review`へ直接。M14gで`docs/user/`の説明・図・`interim`の記述を追従
-- 予行1（M14c、fix）: #64。予行2（M14d、develop）: #70。予行3（review×3）: M14eの差分でSonnet/Opus比較。予行4（M14f、fix）: M14eへの指摘7点。計測は#68のコメント（表）
-- ほか: `.masuda/claude/rules/`（coding・comments・testing・information-placement・communication・masuda-run）、`docs/user/workflows.md`に「まずfix」の目安、Claude Codeを2.1.288へ（`cd3203e`）、`go.mod`はengine main `64a8e69`（`590028a`。リリースで`v0.2.0`へ）
+| 追加・変更 | 内容 |
+|---|---|
+| `masuda prime [--hook-json]` | ホストのエージェント向けの使い方（`cmd/masuda/templates/prime.md`、約5.2KB）を出す。`--hook-json`でSessionStartフックの`additionalContext`の形 |
+| `masuda init` | `CLAUDE.local.md`に`<!-- BEGIN MASUDA -->`の短い節。`.claude/settings.local.json`にSessionStartフック（`masuda prime --hook-json`）、`permissions.deny`13件（gate・secret・egress・privileged-commandの判断系とremove）、`permissions.ask`1件（question answer）。`.gitignore`に両ファイル |
+
+決まったこと（ユーザーの判断）:
+- 書き先は個人用ファイル。共有の`CLAUDE.md`・`.claude/settings.json`はcloneでゲストに届き、ゲストにはmasudaのバイナリが無いため。Beadsは共有ファイル（`settings.local.json`は旧方式として移行元）なので、逆の判断
+- 対象はClaude Codeだけ（AGENTS.mdには個人用ファイルもimportも無い）。primeは固定文面（serveの状態は載せない）、英訳しない
+- 人間が承認する前提のコマンドはdeny。`gate show`・各`list`は打てる。`question answer`はエージェントが打ってよいがask
+- serveはエージェントがバックグラウンドで起動してよい（セッションを閉じると止まりうる旨をprimeに書いた）。`watch`はバックグラウンドでだけ、詳細はワークスペースの記録を読む
+- 並行ワークスペースのdevelopへの取り込みは人間の仕事とし、primeにも書かない
+
+新規Issue: #92（サブディレクトリで`--repo`を省くと、`init`は黙ってそこに書き、他はエラー。解決したら`prime.md`の「トップで打つ」を消す）、#93（`workflow list`に出すワークフローをYAMLで選べるように。定義はengineの持ち物）。
+
+前回（2026-10-06〜07）の#78〜#86の対応はdevelopにマージ済み。mainとタグ（v0.2.2）より後のコミットはまだリリースしていない。
 ## 完了した契約テスト
-- `GOWORK=off go build ./... && go vet ./... && go test -count=1 ./...`緑（C-M1〜C-M10無修正）。`serve`の`TestStallAfterFromLocalSettings`は一括で稀に落ちる既知のもの
-- live（開発版sandbox `masuda-sandbox-dev.sock`、Claude Code 2.1.288）: `TestClaudeDirReachesSubagent`、`TestGuestSubagentContinuation`（100秒）、`TestDevelopLapOnPythonRepo`（E14後の`develop`で348秒。E14前は470秒）。終了後`qemu-system`は0
-- masuda-sandboxの契約テスト8件緑（1回目はC-S3の`timedOut`が落ちたが再現せず、#73に記録）。tarball予行ok
-- engine: `go test ./...`緑（C-E1〜C-E9、歩行テストはE14後の形）
+- `go build ./... && go vet ./... && go test ./...`を`go.work`あり・`GOWORK=off`の両方で緑（develop `96124b5`）
+- initの新しい分岐（マーカー・フック・規則の重複、型の検査、書き直さない条件、deny/askの振り分け）は、壊すとすべてテストが落ちることを確かめた
+- 一時ディレクトリで実際のバイナリの`init`を2回流し、2回目は何も変えないことを確かめた
+- liveは回していない
 ## 未完と理由
-- **v0.2.2も公開済み**（2026-10-03 20:25頃。masuda `608408c`。追跡Issue #77）。`masuda completion bash|zsh`（旧実装にあった補完の復活。ハーネスで初めて回したrun `543799595910`で実装。review gateで注入の指摘（動的候補を`compgen -W`に渡す）を行コメントで却下→修正）。ハーネスは0.2.2に更新済み（インストーラ→両serveを起こし直し）。#77は閉じた
-- **v0.2.1も公開済み**（2026-10-03 19:00頃。masuda `887a82e`、engine・sandboxはv0.2.0と同じコミット。追跡Issue #75）。中身は文書の版のタグからの置き換え（`__MASUDA_VERSION__`、`scripts/docs-prepare.sh`）と`curl | sh`のインストーラ（`scripts/install.sh`→添付物`masuda_installer.sh`）。masudaのrunで実装（予行5、`workflows/fix`、`3ed39857b68b`）。途中で#74（bypass modeでも`rm -rf`の許可を求めて止まる。`masuda chat`で`1`を送って進めた）
-- **v0.2.0は公開済み**（2026-10-03 17:35頃。masuda `841f270`、engine `64a8e69`、sandbox `a9dce82`。追跡Issue #73に表）。release・docs完走、添付物4つ、サイトは`0.2`が`latest`。公開物の一時的な導入で`contract: ok`・doctor ok（トークン以外）を確認。リリースノートに変更点を追記した
-- **ハーネスの初回導入も完了**（19:10、v0.2.1のインストーラ）。既定のソケットで`masuda-sandbox serve`と`masuda serve`が動いている（ログは`~/.local/share/masuda/logs/`）。`contract: ok`・doctor全部ok。#73・#75は閉じた。残り:quickstartの8・9節の出力例の差し替え（任意）。#61の「特権コマンドの実機動作」はv0.3へ
-- `go.mod`はengine `v0.2.0`に固定済み（`841f270`）。developとmainは同じコミット
+- 実物のClaude Codeで、SessionStartフックの出力が末尾まで読み込まれるか・deny/askが効くかは確かめていない
+- #92・#93: 起票だけ
+- #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
+- #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある
+- Gondolinの#155〜#160: メンテナの返事待ち（返事の論点はB1〜B9）。`.claude/settings.local.json`のSessionStartフック（`~/.claude/scripts/gondolin-watch.py`）が動きを知らせる。外部への書き込み（コメント・PRの更新）は、毎回ユーザーの了解を取ってから。英文は日本語の草案の承認後に訳す
+- #87・#88・#89・#91: 手を付けていない
 ## 次の一手
-1. masuda自身のrunをハーネス（既定のソケット、公開物0.2.1）で回す。開発版serveは必要なときだけ`masuda-dev`の場所で
-2. ハーネス導入後（SKILL.mdの手順6）: `~/.local/share/masuda`を日付付きで退避、`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`、既定のソケットで公開物のserve。開発版は`masuda-dev`の場所のまま
-3. 次のdevelop周回で、reviewerをSonnetに下げてよいか再確認（予行3では観点レビューの差は小さい、横断はOpusが要る）。E14後の`develop`の所要・トークンを予行2（90分・32M）と比べる
-4. v0.3の題材: #67（レビュー段階のpr-review-guide。最終レビューの段の形はE14で保った）、engine #7、engine #9（fixerのcommit-message）、engine #10の残り（文書だけの差分のレビュー省略）、masuda #71（liveが秘密ストアを読む）、#72（質問に補足）
+1. このリポジトリ（またはハーネス）で`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
+2. developをハーネスに入れるならリリース（Skill `release`）。masuda-sandboxも`34577e9`（ログのファイル化）を含む版を出す
+3. 下の提案の承認を得たら、#85・#83のC案を実装する
+4. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正（`~/work/gondolin-notes/harness-hotfix/`のREADMEに戻し方）を外し、sandboxのgondolinを上げる
 ## 注意点
-- **開発版の置き場所**: `~/.local/share/masuda-dev`、`$XDG_RUNTIME_DIR/masuda-dev.sock`・`masuda-sandbox-dev.sock`。バイナリはscratchpadの`masuda-dev`（HEADを`git archive`してビルド）。`masuda-sandbox serve`は`cd ~/work/masuda-sandbox && node dist/cli.js serve --socket $XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`。再起動後は落ちている
-- **ハーネス**: `~/.local/bin/masuda`=0.2.2、`masuda-sandbox`=0.2.2（nvmのnode 24のグローバル）、既定ソケット、`~/.local/share/masuda`（退避せず。旧走行はDONEの4件が見える。トークンはM4暫定ファイルのまま認識。正規の`secret set`は任意）。**以後、masuda自身のrunはハーネスで回す**（`masuda run ... --repo ~/work/masuda`、gate・questionもハーネスのCLI）。開発版は`masuda-dev`の場所
-- Claudeトークンは`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（標準入力）。暫定ファイルの`cp`は安全判定で止まる。liveは暫定ファイルか`MASUDA_LIVE_CLAUDE_TOKEN`しか読まない（#71）
-- **masudaのrunでmasudaを作る**: 指示書は`docs/work-orders.md`の項目として書き、`---`以降を`--input instructions=@file`で渡す。`.masuda/`は作業ツリーから、リポジトリはHEAD（`--base`）からbare clone。developに未固定のengineの変更を使うコードがあるとゲストでビルドできない（先に`go.mod`を固定）。runの中の役はHANDOFF.md・work-orders.mdを書かない（`.masuda/claude/rules/masuda-run.md`）
-- **会話ログの集計**: `exports/transcripts/`のJSONLは各応答に`usage`・`model`・`effort`、役は`attributionAgent`。scratchpadの`tokens.py`
-- `workflows/review`はゲートが無く、指摘は`exports/findings`、レポートは`exports/report`。`records/comments.jsonl`はreview gateを開くときだけ
-- 選択肢付きの質問は選択肢の文字列そのもので答える（#72）。行コメントは`gate comment`で先に付けてから`gate reject`
-- E14後も`interim`はゲート名として予約のまま（自分のワークフローで使える）。reviewerは「実行位置」のノード名が`interim-`で始まるかで途中レビューを判別する（`internal/runner/task.go`の形を変えると壊れる）
-- review-commit（`scope: plan`）のメッセージは計画の`summary`全文（engine #9）
-- `waiting_input(idle)`はメインセッションがサブエージェントの完了通知を待つ状態
-- 1-2のsandbox契約テストと`pnpm build`は走行中の開発版sandboxのdistを作り直すので先に止める（SKILL.md）
-- 3リポジトリとも`v0.2.0`のタグまでpush済み。このHANDOFFのコミットはdevelopに乗るのでpushはユーザー指示で
+- `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す（denyはallowで例外を作れないので、サブコマンドごとに並べている）
+- deny規則はコマンドの文面に対する歯止めで、フルパスや`sh -c`では迂回できる
+- Gondolinの作業の記録は`~/work/gondolin-notes/`（README.mdが入口）。cloneは`~/work/gondolin`、forkはremote `fork`（SSHの`github.com_my`）。PRのブランチのworktreeは`~/work/gondolin-wt/a1〜a5`
+- この端末の`~/.gitconfig`は会社用。masuda・masuda-sandbox・masuda-engine・gondolinのcloneにはローカルで個人用の作者を入れてある。新しいcloneでは確かめる
+- `scripts/gh.sh`のトークンはmasuda関連のリポジトリにしか使えない（Gondolinへの投稿はユーザーがWebで行った）
+- ハーネスのgondolin（`~/.nvm/versions/node/v24.16.0/lib/node_modules/masuda-sandbox/node_modules/@earendil-works/gondolin/dist/src/qemu/`の`network-stack.js`・`net.js`）は手で差し替えてある。masuda-sandboxを入れ直すと元に戻る
+- masuda-sandboxはgondolinをbundleしない（external）ので、`pnpm patch`では利用者に届かない
+- 「`masuda serve`がsandboxを子プロセスとして起動する」案は、ユーザーの判断で取りやめた
 ## 契約への提案
-- なし（今日の契約変更はすべてユーザー承認済み・反映済み: engine `Agent.Model`・`Effort`、`docs/guest-protocol.md`の`model`・`effort`の行と`settings.json`の`agents`の優先）
+### 長い待ちを「待ちを返して起こしてもらう」に変える（#85・#83、ユーザー承認済みの案。契約の変更として判断待ち）
+
+全文: `~/work/gondolin-notes/drafts/masuda-85-wait-proposal.ja.md`。要点:
+
+1. **MCPの呼び出しは長く待たない**: `report_result`はengineに結果を記録した時点で返し、`advance()`（ホスト側のノード）は呼び出しの外で回す。`next_task`は次のタスクが無ければ最大90秒待ち、用意できなければ`{kind: "waiting", reason: "gate" | "question" | "triage" | "running", position}`を返す。`MCP_TOOL_TIMEOUT`の7日は不要になる
+2. **ループの規約**: `waiting`ならターンを終える。起こされたら同じ`agent_id`で`next_task`。失敗したら間を置いて数回呼び直し、だめならターンを終える（ループを捨てない）
+3. **masudaがメインセッションを起こす**: ゲートの判断・質問の回答が入ったとき、ホスト側のノードが終わったとき、`resume`の後。メインセッションが入力待ちのときだけ、sandboxのExecで`tmux send-keys -t claude-work`に決まった1文を送る。来なければもう一度。`masuda chat`でアタッチ中は送らない
+4. **対象外**: `ask_human`（engineの変更が要る）。そのときに`AddQuestion`の重複も直す
+
+| 文書 | 変更 |
+|---|---|
+| `docs/guest-protocol.md` :9 | MCPの`timeout`を7日にしている理由を削る |
+| 同 :30-39 | ループの規約を上の2に |
+| 同 :45 `next_task` | 戻り値に`waiting`を足し、「最大90秒待つ」に |
+| 同 :47 `report_result` | 記録した時点で返す |
+| 同 :48 `report_concern` | `waiting`を返す形に合わせる |
+| 同（新しい節） | masudaがメインセッションを起こすこと |
+| `masuda.proto` | 新しいRPCは要らない見込み。「起こす待ち（chat中）」を出すなら`ActivityKind`の値かコメント |
+
+選ばなかった案: 今のまま（長い接続に弱く、Claude Codeの文書に無い120秒の振る舞いに頼る）、`waiting`を返して間を置いて呼び直す（トークンが掛かる）、Claude Codeのchannels（research previewで、無人の起動では確認ダイアログが出て使えない）。
+
+実機で確かめていないこと: Execの`tmux send-keys`がClaude Codeの入力欄に入って送信されるか、作業中・アタッチ中に送ってしまったときの振る舞い。
