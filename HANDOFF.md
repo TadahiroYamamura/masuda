@@ -14,7 +14,7 @@
 - serveはエージェントがバックグラウンドで起動してよい（セッションを閉じると止まりうる旨をprimeに書いた）。`watch`はバックグラウンドでだけ、詳細はワークスペースの記録を読む
 - 並行ワークスペースのdevelopへの取り込みは人間の仕事とし、primeにも書かない
 
-新規Issue: #92（サブディレクトリで`--repo`を省くと、`init`は黙ってそこに書き、他はエラー。解決したら`prime.md`の「トップで打つ」を消す）、#93（`workflow list`に出すワークフローをYAMLで選べるように。定義はengineの持ち物）、#94（`masuda doc`。リリースのビルドでサイトのHTMLと準備後のMarkdownを埋め込み、Markdownは標準出力へ、HTMLは`--serve`で`127.0.0.1`に公開。埋め込みの無いビルドは版のURLを案内。`doctor`の案内と`prime.md`も合わせて直す）。
+新規Issue: #92（サブディレクトリで`--repo`を省くと、`init`は黙ってそこに書き、他はエラー。解決したら`prime.md`の「トップで打つ」を消す）、#93（`workflow list`に出すワークフローをYAMLで選べるように。定義はengineの持ち物）、#94（`masuda doc`。リリースのビルドでサイトのHTMLと準備後のMarkdownを埋め込み、Markdownは標準出力へ、HTMLは`--serve`で`127.0.0.1`に公開。埋め込みの無いビルドは版のURLを案内。`doctor`の案内と`prime.md`も合わせて直す）。#95（特権コマンドの宣言をゲストへ写す。契約の変更でv0.3.0。下の「契約への提案」）。#96（reviewゲートで承認したコミットだけを、新しいVMで秘密付きで動かす。ハーネスから「特権コマンドで秘密を使いたい」と依頼があったが、承認するのはcommandの文字列だけで動くのはエージェントのコードなので取りやめた。当面はモック相手のE2EとCIでの本物との結合を勧めた）。`docs/design/overview.md`の特権コマンドの受け渡しの記述を実装に合わせた（`7a581d7`、v0.2.3に入れる）。
 
 前回（2026-10-06〜07）の#78〜#86の対応はdevelopにマージ済み。mainとタグ（v0.2.2）より後のコミットはまだリリースしていない。
 ## 完了した契約テスト
@@ -24,7 +24,8 @@
 - liveは回していない
 ## 未完と理由
 - 実物のClaude Codeで、SessionStartフックの出力が末尾まで読み込まれるか・deny/askが効くかは確かめていない
-- #92・#93・#94: 起票だけ
+- #92・#93・#94・#96: 起票だけ
+- #95: 契約の変更のため、v0.2.3の後にv0.3.0で実装する
 - #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
 - #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある
 - Gondolinの#155〜#160: メンテナの返事待ち（返事の論点はB1〜B9）。`.claude/settings.local.json`のSessionStartフック（`~/.claude/scripts/gondolin-watch.py`）が動きを知らせる。外部への書き込み（コメント・PRの更新）は、毎回ユーザーの了解を取ってから。英文は日本語の草案の承認後に訳す
@@ -66,3 +67,16 @@
 選ばなかった案: 今のまま（長い接続に弱く、Claude Codeの文書に無い120秒の振る舞いに頼る）、`waiting`を返して間を置いて呼び直す（トークンが掛かる）、Claude Codeのchannels（research previewで、無人の起動では確認ダイアログが出て使えない）。
 
 実機で確かめていないこと: Execの`tmux send-keys`がClaude Codeの入力欄に入って送信されるか、作業中・アタッチ中に送ってしまったときの振る舞い。
+
+### 特権コマンドの宣言をゲストの`/masuda/privileged-commands.json`へ写す（#95、ユーザー承認済みの案。v0.3.0）
+
+`.masuda/`をコミットしないリポジトリでは、同梱の`implementer`が読む`/workspace/.masuda/settings.json`が無く、特権コマンドを知る手段が無い（ハーネスの`oncall-pf-template-20`からの指摘）。レビュー観点・落とし穴と同じく、実行開始時に定義の写しから`/masuda/`へ置く。
+
+| 文書・コード | 変更 |
+|---|---|
+| `docs/guest-protocol.md`「起動時にホストがゲストへ置くもの」 | `/masuda/privileged-commands.json`の行を足す（宣言の`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。宣言が無ければ置かない） |
+| `internal/config`の`PrivilegedCommandDecl` | 任意の`description`を足す。`DeclHash`には含めない（空にした写しでハッシュを取る。既存の承認のハッシュは変わらない） |
+| engineの`defaults/agents/implementer.md` | `/masuda/privileged-commands.json`を読むように |
+| `docs/user/settings.md`・`secrets-and-egress.md` | `description`と、「コミットしておく」の記述 |
+
+守る条件: ホストはこのファイルを読み戻さない（実行の判断は今どおり名前・`records/definitions/`・作業ツリーの`settings.local.json`の`DeclHash`）。承認の状態は写さない。
