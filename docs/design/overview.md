@@ -78,6 +78,7 @@ masuda
 | `refs/heads/<branch>` | ワークスペースのブランチ。commitノードが進める。新しいブランチなら分岐元と同じコミットから、既存のブランチ（下記）ならその先頭から始まる |
 | `refs/masuda/wip/<出現ID>` | ノード境界のWIPスナップショット（作業ツリー全体を`git add -A`したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う |
 | `refs/masuda/base` | 分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base） |
+| `refs/masuda/latest-wip` | 最後に取り込んだ`refs/masuda/wip/*`を指すシンボリックref。再開で作業ツリーへ戻すWIPを決める（コミットの日時は時計が戻ると当てにならないため） |
 
 ### 既存のブランチで動かす
 

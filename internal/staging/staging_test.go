@@ -340,3 +340,21 @@ func TestCreateOnExistingBranch(t *testing.T) {
 		t.Fatalf("diff: %v\n%s", err, d)
 	}
 }
+
+// 再開で戻すWIPは取り込んだ順で決まる。時計が戻って、後から取り込んだWIPのコミットの日時が
+// 前のものより古くても、後から取り込んだ方を返す。
+func TestLatestWIPIsTheLastImportedEvenIfTheClockWentBack(t *testing.T) {
+	repo := newRepo(t)
+	s, _ := newStaging(t, repo, "feat/x")
+	ctx := context.Background()
+	if ref, err := s.LatestWIP(ctx); err != nil || ref != "" {
+		t.Fatalf("LatestWIP before any WIP: %q %v", ref, err)
+	}
+	t.Setenv("GIT_COMMITTER_DATE", "2030-01-01T00:00:10Z")
+	guestSnapshot(t, s, "feat/x", "0000002", map[string]string{"answer.txt": "early\n"})
+	t.Setenv("GIT_COMMITTER_DATE", "2030-01-01T00:00:00Z")
+	last := guestSnapshot(t, s, "feat/x", "0000001", map[string]string{"answer.txt": "late\n"})
+	if ref, err := s.LatestWIP(ctx); err != nil || ref != last {
+		t.Fatalf("LatestWIP = %q %v, want %q", ref, err, last)
+	}
+}
