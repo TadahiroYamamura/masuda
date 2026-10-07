@@ -746,6 +746,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#no-space-left-on-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -790,10 +801,32 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-deps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依存をイメージに入れたのに、VMの中で取りに行って失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stalled" class="md-nav__link">
     <span class="md-ellipsis">
       
         動いているはずなのに進まない（stalled・waiting_input）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chat-blocks-destroy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        終わるはずのrunがrunningのまま進まない（chatにアタッチしたまま）
       
     </span>
   </a>
@@ -849,17 +882,6 @@
     <span class="md-ellipsis">
       
         masuda workflow checkが同梱の定義で失敗する
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#enable-false" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        enable: falseにしたレビュー観点が使われる
       
     </span>
   </a>
@@ -1379,6 +1401,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#no-space-left-on-device" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1423,10 +1456,32 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#offline-deps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依存をイメージに入れたのに、VMの中で取りに行って失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#stalled" class="md-nav__link">
     <span class="md-ellipsis">
       
         動いているはずなのに進まない（stalled・waiting_input）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chat-blocks-destroy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        終わるはずのrunがrunningのまま進まない（chatにアタッチしたまま）
       
     </span>
   </a>
@@ -1488,17 +1543,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#enable-false" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        enable: falseにしたレビュー観点が使われる
-      
-    </span>
-  </a>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -1527,7 +1571,7 @@
 <li><code>masuda watch &lt;id&gt;</code>の流れ</li>
 <li><code>masuda chat &lt;id&gt;</code>でVMの中のClaude Codeの画面</li>
 <li>ホストの記録<code>~/.local/share/masuda/workspaces/&lt;id&gt;/records/</code>（<code>execution-log.jsonl</code>・<code>image-build.log</code>）</li>
-<li><code>masuda serve</code>と<code>masuda-sandbox serve</code>のターミナルの出力</li>
+<li><code>masuda serve</code>と<code>masuda-sandbox serve</code>のログ（<code>~/.local/share/masuda/logs/masuda-serve.log</code>と<code>~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log</code>。置き場所は<code>masuda doctor</code>でも出る。前回の起動の分は末尾が<code>.1</code>のファイル）</li>
 </ul>
 <h2 id="masuda-run"><code>masuda run</code>がすぐエラーになる<a class="headerlink" href="#masuda-run" title="Permanent link">&para;</a></h2>
 <p><code>masuda run</code>は始める前に設定と定義をまとめて確かめ、足りないものを一度に返す。よく出るもの:</p>
@@ -1602,6 +1646,34 @@
 <li><strong>イメージのビルドに失敗した</strong>: <code>records/image-build.log</code>を読む。<code>masuda image build</code>で同じビルドを手元で繰り返せる</li>
 <li><strong>VMからの通信が軒並み502になる</strong>: Nodeが24.17以上だと、Gondolinの既知の問題に当たる。<code>masuda-sandbox serve</code>を22.19以上・24.17未満のNodeで動かす</li>
 </ul>
+<h2 id="starting-long"><code>starting</code>のまま進まない<a class="headerlink" href="#starting-long" title="Permanent link">&para;</a></h2>
+<p><code>masuda list</code>のPOSITION（<code>masuda watch</code>なら<code>status</code>の行）に、起動のどの段階にいるかが出る。</p>
+<table>
+<thead>
+<tr>
+<th>段階</th>
+<th>時間がかかる理由と見るもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>building image (log: &lt;パス&gt;)</code></td>
+<td>Dockerfileのビルド。初回や<code>Dockerfile</code>を変えた後は数分かかることがある。進み具合は括弧の中のログを<code>tail -f</code>で見る</td>
+</tr>
+<tr>
+<td><code>booting the VM</code></td>
+<td>VMの起動とディスクの拡張。普段は数秒〜数十秒。長いなら<code>masuda-sandbox serve</code>のログ（<code>masuda doctor</code>が場所を出す）を見る</td>
+</tr>
+<tr>
+<td><code>preparing the guest</code></td>
+<td>VMの中にブランチをcloneし、設定とチェックを置く。リポジトリが大きいと長くなる</td>
+</tr>
+<tr>
+<td><code>starting Claude Code</code></td>
+<td>VMの中でClaude Codeを起動している</td>
+</tr>
+</tbody>
+</table>
 <h2 id="no-space-left-on-device"><code>No space left on device</code><a class="headerlink" href="#no-space-left-on-device" title="Permanent link">&para;</a></h2>
 <p>VMのルートディスクが足りない。ビルドのキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、<code>blocked</code>で止まることがある。</p>
 <ul>
@@ -1646,6 +1718,43 @@
 <li>システムのCAバンドル（<code>/etc/ssl/certs/ca-certificates.crt</code>）を読まず、自前の証明書の束を持つツールは、証明書の検証に失敗する。そのツールの設定でシステムのバンドルを指す（例: Pythonのrequestsなら<code>REQUESTS_CA_BUNDLE</code>、Nodeなら<code>NODE_EXTRA_CA_CERTS</code>）。エージェントには<code>claudeSettings.env</code>、チェックにはコマンドの頭で渡す</li>
 <li>許可していないホストへの通信は証明書の問題ではなく拒否される。<code>masuda watch</code>に<code>http denied &lt;host&gt;</code>が出ていれば<a href="../secrets-and-egress/#egress">egress</a>の設定を見る</li>
 </ul>
+<h2 id="offline-deps">依存をイメージに入れたのに、VMの中で取りに行って失敗する<a class="headerlink" href="#offline-deps" title="Permanent link">&para;</a></h2>
+<p>実行中のVMは許可したホストへしか通信できない。イメージのビルド時に入れた依存でも、ツールによっては実行時にネットワークへ取りに行き、そこで失敗する。<code>masuda watch</code>に<code>http denied &lt;host&gt;</code>が出ているか、名前解決・通信のエラーで止まっていればこれ。</p>
+<table>
+<thead>
+<tr>
+<th>ツール</th>
+<th>実行時に取りに行くもの</th>
+<th>対処（Dockerfile）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>npx &lt;パッケージ&gt;</code></td>
+<td><code>npm install -g</code>で入れてあっても、レジストリのメタデータ</td>
+<td>下を参照</td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>go.mod</code>の<code>toolchain</code>行が指す版のツールチェーン、モジュール</td>
+<td><code>ENV GOTOOLCHAIN=local</code>と<code>ENV GOPROXY=off</code>。依存はビルド時に<code>go mod download</code>しておく</td>
+</tr>
+</tbody>
+</table>
+<p>npxは、ビルド時に一度呼んでnpmのキャッシュにメタデータを残し、実行時はキャッシュだけで解決させる。</p>
+<div class="highlight"><pre><span></span><code><span class="k">USER</span><span class="w"> </span><span class="s">ubuntu</span>
+<span class="c"># 実行時と同じ状況（package.jsonはあるがnode_modulesは無いディレクトリ）で一度呼ぶ。</span>
+<span class="c"># package.jsonの無い場所で呼ぶと、別の場所のnode_modulesの版で解決してしまい、実行時に要るメタデータが残らない</span>
+<span class="k">RUN</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/npx-warmup<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>&lt;リポジトリのpackage.jsonの写し&gt;<span class="w"> </span>/tmp/npx-warmup/<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/npx-warmup<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npx<span class="w"> </span>@redocly/cli<span class="w"> </span>--version<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/tmp/npx-warmup
+<span class="k">ENV</span><span class="w"> </span><span class="nv">npm_config_offline</span><span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<ul>
+<li>npmのキャッシュはユーザーごとなので、エージェントが動く<code>ubuntu</code>で呼ぶ</li>
+<li><code>npm_config_offline=true</code>にしたのにキャッシュに無いと<code>ENOTCACHED</code>で、設定していないと通信のエラー（<code>EAI_AGAIN</code>など）で失敗する</li>
+</ul>
 <h2 id="stalled">動いているはずなのに進まない（<code>stalled</code>・<code>waiting_input</code>）<a class="headerlink" href="#stalled" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><code>stalled</code></strong>: VMの中のClaude Codeは生きているが、しきい値（既定10分）を超えて、Claude APIへの通信もツールの使用も無い。masudaは何もしない（表示だけ）。<code>masuda chat &lt;id&gt;</code>で画面を見る<ul>
@@ -1655,6 +1764,12 @@
 <li><strong><code>waiting_input(idle)</code></strong>: メインのClaude Codeがターンを終え、人の入力を待っている。多くは、エージェントがmasudaの決まり（質問は<code>question</code>ノードでだけ聞く）を外れて、画面の上であなたに問いかけて止まっている。<code>masuda chat</code>で読み、続けてよければ「続けて」等と答える。直らなければ<code>masuda stop</code>→<code>masuda resume</code>で、そのタスクをやり直させる</li>
 <li><strong><code>waiting_input(permission)</code></strong>: 道具の使用の許可を待っている。<code>chat</code>で答える</li>
 <li><strong><code>dead</code></strong>: Claude Codeのセッションが無くなった。<code>masuda stop</code>→<code>masuda resume</code></li>
+</ul>
+<h2 id="chat-blocks-destroy">終わるはずのrunが<code>running</code>のまま進まない（chatにアタッチしたまま）<a class="headerlink" href="#chat-blocks-destroy" title="Permanent link">&para;</a></h2>
+<p>ワークフローがpublish・discardに着いたのに、<code>masuda list</code>が<code>running</code>のまま変わらない。<code>masuda chat</code>でアタッチしたままだと、VMの破棄が終わらない（masuda-sandboxの不具合、TadahiroYamamura/masuda-sandbox#8）。</p>
+<ul>
+<li>chatの画面で<code>C-b d</code>を押して切り離す。すぐに破棄が進み、<code>done</code>になる</li>
+<li>runが終わりそうなとき（reviewゲートを承認した後など）は、先に切り離しておく</li>
 </ul>
 <h2 id="why-stopped">止まった・終わった原因を調べる<a class="headerlink" href="#why-stopped" title="Permanent link">&para;</a></h2>
 <p>ワークスペースの<code>exports/</code>（<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>）に、実行ログ（<code>execution-log.jsonl</code>）とVMの中のClaude Codeの会話ログ（<code>transcripts/</code>）が残る。どの終わり方（<code>done</code>・<code>stop</code>・<code>remove</code>）でも書き出され、<code>remove</code>の後も消えない（<a href="../operations/#exports">exports</a>）。</p>
@@ -1721,8 +1836,6 @@
 </code></pre></div>
 <h2 id="masuda-workflow-check"><code>masuda workflow check</code>が同梱の定義で失敗する<a class="headerlink" href="#masuda-workflow-check" title="Permanent link">&para;</a></h2>
 <p>引数無しの<code>masuda workflow check</code>は、部品のワークフローも単独で検査するので、同梱の定義だけでも問題が出て終了コード1になる。<code>masuda workflow check workflows/develop</code>のように、始めるワークフローを指定する（<a href="../cli/#workflow">CLIリファレンス</a>）。</p>
-<h2 id="enable-false"><code>enable: false</code>にしたレビュー観点が使われる<a class="headerlink" href="#enable-false" title="Permanent link">&para;</a></h2>
-<p>今の実装は観点の<code>enable</code>を読んでいない（<a href="../reviews/">レビュー観点</a>）。</p>
 
 
 

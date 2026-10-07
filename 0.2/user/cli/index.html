@@ -671,6 +671,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1588,6 +1599,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1698,7 +1720,7 @@
 <h1 id="cli">CLIリファレンス<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code>masuda &lt;command&gt; [flags]
 </code></pre></div>
-<p><code>serve</code>・<code>init</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
+<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
 <h2 id="_1">共通の約束<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
@@ -1758,7 +1780,11 @@
 </tr>
 <tr>
 <td><a href="#init"><code>init</code></a></td>
-<td>対象リポジトリに<code>.masuda/</code>の雛形を置く</td>
+<td>対象リポジトリに<code>.masuda/</code>の雛形と、ホストのエージェント向けの案内を置く</td>
+</tr>
+<tr>
+<td><a href="#prime"><code>prime</code></a></td>
+<td>ホストのエージェント向けのmasudaの使い方を出す</td>
 </tr>
 <tr>
 <td><a href="#egress"><code>egress</code></a></td>
@@ -1795,7 +1821,7 @@
 </tbody>
 </table>
 <h2 id="serve">serve<a class="headerlink" href="#serve" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>masuda serve [--socket &lt;path&gt;] [--data-dir &lt;dir&gt;] [--sandbox-socket &lt;path&gt;] [--stall-after &lt;duration&gt;] [--config &lt;path&gt;] [--fake-sandbox]
+<div class="highlight"><pre><span></span><code>masuda serve [--socket &lt;path&gt;] [--data-dir &lt;dir&gt;] [--sandbox-socket &lt;path&gt;] [--stall-after &lt;duration&gt;] [--config &lt;path&gt;] [--log-file &lt;path&gt;] [--fake-sandbox]
 </code></pre></div>
 <p>常駐プロセス。Ctrl-C（SIGINT）かSIGTERMで止まる。止めると動いていたワークスペースは<code>stopped</code>になる。</p>
 <table>
@@ -1833,6 +1859,11 @@
 <td>serve全体の設定ファイル（<a href="../settings/#serve-config">設定ファイル</a>）。無ければすべて既定</td>
 </tr>
 <tr>
+<td><code>--log-file</code></td>
+<td><code>&lt;data-dir&gt;/logs/masuda-serve.log</code></td>
+<td>ログの書き先。端末には起動したことと、ログの置き場所だけを出す。起動のたびに前のファイルを<code>.1</code>に回す（古いものは1つだけ残す）。<code>-</code>なら今までどおり端末（標準エラー出力）に出す</td>
+</tr>
+<tr>
 <td><code>--fake-sandbox</code></td>
 <td><code>false</code></td>
 <td>VMを使わず、プロセス内のフェイクで動かす（開発・テスト用。エージェントは動かない）</td>
@@ -1842,7 +1873,7 @@
 <h2 id="run">run<a class="headerlink" href="#run" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda run &lt;workflow&gt; --branch &lt;name&gt; [--repo &lt;dir&gt;] [--base &lt;ref&gt;] [--image &lt;entry&gt;] [--input name=value|name=@file]...
 </code></pre></div>
-<p>ワークフローを新しいワークスペースで始め、<code>&lt;id&gt; starting</code>を出してすぐ返る。VMの起動は裏で進む。</p>
+<p>ワークフローを新しいワークスペースで始め、<code>&lt;id&gt; starting</code>を出してすぐ返る。VMの起動は裏で進み、どの段階にいるかは<code>masuda list</code>のPOSITIONに出る（<a href="../troubleshooting/#starting-long">トラブルシューティング</a>）。</p>
 <table>
 <thead>
 <tr>
@@ -1938,7 +1969,7 @@
 <h2 id="chat">chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda chat &lt;id&gt;
 </code></pre></div>
-<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
+<p>VMの中のClaude Code（tmuxの<code>claude-work</code>セッション）にsshでアタッチする。<code>C-b d</code>で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（<a href="../troubleshooting/#chat-blocks-destroy">トラブルシューティング</a>）。chatからゲートを閉じることはできない。動いていないワークスペース（<code>blocked</code>はVMが残っているので使える）、起動中のワークスペースには使えない。<code>done</code>ではVMを壊してあるので、会話は<code>exports/transcripts/</code>で読む。</p>
 <h2 id="gate">gate<a class="headerlink" href="#gate" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda gate list [&lt;id&gt;]
 masuda gate show &lt;id&gt; &lt;occurrence&gt;
@@ -2036,6 +2067,31 @@ answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REG
 <div class="highlight"><pre><span></span><code>masuda init [--repo &lt;dir&gt;]
 </code></pre></div>
 <p>対象リポジトリに<code>.masuda/</code>の雛形（<code>settings.json</code>、<code>images/default/Dockerfile</code>、同梱の14のレビュー観点<code>reviews/*.md</code>）を置き、<code>.gitignore</code>に<code>.masuda/settings.local.json</code>を足す。<code>masuda serve</code>は要らない。既にあるファイルは上書きしない。雛形の<code>settings.json</code>の<code>egress</code>は空（Claude APIへの経路は常に開いているので宣言しない）。<code>.gitignore</code>に<code>.masuda/</code>ごと無視する行（<code>.masuda</code>・<code>.masuda/</code>・<code>.masuda/*</code>・<code>.masuda/**</code>、先頭<code>/</code>付きも）があれば、行を足さない。</p>
+<p>ホストでClaude Codeを使うときのために、次の2つも足す。どちらも個人用でコミットしないファイルにする。コミットしたものは<code>/workspace</code>のcloneでVMにも届くが、VMにはmasudaのバイナリが無く、VMのエージェントにホストの使い方は要らないため。</p>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>足すもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAUDE.local.md</code></td>
+<td><code>&lt;!-- BEGIN MASUDA --&gt;</code>〜<code>&lt;!-- END MASUDA --&gt;</code>で囲んだ短い節（<code>masuda prime</code>への案内）。この印があれば足さない</td>
+</tr>
+<tr>
+<td><code>.claude/settings.local.json</code></td>
+<td><code>hooks.SessionStart</code>に<code>masuda prime --hook-json</code>。<code>permissions.deny</code>に、人間が判断することを前提にしたコマンド（<code>secret set・approve・reject</code>、<code>egress approve・reject</code>、<code>gate approve・reject・comment・dismiss・halt・redo</code>、<code>privileged-command approve</code>、<code>remove</code>）。<code>permissions.ask</code>に<code>question answer</code>。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする</td>
+</tr>
+</tbody>
+</table>
+<p><code>.gitignore</code>にはこの2つも足す（<code>.claude/</code>ごと無視する行があれば<code>.claude/settings.local.json</code>は足さない）。</p>
+<h2 id="prime">prime<a class="headerlink" href="#prime" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda prime [--hook-json]
+</code></pre></div>
+<p>ホストのエージェント（Claude Code等）向けに、masudaの使い方（ワークスペースの始め方、状態の読み方、エージェントが代わりに打ってはいけない判断のコマンド）を標準出力に出す。<code>masuda serve</code>は要らない。文面はバイナリに埋め込んであり、masudaの版とともに変わる。</p>
+<p><code>--hook-json</code>を付けると、Claude CodeのSessionStartフックの形（<code>{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":...}}</code>）で出す。<code>masuda init</code>が登録するフックはこれを使い、セッションの開始時とcompactionの後に読み込ませる。</p>
 <h2 id="egress">egress<a class="headerlink" href="#egress" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda egress list [--repo &lt;dir&gt;]
 masuda egress approve &lt;host&gt; [--repo &lt;dir&gt;]
@@ -2092,7 +2148,7 @@ masuda image build [&lt;entry&gt;] [--repo &lt;dir&gt;]
 masuda workflow show &lt;workflow&gt; [--repo &lt;dir&gt;]
 masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
-<p><code>--repo</code>を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。<code>run</code>と違い、作業ツリーの<code>.masuda/</code>をその場で読む。</p>
+<p><code>--repo</code>を省くと今いる作業ツリーのトップを使い、作業ツリーの外なら同梱の定義だけを見る。<code>run</code>と違い、作業ツリーの<code>.masuda/</code>をその場で読む。<code>masuda serve</code>は要らない（CIでも、serveを起動せずに<code>check</code>を流せる）。</p>
 <table>
 <thead>
 <tr>
@@ -2120,10 +2176,10 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <div class="highlight"><pre><span></span><code>masuda version [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;]
 </code></pre></div>
 <p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（<code>masuda init</code>の雛形が入れる版）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
-<div class="highlight"><pre><span></span><code>masuda 0.2.2 (go1.26.3 linux/amd64)
+<div class="highlight"><pre><span></span><code>masuda 0.2.3 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
   claude code: 2.1.287 (guest, verified)
-masuda-sandbox 0.2.2 (linux/amd64, gondolin 0.12.0)
+masuda-sandbox 0.2.3 (linux/amd64, gondolin 0.12.0)
   sandbox contract sha256: 495d81…
   contract: ok
 </code></pre></div>

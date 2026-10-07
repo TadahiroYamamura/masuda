@@ -1526,10 +1526,18 @@ created .masuda/reviews/n-plus-one-query.md
 created .masuda/reviews/nil-check-gaps.md
 created .masuda/reviews/resource-leak.md
 created .masuda/reviews/secret-hardcode.md
+created CLAUDE.local.md
+created .claude/settings.local.json (SessionStart: masuda prime --hook-json)
+created .claude/settings.local.json (permissions.deny: 13 rules)
+created .claude/settings.local.json (permissions.ask: 1 rule)
 created .gitignore (.masuda/settings.local.json)
+created .gitignore (.masuda/claude.local/)
+created .gitignore (CLAUDE.local.md)
+created .gitignore (.claude/settings.local.json)
 note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json
 </code></pre></div>
 <p><code>masuda init</code>は<code>masuda serve</code>無しで動く。既にあるファイルは上書きせず、足りないものだけ足す。<code>.gitignore</code>には利用者ごとの承認を書く<code>.masuda/settings.local.json</code>を足す（<code>.masuda/</code>ごと無視している行があれば足さない）。</p>
+<p><code>CLAUDE.local.md</code>と<code>.claude/settings.local.json</code>は、ホストのClaude Codeにmasudaの使い方を読ませるためのもの。このリポジトリで開いたClaude Codeに「この課題をmasudaで実装して」のように頼めば、ワークフローの選択と<code>masuda run</code>から判断待ちの報告までを任せられる（ゲートの承認、秘密・egressの承認などはエージェントに打たせない。質問への回答は打つ前にあなたに確かめる）。中身は<code>masuda prime</code>で見られる（<a href="../cli/#init">CLI</a>）。</p>
 <p><code>.masuda/</code>はコミットしてもしなくてもよい。masudaは実行を始めるときに作業ツリーの<code>.masuda/</code>を読む。チームで共有するならコミットする。</p>
 <h2 id="2">2. イメージにプロジェクトの道具を足す<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
 <p><code>.masuda/images/default/Dockerfile</code>がVMの中身になる。雛形にはmasudaが要るもの（Claude Code・tmux・git等）だけが入っているので、対象リポジトリのビルドとテストに要るものを足す。</p>
