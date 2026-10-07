@@ -22,7 +22,7 @@ COPY --chown=ubuntu:ubuntu ctx/go.mod ctx/go.sum /tmp/modprefetch/
 USER ubuntu
 WORKDIR /home/ubuntu
 # Claude Codeの版はinternal/guest.ClaudeCodeVersion（masudaが実機で検証した版）に合わせる。
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.288
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.292
 ENV PATH=/home/ubuntu/.local/bin:/home/ubuntu/go/bin:$PATH
 # GOCACHE は tmpfs の /tmp へ（ルートディスクを圧迫しないため）。モジュールキャッシュは前取りして残す
 ENV GOCACHE=/tmp/go-cache
