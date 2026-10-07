@@ -671,6 +671,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1588,6 +1599,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#prime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prime
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#egress" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1698,7 +1720,7 @@
 <h1 id="cli">CLIリファレンス<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code>masuda &lt;command&gt; [flags]
 </code></pre></div>
-<p><code>serve</code>・<code>init</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
+<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
 <h2 id="_1">共通の約束<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
@@ -1758,7 +1780,11 @@
 </tr>
 <tr>
 <td><a href="#init"><code>init</code></a></td>
-<td>対象リポジトリに<code>.masuda/</code>の雛形を置く</td>
+<td>対象リポジトリに<code>.masuda/</code>の雛形と、ホストのエージェント向けの案内を置く</td>
+</tr>
+<tr>
+<td><a href="#prime"><code>prime</code></a></td>
+<td>ホストのエージェント向けのmasudaの使い方を出す</td>
 </tr>
 <tr>
 <td><a href="#egress"><code>egress</code></a></td>
@@ -2041,6 +2067,31 @@ answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REG
 <div class="highlight"><pre><span></span><code>masuda init [--repo &lt;dir&gt;]
 </code></pre></div>
 <p>対象リポジトリに<code>.masuda/</code>の雛形（<code>settings.json</code>、<code>images/default/Dockerfile</code>、同梱の14のレビュー観点<code>reviews/*.md</code>）を置き、<code>.gitignore</code>に<code>.masuda/settings.local.json</code>を足す。<code>masuda serve</code>は要らない。既にあるファイルは上書きしない。雛形の<code>settings.json</code>の<code>egress</code>は空（Claude APIへの経路は常に開いているので宣言しない）。<code>.gitignore</code>に<code>.masuda/</code>ごと無視する行（<code>.masuda</code>・<code>.masuda/</code>・<code>.masuda/*</code>・<code>.masuda/**</code>、先頭<code>/</code>付きも）があれば、行を足さない。</p>
+<p>ホストでClaude Codeを使うときのために、次の2つも足す。どちらも個人用でコミットしないファイルにする。コミットしたものは<code>/workspace</code>のcloneでVMにも届くが、VMにはmasudaのバイナリが無く、VMのエージェントにホストの使い方は要らないため。</p>
+<table>
+<thead>
+<tr>
+<th>ファイル</th>
+<th>足すもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CLAUDE.local.md</code></td>
+<td><code>&lt;!-- BEGIN MASUDA --&gt;</code>〜<code>&lt;!-- END MASUDA --&gt;</code>で囲んだ短い節（<code>masuda prime</code>への案内）。この印があれば足さない</td>
+</tr>
+<tr>
+<td><code>.claude/settings.local.json</code></td>
+<td><code>hooks.SessionStart</code>に<code>masuda prime --hook-json</code>。<code>permissions.deny</code>に、人間が判断することを前提にしたコマンド（<code>secret set・approve・reject</code>、<code>egress approve・reject</code>、<code>gate approve・reject・comment・dismiss・halt・redo</code>、<code>privileged-command approve</code>、<code>remove</code>）。<code>permissions.ask</code>に<code>question answer</code>。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする</td>
+</tr>
+</tbody>
+</table>
+<p><code>.gitignore</code>にはこの2つも足す（<code>.claude/</code>ごと無視する行があれば<code>.claude/settings.local.json</code>は足さない）。</p>
+<h2 id="prime">prime<a class="headerlink" href="#prime" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda prime [--hook-json]
+</code></pre></div>
+<p>ホストのエージェント（Claude Code等）向けに、masudaの使い方（ワークスペースの始め方、状態の読み方、エージェントが代わりに打ってはいけない判断のコマンド）を標準出力に出す。<code>masuda serve</code>は要らない。文面はバイナリに埋め込んであり、masudaの版とともに変わる。</p>
+<p><code>--hook-json</code>を付けると、Claude CodeのSessionStartフックの形（<code>{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":...}}</code>）で出す。<code>masuda init</code>が登録するフックはこれを使い、セッションの開始時とcompactionの後に読み込ませる。</p>
 <h2 id="egress">egress<a class="headerlink" href="#egress" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda egress list [--repo &lt;dir&gt;]
 masuda egress approve &lt;host&gt; [--repo &lt;dir&gt;]
