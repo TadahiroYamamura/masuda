@@ -45,6 +45,7 @@ var compFlagKinds = map[string]string{
 	"all":            "bool",
 	"force":          "bool",
 	"fake-sandbox":   "bool",
+	"hook-json":      "bool",
 }
 
 func leaf(name string, arg argSource, flags ...string) compNode {
@@ -87,6 +88,7 @@ var completionTable = []compNode{
 	clientLeaf("stop", argWorkspace),
 	clientLeaf("remove", argWorkspace, "force"),
 	clientLeaf("init", argNone, "repo"),
+	clientLeaf("prime", argNone, "hook-json"),
 	{name: "egress", subs: repoSubs("list", "approve", "reject")},
 	{name: "secret", subs: repoSubs("list", "set", "approve", "reject")},
 	{name: "privileged-command", subs: repoSubs("list", "approve")},

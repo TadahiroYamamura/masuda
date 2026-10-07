@@ -4,7 +4,7 @@
 masuda <command> [flags]
 ```
 
-`serve`・`init`・`version`・`doctor`・`completion`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
+`serve`・`init`・`prime`・`version`・`doctor`・`completion`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
 
 ## 共通の約束
 
@@ -28,7 +28,8 @@ masuda <command> [flags]
 | [`question`](#question) | 質問の一覧・回答 |
 | [`stop`](#stop) | VMを止める（記録は残す） |
 | [`remove`](#remove) | ワークスペースを消す（exportsは残す） |
-| [`init`](#init) | 対象リポジトリに`.masuda/`の雛形を置く |
+| [`init`](#init) | 対象リポジトリに`.masuda/`の雛形と、ホストのエージェント向けの案内を置く |
+| [`prime`](#prime) | ホストのエージェント向けのmasudaの使い方を出す |
 | [`egress`](#egress) | 通信先の宣言の一覧と承認 |
 | [`secret`](#secret) | 秘密の一覧・値の登録・平文の承認 |
 | [`privileged-command`](#privileged-command) | 特権コマンドの一覧・承認 |
@@ -194,6 +195,25 @@ masuda init [--repo <dir>]
 ```
 
 対象リポジトリに`.masuda/`の雛形（`settings.json`、`images/default/Dockerfile`、同梱の14のレビュー観点`reviews/*.md`）を置き、`.gitignore`に`.masuda/settings.local.json`を足す。`masuda serve`は要らない。既にあるファイルは上書きしない。雛形の`settings.json`の`egress`は空（Claude APIへの経路は常に開いているので宣言しない）。`.gitignore`に`.masuda/`ごと無視する行（`.masuda`・`.masuda/`・`.masuda/*`・`.masuda/**`、先頭`/`付きも）があれば、行を足さない。
+
+ホストでClaude Codeを使うときのために、次の2つも足す。どちらも個人用でコミットしないファイルにする。コミットしたものは`/workspace`のcloneでVMにも届くが、VMにはmasudaのバイナリが無く、VMのエージェントにホストの使い方は要らないため。
+
+| ファイル | 足すもの |
+|---|---|
+| `CLAUDE.local.md` | `<!-- BEGIN MASUDA -->`〜`<!-- END MASUDA -->`で囲んだ短い節（`masuda prime`への案内）。この印があれば足さない |
+| `.claude/settings.local.json` | `hooks.SessionStart`に`masuda prime --hook-json`。`permissions.deny`に、人間が判断することを前提にしたコマンド（`secret set・approve・reject`、`egress approve・reject`、`gate approve・reject・comment・dismiss・halt・redo`、`privileged-command approve`、`remove`）。`permissions.ask`に`question answer`。既にあるものは足さず、他の設定・フック・規則は残す（足したときはキーの並びが変わる）。JSONとして読めなければ書き換えずにエラーにする |
+
+`.gitignore`にはこの2つも足す（`.claude/`ごと無視する行があれば`.claude/settings.local.json`は足さない）。
+
+## prime
+
+```text
+masuda prime [--hook-json]
+```
+
+ホストのエージェント（Claude Code等）向けに、masudaの使い方（ワークスペースの始め方、状態の読み方、エージェントが代わりに打ってはいけない判断のコマンド）を標準出力に出す。`masuda serve`は要らない。文面はバイナリに埋め込んであり、masudaの版とともに変わる。
+
+`--hook-json`を付けると、Claude CodeのSessionStartフックの形（`{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":...}}`）で出す。`masuda init`が登録するフックはこれを使い、セッションの開始時とcompactionの後に読み込ませる。
 
 ## egress
 

@@ -25,7 +25,8 @@ commands:
   question list|answer      質問の一覧・回答
   stop <id>                 sandboxを止める（記録は残す）
   remove <id>               ワークスペースを消す（exportsは残す）
-  init                      対象リポジトリに.masuda/の雛形を置く（serve不要）
+  init                      対象リポジトリに.masuda/の雛形と、ホストのエージェント向けの案内を置く（serve不要）
+  prime [--hook-json]       ホストのエージェント向けのmasudaの使い方を出す（serve不要）
   egress list|approve|reject
                             egressの宣言と承認
   secret list|set|approve|reject
@@ -38,7 +39,7 @@ commands:
   doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
   completion bash|zsh       シェルの補完スクリプトを標準出力に出す（serve不要）
 
-serve・init・workflow・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+serve・init・prime・workflow・version・doctor・completion以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
 `
 
 func main() {
@@ -72,6 +73,8 @@ func main() {
 		err = runRemove(os.Args[2:])
 	case "init":
 		err = runInit(os.Args[2:])
+	case "prime":
+		err = runPrime(os.Args[2:])
 	case "egress":
 		err = runEgress(os.Args[2:])
 	case "secret":
