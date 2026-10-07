@@ -161,7 +161,7 @@ APP_ENV="development"
 テストがrootやDockerを要するとき、そのコマンドだけを**別の使い捨てVM（rootで動く）**で実行させる仕組み。エージェントが動くVMはrootにしない。
 
 !!! note "実機での確認"
-    特権コマンドはフェイクのsandboxでの契約テストまでで、実際のVMではまだ1周させていない。
+    特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、まだ実機で確かめていない。
 
 ### 宣言と承認
 
@@ -189,6 +189,7 @@ masuda privileged-command approve integration-test
 
 - `image`は特権VMのイメージのエントリ（`.masuda/images/privileged/Dockerfile`等）。エージェントのVMと同じエントリでもよい
 - 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`）に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため
+- 承認はイメージの中身（`.masuda/images/<image>/`のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは`/workspace`のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、`.masuda/images/`の変更はレビューで見る
 - 特権VMが通信できるのは、宣言かつ承認済みのegressのホスト
 
 ### 呼ばれ方

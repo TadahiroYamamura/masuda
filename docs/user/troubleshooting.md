@@ -82,6 +82,10 @@ DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭に�
 - **masuda-sandboxが古い**: ENVを引き継がない版がある。`masuda version`でmasudaと同じバージョンか確かめる
 - **確実に渡すには**: チェックはコマンドの頭に（`"test": "GOCACHE=/tmp/go-cache go test ./..."`）、エージェントには`settings.json`の`claudeSettings.env`に書く
 
+## Dockerfileで置いたファイルがVMの中に無い {#vm-tmpfs}
+
+`/run`・`/root`・`/tmp`・`/var/tmp`・`/var/cache`・`/var/log`は、VMの起動のたびに空になる。ホストの`docker run`では見えていたものが、VMでは無いことがある（例: PostgreSQLが`/var/run/postgresql`にロックファイルを作れず起動しない）。置き場所を変えるか、起動のたびに作る（[設定のimage](settings.md#image)）。
+
 ## イメージのビルドが`EACCES`で失敗する（`-modcacherw`）
 
 非rootでGoのモジュールを`go mod download`したイメージ（モジュールのキャッシュが読み取り専用になる）は、古い`masuda-sandbox`ではビルドが`Build failed: EACCES, Permission denied: /tmp/gondolin-build-XXXX`で失敗する。
