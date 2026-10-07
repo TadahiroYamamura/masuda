@@ -199,7 +199,7 @@ func (failingCreate) CreateSandbox(context.Context, *connect.Request[sandboxv1.C
 	return nil, connect.NewError(connect.CodeResourceExhausted, errors.New("no room for another VM"))
 }
 
-func TestRunBootFailureBlocksWorkspace(t *testing.T) {
+func TestRunBootFailureSuspendsWorkspace(t *testing.T) {
 	ws, _, repo := newTestAPIWith(t, func(c sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient {
 		return failingCreate{c}
 	})
@@ -214,7 +214,7 @@ func TestRunBootFailureBlocksWorkspace(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Msg.State == apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED {
+		if got.Msg.State == apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED {
 			if !strings.Contains(got.Msg.Reason, "no room for another VM") {
 				t.Fatalf("reason %q", got.Msg.Reason)
 			}
@@ -222,7 +222,7 @@ func TestRunBootFailureBlocksWorkspace(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Fatal("workspace did not become BLOCKED")
+	t.Fatal("workspace did not become SUSPENDED")
 }
 
 // failingFirstCreate は最初のCreateSandboxだけが失敗するsandboxクライアント。
@@ -238,7 +238,7 @@ func (f failingFirstCreate) CreateSandbox(ctx context.Context, req *connect.Requ
 	return f.SandboxServiceClient.CreateSandbox(ctx, req)
 }
 
-// 起動に失敗してBLOCKEDになったワークスペースは、Stopを挟まずにResumeできる。
+// 起動に失敗してSUSPENDEDになったワークスペースは、Stopを挟まずにResumeできる。
 func TestResumeAfterBootFailureWithoutStop(t *testing.T) {
 	var calls atomic.Int32
 	ws, _, repo := newTestAPIWith(t, func(c sandboxv1connect.SandboxServiceClient) sandboxv1connect.SandboxServiceClient {
@@ -250,7 +250,7 @@ func TestResumeAfterBootFailureWithoutStop(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := res.Msg.Id
-	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED)
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED)
 	if _, err := ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
 		t.Fatalf("Resume of a workspace whose boot failed: %v", err)
 	}

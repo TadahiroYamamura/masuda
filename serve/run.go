@@ -133,12 +133,14 @@ func (c *runCtl) reflect(st engine.Status, err error) {
 		// 状態をDONEに書く前に行うのは、DONEが見えた時点で書き出しが揃っているようにするため。
 		_ = c.runner.Cleanup(c.ctx, nil)
 	case err == nil && st.Kind == engine.StatusBlocked:
-		// BLOCKEDはVMを残す（Stop・Resumeできる）。実行ログだけ写し直す。
+		// BLOCKEDは再開できないが、VMは残す（chatで中を見られる。Stopで片付ける）。実行ログだけ写し直す。
 		_ = c.runner.ExportLog()
 	}
 	c.update(func(w *workspace.Workspace) {
 		if err != nil {
-			w.State = workspace.StateBlocked
+			// engineは何も記録していない（未承認の特権ノード、execの基盤の失敗等）ので、原因を直して
+			// 再開すれば同じノードをやり直せる。engineが記録したBLOCKEDと分けてSUSPENDEDにする。
+			w.State = workspace.StateSuspended
 			w.Reason = "engine: " + err.Error()
 			return
 		}

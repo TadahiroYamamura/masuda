@@ -35,7 +35,10 @@ flowchart LR
 | `waiting_question` | 質問への回答を待っている |
 | `stopped` | 止めた（`masuda stop`、または`masuda serve`の再起動）。`masuda resume`で続きから再開できる |
 | `done` | ワークフローが終わった（publishやdiscardを含む） |
-| `blocked` | 進めなくなって止まった。理由は`masuda list`のPOSITION等に出る |
+| `suspended` | 中断した。VMの起動に失敗した、またはホストで動かすノード（`privileged`・`exec`等）を動かせなかった（特権コマンドの承認が取り消されていた、sandbox serviceが失敗した等）。ワークフローの記録には何も残っていないので、原因を直して`masuda resume`すれば同じノードからやり直す。理由は`masuda list`のPOSITION等に出る |
+| `blocked` | 行き止まり。ワークフローが「これ以上進めない」と記録した（進入回数の上限を使い切って行き先が無い、triageの`halt`等）。`resume`しても同じところで止まるので、再開はできない。理由は`masuda list`のPOSITION等に出る |
+
+`suspended`と`blocked`はどちらも止まった状態だが、`suspended`は直せば続けられ、`blocked`は続けられない。どちらもVMが残っていれば`masuda chat`で中を見られ、`masuda stop`で片付けられる（`suspended`は`stopped`になり、`blocked`は`blocked`のまま）。
 
 ## staging
 

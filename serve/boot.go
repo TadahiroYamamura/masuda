@@ -245,7 +245,7 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 
 // boot はcのsandboxを作り、ゲストの初期配置をして（実VMならメインセッションも起動して）
 // 実行を動かす。resumeなら前のsandboxを壊してから作り、engineを進めて今の位置を状態に写す。
-// 失敗したらsandboxを壊してBLOCKEDにし、理由をReasonに残す。Stopで取り消されたときは
+// 失敗したらsandboxを壊してSUSPENDEDにし、理由をReasonに残す。Stopで取り消されたときは
 // 状態に触らない（Stopが書く）。
 func (b *backend) boot(c *runCtl, resume bool) {
 	defer close(c.bootDone)
@@ -264,7 +264,7 @@ func (b *backend) boot(c *runCtl, resume bool) {
 		b.removeRun(id)
 		b.destroySandbox(id)
 		c.update(func(w *workspace.Workspace) {
-			w.State = workspace.StateBlocked
+			w.State = workspace.StateSuspended
 			w.Reason = bootFailedReason + err.Error()
 		})
 		return
@@ -278,15 +278,13 @@ func (b *backend) boot(c *runCtl, resume bool) {
 	c.setState(workspace.StateRunning)
 }
 
-// bootFailedReason は起動に失敗してBLOCKEDにしたときのReasonの頭。engineが止めたBLOCKEDと
-// 区別し、Stopを挟まずにResumeできるようにする（sandboxも実行の窓口も既に無く、記録は
-// 起動前のままなので、止めたワークスペースと同じに再開できる）。
+// bootFailedReason は起動に失敗してSUSPENDEDにしたときのReasonの頭。
 const bootFailedReason = "sandbox boot failed: "
 
-// resumable はwをResumeできる状態か。止めたものと、起動に失敗してBLOCKEDになったもの。
+// resumable はwをResumeできる状態か。止めたものと、SUSPENDED（起動の失敗、engineへの呼び出しの
+// エラー。どちらもengineは何も記録していない）。engineが記録したBLOCKEDは含めない。
 func resumable(w *workspace.Workspace) bool {
-	return w.State == workspace.StateStopped ||
-		(w.State == workspace.StateBlocked && strings.HasPrefix(w.Reason, bootFailedReason))
+	return w.State == workspace.StateStopped || w.State == workspace.StateSuspended
 }
 
 func (b *backend) destroySandbox(id string) {

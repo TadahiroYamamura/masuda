@@ -166,3 +166,99 @@ func TestRunWithoutPrivilegedCommandsPlacesNothing(t *testing.T) {
 		}
 	})
 }
+
+// precheckWorkflow は特権ノードを、自身と呼び出す部品のワークフローの両方に持つ。
+const precheckWorkflow = `version: 1
+inputs: [instructions]
+start: a
+nodes:
+  a: {type: privileged, name: ok, next: {done: b, failed: end}}
+  b: {type: workflow, workflow: workflows/precheck-part, next: {done: end}}
+`
+
+const precheckPart = `version: 1
+start: x
+nodes:
+  x: {type: privileged, name: undeclared, next: {done: y, failed: end}}
+  y: {type: privileged, name: unapproved, next: {done: z, failed: end}}
+  z: {type: privileged, name: changed, next: {done: end, failed: end}}
+`
+
+func TestRunAndResumeCheckPrivilegedNodesFirst(t *testing.T) {
+	dataDir := t.TempDir()
+	srv, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	writeRepoFile(t, repo, ".masuda/workflows/precheck.yaml", precheckWorkflow)
+	writeRepoFile(t, repo, ".masuda/workflows/precheck-part.yaml", precheckPart)
+	settings := func(changedCommand string) string {
+		return `{"privilegedCommands": {
+			"ok":         {"image": "default", "command": "true"},
+			"unapproved": {"image": "default", "command": "true"},
+			"changed":    {"image": "default", "command": "` + changedCommand + `"}
+		}}`
+	}
+	writeRepoFile(t, repo, ".masuda/settings.json", settings("true"))
+	cs := &configService{backend: srv.backend}
+	ctx := context.Background()
+	for _, name := range []string{"ok", "changed"} {
+		if _, err := cs.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: repo, Name: name})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeRepoFile(t, repo, ".masuda/settings.json", settings("false"))
+	run := func() error {
+		_, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/precheck", Branch: "feat/pre", Inputs: smokeInputs}))
+		return err
+	}
+
+	t.Run("届く特権ノードの未宣言・未承認・承認後の変更をまとめて断り、ワークスペースを作らない", func(t *testing.T) {
+		err := run()
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("Run: %v", err)
+		}
+		for _, want := range []string{
+			`"undeclared" is not declared`,
+			"masuda privileged-command approve unapproved",
+			`"changed" changed since it was approved`,
+		} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("理由に%qが無い: %v", want, err)
+			}
+		}
+		if strings.Contains(err.Error(), `command "ok"`) {
+			t.Errorf("承認済みのokを挙げている: %v", err)
+		}
+		list, _ := ws.List(ctx, connect.NewRequest(&apiv1.ListWorkspacesRequest{}))
+		if len(list.Msg.Workspaces) != 0 {
+			t.Fatalf("断ったRunがワークスペースを残した")
+		}
+	})
+
+	t.Run("再開でも作業ツリーの承認を読み直し、取り消されていれば断ってSUSPENDEDのままにする", func(t *testing.T) {
+		writeRepoFile(t, repo, ".masuda/settings.json", `{"privilegedCommands": {"ok": {"image": "default", "command": "true"}}}`)
+		writeRepoFile(t, repo, ".masuda/workflows/precheck.yaml", "version: 1\ninputs: [instructions]\nstart: a\nnodes:\n  a: {type: privileged, name: ok, next: {done: end, failed: end}}\n")
+		res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/precheck", Branch: "feat/pre2", Inputs: smokeInputs}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		id := res.Msg.Id
+		waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+		// 承認を取り消してからengineを進め、ノードに着いて止まる（SUSPENDED）ようにする。
+		if err := config.SaveLocal(repo, config.LocalSettings{}); err != nil {
+			t.Fatal(err)
+		}
+		_, _ = srv.backend.runFor(id).advance()
+		waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED)
+		_, err = ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "masuda privileged-command approve ok") {
+			t.Fatalf("Resume: %v", err)
+		}
+		got, _ := ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: id}))
+		if got.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED {
+			t.Fatalf("断ったResumeが状態を変えた: %v", got.Msg.State)
+		}
+		if srv.backend.runFor(id) == nil {
+			t.Fatalf("断ったResumeがVMと実行の窓口を片付けた（chatで中を見られなくなる）")
+		}
+	})
+}

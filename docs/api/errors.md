@@ -32,13 +32,13 @@
 | RPC | コード | 条件 |
 |---|---|---|
 | `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。`settings.json`の`agents`に定義に無い役の名前がある。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
-| | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない。sandbox serviceの契約（`GetServerInfo`の`contract_sha256`）がmasudaと違う、または`GetServerInfo`を持たない古いsandbox（理由に両方のバージョンが入る） |
+| | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない、ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの特権コマンドが宣言されていない・検査に通らない・承認されていない（承認の後に宣言が変わったものを含む）。sandbox serviceの契約（`GetServerInfo`の`contract_sha256`）がmasudaと違う、または`GetServerInfo`を持たない古いsandbox（理由に両方のバージョンが入る） |
 | | `unavailable` | sandbox serviceに届かない（ワークスペースは作らない） |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |
 | | `canceled` | stagingを作っている間に要求が取り消された |
 | | `internal` | ワークスペース・stagingの作成、engineの開始に失敗した |
 | `Resume` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | 再開できる状態でない（STOPPEDと、sandboxの起動に失敗したBLOCKEDだけが再開できる。engineが止めたBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。定義の写しの`settings.json`の`agents`に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（`Run`と同じ） |
+| | `failed_precondition` | 再開できる状態でない（STOPPEDとSUSPENDEDだけが再開できる。engineが記録したBLOCKEDは`Stop`した後も再開できない）。既に動いている。定義の写しが無い・読み込めない。定義の写しの`settings.json`や`settings.local.json`が読めない。定義の写しの`settings.json`の`agents`に定義に無い役の名前がある。起動に要るものが足りない、sandbox serviceの契約が違う（`Run`と同じ） |
 | | `unavailable` | sandbox serviceに届かない（状態は変えない） |
 | | `internal` | 実行の窓口の用意・質問の破棄の記録に失敗した |
 | `Get` | `not_found` | ワークスペースが無い |
@@ -47,7 +47,7 @@
 | | `out_of_range` | `after_seq`が最新のseqより大きい、または`after_seq+1`が再送できる最古のseqより小さい（続きが再送用の直近10000件に残っていない。メッセージに再送できる最古のseqが入る）。どちらもストリームの最初に終わる。`after_seq: 0`で繋ぎ直す |
 | | （正常な終わり） | `masuda serve`が止まると、エラーでなく正常な終わりでストリームが閉じる |
 | `Stop` | `not_found` | ワークスペースが無い |
-| | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す。engineが止めたBLOCKEDへの`Stop`はVMを片付けてBLOCKEDのまま返す |
+| | `failed_precondition` | DONE（publish・discardで終わっていて、止めるものが無い）。STOPPEDへの`Stop`はエラーにせずそのまま返す。SUSPENDEDへの`Stop`はVMを片付けてSTOPPEDを返す。engineが記録したBLOCKEDへの`Stop`はVMを片付けてBLOCKEDのまま返す |
 | `Remove` | `not_found` | ワークスペースが無い |
 | | `failed_precondition` | 動いている（STARTING・RUNNING・WAITING_GATE・WAITING_QUESTION）のに`force`が無い |
 | `AttachInfo` | `not_found` | ワークスペースが無い |

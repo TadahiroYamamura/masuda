@@ -18,14 +18,17 @@ service WorkspaceService {
   // Starts a workflow in a new workspace. Returns once the workspace exists
   // and the sandbox is booting; follow with Watch.
   rpc Run(RunRequest) returns (Workspace);
-  // Resumes a stopped workspace from its records (new sandbox, re-clone).
+  // Resumes a STOPPED or SUSPENDED workspace from its records (new sandbox,
+  // re-clone; a SUSPENDED workspace's sandbox is destroyed first). A BLOCKED
+  // workspace cannot be resumed.
   rpc Resume(ResumeRequest) returns (Workspace);
   rpc Get(GetWorkspaceRequest) returns (Workspace);
   rpc List(ListWorkspacesRequest) returns (ListWorkspacesResponse);
   // Streams status changes and events for one workspace, or all when id is
   // empty.
   rpc Watch(WatchRequest) returns (stream WorkspaceEvent);
-  // Stops the sandbox but keeps records and staging; Resume continues.
+  // Stops the sandbox but keeps records and staging; Resume continues. A
+  // BLOCKED workspace stays BLOCKED (its sandbox is destroyed).
   rpc Stop(StopRequest) returns (Workspace);
   // Removes everything: sandbox, staging, records, exports kept aside.
   rpc Remove(RemoveRequest) returns (RemoveResponse);
@@ -71,8 +74,10 @@ message Workspace {
   string position = 8;
   google.protobuf.Timestamp created_at = 9;
   google.protobuf.Timestamp updated_at = 10;
-  // Set when state is DONE or BLOCKED.
+  // Set when state is DONE: how the run ended ("done", "needs_human", ...).
   string outcome = 11;
+  // Why the run stopped. Set when state is SUSPENDED or BLOCKED, and when DONE
+  // with an outcome other than "done".
   string reason = 12;
   // Open gates / questions, for list views.
   repeated string open_gates = 13;
@@ -87,7 +92,17 @@ enum WorkspaceState {
   WORKSPACE_STATE_WAITING_QUESTION = 4;
   WORKSPACE_STATE_STOPPED = 5;
   WORKSPACE_STATE_DONE = 6;
+  // A dead end: the engine recorded that the run cannot go on (e.g. a node
+  // used up its max with nowhere to go, or a triage halted it). Cannot be
+  // resumed. The sandbox is kept until Stop or Remove.
   WORKSPACE_STATE_BLOCKED = 7;
+  // Paused on a failure outside the engine's records: the sandbox failed to
+  // boot, or a host node could not run (an unapproved privileged command, the
+  // sandbox service failing an exec). Nothing was recorded for the node, so
+  // once the cause is fixed, Resume continues from the same node. The sandbox
+  // is kept (when it booted) so the guest can be inspected; Stop destroys it
+  // and makes the workspace STOPPED.
+  WORKSPACE_STATE_SUSPENDED = 8;
 }
 
 // Activity is what the agent is doing right now, combined from host-observed
@@ -108,7 +123,7 @@ enum ActivityKind {
   ACTIVITY_KIND_WAITING_QUESTION = 4;
   ACTIVITY_KIND_STALLED = 5;        // alive but silent past the threshold
   ACTIVITY_KIND_DEAD = 6;           // tmux session or claude process gone
-  ACTIVITY_KIND_IDLE = 7;           // nothing to do (done/stopped)
+  ACTIVITY_KIND_IDLE = 7;           // nothing to do (done/stopped/blocked/suspended)
 }
 
 // One event on a Watch stream. Events whose workspace_id is empty concern

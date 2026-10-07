@@ -106,7 +106,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `exports/transcripts/<project>/…/*.jsonl` | ゲストのClaude Codeの会話ログ。ゲストの`~/.claude/projects/`からの相対パスのまま写す |
 
 - 会話ログは、ゲストのホームをcwdにして`find .claude/projects -type f -name '*.jsonl'`を`Exec`し、各ファイルを`ReadFile`で読んで写す。一覧が取れない・読めない・書けないファイルは実行ログに`kind: export-warning`として記録し、publish・discardは止めない
-- 会話ログを回収するのは、DONE（publish・discard・`end`）とStop（`Remove`の`force`を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す
+- 会話ログを回収するのは、DONE（publish・discard・`end`）とStop（`Remove`の`force`を含む）のとき。どれもVMを壊す前に書き出す。BLOCKEDはVMを残すので実行ログだけ写し直す（SUSPENDEDは写さない。Stop・Resumeで書き出す）。Removeは消す前に実行ログを写す（VMが無ければ会話ログは取れない）。serveの再起動で残ったVMは回収せずに壊す
 - 再開後に書き出すと、同じパスのファイルは新しいもので置き換わる
 - `masuda remove`はワークスペースのディレクトリのうち`exports/`だけを残して消す
 
@@ -136,10 +136,19 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 ### 再開
 
-`Resume`できるのは、STOPPEDのワークスペースと、sandboxの起動に失敗してBLOCKEDになったワークスペース（理由が`sandbox boot failed: `で始まるもの）。engineが止めたBLOCKEDは再開できない（`Resume`は`FailedPrecondition`）。engineが止めたBLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。起動失敗のBLOCKEDはsandboxも実行の窓口も既に無く、記録は起動前のままなので、Stopを挟まずに再開できる。
+止まった状態は2つに分ける。
+
+| 状態 | いつ | 再開 |
+|---|---|---|
+| SUSPENDED | engineの記録の外で止まった。sandboxの起動の失敗（`reason`が`sandbox boot failed: `）と、engineへの呼び出し（`Advance`等）のエラー（`reason`が`engine: `。未承認の特権ノード、承認されていない通信先を選んだノード、execやpublishの基盤の失敗等） | できる。engineは何も記録していないので、原因を直して再開すれば同じノードをやり直す |
+| BLOCKED | engineが記録した行き止まり（`engine.StatusBlocked`。進入回数の上限を使い切って行き先が無い、triageの`halt`等） | できない（`Resume`は`FailedPrecondition`）。再開してもengineがまたBLOCKEDを返すだけ |
+
+`Resume`できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（`chat`で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの`Stop`はVMを壊してSTOPPEDにする。BLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。
+
+ゲストの`next_task`には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（`blocked`とは返さない）。ループ規約は`done`・`blocked`でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に`next_task`を呼び直せばResumeを待たずに進むこともある。
 
 1. 定義は`records/definitions/`の写しから読み直す。作業ツリーの`.masuda/`がその後変わっていても、始めたときと同じ定義で進む
-2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）
+2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（`Run`と同じ）
 3. 再開前に開いていた`ask_human`の質問を、記録に理由「再開で破棄」を書いて閉じる。聞いていたサブエージェントは前のVMと共に無くなっており、再開後はengineが同じ出現のタスクを渡し直すので、新しいエージェントが改めて聞く。`questions:`を書いた固定の質問はengine自身が待っているので閉じない
 4. 新しいVMを作り、stagingから再cloneする
 5. 最新の`refs/masuda/wip/<出現ID>`のtreeを`git read-tree -m -u HEAD <wip>`で作業ツリーへ戻す。HEADはブランチのまま動かさず、コミットしていない作業はindexに載った変更として戻る。engineの基準点（WIPスナップショット）と作業ツリーを揃えるため
@@ -256,7 +265,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 - 実行: sandbox serviceの`RunJob`を1回呼ぶ。VMの作成・ファイルの投入・実行・`outputs`の回収・破棄はsandboxが持ち、masudaは方針（宣言・承認・通信先・どのツリーを渡すか・結果の置き先）だけを持つ
 - 受け渡し: 呼ばれた時点でメインVMの作業ツリーのスナップショットを取り（`refs/masuda/wip/privileged-<run-id>`）、ホストの一時ファイルのbundleにして`RunJob`の`HostFile`で特権VMへ置く。前処理（`setup_shell`）で`/workspace`へ`git init`→`fetch`→`checkout`して展開し、bundleを消す。展開に失敗したらコマンドは動かさず、基盤の失敗としてエラーにする。ノードの境界のWIPスナップショットではないので、ノードの途中で書いたテストもそのまま流せる。`inputs`に当たるファイルは`RunJob`の`FromSandbox`で、sandboxの中でメインVMから特権VMへ直接写す（masudaのプロセスを通らない）。gitignoreの内容が暗黙に境界を決めることはない
 - 結果: `outputs`は`RunJob`がホストの`records/privileged/<run-id>/outputs/`へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
-- 呼び出し口はMCPツール`run_privileged_command(name)`と、ワークフローの`privileged`ノード（`name`で宣言を指し、終了コードで`done`/`failed`に分岐する。engineの`Runner.RunPrivileged`）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。未宣言・未承認のとき、ノードはengineのエラーとして実行をBLOCKEDで止め、承認の後の`Advance`で同じ出現をやり直す
+- 呼び出し口はMCPツール`run_privileged_command(name)`と、ワークフローの`privileged`ノード（`name`で宣言を指し、終了コードで`done`/`failed`に分岐する。engineの`Runner.RunPrivileged`）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの名前は、`Run`・`Resume`の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（`privileged.Resolve`）、足りなければ何も作らずにまとめて`FailedPrecondition`で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の`Resume`（または`Advance`）で同じ出現をやり直す
 - 宣言（承認の状態を除く）は実行開始時にゲストの`/masuda/privileged-commands.json`へ置く（[guest-protocol.md](../guest-protocol.md)）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない
 - 同じワークスペースでは1つずつ動かす。`<run-id>`は`0001`からの連番
 
@@ -343,7 +352,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 上から順に見て、最初に当たったものが活動になる。
 
-1. ワークスペースの状態: DONE・STOPPED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
+1. ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
 2. `claude`（tmuxのセッション）が無い: `dead`。`SessionEnd`フック、sandboxの停止・失敗、`Exec`での生存確認のどれかで分かる
 3. 進行中のAPIリクエストがある: `working`
 4. ゲストの`Notification`フックが待ちを言っている（`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`input_wait`に入る）: `waiting_input`。その後にHTTP・ツール・MCPの活動があれば消える

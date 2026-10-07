@@ -138,14 +138,17 @@ type WorkspaceServiceClient interface {
 	// Starts a workflow in a new workspace. Returns once the workspace exists
 	// and the sandbox is booting; follow with Watch.
 	Run(context.Context, *connect.Request[v1.RunRequest]) (*connect.Response[v1.Workspace], error)
-	// Resumes a stopped workspace from its records (new sandbox, re-clone).
+	// Resumes a STOPPED or SUSPENDED workspace from its records (new sandbox,
+	// re-clone; a SUSPENDED workspace's sandbox is destroyed first). A BLOCKED
+	// workspace cannot be resumed.
 	Resume(context.Context, *connect.Request[v1.ResumeRequest]) (*connect.Response[v1.Workspace], error)
 	Get(context.Context, *connect.Request[v1.GetWorkspaceRequest]) (*connect.Response[v1.Workspace], error)
 	List(context.Context, *connect.Request[v1.ListWorkspacesRequest]) (*connect.Response[v1.ListWorkspacesResponse], error)
 	// Streams status changes and events for one workspace, or all when id is
 	// empty.
 	Watch(context.Context, *connect.Request[v1.WatchRequest]) (*connect.ServerStreamForClient[v1.WorkspaceEvent], error)
-	// Stops the sandbox but keeps records and staging; Resume continues.
+	// Stops the sandbox but keeps records and staging; Resume continues. A
+	// BLOCKED workspace stays BLOCKED (its sandbox is destroyed).
 	Stop(context.Context, *connect.Request[v1.StopRequest]) (*connect.Response[v1.Workspace], error)
 	// Removes everything: sandbox, staging, records, exports kept aside.
 	Remove(context.Context, *connect.Request[v1.RemoveRequest]) (*connect.Response[v1.RemoveResponse], error)
@@ -272,14 +275,17 @@ type WorkspaceServiceHandler interface {
 	// Starts a workflow in a new workspace. Returns once the workspace exists
 	// and the sandbox is booting; follow with Watch.
 	Run(context.Context, *connect.Request[v1.RunRequest]) (*connect.Response[v1.Workspace], error)
-	// Resumes a stopped workspace from its records (new sandbox, re-clone).
+	// Resumes a STOPPED or SUSPENDED workspace from its records (new sandbox,
+	// re-clone; a SUSPENDED workspace's sandbox is destroyed first). A BLOCKED
+	// workspace cannot be resumed.
 	Resume(context.Context, *connect.Request[v1.ResumeRequest]) (*connect.Response[v1.Workspace], error)
 	Get(context.Context, *connect.Request[v1.GetWorkspaceRequest]) (*connect.Response[v1.Workspace], error)
 	List(context.Context, *connect.Request[v1.ListWorkspacesRequest]) (*connect.Response[v1.ListWorkspacesResponse], error)
 	// Streams status changes and events for one workspace, or all when id is
 	// empty.
 	Watch(context.Context, *connect.Request[v1.WatchRequest], *connect.ServerStream[v1.WorkspaceEvent]) error
-	// Stops the sandbox but keeps records and staging; Resume continues.
+	// Stops the sandbox but keeps records and staging; Resume continues. A
+	// BLOCKED workspace stays BLOCKED (its sandbox is destroyed).
 	Stop(context.Context, *connect.Request[v1.StopRequest]) (*connect.Response[v1.Workspace], error)
 	// Removes everything: sandbox, staging, records, exports kept aside.
 	Remove(context.Context, *connect.Request[v1.RemoveRequest]) (*connect.Response[v1.RemoveResponse], error)

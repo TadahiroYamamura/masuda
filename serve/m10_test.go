@@ -469,7 +469,7 @@ func TestCheckWithoutWorkflowChecksRootsOnly(t *testing.T) {
 	}
 }
 
-// engineが止めたBLOCKED（triageのhalt）はStopできるが、Stopの後もResumeは断る。
+// engineが記録したBLOCKED（triageのhalt）はStopできるが、Stopの後もResumeは断る。
 func TestEngineBlockedCannotBeResumedAfterStop(t *testing.T) {
 	cl := startClients(t, t.TempDir(), Options{})
 	repo := newSmokeRepo(t)

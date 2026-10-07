@@ -1056,41 +1056,166 @@ func TestCM11_PrivilegedNodeBranchesOnExit(t *testing.T) {
 	}
 }
 
-// An unapproved command stops the run as BLOCKED, naming the approval to give,
-// without recording a result. Once approved, the next next_task runs the same
-// node again.
-func TestCM11_PrivilegedNodeBlocksUntilApproved(t *testing.T) {
+// The privileged nodes a workflow can reach are checked before anything is
+// created: an unapproved one refuses Run, naming the approval to give.
+// If the approval is revoked mid-run, reaching the node stops the run as
+// SUSPENDED without recording a result; Resume refuses until it is approved
+// again, and then continues from the same node.
+func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 	files := smokeRepo()
 	files[".masuda/settings.json"] = privilegedSettings
 	files[".masuda/workflows/verify.yaml"] = privilegedWorkflow
 	h := start(t, files)
 	ctx := context.Background()
-	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/v", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	run := func() (*connect.Response[apiv1.Workspace], error) {
+		return h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/v", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	}
+	approve := func() {
+		t.Helper()
+		if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+			t.Fatal(err)
+		}
+	}
+	revoke := func() {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(h.repo, ".masuda", "settings.local.json"), []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("未承認の特権ノードに届くワークフローはRunの時点で断られ、承認のコマンドが案内される", func(t *testing.T) {
+		_, err := run()
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "masuda privileged-command approve itest") {
+			t.Fatalf("Run with an unapproved privileged node: %v", err)
+		}
+		list, _ := h.ws.List(ctx, connect.NewRequest(&apiv1.ListWorkspacesRequest{}))
+		if len(list.Msg.Workspaces) != 0 {
+			t.Fatalf("a refused Run must not leave a workspace")
+		}
+	})
+
+	approve()
+	res, err := run()
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := res.Msg.Id
 	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
 	h.planAndApprove(id)
+	revoke()
 
-	// next_task reports the engine's error, as it does for any host node that could not run.
-	if blocked := h.workLap(id, "ok"); blocked["error"] == nil {
-		t.Fatalf("an unapproved privileged command must stop the run: %v", blocked)
-	}
-	w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED, 15*time.Second)
-	if !strings.Contains(w.Reason, "masuda privileged-command approve itest") {
-		t.Fatalf("reason must name the approval: %q", w.Reason)
-	}
+	t.Run("実行中に承認を取り消すと特権ノードでSUSPENDEDになり、理由に承認のコマンドが出る", func(t *testing.T) {
+		// next_task reports the engine's error, as it does for any host node that could not run.
+		if stopped := h.workLap(id, "ok"); stopped["error"] == nil {
+			t.Fatalf("an unapproved privileged command must stop the run: %v", stopped)
+		}
+		w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED, 15*time.Second)
+		if !strings.Contains(w.Reason, "masuda privileged-command approve itest") {
+			t.Fatalf("reason must name the approval: %q", w.Reason)
+		}
+	})
 
-	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+	t.Run("承認が無いままのResumeは断られ、SUSPENDEDのまま残る", func(t *testing.T) {
+		_, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "masuda privileged-command approve itest") {
+			t.Fatalf("Resume without the approval: %v", err)
+		}
+		got, _ := h.ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: id}))
+		if got.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED {
+			t.Fatalf("a refused Resume changed the state: %v", got.Msg.State)
+		}
+	})
+
+	t.Run("承認してからResumeすると同じ特権ノードから進んで終わる", func(t *testing.T) {
+		approve()
+		if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+			t.Fatalf("Resume after approval: %v", err)
+		}
+		// The resumed run is at the privileged node, not back at the agent: it ends without another task.
+		h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
+		// The refused attempt took no run id: the first record is the approved run.
+		if rec := h.privilegedResult(id, "0001"); rec["exit_code"] != float64(0) || rec["occurrence"] == nil {
+			t.Fatalf("record of the approved run: %v", rec)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// C-M12: SUSPENDED (resumable) vs BLOCKED (a dead end)
+// ---------------------------------------------------------------------------
+
+func TestCM12_BootFailureSuspendsAndResumes(t *testing.T) {
+	h := start(t, smokeRepo())
+	ctx := context.Background()
+	// The host cannot record the image build (a file where serve keeps its image
+	// records), so the sandbox fails to boot.
+	images := filepath.Join(h.dataDir, "images")
+	if err := os.WriteFile(images, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if again := h.mcp(id, "next_task", nil); again["kind"] != "done" {
-		t.Fatalf("after approval the privileged node must run and end the run: %v", again)
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/b", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
 	}
-	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
-	// The refused attempt took no run id: the first record is the approved run.
-	if rec := h.privilegedResult(id, "0001"); rec["exit_code"] != float64(0) || rec["occurrence"] == nil {
-		t.Fatalf("record of the approved run: %v", rec)
+	id := res.Msg.Id
+
+	t.Run("起動に失敗するとSUSPENDEDになり、理由に起動の失敗が出る", func(t *testing.T) {
+		w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED, 15*time.Second)
+		if !strings.Contains(w.Reason, "sandbox boot failed") {
+			t.Fatalf("reason: %q", w.Reason)
+		}
+	})
+
+	t.Run("原因を直せばStopを挟まずにResumeでき、最初のタスクから進む", func(t *testing.T) {
+		if err := os.Remove(images); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+			t.Fatalf("Resume after a boot failure: %v", err)
+		}
+		w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+		if w.Reason != "" {
+			t.Fatalf("reason must be cleared: %q", w.Reason)
+		}
+		if task := h.mcp(id, "next_task", nil); task["role"] != "smoke-planner" {
+			t.Fatalf("first task after resume: %v", task)
+		}
+	})
+}
+
+func TestCM12_EngineBlockedCannotBeResumed(t *testing.T) {
+	h := start(t, smokeRepo())
+	ctx := context.Background()
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/h", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
 	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	occ := h.mcp(id, "next_task", nil)["occurrence"].(string)
+	if r := h.mcp(id, "report_concern", map[string]any{"occurrence": occ, "text": "suspicious"}); r["recorded"] != true {
+		t.Fatalf("report_concern: %v", r)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: occ, Decision: &apiv1.Decision{Outcome: "halt"}})); err != nil {
+		t.Fatalf("halt: %v", err)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED, 10*time.Second)
+
+	t.Run("engineが記録したBLOCKEDはResumeが断られ、理由にsuspendedとの違いが出る", func(t *testing.T) {
+		_, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id}))
+		if connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "dead end") || !strings.Contains(err.Error(), "suspended") {
+			t.Fatalf("Resume of a blocked workspace: %v", err)
+		}
+	})
+
+	t.Run("StopしてもBLOCKEDのままでResumeできない", func(t *testing.T) {
+		st, err := h.ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id}))
+		if err != nil || st.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED {
+			t.Fatalf("Stop of a blocked workspace: %v %v", err, st)
+		}
+		if _, err := h.ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
+			t.Fatalf("Resume after Stop of a blocked workspace: %v", err)
+		}
+	})
 }

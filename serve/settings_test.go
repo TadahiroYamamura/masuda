@@ -11,6 +11,7 @@ import (
 	"connectrpc.com/connect"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
+	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/secrets"
 )
@@ -125,7 +126,7 @@ func TestRunRefusesMissingChecksAndValues(t *testing.T) {
 	}
 }
 
-func TestNodeEgressOutsideApprovalBlocksRun(t *testing.T) {
+func TestNodeEgressOutsideApprovalSuspendsRun(t *testing.T) {
 	dataDir := t.TempDir()
 	srv, ws := startServe(t, dataDir)
 	repo := newSmokeRepo(t)
@@ -139,10 +140,28 @@ func TestNodeEgressOutsideApprovalBlocksRun(t *testing.T) {
 	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
 	// 宣言はあるが未承認なので、ノードに入る前（SetPolicyの前）に止まる。
 	_, _ = srv.backend.runFor(id).advance()
-	got := waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_BLOCKED)
+	got := waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED)
 	if !strings.Contains(got.Reason, "api.linear.app") {
 		t.Fatalf("reason should name the host: %q", got.Reason)
 	}
+	ctx := context.Background()
+	t.Run("SUSPENDEDではVMと実行の窓口が残る", func(t *testing.T) {
+		if _, err := srv.backend.sandbox.GetSandbox(ctx, connect.NewRequest(&sandboxv1.GetSandboxRequest{Id: id})); err != nil {
+			t.Fatalf("sandbox of a suspended workspace: %v", err)
+		}
+		if srv.backend.runFor(id) == nil {
+			t.Fatal("no run for a suspended workspace")
+		}
+	})
+	t.Run("StopするとVMを片付けてSTOPPEDになる", func(t *testing.T) {
+		st, err := ws.Stop(ctx, connect.NewRequest(&apiv1.StopRequest{Id: id}))
+		if err != nil || st.Msg.State != apiv1.WorkspaceState_WORKSPACE_STATE_STOPPED {
+			t.Fatalf("Stop of a suspended workspace: %v %v", err, st)
+		}
+		if _, err := srv.backend.sandbox.GetSandbox(ctx, connect.NewRequest(&sandboxv1.GetSandboxRequest{Id: id})); connect.CodeOf(err) != connect.CodeNotFound {
+			t.Fatalf("sandbox after Stop: %v", err)
+		}
+	})
 }
 
 func TestNodeEgressWithinApprovalRuns(t *testing.T) {
@@ -290,6 +309,39 @@ func TestUnknownAgentOverrideRefusesRunAndShowsInCheck(t *testing.T) {
 		}
 		if len(check.Msg.Problems) != 1 || !strings.HasPrefix(check.Msg.Problems[0].Message, "loading definitions") {
 			t.Fatalf("problems: %v", check.Msg.Problems)
+		}
+	})
+}
+
+func TestResumeSuspendedWorkspaceRebuildsItsSandbox(t *testing.T) {
+	dataDir := t.TempDir()
+	srv, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	writeRepoFile(t, repo, ".masuda/settings.json", `{"egress": ["api.linear.app"]}`)
+	writeRepoFile(t, repo, ".masuda/workflows/net.yaml", netWorkflow)
+	ctx := context.Background()
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/net", Branch: "feat/n", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	old := srv.backend.runFor(id)
+	_, _ = old.advance()
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED)
+	if err := config.SaveLocal(repo, config.LocalSettings{EgressApproved: []string{"api.linear.app"}}); err != nil {
+		t.Fatal(err)
+	}
+	t.Run("原因を直せばStopを挟まずにResumeでき、残っていた実行の窓口を片付けて作り直す", func(t *testing.T) {
+		if _, err := ws.Resume(ctx, connect.NewRequest(&apiv1.ResumeRequest{Id: id})); err != nil {
+			t.Fatalf("Resume of a suspended workspace: %v", err)
+		}
+		waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+		if old.ctx.Err() == nil {
+			t.Fatal("the run of the suspended workspace was not stopped")
+		}
+		if c := srv.backend.runFor(id); c == nil || c == old {
+			t.Fatalf("no new run: %v", c)
 		}
 	})
 }

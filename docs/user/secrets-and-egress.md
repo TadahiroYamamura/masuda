@@ -218,7 +218,8 @@ nodes:
 ```
 
 - ノードに書けるのは`name`と`max`（既定3。超えると`exhausted`）だけ。動かすもの・入出力・通信先・期限は宣言と承認で決まる
-- 宣言が無い・承認されていないときは、実行がBLOCKEDで止まり、理由に必要な`masuda privileged-command approve <名前>`が出る。承認すると、次にエージェントがタスクを求めたときに同じノードからやり直す
+- ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの宣言と承認は、`masuda run`・`masuda resume`の始めに確かめる。宣言が無い・承認されていない・承認の後に宣言が変わったものがあれば、何も作らずに断り、必要な`masuda privileged-command approve <名前>`をまとめて出す
+- 実行の途中で承認を取り消すと（`settings.local.json`は呼ばれるたびに読む）、そのノードで実行が`suspended`で止まり、理由に必要な`masuda privileged-command approve <名前>`が出る。結果は記録されないので、承認して`masuda resume <id>`すると同じノードからやり直す
 - エージェントのVMの作業ツリーは変えないので、計画外の変更の検出の基準にはならない
 
 ### 何が渡り、何が返るか

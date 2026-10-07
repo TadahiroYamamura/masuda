@@ -3,7 +3,7 @@
 まず見る場所:
 
 - `masuda doctor`（前提がそろっているか。足りないものと直し方が出る）
-- `masuda list --all`のSTATEとPOSITION（`blocked`なら理由が出る）
+- `masuda list --all`のSTATEとPOSITION（`suspended`・`blocked`なら理由が出る。違いは下の[止まった](#suspended-or-blocked)）
 - `masuda watch <id>`の流れ
 - `masuda chat <id>`でVMの中のClaude Codeの画面
 - ホストの記録`~/.local/share/masuda/workspaces/<id>/records/`（`execution-log.jsonl`・`image-build.log`）
@@ -20,6 +20,7 @@
 | `was built from a different sandbox.proto than masuda`、`does not implement GetServerInfo` | masudaとmasuda-sandboxのバージョンが組になっていない。`masuda version`で両方を確かめ、同じバージョンのリリースを入れ直す（[導入](install.md)）。`masuda serve`も同じ理由で起動しない |
 | `the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value` | `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`（ユーザー単位。`claudeToken`で別名を選んでいるならその名前で） |
 | `the workflow runs /masuda/checks/test but checks.test is not declared` | `settings.json`の`checks`に`test`を書く |
+| `the workflow has a privileged node, but privileged command "X" is not approved`（`is not declared`・`changed since it was approved`も） | ワークフロー（呼び出す部品のワークフローを含む）の`privileged`ノードが動かす特権コマンドの宣言・承認が足りない。宣言を書き、`masuda privileged-command approve X`。`masuda resume`でも同じ検査をする |
 | `image default: .masuda/images/default/Dockerfile is missing` | `masuda init`するか、Dockerfileを置く |
 | `branch already exists` | publishするワークフローでは、`--branch`に対象リポジトリにまだ無い名前を使う（既にあるブランチを指定できるのはpublishしないワークフローだけ） |
 | `repo_root ... is not the top of its work tree` | 作業ツリーのトップで打つか、`--repo`にトップを渡す |
@@ -29,9 +30,16 @@
 | `secret X is plaintext ... and is not approved` | `masuda secret approve X` |
 | `envFiles ...: X is not a declared secret and has no value in vars` | `settings.local.json`の`vars`に値を書くか、秘密として宣言する |
 
-## VMが起動しない
+## 止まった（`suspended`と`blocked`） {#suspended-or-blocked}
 
-`masuda list`で`blocked`、理由が`sandbox boot failed: `で始まる。原因を直したら、`stop`を挟まずにそのまま`masuda resume <id>`できる。
+| STATE | 意味 | 続けるには |
+|---|---|---|
+| `suspended` | ワークフローの記録の外で止まった。理由が`sandbox boot failed: `ならVMの起動の失敗（[下](#boot-failed)）、`engine: `ならホストで動かすノードを動かせなかった（特権コマンドの承認が取り消されていた・宣言が変わった、ノードが選んだ通信先が承認されていない、publishが対象リポジトリに書けなかった、sandbox serviceがコマンドを動かせなかった等） | 理由を読んで直し、`stop`を挟まずに`masuda resume <id>`。止まったノードからやり直す。直す前に中を見たければ`masuda chat`（VMが残っていれば） |
+| `blocked` | ワークフローが行き止まりを記録した（進入回数の上限を使い切って行き先が無い、出力が検証で落ち続けた、triageの`halt`等） | 再開できない。原因を調べて（[下](#why-stopped)）、定義や指示を直して`run`し直す |
+
+## VMが起動しない {#boot-failed}
+
+`masuda list`で`suspended`、理由が`sandbox boot failed: `で始まる。原因を直したら、`stop`を挟まずにそのまま`masuda resume <id>`できる。
 
 - **`masuda-sandbox serve`に繋がらない**: 起動しているか、`--socket`のパスが`masuda serve --sandbox-socket`（既定`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）と同じかを確かめる
 - **KVMが使えない**（Linux）: `ls -l /dev/kvm`で存在とパーミッションを、`id -nG`で`kvm`グループに入っているかを確かめる（[導入](install.md)）。WSL2なら入れ子の仮想化が有効か
@@ -52,7 +60,7 @@
 
 ## `No space left on device`
 
-VMのルートディスクが足りない。ビルドのキャッシュ（Goの`GOCACHE`、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、`blocked`で止まることがある。
+VMのルートディスクが足りない。ビルドのキャッシュ（Goの`GOCACHE`、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、`suspended`で止まることがある。
 
 - `settings.json`で、使うイメージのエントリのディスクを増やす。次の`run`・`resume`から効く
 
@@ -148,7 +156,7 @@ ENV npm_config_offline=true
 
 - どのノードでどう終わったかは実行ログで追う。`jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl`
 - エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが`transcripts/-workspace/<session>.jsonl`、サブエージェントがその下の`subagents/agent-*.jsonl`
-- `blocked`はVMを残しているので、会話ログはまだ書き出されていない。`masuda chat`で画面を見るか、`masuda stop`で書き出してから読む
+- `blocked`と、ワークフローの途中で止まった`suspended`はVMを残しているので、会話ログはまだ書き出されていない。`masuda chat`で画面を見るか、`masuda stop`で書き出してから読む
 - `done`ではVMが壊れているので`masuda chat`は使えない。会話ログを読む
 
 ## `deviation`ゲートが思わぬファイルで開く（`__pycache__`等） {#deviation}
@@ -165,7 +173,8 @@ ENV npm_config_offline=true
 |---|---|
 | planゲートの前に`done`で終わった（`outcome out_of_scope`） | 計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。`exports/`には実行ログと会話ログだけが残る。役が書いた理由（`feedback`）は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。課題の書き方を直して`run`し直す |
 | planゲートの前に`done`で終わった（`outcome needs_human`） | `workflows/fix`の計画を立てる役が、指示が曖昧で計画を立てられないと判断した。役が確かめたい疑問は`masuda list --all`のPOSITIONに1行目が出て、全文は`workspace.json`の`reason`にある。疑問に答える形で指示書を直して`run`し直す |
-| planゲートの前に`blocked` | POSITIONの理由を読む。出力が検証で落ち続けた（`invalid`）、許可されていない通信を選んだノードがある等 |
+| planゲートの前に`blocked` | POSITIONの理由を読む。出力が検証で落ち続けた（`invalid`）等 |
+| planゲートの前に`suspended` | POSITIONの理由を読む。許可されていない通信を選んだノードがある（`masuda egress approve`してから`resume`）等 |
 | `waiting_input`のまま、ゲートが開かない | 上の`waiting_input(idle)`。エージェントが画面の上で問いかけている |
 | 計画を承認したのに、もう一度planゲートが開く | あるステップの実装が行き詰まった（`stuck`）か、テストが3回通らなかった。`checks.test`を雛形のまま（必ず失敗する）にしていないか確かめる。理由（実装の役の`feedback`）は`records/engine.json`にある。計画を却下（コメント付き）して直させる |
 | ゲートがまったく開かない | 自分のワークフローに`approval`ノードが無い。`masuda workflow show`で確かめる |
@@ -173,12 +182,12 @@ ENV npm_config_offline=true
 
 ## publishに失敗する
 
-reviewゲートを承認した後に`blocked`になり、理由に`has diverged from staging; not a fast-forward`等が出る。
+reviewゲートを承認した後に`suspended`になり、理由に`has diverged from staging; not a fast-forward`等が出る。
 
 - 対象リポジトリに、同じ名前のブランチが後から作られていて、fast-forwardにならない
 - チェックアウト中のブランチと同じ名前で、作業ツリーに衝突する変更がある
 
-masudaはリポジトリを無理に書き換えない。結果はstagingに残っているので、別の名前で取り込める。
+masudaはリポジトリを無理に書き換えない。原因を直せば`masuda resume <id>`でpublishからやり直せる。結果はstagingに残っているので、別の名前で取り込んでもよい。
 
 ```sh
 git fetch ~/.local/share/masuda/workspaces/<id>/staging.git feat/triangle:feat/triangle-masuda

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -41,7 +42,7 @@ func (b *backend) stopRun(id string) {
 	}
 	if w, err := b.store.Get(id); err == nil {
 		if r == nil {
-			// serveを起こし直した後のBLOCKED等は実行の窓口が無い。書き出しに要るのは
+			// serveを起こし直した後のBLOCKED・SUSPENDED等は実行の窓口が無い。書き出しに要るのは
 			// ワークスペースとsandboxだけなので、その場で作る。
 			r = runner.New(runner.Options{Workspace: w, Sandbox: b.sandbox, SandboxID: id})
 		}
@@ -77,14 +78,14 @@ func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.St
 		// 終わった実行はsandboxも既に無い（DONEの反映で壊す）。止めるものが無い。
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done", w.ID))
 	}
-	engineBlocked := w.State == workspace.StateBlocked && !resumable(w)
+	blocked := w.State == workspace.StateBlocked
 	b.stopRun(w.ID)
 	// stopRunの間に状態が書かれていることがある（起動の失敗等）ので読み直してから書く。
 	if w, err = s.lookup(w.ID); err != nil {
 		return nil, err
 	}
-	if engineBlocked {
-		// engineが止めたBLOCKEDはVMを片付けるだけで状態は残す。STOPPEDにするとResumeが通り、
+	if blocked {
+		// engineが記録したBLOCKEDはVMを片付けるだけで状態は残す。STOPPEDにするとResumeが通り、
 		// VMを起動してからengineがまたBLOCKEDを返すだけになるため。
 		b.statusChanged(w.ID)
 		return connect.NewResponse(b.toProto(w)), nil
@@ -105,10 +106,16 @@ func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv
 	if err != nil {
 		return nil, err
 	}
-	if !resumable(w) {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is %s; only a stopped workspace (or one whose sandbox failed to boot) can be resumed", w.ID, w.State))
+	if w.State == workspace.StateBlocked {
+		reason, _, _ := strings.Cut(w.Reason, "\n")
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is blocked: the workflow recorded a dead end (%s), so resuming would stop at the same place. Only stopped and suspended workspaces can be resumed; start a new run instead", w.ID, reason))
 	}
-	if b.runFor(w.ID) != nil {
+	if !resumable(w) {
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is %s; only a stopped or suspended workspace can be resumed", w.ID, w.State))
+	}
+	// SUSPENDEDは実行の窓口とVMが残っていることがある（engineへの呼び出しのエラーで止まったとき）。
+	// それは下でStopと同じに片付けて作り直す。
+	if w.State == workspace.StateStopped && b.runFor(w.ID) != nil {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is already running", w.ID))
 	}
 	if _, err := os.Stat(w.DefinitionsDir()); err != nil {
@@ -125,6 +132,13 @@ func (s *workspaceService) Resume(ctx context.Context, req *connect.Request[apiv
 	}
 	if err := b.checkSandbox(ctx); err != nil {
 		return nil, err
+	}
+	if w.State == workspace.StateSuspended {
+		// 検査がすべて通ってから壊す。断ったときはVMを残し、chatで中を見られるままにする。
+		b.stopRun(w.ID)
+		if w, err = s.lookup(w.ID); err != nil {
+			return nil, err
+		}
 	}
 	prevState, prevReason := w.State, w.Reason
 	w.State = workspace.StateStarting

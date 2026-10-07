@@ -16,7 +16,7 @@ const usage = `usage: masuda <command> [flags]
 commands:
   serve                     公開APIを待ち受ける常駐プロセスを起動する
   run                       ワークフローを新しいワークスペースで始める
-  resume <id>               止めたワークスペースを記録から再開する
+  resume <id>               止めた（stopped）・中断した（suspended）ワークスペースを記録から再開する
   list [--all]              ワークスペースの一覧（--allで終わった・止めたものも）
   chat <id>                 ゲストのメインセッション（tmux）にsshでアタッチする
   watch [<id>]              状態とイベントを流し続ける

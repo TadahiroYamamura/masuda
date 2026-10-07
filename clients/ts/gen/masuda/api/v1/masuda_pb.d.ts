@@ -300,13 +300,16 @@ export declare type Workspace = Message<"masuda.api.v1.Workspace"> & {
   updatedAt?: Timestamp | undefined;
 
   /**
-   * Set when state is DONE or BLOCKED.
+   * Set when state is DONE: how the run ended ("done", "needs_human", ...).
    *
    * @generated from field: string outcome = 11;
    */
   outcome: string;
 
   /**
+   * Why the run stopped. Set when state is SUSPENDED or BLOCKED, and when DONE
+   * with an outcome other than "done".
+   *
    * @generated from field: string reason = 12;
    */
   reason: string;
@@ -678,7 +681,10 @@ export declare type Gate = Message<"masuda.api.v1.Gate"> & {
   subject: Uint8Array;
 
   /**
-   * For target=diff: the staging commit / tree the diff was computed from.
+   * For target=diff: the staging branch head the diff was computed from
+   * (what publish will land). For target=step-diff: a snapshot commit of the
+   * worktree, parented on the branch head, so that Staging.Diff(to: this)
+   * reproduces the subject and comments can anchor to worktree lines.
    *
    * @generated from field: string staging_commit = 7;
    */
@@ -1726,9 +1732,25 @@ export enum WorkspaceState {
   DONE = 6,
 
   /**
+   * A dead end: the engine recorded that the run cannot go on (e.g. a node
+   * used up its max with nowhere to go, or a triage halted it). Cannot be
+   * resumed. The sandbox is kept until Stop or Remove.
+   *
    * @generated from enum value: WORKSPACE_STATE_BLOCKED = 7;
    */
   BLOCKED = 7,
+
+  /**
+   * Paused on a failure outside the engine's records: the sandbox failed to
+   * boot, or a host node could not run (an unapproved privileged command, the
+   * sandbox service failing an exec). Nothing was recorded for the node, so
+   * once the cause is fixed, Resume continues from the same node. The sandbox
+   * is kept (when it booted) so the guest can be inspected; Stop destroys it
+   * and makes the workspace STOPPED.
+   *
+   * @generated from enum value: WORKSPACE_STATE_SUSPENDED = 8;
+   */
+  SUSPENDED = 8,
 }
 
 /**
@@ -1784,7 +1806,7 @@ export enum ActivityKind {
   DEAD = 6,
 
   /**
-   * nothing to do (done/stopped)
+   * nothing to do (done/stopped/blocked/suspended)
    *
    * @generated from enum value: ACTIVITY_KIND_IDLE = 7;
    */
@@ -1812,7 +1834,9 @@ export declare const WorkspaceService: GenService<{
     output: typeof WorkspaceSchema;
   },
   /**
-   * Resumes a stopped workspace from its records (new sandbox, re-clone).
+   * Resumes a STOPPED or SUSPENDED workspace from its records (new sandbox,
+   * re-clone; a SUSPENDED workspace's sandbox is destroyed first). A BLOCKED
+   * workspace cannot be resumed.
    *
    * @generated from rpc masuda.api.v1.WorkspaceService.Resume
    */
@@ -1849,7 +1873,8 @@ export declare const WorkspaceService: GenService<{
     output: typeof WorkspaceEventSchema;
   },
   /**
-   * Stops the sandbox but keeps records and staging; Resume continues.
+   * Stops the sandbox but keeps records and staging; Resume continues. A
+   * BLOCKED workspace stays BLOCKED (its sandbox is destroyed).
    *
    * @generated from rpc masuda.api.v1.WorkspaceService.Stop
    */

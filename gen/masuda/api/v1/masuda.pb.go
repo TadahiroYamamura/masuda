@@ -39,7 +39,17 @@ const (
 	WorkspaceState_WORKSPACE_STATE_WAITING_QUESTION WorkspaceState = 4
 	WorkspaceState_WORKSPACE_STATE_STOPPED          WorkspaceState = 5
 	WorkspaceState_WORKSPACE_STATE_DONE             WorkspaceState = 6
-	WorkspaceState_WORKSPACE_STATE_BLOCKED          WorkspaceState = 7
+	// A dead end: the engine recorded that the run cannot go on (e.g. a node
+	// used up its max with nowhere to go, or a triage halted it). Cannot be
+	// resumed. The sandbox is kept until Stop or Remove.
+	WorkspaceState_WORKSPACE_STATE_BLOCKED WorkspaceState = 7
+	// Paused on a failure outside the engine's records: the sandbox failed to
+	// boot, or a host node could not run (an unapproved privileged command, the
+	// sandbox service failing an exec). Nothing was recorded for the node, so
+	// once the cause is fixed, Resume continues from the same node. The sandbox
+	// is kept (when it booted) so the guest can be inspected; Stop destroys it
+	// and makes the workspace STOPPED.
+	WorkspaceState_WORKSPACE_STATE_SUSPENDED WorkspaceState = 8
 )
 
 // Enum value maps for WorkspaceState.
@@ -53,6 +63,7 @@ var (
 		5: "WORKSPACE_STATE_STOPPED",
 		6: "WORKSPACE_STATE_DONE",
 		7: "WORKSPACE_STATE_BLOCKED",
+		8: "WORKSPACE_STATE_SUSPENDED",
 	}
 	WorkspaceState_value = map[string]int32{
 		"WORKSPACE_STATE_UNSPECIFIED":      0,
@@ -63,6 +74,7 @@ var (
 		"WORKSPACE_STATE_STOPPED":          5,
 		"WORKSPACE_STATE_DONE":             6,
 		"WORKSPACE_STATE_BLOCKED":          7,
+		"WORKSPACE_STATE_SUSPENDED":        8,
 	}
 )
 
@@ -103,7 +115,7 @@ const (
 	ActivityKind_ACTIVITY_KIND_WAITING_QUESTION ActivityKind = 4
 	ActivityKind_ACTIVITY_KIND_STALLED          ActivityKind = 5 // alive but silent past the threshold
 	ActivityKind_ACTIVITY_KIND_DEAD             ActivityKind = 6 // tmux session or claude process gone
-	ActivityKind_ACTIVITY_KIND_IDLE             ActivityKind = 7 // nothing to do (done/stopped)
+	ActivityKind_ACTIVITY_KIND_IDLE             ActivityKind = 7 // nothing to do (done/stopped/blocked/suspended)
 )
 
 // Enum value maps for ActivityKind.
@@ -702,9 +714,11 @@ type Workspace struct {
 	Position  string                 `protobuf:"bytes,8,opt,name=position,proto3" json:"position,omitempty"`
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,10,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	// Set when state is DONE or BLOCKED.
+	// Set when state is DONE: how the run ended ("done", "needs_human", ...).
 	Outcome string `protobuf:"bytes,11,opt,name=outcome,proto3" json:"outcome,omitempty"`
-	Reason  string `protobuf:"bytes,12,opt,name=reason,proto3" json:"reason,omitempty"`
+	// Why the run stopped. Set when state is SUSPENDED or BLOCKED, and when DONE
+	// with an outcome other than "done".
+	Reason string `protobuf:"bytes,12,opt,name=reason,proto3" json:"reason,omitempty"`
 	// Open gates / questions, for list views.
 	OpenGates     []string `protobuf:"bytes,13,rep,name=open_gates,json=openGates,proto3" json:"open_gates,omitempty"`
 	OpenQuestions []string `protobuf:"bytes,14,rep,name=open_questions,json=openQuestions,proto3" json:"open_questions,omitempty"`
@@ -1496,7 +1510,10 @@ type Gate struct {
 	Target      string                 `protobuf:"bytes,4,opt,name=target,proto3" json:"target,omitempty"` // plan, diff, data name, ""
 	TargetHash  string                 `protobuf:"bytes,5,opt,name=target_hash,json=targetHash,proto3" json:"target_hash,omitempty"`
 	Subject     []byte                 `protobuf:"bytes,6,opt,name=subject,proto3" json:"subject,omitempty"` // what is being decided on (plan text, deviation list, concern)
-	// For target=diff: the staging commit / tree the diff was computed from.
+	// For target=diff: the staging branch head the diff was computed from
+	// (what publish will land). For target=step-diff: a snapshot commit of the
+	// worktree, parented on the branch head, so that Staging.Diff(to: this)
+	// reproduces the subject and comments can anchor to worktree lines.
 	StagingCommit string                 `protobuf:"bytes,7,opt,name=staging_commit,json=stagingCommit,proto3" json:"staging_commit,omitempty"`
 	OpenedAt      *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=opened_at,json=openedAt,proto3" json:"opened_at,omitempty"`
 	Decision      *Decision              `protobuf:"bytes,9,opt,name=decision,proto3" json:"decision,omitempty"` // set once decided
@@ -4169,7 +4186,7 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\aProblem\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
 	"\x04node\x18\x02 \x01(\tR\x04node\x12\x18\n" +
-	"\amessage\x18\x03 \x01(\tR\amessage*\x88\x02\n" +
+	"\amessage\x18\x03 \x01(\tR\amessage*\xa7\x02\n" +
 	"\x0eWorkspaceState\x12\x1f\n" +
 	"\x1bWORKSPACE_STATE_UNSPECIFIED\x10\x00\x12\x1c\n" +
 	"\x18WORKSPACE_STATE_STARTING\x10\x01\x12\x1b\n" +
@@ -4178,7 +4195,8 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	" WORKSPACE_STATE_WAITING_QUESTION\x10\x04\x12\x1b\n" +
 	"\x17WORKSPACE_STATE_STOPPED\x10\x05\x12\x18\n" +
 	"\x14WORKSPACE_STATE_DONE\x10\x06\x12\x1b\n" +
-	"\x17WORKSPACE_STATE_BLOCKED\x10\a*\xf8\x01\n" +
+	"\x17WORKSPACE_STATE_BLOCKED\x10\a\x12\x1d\n" +
+	"\x19WORKSPACE_STATE_SUSPENDED\x10\b*\xf8\x01\n" +
 	"\fActivityKind\x12\x1d\n" +
 	"\x19ACTIVITY_KIND_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15ACTIVITY_KIND_WORKING\x10\x01\x12\x1f\n" +

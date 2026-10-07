@@ -41,8 +41,8 @@ Content-Type: application/json
 - `inputs`の値は`bytes`なのでbase64。必要な入力の名前は`WorkflowService.List`の`inputs`にある
 - `base`を省くと、実リポジトリのHEADが指すブランチから分岐する。`image`を省くと`settings.json`の`image`
 - publishを含まないワークフロー（`workflows/review`等）では、`branch`に実リポジトリに既にあるブランチを指定できる。stagingのブランチはその先頭から始まり、`refs/masuda/base`は`base`（省けば実リポジトリの既定のブランチ）とブランチの分岐点になる。publishを含むワークフローで既存のブランチを指定すると`already_exists`
-- `Run`はSTARTINGの`Workspace`を返す。VMの起動は返った後に進み、成功すればRUNNING、失敗すればBLOCKED（`reason`が`sandbox boot failed: `で始まる）になる。どちらも`Watch`の`status`で分かる
-- 前提が欠けていると`failed_precondition`で、足りないもの（秘密の値、承認、Dockerfile等）が`; `区切りでまとめて返る。そのまま利用者に見せ、[設定](#config)の画面へ案内する
+- `Run`はSTARTINGの`Workspace`を返す。VMの起動は返った後に進み、成功すればRUNNING、失敗すればSUSPENDED（`reason`が`sandbox boot failed: `で始まる。原因を直せば`Resume`できる）になる。どちらも`Watch`の`status`で分かる
+- 前提が欠けていると`failed_precondition`で、足りないもの（秘密の値、承認、ワークフローが届く`privileged`ノードの宣言と承認、Dockerfile等）が`; `区切りでまとめて返る。そのまま利用者に見せ、[設定](#config)の画面へ案内する
 
 ### `Watch`を読む
 
@@ -242,7 +242,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 
 | `kind` | いつ | 表示の指針 |
 |---|---|---|
-| `IDLE` | DONE・STOPPED・BLOCKED。または観測をまだ始めていない（STARTING） | 状態（`state`）だけを見せる。STARTINGなら`detail`に起動の段階が入る（下記） |
+| `IDLE` | DONE・STOPPED・SUSPENDED・BLOCKED。または観測をまだ始めていない（STARTING） | 状態（`state`）だけを見せる。STARTINGなら`detail`に起動の段階が入る（下記） |
 | `WAITING_GATE` | ゲート待ち | 「判断待ち」。ゲートの画面へのリンク。もっとも目立たせる |
 | `WAITING_QUESTION` | 質問待ち | 「回答待ち」。質問の画面へのリンク。ゲートと同じく目立たせる |
 | `DEAD` | ゲストのClaude Code（tmuxのセッション）が無い、またはVMが止まった・失敗した | 異常。`detail`に理由。進まないので、利用者に`Stop`→`Resume`を案内する |
@@ -261,13 +261,14 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 
 | 操作 | できる状態 | 起きること |
 |---|---|---|
-| `Stop` | DONE以外 | VMを壊してSTOPPEDにする。記録・staging・WIPスナップショットは残る。STOPPEDへの`Stop`は何もしない。engineが止めたBLOCKEDはVMを壊すだけでBLOCKEDのまま（再開できないことが変わらないように） |
-| `Resume` | STOPPED、起動に失敗したBLOCKED（`reason`が`sandbox boot failed: `で始まる） | 新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻して続ける。位置に応じてRUNNING・WAITING_GATE・WAITING_QUESTIONになる |
-| `Remove` | 動いていない（STOPPED・DONE・BLOCKED）。動いているものは`force: true` | `exports/`だけを残してワークスペースを消す。以後そのIDは`not_found` |
+| `Stop` | DONE以外 | VMを壊してSTOPPEDにする（SUSPENDEDも）。記録・staging・WIPスナップショットは残る。STOPPEDへの`Stop`は何もしない。engineが記録したBLOCKEDはVMを壊すだけでBLOCKEDのまま（再開できないことが変わらないように） |
+| `Resume` | STOPPED・SUSPENDED | 新しいVMを作り、stagingから再cloneし、最後のWIPスナップショットを作業ツリーへ戻して続ける。SUSPENDEDでVMが残っていれば、前提の確認が通ってから`Stop`と同じに片付ける。位置に応じてRUNNING・WAITING_GATE・WAITING_QUESTIONになる |
+| `Remove` | 動いていない（STOPPED・DONE・SUSPENDED・BLOCKED）。動いているものは`force: true` | `exports/`だけを残してワークスペースを消す。以後そのIDは`not_found` |
 
-- engineが止めたBLOCKED（triageの`halt`、進入回数の上限等）は再開できない。中身を確かめたら`Remove`する
+- SUSPENDEDはengineの記録の外で止まったもの（VMの起動の失敗、未承認の特権ノード・承認されていない通信先・execやpublishの基盤の失敗）で、engineは何も記録していない。原因を直して`Resume`すれば同じノードをやり直す。利用者には`reason`を見せ、直したら`Resume`するよう案内する
+- engineが記録したBLOCKED（triageの`halt`、進入回数の上限等）は再開できない。中身を確かめたら`Remove`する
 - `Resume`は定義を開始時の写しから読む（作業ツリーの`.masuda/`を書き換えても効かない）。承認・秘密の値・`stallAfter`は今の設定から読み直す
-- `Resume`の前提が欠けていれば`Run`と同じく`failed_precondition`で、足りないものがまとめて返る
+- `Resume`の前提が欠けていれば`Run`と同じく`failed_precondition`で、足りないもの（届く`privileged`ノードの承認を含む）がまとめて返る。このとき状態は変えない（SUSPENDEDのVMも残る）
 - 実行記録とexportsは`<DataDir>/workspaces/<id>/`にある（`DataDir`は`$XDG_DATA_HOME/masuda`）。APIからは読めない
 
 ## 設定 {#config}

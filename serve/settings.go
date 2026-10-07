@@ -17,6 +17,7 @@ import (
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/secrets"
 )
 
@@ -173,6 +174,15 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 	for _, name := range missing {
 		add("the workflow runs %s/%s but checks.%s is not declared in .masuda/settings.json", guest.ChecksDir, name, name)
 	}
+	privNames, err := privilegedNodeNames(set, workflow)
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	for _, name := range privNames {
+		if _, err := privileged.Resolve(cfg, local, name, imageExistsIn(defsDir)); err != nil {
+			add("the workflow has a privileged node, but %v", err)
+		}
+	}
 
 	if len(problems) > 0 {
 		return nil, connect.NewError(connect.CodeFailedPrecondition, errors.New(strings.Join(problems, "; ")))
@@ -208,6 +218,33 @@ func missingChecks(set *engine.Set, workflow string, checks map[string]string) (
 			if _, declared := checks[name]; !declared {
 				out = append(out, name)
 			}
+		}
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+// privilegedNodeNames はworkflowから届くprivilegedノードが動かす特権コマンドの名前を返す。
+// 宣言・承認の不足を、そのノードに着いてから止める（SUSPENDED）のでなく、実行の開始・再開の前に
+// まとめて人間へ返すため。
+func privilegedNodeNames(set *engine.Set, workflow string) ([]string, error) {
+	refs, err := set.Reachable(workflow)
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, ref := range refs {
+		wf := set.Workflows[ref]
+		if wf == nil {
+			continue
+		}
+		for _, n := range wf.Nodes {
+			if n.Type != engine.NodePrivileged || seen[n.PrivilegedName] {
+				continue
+			}
+			seen[n.PrivilegedName] = true
+			out = append(out, n.PrivilegedName)
 		}
 	}
 	sort.Strings(out)

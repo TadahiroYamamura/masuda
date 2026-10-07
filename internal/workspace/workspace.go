@@ -29,7 +29,11 @@ const (
 	StateWaitingQuestion State = "waiting-question"
 	StateStopped         State = "stopped"
 	StateDone            State = "done"
-	StateBlocked         State = "blocked"
+	// StateBlocked はengineが記録した行き止まり。再開できない。
+	StateBlocked State = "blocked"
+	// StateSuspended はengineの記録の外で止まったこと（sandboxの起動の失敗、ホストのノードを
+	// 動かせなかった等）。原因を直せば再開でき、同じノードからやり直す。
+	StateSuspended State = "suspended"
 )
 
 // Meta はワークスペースについて永続化するもの（`<id>/workspace.json`）。

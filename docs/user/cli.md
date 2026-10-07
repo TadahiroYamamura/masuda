@@ -20,7 +20,7 @@ masuda <command> [flags]
 |---|---|
 | [`serve`](#serve) | 公開APIを待ち受ける常駐プロセスを起動する |
 | [`run`](#run) | ワークフローを新しいワークスペースで始める |
-| [`resume`](#resume) | 止めたワークスペースを再開する |
+| [`resume`](#resume) | 止めた・中断したワークスペースを再開する |
 | [`list`](#list) | ワークスペースの一覧 |
 | [`watch`](#watch) | 状態とイベントを流し続ける |
 | [`chat`](#chat) | VMの中のClaude Codeの画面にアタッチする |
@@ -93,7 +93,7 @@ masuda list [--repo <dir>] [--all]
 | フラグ | 既定 | 意味 |
 |---|---|---|
 | `--repo` | 空（全リポジトリ） | そのリポジトリのワークスペースだけを出す |
-| `--all` | `false` | `done`・`stopped`も出す（`blocked`は常に出る） |
+| `--all` | `false` | `done`・`stopped`も出す（`suspended`・`blocked`は常に出る） |
 
 列の読み方は[運用](operations.md#list)。`end:<ラベル>`で終わったワークスペース（`outcome needs_human`等）は、POSITIONに結果と、終わらせたエージェントの理由の1行目が出る。
 
@@ -117,7 +117,7 @@ masuda watch [<id>] [--after <seq>]
 masuda chat <id>
 ```
 
-VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（[トラブルシューティング](troubleshooting.md#chat-blocks-destroy)）。chatからゲートを閉じることはできない。動いていないワークスペース（`blocked`はVMが残っているので使える）、起動中のワークスペースには使えない。`done`ではVMを壊してあるので、会話は`exports/transcripts/`で読む。
+VMの中のClaude Code（tmuxの`claude-work`セッション）にsshでアタッチする。`C-b d`で切り離せば、セッションはそのまま動き続ける。runが終わる（publish・discard）までに切り離すこと。アタッチしたままだとVMの破棄が終わらない（[トラブルシューティング](troubleshooting.md#chat-blocks-destroy)）。chatからゲートを閉じることはできない。動いていないワークスペース（`blocked`と、ワークフローの途中で止まった`suspended`はVMが残っているので使える。起動に失敗した`suspended`にはVMが無い）、起動中のワークスペースには使えない。`done`ではVMを壊してあるので、会話は`exports/transcripts/`で読む。
 
 ## gate
 
@@ -178,7 +178,7 @@ masuda question answer 4f1c2a9e8b3d 0000006 "SPEC-1=不正とする" "REGRESSION
 masuda stop <id>
 ```
 
-会話ログと実行ログを`exports/`へ書き出してからVMを壊し、`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー（VMは終わったときに壊してある）。masudaが実行を止めた`blocked`（triageの`halt`等）はVMを片付けるだけで`blocked`のまま（再開はできない）。
+会話ログと実行ログを`exports/`へ書き出してからVMを壊し、`stopped`にする。stagingと記録は残り、`resume`で再開できる。既に`done`のワークスペースはエラー（VMは終わったときに壊してある）。`suspended`はVMを片付けて`stopped`にする（そのまま`resume`できる）。ワークフローが記録した`blocked`（triageの`halt`等）はVMを片付けるだけで`blocked`のまま（再開はできない）。
 
 ## remove
 
