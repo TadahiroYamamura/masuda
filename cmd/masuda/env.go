@@ -195,9 +195,9 @@ func saveEnvVars(root string, vars []envItem) error {
 	return config.SaveLocal(root, local)
 }
 
-// requireWorkTreeTop はrootが作業ツリーのトップであることを確かめる。varsだけならserveを
-// 通らないので、他のコマンドでserveがしている検査をここでする（サブディレクトリに
-// .masuda/settings.local.jsonを作らないように）。
+// requireWorkTreeTop はrootが作業ツリーのトップであることを確かめる。initと、varsだけのenv importは
+// serveを通らないので、他のコマンドでserveがしている検査をここでする（サブディレクトリに
+// .masuda/を作らないように）。
 func requireWorkTreeTop(ctx context.Context, root string) error {
 	top, err := staging.TopLevel(ctx, root)
 	if err != nil {

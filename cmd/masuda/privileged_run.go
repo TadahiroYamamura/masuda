@@ -49,7 +49,7 @@ func privilegedRun(args []string) error {
 	}
 	sf := addSandboxSocketFlags(fs)
 	o := privilegedRunOptions{}
-	fs.StringVar(&o.repo, "repo", ".", "対象リポジトリ（作業ツリーのトップ）")
+	fs.StringVar(&o.repo, "repo", "", "対象リポジトリ（作業ツリーのトップ。省略時は今いる作業ツリーのトップ）")
 	fs.StringVar(&o.ref, "ref", "", "作業ツリーの今の状態の代わりに渡すコミット（ブランチ名・コミット）")
 	fs.StringVar(&o.out, "out", "", "結果（exit-code・log・outputs/）を置くディレクトリ（既定は新しい一時ディレクトリ）")
 	fs.StringVar(&o.dataDir, "data-dir", defaultDataDir(), "masuda serveの状態を置くディレクトリ（イメージのビルドの記録を書く）")
@@ -94,12 +94,11 @@ func privilegedRun(args []string) error {
 // runPrivilegedJob は特権コマンドを動かし、その終了コードを返す。コマンドの出力はstdout・stderrへ
 // そのまま流し、イメージのビルドのログと結果の場所はstderrへ出す。
 func runPrivilegedJob(ctx context.Context, o privilegedRunOptions, stdout, stderr io.Writer) (int, error) {
-	abs, err := filepath.Abs(o.repo)
+	root, err := absRepo(o.repo)
 	if err != nil {
 		return 0, err
 	}
-	root, err := staging.TopLevel(ctx, abs)
-	if err != nil {
+	if err := requireWorkTreeTop(ctx, root); err != nil {
 		return 0, err
 	}
 	cfg, err := config.Load(root)

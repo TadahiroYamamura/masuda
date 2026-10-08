@@ -15,14 +15,27 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/internal/config"
+	"github.com/TadahiroYamamura/masuda/internal/staging"
 )
 
-// repoFlag は設定系のサブコマンドが共通で受ける--repo。
+// repoFlag は設定系のサブコマンドが共通で受ける--repo。値はabsRepoで解決する。
 func repoFlag(c *command) *string {
-	return c.fs.String("repo", ".", "対象リポジトリ（作業ツリーのトップ）")
+	return c.fs.String("repo", "", "対象リポジトリ（作業ツリーのトップ。省略時は今いる作業ツリーのトップ）")
 }
 
-func absRepo(repo string) (string, error) { return filepath.Abs(repo) }
+// absRepo は--repoの値を絶対パスにする。省略されたときだけ今いる作業ツリーのトップへ読み替える。
+// 明示されたサブディレクトリは読み替えずに渡し、serve（またはrequireWorkTreeTop）に拒ませる。
+// 明示した場所と違う場所の.masuda/を黙って使うと、置き場所の取り違えに気づけないため。
+func absRepo(repo string) (string, error) {
+	if repo != "" {
+		return filepath.Abs(repo)
+	}
+	top, err := staging.TopLevel(context.Background(), ".")
+	if err != nil {
+		return "", errors.New("the current directory is not in a git work tree; run inside the repository, or pass --repo")
+	}
+	return top, nil
+}
 
 // subcommand は`masuda <group> <sub> ...`の振り分け。
 func subcommand(args []string, usage string, subs map[string]func([]string) error) error {

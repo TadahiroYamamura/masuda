@@ -140,18 +140,38 @@ func copyDefinitions(repoRoot, dst string) error {
 		switch {
 		case d.IsDir() && (rel == claudedir.SharedDir || rel == claudedir.LocalDir):
 			return filepath.SkipDir
+		// 権限は元のまま写す。写しはイメージのビルドコンテキストにもなり、DockerのCOPYは
+		// コンテキストの権限を保つため、0600に絞るとUSERを切り替えた後の手順から読めない
+		// （`masuda image build`は作業ツリーを直接ビルドするので、同じDockerfileがrunでだけ
+		// 失敗する）。他のユーザーから読めないことは、写しを置くデータディレクトリ（0700）で守る。
+		// ディレクトリは中へ写せるよう、持ち主の権限だけは必ず付ける。
 		case d.IsDir():
-			return os.MkdirAll(target, 0o700)
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(target, 0o700); err != nil {
+				return err
+			}
+			return os.Chmod(target, info.Mode().Perm()|0o700)
 		case d.Type().IsRegular():
 			if rel == config.SettingsLocalFileName {
 				// 利用者ごとの承認は定義ではない。実行のたびに作業ツリーのものを読む。
 				return nil
 			}
+			info, err := d.Info()
+			if err != nil {
+				return err
+			}
 			b, err := os.ReadFile(p)
 			if err != nil {
 				return err
 			}
-			return os.WriteFile(target, b, 0o600)
+			if err := os.WriteFile(target, b, 0o600); err != nil {
+				return err
+			}
+			// WriteFileの権限はumaskで削られるので、作業ツリーと同じにするにはChmodが要る。
+			return os.Chmod(target, info.Mode().Perm())
 		default:
 			return nil
 		}

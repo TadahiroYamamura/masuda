@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -76,12 +77,15 @@ const primeClaudeMDSection = primeBeginMarker + `
 // 足りないものだけ足す。
 func runInit(args []string) error {
 	c := newCommand("init", "init [--repo <dir>]")
-	repo := c.fs.String("repo", ".", "対象リポジトリ（作業ツリーのトップ）")
+	repo := repoFlag(c)
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return err
 	}
-	root, err := filepath.Abs(*repo)
+	root, err := absRepo(*repo)
 	if err != nil {
+		return err
+	}
+	if err := requireWorkTreeTop(context.Background(), root); err != nil {
 		return err
 	}
 	created, err := initRepo(root)

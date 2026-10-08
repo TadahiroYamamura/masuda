@@ -153,6 +153,21 @@ func TestPrivilegedCommandRun(t *testing.T) {
 		}
 	})
 
+	t.Run("--repoで作業ツリーのトップ以外を明示されたらsandboxにジョブを出さずに断る", func(t *testing.T) {
+		repo := privilegedRepo(t, showDecl, "show")
+		sub := filepath.Join(repo, "sub")
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		r := runPrivileged(t, socket, privilegedRunOptions{name: "show", repo: sub})
+		if r.err == nil || !strings.Contains(r.err.Error(), "is not the top of its work tree") {
+			t.Fatalf("err = %v", r.err)
+		}
+		if len(sb.jobs) != 0 {
+			t.Fatalf("RunJob was called %d times", len(sb.jobs))
+		}
+	})
+
 	repo := privilegedRepo(t, showDecl, "show")
 	// 作業ツリー: 追跡しているファイルの未コミットの変更、gitignoreされたinputsのファイル（実行可能）、
 	// inputsのglobに当たらないgitignoreされたファイル、globに当たるシンボリックリンク。
