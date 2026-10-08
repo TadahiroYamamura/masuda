@@ -75,6 +75,8 @@ func (s *workflowService) List(ctx context.Context, req *connect.Request[apiv1.R
 			Path:   path,
 			Origin: string(set.Origins[path]),
 			Inputs: append([]string(nil), wf.Inputs...),
+
+			UserInvocable: wf.UserInvocable,
 		})
 	}
 	sort.Slice(out.Workflows, func(i, j int) bool { return out.Workflows[i].Path < out.Workflows[j].Path })

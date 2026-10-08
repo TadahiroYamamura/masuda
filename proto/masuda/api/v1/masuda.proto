@@ -375,7 +375,15 @@ service WorkflowService {
 }
 
 message ListWorkflowsResponse { repeated WorkflowEntry workflows = 1; }
-message WorkflowEntry { string path = 1; string origin = 2; repeated string inputs = 3; }
+message WorkflowEntry {
+  string path = 1;
+  string origin = 2;
+  repeated string inputs = 3;
+  // False for a workflow meant to be called by other workflows (or kept for
+  // checks), not started by a user. Lists hide it by default; Run, Show and
+  // Check still accept it.
+  bool user_invocable = 4;
+}
 message ShowWorkflowRequest { string repo_root = 1; string workflow = 2; }
 message ShowWorkflowResponse { string mermaid = 1; }
 message CheckWorkflowResponse { repeated Problem problems = 1; }

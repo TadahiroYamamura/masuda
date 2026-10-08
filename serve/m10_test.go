@@ -73,11 +73,17 @@ func TestWorkflowServiceListShowCheck(t *testing.T) {
 		t.Fatal(err)
 	}
 	origins := map[string]string{}
+	invocable := map[string]bool{}
 	for _, w := range list.Msg.Workflows {
 		origins[w.Path] = w.Origin
+		invocable[w.Path] = w.UserInvocable
 	}
 	if origins["workflows/ask"] != "repo" || origins["workflows/develop"] != "bundled" {
 		t.Fatalf("origins: %v", origins)
+	}
+	// 一覧から外すかどうかは定義のuser_invocable（省略時true）をそのまま返し、外すのはクライアント。
+	if !invocable["workflows/ask"] || !invocable["workflows/develop"] || invocable["workflows/implement/build-step"] {
+		t.Fatalf("user_invocable: %v", invocable)
 	}
 	bundled, err := cl.workflows.List(ctx, connect.NewRequest(&apiv1.RepoRequest{}))
 	if err != nil {
