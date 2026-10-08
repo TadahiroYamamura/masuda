@@ -2872,7 +2872,7 @@ masuda
 </table>
 <p>同じエンドポイントに<code>POST /hooks</code>があり、ゲストのClaude Codeフック（<code>Notification</code>・<code>PostToolUse</code>・<code>Stop</code>・<code>SessionEnd</code>）がイベントを送る。</p>
 <h2 id="8">8. 活動の観測と停止の検知<a class="headerlink" href="#8" title="Permanent link">&para;</a></h2>
-<p>ワークスペースの活動は<code>working / waiting_input / waiting_gate / waiting_question / stalled / dead / idle</code>と最終活動時刻で表し、公開APIの<code>Watch</code>で配信する。次の情報源を合成する。</p>
+<p>ワークスペースの活動は<code>working / waiting_input / waiting_gate / waiting_question / stalled / dead / auth_rejected / idle</code>と最終活動時刻で表し、公開APIの<code>Watch</code>で配信する。次の情報源を合成する。</p>
 <table>
 <thead>
 <tr>
@@ -2905,6 +2905,7 @@ masuda
 <ol>
 <li>ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら<code>idle</code>、ゲート待ちなら<code>waiting_gate</code>、質問待ちなら<code>waiting_question</code>。STARTINGもエージェントがまだ動いていないので<code>idle</code>で、<code>detail</code>に起動の段階（<code>building image (log: ...)</code>→<code>booting the VM</code>→<code>preparing the guest</code>→<code>starting Claude Code</code>）を入れ、段階が変わるたびに<code>status</code>のイベントを流す</li>
 <li><code>claude</code>（tmuxのセッション）が無い: <code>dead</code>。<code>SessionEnd</code>フック、sandboxの停止・失敗、<code>Exec</code>での生存確認のどれかで分かる</li>
+<li>Claude APIの会話の本体（<code>/v1/messages</code>）への直近の応答が401・403: <code>auth_rejected</code>。<code>detail</code>にステータスと直し方（トークンを登録し直してstop→resume）を入れる。会話の本体が2xxを返せば解除する。設定などの補助のパスは見ない（正しいトークンでも401・403を返さないとは確かめていない）。進行中のリクエストより先に見るのは、Claude Codeが拒まれても呼び直すので、<code>working</code>と行き来して原因が見えなくなるため</li>
 <li>進行中のAPIリクエストがある: <code>working</code></li>
 <li>ゲストの<code>Notification</code>フックが待ちを言っている（<code>idle_prompt</code>→<code>idle</code>、<code>permission_prompt</code>→<code>permission</code>、<code>elicitation_dialog</code>→<code>question</code>。<code>input_wait</code>に入る）: <code>waiting_input</code>。その後にHTTP・ツール・MCPの活動があれば消える</li>
 <li>RUNNINGで、最終活動からしきい値を超えた: <code>stalled</code></li>

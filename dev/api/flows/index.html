@@ -1948,6 +1948,11 @@
 <td>異常。<code>detail</code>に理由。進まないので、利用者に<code>Stop</code>→<code>Resume</code>を案内する</td>
 </tr>
 <tr>
+<td><code>AUTH_REJECTED</code></td>
+<td>Claude APIの会話の要求（<code>/v1/messages</code>）への直近の応答が401・403。会話の要求が2xxを返せば戻る</td>
+<td>異常。<code>detail</code>にステータスと直し方。利用者にトークンの登録し直しと<code>Stop</code>→<code>Resume</code>を案内する（トークンはVMの起動時に渡すので、動いているVMには届かない）</td>
+</tr>
+<tr>
 <td><code>WORKING</code></td>
 <td>Claude APIへのリクエストが進行中</td>
 <td>「作業中」</td>
@@ -1974,7 +1979,7 @@
 <li><code>detail</code>: 最後に分かったことの短い説明（<code>"tool Edit"</code>・<code>"mcp next_task"</code>・<code>"claude session ended"</code>・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（<code>"building image (log: &lt;パス&gt;)"</code>→<code>"booting the VM"</code>→<code>"preparing the guest"</code>→<code>"starting Claude Code"</code>）で、段階が変わるたびに<code>status</code>が流れる</li>
 <li><code>last_activity</code>: 最後に活動を観測した時刻。<code>status</code>は時刻だけの変化では流れないので、経過時間はクライアントが進める</li>
 <li>活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（<code>IDLE</code>）になり、<code>Resume</code>で観測をやり直す</li>
-<li><code>state</code>がRUNNINGのままでも<code>activity</code>が<code>DEAD</code>・<code>STALLED</code>になる。一覧では<code>state</code>より<code>activity</code>を目立たせる方が、利用者が手を打つべきものに気づきやすい</li>
+<li><code>state</code>がRUNNINGのままでも<code>activity</code>が<code>DEAD</code>・<code>AUTH_REJECTED</code>・<code>STALLED</code>になる。一覧では<code>state</code>より<code>activity</code>を目立たせる方が、利用者が手を打つべきものに気づきやすい</li>
 </ul>
 <h2 id="lifecycle"><code>Stop</code>・<code>Resume</code>・<code>Remove</code><a class="headerlink" href="#lifecycle" title="Permanent link">&para;</a></h2>
 <table>
