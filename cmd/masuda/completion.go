@@ -38,6 +38,7 @@ var compFlagKinds = map[string]string{
 	"image":          "image",
 	"branch":         "none",
 	"base":           "none",
+	"note":           "none",
 	"comment":        "none",
 	"hash":           "none",
 	"after":          "none",
@@ -85,7 +86,7 @@ var completionTable = []compNode{
 	}},
 	{name: "question", subs: []compNode{
 		clientLeaf("list", argWorkspace),
-		clientLeaf("answer", argWorkspace),
+		clientLeaf("answer", argWorkspace, "note"),
 	}},
 	clientLeaf("stop", argWorkspace),
 	clientLeaf("remove", argWorkspace, "force"),

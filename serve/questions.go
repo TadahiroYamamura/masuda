@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -100,8 +101,16 @@ func checkAnswers(rec *workspace.QuestionRecord, answers map[string]string) erro
 		if !ok {
 			return fmt.Errorf("no answer to %q", q.ID)
 		}
-		if len(q.Options) > 0 && !slices.Contains(q.Options, got) {
-			return fmt.Errorf("%q is not one of %v for %q", got, q.Options, q.ID)
+		if len(q.Options) == 0 {
+			continue
+		}
+		// 選択肢のある質問では、1行目が選択肢で、2行目からが補足。自由記述の答えは複数行でもそのまま。
+		choice, _, hasNote := strings.Cut(got, "\n")
+		if hasNote && !rec.ByRole {
+			return fmt.Errorf("the answer to %q has a note, but only questions asked by a role take notes", q.ID)
+		}
+		if !slices.Contains(q.Options, choice) {
+			return fmt.Errorf("%q is not one of %v for %q", choice, q.Options, q.ID)
 		}
 	}
 	for id := range answers {

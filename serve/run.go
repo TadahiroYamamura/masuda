@@ -424,7 +424,7 @@ func (c *runCtl) AskHuman(ctx context.Context, occ string, questions []mcp.Quest
 	if err != nil {
 		return nil, err
 	}
-	rec := &workspace.QuestionRecord{Occurrence: occ, OpenedAt: time.Now().UTC()}
+	rec := &workspace.QuestionRecord{Occurrence: occ, OpenedAt: time.Now().UTC(), ByRole: true}
 	for _, q := range questions {
 		rec.Questions = append(rec.Questions, workspace.QuestionItem{ID: q.ID, Text: q.Text, Options: q.Options})
 	}

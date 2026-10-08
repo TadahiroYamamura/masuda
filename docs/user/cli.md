@@ -154,10 +154,16 @@ masuda gate dismiss|halt|redo <id> <occurrence> [--comment <text>]
 
 ```text
 masuda question list [<id>]
-masuda question answer <id> <occurrence> <question-id>=<answer>...
+masuda question answer <id> <occurrence> <question-id>=<answer>... [--note <question-id>=<text>]...
 ```
 
 `list`は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出し、最後にすべての問いに答えるコマンドの形（`answer: masuda question answer <id> <occurrence> '<question-id>=<answer>' ...`）を添える。1つの質問に複数の問いが入ることがあり、`answer`はそのすべてに答えを求める（`<質問のid>=<答え>`を問いの数だけ並べる。足りなければエラー）。
+
+選択肢のある問いには、選択肢の文字列そのものを答える。選んだ理由や条件を役に伝えたいときは、`--note <質問のid>=<補足>`を添える（繰り返し可）。補足は答えの次の行に続けて役へ届く。補足を付けられるのは、役が組み立てた質問（`develop`の計画への質問など）だけ。ワークフローの定義に書いた固定の質問は、答えがそのまま後のノードの入力になるので補足を受け付けない。選択肢に無い自由記述では答えられない（役が選択肢で聞いた意図を壊すため）。
+
+```text
+masuda question answer 4f1c2a9e8b3d 0000006 'DATA-1=(b) stoppedもremove' --note 'DATA-1=exportsが残ることが前提'
+```
 
 `develop`では、計画の承認（plan gate）の前に、計画についての質問が来ることがある。計画に立てられた問いのうち計画を直す役が判断できなかったものを、`SPEC-1`・`REGRESSION-2`のような問いのidでまとめて聞く（[develop](workflows.md#develop)）。
 

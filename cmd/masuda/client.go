@@ -847,19 +847,42 @@ func formatQuestion(q *apiv1.OpenQuestion) string {
 	return b.String()
 }
 
+// parseAnswers は`<question-id>=<answer>`と`--note <question-id>=<text>`を、公開APIの答えにする。
+// 補足は答えの後に改行で続ける（serveは1行目を選択肢として検査する）。
+func parseAnswers(kvs, notes []string) (map[string]string, error) {
+	answers := map[string]string{}
+	for _, kv := range kvs {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("answer %q: want <question-id>=<answer>", kv)
+		}
+		answers[k] = v
+	}
+	for _, kv := range notes {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok || k == "" {
+			return nil, fmt.Errorf("--note %q: want <question-id>=<text>", kv)
+		}
+		a, answered := answers[k]
+		if !answered {
+			return nil, fmt.Errorf("--note %q: %s has no answer; answer it as %s=<answer> too", kv, k, k)
+		}
+		answers[k] = a + "\n" + v
+	}
+	return answers, nil
+}
+
 func questionAnswer(args []string) error {
-	c := newCommand("question answer", "question answer <id> <occurrence> <question-id>=<answer>...")
+	c := newCommand("question answer", "question answer <id> <occurrence> <question-id>=<answer>... [--note <question-id>=<text>]...")
+	var notes multiFlag
+	c.fs.Var(&notes, "note", "note added after the chosen option, e.g. a reason (repeatable; only for questions asked by a role)")
 	pos, err := c.parse(args, 3, -1)
 	if err != nil {
 		return err
 	}
-	answers := map[string]string{}
-	for _, kv := range pos[2:] {
-		k, v, ok := strings.Cut(kv, "=")
-		if !ok || k == "" {
-			return fmt.Errorf("answer %q: want <question-id>=<answer>", kv)
-		}
-		answers[k] = v
+	answers, err := parseAnswers(pos[2:], notes)
+	if err != nil {
+		return err
 	}
 	if _, err := c.clients().questions.Answer(context.Background(), connect.NewRequest(&apiv1.AnswerRequest{
 		WorkspaceId: pos[0], Occurrence: pos[1], Answers: answers,
