@@ -1781,7 +1781,7 @@
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
 <li>フラグは<code>-flag</code>でも<code>--flag</code>でもよく、位置引数の前にも後にも書ける（<code>masuda gate approve &lt;id&gt; &lt;occ&gt; --hash h</code>も<code>masuda gate approve --hash h &lt;id&gt; &lt;occ&gt;</code>も同じ）</li>
-<li><code>--repo &lt;dir&gt;</code>の既定は今いるディレクトリ（<code>workflow</code>の3つだけ既定が違う）。どのコマンドでも<strong>作業ツリーのトップ</strong>を指す必要があり、サブディレクトリを渡すとエラーになる</li>
+<li><code>--repo &lt;dir&gt;</code>を省くと、今いる作業ツリーのトップを使い、作業ツリーの外ならエラーになる（<code>workflow</code>の3つ・<code>list</code>・<code>doctor</code>は省いたときの扱いが違う。各コマンドの節を参照）。明示するときは<strong>作業ツリーのトップ</strong>を渡す。サブディレクトリを渡すとエラーになる</li>
 <li>終了コード: 成功で0、エラーで1、使い方の誤りで2（<code>privileged-command run</code>だけは特権コマンドの終了コードを返す）。各コマンドの<code>-h</code>で使い方が出る</li>
 <li><code>&lt;id&gt;</code>はワークスペースのID（<code>masuda run</code>・<code>masuda list</code>が出す12桁）、<code>&lt;occurrence&gt;</code>はゲートや質問の出現ID（<code>masuda gate list</code>・<code>masuda question list</code>が出す）</li>
 </ul>
@@ -1955,7 +1955,7 @@
 </tr>
 <tr>
 <td><code>--repo</code></td>
-<td><code>.</code></td>
+<td>今いる作業ツリーのトップ</td>
 <td>対象リポジトリ</td>
 </tr>
 <tr>
@@ -2271,7 +2271,7 @@ masuda privileged-command run &lt;name&gt; [--repo &lt;dir&gt;] [--ref &lt;branc
 <tbody>
 <tr>
 <td><code>--repo</code></td>
-<td><code>.</code></td>
+<td>今いる作業ツリーのトップ</td>
 <td>対象リポジトリ（作業ツリーのトップ）</td>
 </tr>
 <tr>
