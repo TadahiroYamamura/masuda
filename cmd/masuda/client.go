@@ -39,7 +39,11 @@ func dial(socket string) *clients {
 	httpc := &http.Client{Transport: &http2.Transport{
 		AllowHTTP: true,
 		DialTLSContext: func(ctx context.Context, _, _ string, _ *tls.Config) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
+			conn, err := (&net.Dialer{}).DialContext(ctx, "unix", socket)
+			if err != nil {
+				return nil, &serveUnreachableError{socket: socket, err: err}
+			}
+			return conn, nil
 		},
 	}}
 	const base = "http://masuda"
@@ -53,17 +57,32 @@ func dial(socket string) *clients {
 	}
 }
 
+// serveUnreachableError はmasuda serveのソケットに繋がらなかったこと。connectは接続の失敗を
+// unavailableで包み、ダイヤルの内部のエラー文（dial unix ...: connect: no such file）を出すので、
+// mainはこれを取り出して、どこに繋ごうとしたかと次の手だけを出す。
+type serveUnreachableError struct {
+	socket string
+	err    error
+}
+
+func (e *serveUnreachableError) Error() string {
+	return fmt.Sprintf("cannot reach masuda serve at %s; start 'masuda serve', or pass --socket if it listens elsewhere", e.socket)
+}
+
+func (e *serveUnreachableError) Unwrap() error { return e.err }
+
 // command はクライアントのサブコマンド1つ分の引数解析。--socketはどのサブコマンドでも受ける。
 type command struct {
 	fs     *flag.FlagSet
 	socket *string
+	name   string
 	usage  string
 }
 
 func newCommand(name, usage string) *command {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
-	c := &command{fs: fs, usage: usage}
-	c.socket = fs.String("socket", filepath.Join(runtimeDir(), "masuda.sock"), "masuda serveのUDSのパス")
+	c := &command{fs: fs, name: name, usage: usage}
+	c.socket = fs.String("socket", filepath.Join(runtimeDir(), "masuda.sock"), "Unix socket of masuda serve")
 	fs.Usage = func() {
 		fmt.Fprintf(fs.Output(), "usage: masuda %s\n", usage)
 		fs.PrintDefaults()
@@ -88,8 +107,13 @@ func (c *command) parse(args []string, min, max int) ([]string, error) {
 		pos = append(pos, rest[0])
 		args = rest[1:]
 	}
-	if len(pos) < min || (max >= 0 && len(pos) > max) {
-		c.fs.Usage()
+	// 数が合わないときは何が誤りかと使い方の1行だけを出す。フラグの一覧まで出すと誤りが埋もれる。
+	switch {
+	case len(pos) < min:
+		fmt.Fprintf(c.fs.Output(), "masuda %s: missing arguments\nusage: masuda %s\n", c.name, c.usage)
+		return nil, errUsage
+	case max >= 0 && len(pos) > max:
+		fmt.Fprintf(c.fs.Output(), "masuda %s: unexpected argument %q\nusage: masuda %s\n", c.name, pos[max], c.usage)
 		return nil, errUsage
 	}
 	return pos, nil
@@ -141,12 +165,12 @@ func newTable(w io.Writer) *tabwriter.Writer { return tabwriter.NewWriter(w, 0, 
 func runRun(args []string) error {
 	c := newCommand("run", "run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...")
 	repo := repoFlag(c)
-	workflow := c.fs.String("workflow", "", "ワークフロー（例: workflows/develop）。位置引数でも渡せる")
-	branch := c.fs.String("branch", "", "作るブランチ。publishしないワークフローなら既存のブランチも指定できる")
-	base := c.fs.String("base", "", "分岐元（空なら今チェックアウトしているブランチ、既存のブランチを指定したときはリポジトリの既定のブランチ）")
-	image := c.fs.String("image", "", "イメージのエントリ（空ならsettings.jsonの既定）")
+	workflow := c.fs.String("workflow", "", "workflow (e.g. workflows/develop); can also be given as an argument")
+	branch := c.fs.String("branch", "", "branch to create; an existing branch is allowed for workflows that do not publish")
+	base := c.fs.String("base", "", "base ref (empty: the checked-out branch, or the default branch when --branch names an existing branch)")
+	image := c.fs.String("image", "", "image entry (empty: the image in settings.json)")
 	var inputs multiFlag
-	c.fs.Var(&inputs, "input", "入力。name=value、またはname=@file でファイルの中身（繰り返し可）")
+	c.fs.Var(&inputs, "input", "input: name=value, or name=@file for the file contents (repeatable)")
 	pos, err := c.parse(args, 0, 1)
 	if err != nil {
 		return err
@@ -158,7 +182,7 @@ func runRun(args []string) error {
 		*workflow = pos[0]
 	}
 	if *workflow == "" || *branch == "" {
-		c.fs.Usage()
+		fmt.Fprintf(c.fs.Output(), "masuda run: a workflow and --branch are required\nusage: masuda %s\n", c.usage)
 		return errUsage
 	}
 	root, err := absRepo(*repo)
@@ -221,7 +245,7 @@ func runStop(args []string) error {
 
 func runRemove(args []string) error {
 	c := newCommand("remove", "remove <id> [--force]")
-	force := c.fs.Bool("force", false, "動いていても止めて消す")
+	force := c.fs.Bool("force", false, "stop the workspace first if it is running")
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {
 		return err
@@ -235,8 +259,8 @@ func runRemove(args []string) error {
 
 func runList(args []string) error {
 	c := newCommand("list", "list [--repo <dir>] [--all]")
-	repo := c.fs.String("repo", "", "このリポジトリのワークスペースだけを出す（空なら全部）")
-	all := c.fs.Bool("all", false, "終わった（done）・止めた（stopped）ワークスペースも出す")
+	repo := c.fs.String("repo", "", "show only workspaces of this repository (empty: all)")
+	all := c.fs.Bool("all", false, "also show done and stopped workspaces")
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return err
 	}
@@ -314,7 +338,7 @@ func firstLine(s string) string {
 
 func runWatch(args []string) error {
 	c := newCommand("watch", "watch [<id>] [--after <seq>]")
-	after := c.fs.Uint64("after", 0, "このseqより後のイベントから再送する（0なら今の状態と新しいものだけ）")
+	after := c.fs.Uint64("after", 0, "replay events after this seq (0: the current status and new events only)")
 	pos, err := c.parse(args, 0, 1)
 	if err != nil {
 		return err
@@ -478,7 +502,7 @@ func gateComment(args []string) error {
 		return err
 	}
 	if g.Msg.StagingCommit == "" {
-		return fmt.Errorf("このゲートは差分を対象にしていない（gate %s, target %s）", g.Msg.Gate, orDash(g.Msg.Target))
+		return fmt.Errorf("gate %s is not about a diff (target %s); line comments need a diff gate", g.Msg.Gate, orDash(g.Msg.Target))
 	}
 	res, err := cl.staging.AddComment(ctx, connect.NewRequest(&apiv1.AddCommentRequest{
 		WorkspaceId: pos[0], Commit: g.Msg.StagingCommit, Path: path, Line: line, Body: body,
@@ -494,28 +518,28 @@ func gateComment(args []string) error {
 func parseLocation(s string) (string, uint32, error) {
 	i := strings.LastIndex(s, ":")
 	if i <= 0 {
-		return "", 0, fmt.Errorf("場所は<path>:<line>で書く: %q", s)
+		return "", 0, fmt.Errorf("location %q: write it as <path>:<line>", s)
 	}
 	n, err := strconv.ParseUint(s[i+1:], 10, 32)
 	if err != nil || n == 0 {
-		return "", 0, fmt.Errorf("行番号は1以上の整数で書く: %q", s)
+		return "", 0, fmt.Errorf("location %q: the line must be an integer of 1 or more", s)
 	}
 	return s[:i], uint32(n), nil
 }
 
 // triageOutcomes はtriageゲートの判断と、その意味（engineの扱い）。
 var triageOutcomes = []struct{ outcome, meaning string }{
-	{"dismiss", "懸念を退けて続ける"},
-	{"halt", "実行を止める"},
-	{"redo", "懸念の出た出現を差し戻して入り直す"},
+	{"dismiss", "set the concern aside and continue"},
+	{"halt", "stop the run"},
+	{"redo", "send the occurrence back and enter it again"},
 }
 
 // diffTargets はゲートの承認対象のうち差分であるもの。どちらも中身はunified diffだが、承認して
 // 確定するものが違う（diffはpublishされるコミット済みの内容、step-diffはこれからcommitされる内容）
 // ので、取り違えないよう見出しで区別する。
 var diffTargets = map[string]struct{ meaning, heading string }{
-	"diff":      {"publishされる内容: 分岐元..ブランチ先頭のコミット済みの差分", "changes to be published (committed, base..branch head):"},
-	"step-diff": {"これからcommitされる内容: ブランチ先頭..作業ツリーの未コミットの差分", "changes this step will commit (uncommitted, branch head..work tree):"},
+	"diff":      {"what will be published: committed diff, base..branch head", "changes to be published (committed, base..branch head):"},
+	"step-diff": {"what this step will commit: uncommitted diff, branch head..work tree", "changes this step will commit (uncommitted, branch head..work tree):"},
 }
 
 // formatGate はゲートを人間が読む形にする。中身（subject）はゲートの種類で読み方が違うので、
@@ -527,20 +551,20 @@ func formatGate(g *apiv1.Gate, comments []*apiv1.Comment) string {
 	target := orDash(g.Target)
 	dt, isDiff := diffTargets[g.Target]
 	if isDiff {
-		target += "（" + dt.meaning + "）"
+		target += " (" + dt.meaning + ")"
 	}
 	fmt.Fprintf(&b, "gate:        %s\noccurrence:  %s\ntarget:      %s\ntarget_hash: %s\nopened:      %s\n",
 		g.Gate, g.Occurrence, target, g.TargetHash, fmtTime(g.OpenedAt))
 	if g.StagingCommit != "" {
 		note := ""
 		if g.Target == "step-diff" {
-			note = "（作業ツリーのスナップショット。親がブランチ先頭）"
+			note = " (snapshot of the work tree; its parent is the branch head)"
 		}
 		fmt.Fprintf(&b, "commit:      %s%s\n", g.StagingCommit, note)
 	}
 	if d := g.Decision; d != nil {
 		if d.Outcome == "superseded" {
-			fmt.Fprintf(&b, "decision:    superseded（triageで無効。入り直した出現が新しいゲートを開く）\n")
+			fmt.Fprintf(&b, "decision:    superseded (voided by triage; the re-entered occurrence opens a new gate)\n")
 		} else {
 			fmt.Fprintf(&b, "decision:    %s %s\n", d.Outcome, d.Comment)
 		}
@@ -729,12 +753,12 @@ func gateDecide(args []string, approve bool) error {
 		name, usage = "gate approve", "gate approve <id> <occurrence> [--hash <h>] [--file <path>]... [--comment <text>]"
 	}
 	c := newCommand(name, usage)
-	comment := c.fs.String("comment", "", "判断に添えるコメント")
+	comment := c.fs.String("comment", "", "comment attached to the decision")
 	var hash *string
 	var files multiFlag
 	if approve {
-		hash = c.fs.String("hash", "", "承認する内容のtarget_hash（省略時は今のゲートのもの）")
-		c.fs.Var(&files, "file", "deviationゲートで計画に加えるファイル（繰り返し可。並べないファイルは加えない）")
+		hash = c.fs.String("hash", "", "target_hash of what you approve (default: the gate's current one)")
+		c.fs.Var(&files, "file", "file to add to the plan at a deviation gate (repeatable; files not listed are not added)")
 	}
 	pos, err := c.parse(args, 2, 2)
 	if err != nil {
@@ -767,7 +791,7 @@ func gateDecide(args []string, approve bool) error {
 // ないのでtarget_hashは要らない。
 func gateTriage(outcome string, args []string) error {
 	c := newCommand("gate "+outcome, "gate "+outcome+" <id> <occurrence> [--comment <text>]")
-	comment := c.fs.String("comment", "", "判断に添えるコメント")
+	comment := c.fs.String("comment", "", "comment attached to the decision")
 	pos, err := c.parse(args, 2, 2)
 	if err != nil {
 		return err

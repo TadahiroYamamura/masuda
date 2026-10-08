@@ -398,6 +398,7 @@ var completionRunners = map[string]func([]string) error{
 	"prime":                      runPrime,
 	"version":                    runVersion,
 	"doctor":                     runDoctor,
+	"doc":                        runDoc,
 	"gate list":                  gateList,
 	"gate show":                  gateShow,
 	"gate approve":               func(a []string) error { return gateDecide(a, true) },

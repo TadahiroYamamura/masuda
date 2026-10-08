@@ -37,3 +37,7 @@ test_fizzbuzz.py
 /docs/design/release.md
 /site/
 /.venv-docs/
+
+# masuda docの埋め込み（release.ymlが写す。internal/docsembed/content/README.md）
+/internal/docsembed/content/md/
+/internal/docsembed/content/site/

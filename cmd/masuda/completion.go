@@ -48,6 +48,7 @@ var compFlagKinds = map[string]string{
 	"force":          "bool",
 	"fake-sandbox":   "bool",
 	"hook-json":      "bool",
+	"serve":          "bool",
 }
 
 func leaf(name string, arg argSource, flags ...string) compNode {
@@ -107,6 +108,7 @@ var completionTable = []compNode{
 	}},
 	leaf("version", argNone, "sandbox-socket", "config"),
 	leaf("doctor", argNone, "sandbox-socket", "config", "data-dir", "repo"),
+	clientLeaf("doc", argNone, "serve"),
 	leaf("help", argNone),
 	{name: "completion", subs: []compNode{
 		leaf("bash", argNone),

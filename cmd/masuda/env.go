@@ -26,7 +26,7 @@ func runEnv(args []string) error {
 }
 
 func envImport(args []string) error {
-	c := newCommand("env import", "env import <file> [--repo <dir>]  (値は表示しない。秘密を含むならmasuda serveが要る)")
+	c := newCommand("env import", "env import <file> [--repo <dir>]  (values are never printed; masuda serve is needed when the file has secrets)")
 	repo := repoFlag(c)
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {

@@ -158,7 +158,7 @@ func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.S
 	}
 	wf := set.Workflows[workflow]
 	if wf == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", workflow))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined; masuda workflow list shows the defined workflows", workflow))
 	}
 	if problems := set.Check(workflow); len(problems) > 0 {
 		var lines []string
@@ -178,7 +178,7 @@ func checkDefinitions(dir, workflow string, inputs map[string][]byte) (*engine.S
 		}
 	}
 	if len(missing) > 0 {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v", workflow, missing))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %s needs inputs %v; pass each with --input name=value", workflow, missing))
 	}
 	return set, nil
 }
@@ -221,7 +221,7 @@ func repoTop(ctx context.Context, repoRoot string) (string, error) {
 		return "", err
 	}
 	if filepath.Clean(want) != filepath.Clean(got) {
-		return "", fmt.Errorf("repo_root %s is not the top of its work tree (%s)", repoRoot, top)
+		return "", fmt.Errorf("repo_root %s is not the top of its work tree (%s); pass the top, or omit --repo", repoRoot, top)
 	}
 	return filepath.Clean(repoRoot), nil
 }
@@ -253,7 +253,7 @@ func (s *workspaceService) lookup(id string) (*workspace.Workspace, error) {
 func lookupWorkspace(store *workspace.Store, id string) (*workspace.Workspace, error) {
 	w, err := store.Get(id)
 	if errors.Is(err, workspace.ErrNotFound) {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("workspace %q not found", id))
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("workspace %q not found; masuda list --all shows the workspaces", id))
 	} else if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

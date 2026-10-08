@@ -28,8 +28,8 @@ type sandboxSocketFlags struct {
 func addSandboxSocketFlags(fs *flag.FlagSet) *sandboxSocketFlags {
 	return &sandboxSocketFlags{
 		fs:     fs,
-		socket: fs.String("sandbox-socket", defaultSandboxSocket(), "masuda-sandbox serveのUDSのパス（明示しなければconfig.jsonのsandboxSocket）"),
-		config: fs.String("config", config.ServeConfigPath(), "serve全体の設定ファイル"),
+		socket: fs.String("sandbox-socket", defaultSandboxSocket(), "Unix socket of masuda-sandbox serve (default: sandboxSocket in config.json)"),
+		config: fs.String("config", config.ServeConfigPath(), "serve-wide config file"),
 	}
 }
 

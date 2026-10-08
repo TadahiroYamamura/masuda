@@ -138,7 +138,7 @@ func (s *stagingService) AddComment(ctx context.Context, req *connect.Request[ap
 		return nil, err
 	}
 	if req.Msg.Body == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("body is required"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("comment body is required"))
 	}
 	// refで指されたコメントもハッシュで保存する。refは後で動くので、名前のままだと
 	// 別のコミットへの指摘に化ける。

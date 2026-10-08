@@ -79,7 +79,7 @@ func (s *gateService) Decide(_ context.Context, req *connect.Request[apiv1.Decid
 		return nil, err
 	}
 	if g.Decision != nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("gate %s of occurrence %s has already been decided", g.Gate, g.Occurrence))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("gate %s of occurrence %s has already been decided; list the open gates again", g.Gate, g.Occurrence))
 	}
 	// ゲートの種類に合わないoutcomeはリクエストの誤りとして返す（契約「エラーコードの約束」）。
 	// engineはdeviationの不一致をErrNotImplemented、他を一般のエラーで返し区別できないため、先に見る。
@@ -95,7 +95,7 @@ func (s *gateService) Decide(_ context.Context, req *connect.Request[apiv1.Decid
 	}
 	c := s.backend.runFor(w.ID)
 	if c == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is not running", w.ID))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is not running; resume it first", w.ID))
 	}
 	err = c.decide(g, engine.Decision{
 		Outcome:       m.Decision.Outcome,
@@ -176,7 +176,7 @@ func latestGate(w *workspace.Workspace, occ string) (*workspace.GateRecord, erro
 		}
 	}
 	if found == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no gate for occurrence %q in workspace %s", occ, w.ID))
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no gate for occurrence %q in workspace %s; list the gates to find the occurrence", occ, w.ID))
 	}
 	return found, nil
 }

@@ -29,7 +29,7 @@ func runWorkflow(args []string) error {
 
 // workflowRepoFlag は--repoを足す。省略時は今いる作業ツリーのトップ、作業ツリーの外なら同梱の定義だけを見る。
 func workflowRepoFlag(c *command) func() (string, error) {
-	repo := c.fs.String("repo", "", "対象リポジトリ（省略時は今いる作業ツリー。その外なら同梱の定義だけ）")
+	repo := c.fs.String("repo", "", "target repository (default: the current work tree; outside one, only the bundled definitions)")
 	return func() (string, error) {
 		if *repo != "" {
 			return filepath.Abs(*repo)

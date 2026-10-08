@@ -161,7 +161,7 @@ masuda secret list
 # NAME  MODE  HOSTS  VALUE  APPROVED
 # Claude token: set
 masuda doctor
-# ... [ok  ] Claudeトークン: 登録済み
+# ... [ok  ] Claude token: registered
 ```
 
 特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで`--repo .`を付けて登録する（リポジトリごとの登録が優先される）。
