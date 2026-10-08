@@ -4816,6 +4816,12 @@ API traffic (trustworthy) and guest hooks (informative).</p>
 <td>repeated</td>
 <td></td>
 </tr>
+<tr>
+<td>user_invocable</td>
+<td><a href="#bool">bool</a></td>
+<td></td>
+<td>False for a workflow meant to be called by other workflows (or kept for checks), not started by a user. Lists hide it by default; Run, Show and Check still accept it.</td>
+</tr>
 </tbody>
 </table>
 <p><a name="masuda-api-v1-Workspace"></a></p>

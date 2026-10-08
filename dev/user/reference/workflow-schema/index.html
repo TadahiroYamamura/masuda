@@ -1570,6 +1570,7 @@
 <h2 id="_2">ワークフローファイル<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><span class="nt">version</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
 <span class="nt">inputs</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">instructions</span><span class="p p-Indicator">]</span><span class="w">          </span><span class="c1"># 受け取るデータ名（省略可）</span>
+<span class="nt">user_invocable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">            </span><span class="c1"># 利用者が直接始めるワークフローか（省略時true。下記）</span>
 <span class="nt">start</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">investigate</span>
 <span class="nt">nodes</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">investigate</span><span class="p">:</span>
@@ -1615,6 +1616,7 @@
 <h3 id="_3">共通<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h3>
 <ul>
 <li>ノード名は<code>[a-z0-9-]+</code>。<code>end</code>は予約</li>
+<li><code>user_invocable</code>は、利用者が直接始めるワークフローかどうか。他のワークフローから呼ばれる部品や動作確認用のものには<code>false</code>を書く。ホスト（masudaの<code>workflow list</code>）は一覧から外すだけで、始めることも検査することも今までどおりできる。エンジンは値を<code>Workflow.UserInvocable</code>に写すだけで、実行・検査には使わない</li>
 <li><code>next</code>はoutcome→行き先。文字列1つは<code>{done: x}</code>の省略形。行き先はノード名、<code>end</code>、<code>end:&lt;ラベル&gt;</code></li>
 <li><code>max</code>は進入回数の上限。<code>agent</code>・<code>exec</code>・<code>privileged</code>は省略時3。上限で<code>exhausted</code>。<code>exhausted</code>に行き先が無ければ実行はblockedで止まる</li>
 <li><code>inputs</code>/<code>outputs</code>はデータ名の配列。データ名は<code>[a-z][a-z0-9-]*</code></li>

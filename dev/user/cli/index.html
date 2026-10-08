@@ -776,6 +776,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#doc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        doc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#doctor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1732,6 +1743,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#doc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        doc
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#doctor" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1776,13 +1798,14 @@
 <h1 id="cli">CLIリファレンス<a class="headerlink" href="#cli" title="Permanent link">&para;</a></h1>
 <div class="highlight"><pre><span></span><code>masuda &lt;command&gt; [flags]
 </code></pre></div>
-<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>・<code>privileged-command run</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
+<p><code>serve</code>・<code>init</code>・<code>prime</code>・<code>doc</code>・<code>version</code>・<code>doctor</code>・<code>completion</code>・<code>privileged-command run</code>以外のコマンドは、動いている<code>masuda serve</code>の公開APIを叩くだけのクライアント。<code>masuda serve</code>が起動していなければ接続エラーになる。</p>
 <h2 id="_1">共通の約束<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
 <ul>
 <li><code>--socket &lt;path&gt;</code>: どのクライアントコマンドでも受け付ける。<code>masuda serve</code>の待ち受けるUnixソケット。既定は<code>$XDG_RUNTIME_DIR/masuda.sock</code>（<code>XDG_RUNTIME_DIR</code>が無ければ<code>/tmp/masuda-&lt;uid&gt;/masuda.sock</code>）</li>
 <li>フラグは<code>-flag</code>でも<code>--flag</code>でもよく、位置引数の前にも後にも書ける（<code>masuda gate approve &lt;id&gt; &lt;occ&gt; --hash h</code>も<code>masuda gate approve --hash h &lt;id&gt; &lt;occ&gt;</code>も同じ）</li>
 <li><code>--repo &lt;dir&gt;</code>を省くと、今いる作業ツリーのトップを使い、作業ツリーの外ならエラーになる（<code>workflow</code>の3つ・<code>list</code>・<code>doctor</code>は省いたときの扱いが違う。各コマンドの節を参照）。明示するときは<strong>作業ツリーのトップ</strong>を渡す。サブディレクトリを渡すとエラーになる</li>
 <li>終了コード: 成功で0、エラーで1、使い方の誤りで2（<code>privileged-command run</code>だけは特権コマンドの終了コードを返す）。各コマンドの<code>-h</code>で使い方が出る</li>
+<li>CLIが出す文（エラー・ヘルプ・<code>doctor</code>）は英語。エラーは<code>masuda: &lt;何が誤りか&gt;; &lt;何をすればよいか&gt;</code>の形で、使い方の全文は出さない（引数の数が合わなければ、誤りと使い方の1行だけ）</li>
 <li><code>&lt;id&gt;</code>はワークスペースのID（<code>masuda run</code>・<code>masuda list</code>が出す12桁）、<code>&lt;occurrence&gt;</code>はゲートや質問の出現ID（<code>masuda gate list</code>・<code>masuda question list</code>が出す）</li>
 </ul>
 <h2 id="_2">一覧<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
@@ -2102,9 +2125,12 @@ masuda gate dismiss|halt|redo &lt;id&gt; &lt;occurrence&gt; [--comment &lt;text&
 <p>判断済みのゲートにもう一度判断するとエラーになる。</p>
 <h2 id="question">question<a class="headerlink" href="#question" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda question list [&lt;id&gt;]
-masuda question answer &lt;id&gt; &lt;occurrence&gt; &lt;question-id&gt;=&lt;answer&gt;...
+masuda question answer &lt;id&gt; &lt;occurrence&gt; &lt;question-id&gt;=&lt;answer&gt;... [--note &lt;question-id&gt;=&lt;text&gt;]...
 </code></pre></div>
 <p><code>list</code>は開いている質問を、質問ごとのidと本文、選択肢（あれば）とともに出し、最後にすべての問いに答えるコマンドの形（<code>answer: masuda question answer &lt;id&gt; &lt;occurrence&gt; '&lt;question-id&gt;=&lt;answer&gt;' ...</code>）を添える。1つの質問に複数の問いが入ることがあり、<code>answer</code>はそのすべてに答えを求める（<code>&lt;質問のid&gt;=&lt;答え&gt;</code>を問いの数だけ並べる。足りなければエラー）。</p>
+<p>選択肢のある問いには、選択肢の文字列そのものを答える。選んだ理由や条件を役に伝えたいときは、<code>--note &lt;質問のid&gt;=&lt;補足&gt;</code>を添える（繰り返し可）。補足は答えの次の行に続けて役へ届く。補足を付けられるのは、役が組み立てた質問（<code>develop</code>の計画への質問など）だけ。ワークフローの定義に書いた固定の質問は、答えがそのまま後のノードの入力になるので補足を受け付けない。選択肢に無い自由記述では答えられない（役が選択肢で聞いた意図を壊すため）。</p>
+<div class="highlight"><pre><span></span><code>masuda question answer 4f1c2a9e8b3d 0000006 'DATA-1=(b) stoppedもremove' --note 'DATA-1=exportsが残ることが前提'
+</code></pre></div>
 <p><code>develop</code>では、計画の承認（plan gate）の前に、計画についての質問が来ることがある。計画に立てられた問いのうち計画を直す役が判断できなかったものを、<code>SPEC-1</code>・<code>REGRESSION-2</code>のような問いのidでまとめて聞く（<a href="../workflows/#develop">develop</a>）。</p>
 <div class="highlight"><pre><span></span><code>$ masuda question list 4f1c2a9e8b3d
 4f1c2a9e8b3d 0000006 (opened 10-03 01:40:12)
@@ -2339,7 +2365,7 @@ masuda image build [&lt;entry&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
 <p><code>list</code>は<code>.masuda/images/</code>のエントリと、ビルド済みかどうか・最後のビルドのID。<code>build</code>は<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>をビルドし、ログを標準エラーへ、ビルドのIDを標準出力へ出す。<code>&lt;entry&gt;</code>を省くと<code>settings.json</code>の<code>image</code>。Dockerfileが入れるClaude Codeの版が<code>masuda version</code>の検証済みの版と違えば（版を書いていないものも）、始めに標準エラーへ<code>note:</code>の1行を出す（<a href="../settings/#image">設定のimage</a>）。</p>
 <h2 id="workflow">workflow<a class="headerlink" href="#workflow" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code>masuda workflow list [--repo &lt;dir&gt;]
+<div class="highlight"><pre><span></span><code>masuda workflow list [--repo &lt;dir&gt;] [--all]
 masuda workflow show &lt;workflow&gt; [--repo &lt;dir&gt;]
 masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
@@ -2354,7 +2380,7 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <tbody>
 <tr>
 <td><code>list</code></td>
-<td>ワークフローごとに、どこから来たか（ORIGIN: <code>bundled</code>は同梱、<code>repo</code>は<code>.masuda/workflows/</code>）と受け取る入力</td>
+<td>利用者が始めるワークフローごとに、どこから来たか（ORIGIN: <code>bundled</code>は同梱、<code>repo</code>は<code>.masuda/workflows/</code>）と受け取る入力。定義に<code>user_invocable: false</code>と書いたもの（同梱の部品と<code>smoke</code>）は出さない。<code>--all</code>なら全部を、<code>USER_INVOCABLE</code>の列を付けて出す。出さないものも<code>run</code>・<code>show</code>・<code>check</code>には渡せる</td>
 </tr>
 <tr>
 <td><code>show</code></td>
@@ -2370,6 +2396,7 @@ masuda workflow check [&lt;workflow&gt;] [--repo &lt;dir&gt;]
 <h2 id="version">version<a class="headerlink" href="#version" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda version [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;]
 </code></pre></div>
+<p><code>masuda --version</code>・<code>masuda -v</code>も同じ。</p>
 <p>ビルドに埋め込んだバージョン（ソースからビルドしたものは<code>dev</code>）、Goの版、masudaが前提にするsandboxの契約（<code>sandbox.proto</code>のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（<code>masuda init</code>の雛形が入れる版）を出す。<code>masuda-sandbox serve</code>に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（<code>contract: ok</code>か<code>contract: MISMATCH</code>）も出す。届かなくても終了コードは0。</p>
 <div class="highlight"><pre><span></span><code>masuda 0.3.0 (go1.26.3 linux/amd64)
   sandbox contract sha256: 495d81…
@@ -2380,6 +2407,38 @@ masuda-sandbox 0.3.0 (linux/amd64, gondolin 0.12.0)
 </code></pre></div>
 <p><code>--sandbox-socket</code>の既定は<code>masuda serve</code>と同じ（<code>config.json</code>の<code>sandboxSocket</code>、無ければ<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>）。</p>
 <p>契約が合わないと<code>masuda serve</code>は起動せず、<code>run</code>・<code>resume</code>も断られる。masudaとmasuda-sandboxは同じバージョンのリリースを組で入れる（<a href="../install/">導入</a>）。</p>
+<h2 id="doc">doc<a class="headerlink" href="#doc" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda doc [&lt;page&gt;[#&lt;id&gt;]] [--serve]
+</code></pre></div>
+<p>使っているmasudaの版の文書を引く。<code>masuda serve</code>は要らない。リリースのバイナリ（<a href="../install/">インストール</a>の手順で入れたもの）は、サイトと同じ手順で用意した文書を埋め込んでいる。</p>
+<table>
+<thead>
+<tr>
+<th>形</th>
+<th>動き</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>masuda doc</code></td>
+<td>ページの一覧（<code>user/troubleshooting</code>のようなパスと題）</td>
+</tr>
+<tr>
+<td><code>masuda doc &lt;page&gt;</code></td>
+<td>そのページのMarkdown。<code>.md</code>や先頭の<code>docs/</code>が付いていてもよい</td>
+</tr>
+<tr>
+<td><code>masuda doc &lt;page&gt;#&lt;id&gt;</code></td>
+<td>ページのうち、<code>{#id}</code>を明示した見出しの節だけ（同じか浅い見出しの手前まで）</td>
+</tr>
+<tr>
+<td><code>masuda doc --serve</code></td>
+<td>埋め込んだサイトを<code>127.0.0.1</code>の空いたポートで公開し、URLを出す。Ctrl-Cで止める</td>
+</tr>
+</tbody>
+</table>
+<p>ページの中のリンク（<code>troubleshooting.md#stalled</code>）は、そのページのディレクトリからのパスに読み替えて引く（<code>docs/user/</code>のページなら<code>masuda doc user/troubleshooting#stalled</code>）。</p>
+<p>ソースからビルドしたもの（<code>go install</code>・手元の<code>go build</code>）は文書を埋め込まない。そのときは公開サイトのURLを出す。リリースの版（X.Y.Z）ならその版の<code>X.Y/</code>、それ以外は開発版の<code>dev/</code>。<code>doctor</code>などの案内も、埋め込みがあれば<code>masuda doc</code>の形、無ければこのURLで文書を指す。</p>
 <h2 id="doctor">doctor<a class="headerlink" href="#doctor" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda doctor [--sandbox-socket &lt;path&gt;] [--config &lt;path&gt;] [--data-dir &lt;dir&gt;] [--repo &lt;dir&gt;]
 </code></pre></div>
@@ -2421,14 +2480,14 @@ masuda-sandbox 0.3.0 (linux/amd64, gondolin 0.12.0)
 <td><code>masuda-sandbox serve</code>に届き、<code>GetServerInfo</code>の契約がmasudaと同じか</td>
 </tr>
 <tr>
-<td>Claudeトークン</td>
+<td>Claude token</td>
 <td>ユーザー単位（<code>--repo</code>を付ければそのリポジトリの登録も）に登録されているか</td>
 </tr>
 </tbody>
 </table>
 <div class="highlight"><pre><span></span><code>[ok  ] git: git version 2.43.0
-[NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable: ...
-       `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`を起動する。...
+[NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable (...); start masuda-sandbox serve, or check sandboxSocket in config.json
+       start `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`; if it is not installed, ...
 </code></pre></div>
 <h2 id="completion">completion<a class="headerlink" href="#completion" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda completion bash|zsh

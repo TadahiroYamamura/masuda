@@ -1663,7 +1663,7 @@ outcomes:
 <li>同梱のスキーマ: <code>plan</code>（計画。計画への問いと答えの<code>checks</code>を含む）、<code>plan-checklist</code>（計画への問い）、<code>findings</code>（指摘の台帳。実行中に書かれたものが溜まっていく）、<code>commit-message</code>、<code>comment-manifest</code>（実装する役・直す役が追加・変更したコメントと、それぞれが満たす基準の一覧。溜まっていく。観点<a href="../reviews/"><code>comment-criteria</code></a>が照合する）、<code>selected-perspectives</code>、<code>answers</code></li>
 </ul>
 <h2 id="_4">同梱のワークフロー<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p><code>masuda workflow list</code>で一覧が出る。人が始めるのは<code>develop</code>・<code>fix</code>・<code>review</code>で、残りはその部品。</p>
+<p><code>masuda workflow list</code>で一覧が出る。人が始めるのは<code>develop</code>・<code>fix</code>・<code>review</code>で、残りはその部品（と動作確認用の<code>smoke</code>）。部品には<code>user_invocable: false</code>が書いてあり、<code>workflow list</code>には出ない（<code>--all</code>で出る）。</p>
 <table>
 <thead>
 <tr>
@@ -2079,7 +2079,7 @@ flowchart TD
 <p>手順:</p>
 <ol>
 <li>定義を書く</li>
-<li><code>masuda workflow list</code>で、ORIGINが<code>repo</code>になっていることを確かめる</li>
+<li><code>masuda workflow list</code>で、ORIGINが<code>repo</code>になっていることを確かめる。他のワークフローから呼ぶ部品なら、定義のトップに<code>user_invocable: false</code>を書くと一覧から外れる（<code>--all</code>で確かめる）</li>
 <li><code>masuda workflow check workflows/&lt;名前&gt;</code>で検査する（<code>ok</code>が出るまで直す）</li>
 <li><code>masuda workflow show workflows/&lt;名前&gt;</code>で図を確かめる（Mermaidを表示できる所に貼る）</li>
 <li><code>masuda run workflows/&lt;名前&gt; --branch ... --input ...</code></li>
