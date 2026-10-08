@@ -36,11 +36,12 @@ commands:
                             list, approve and run privileged commands (run needs no serve; it talks to masuda-sandbox directly)
   image list|build          list and build guest images
   workflow list|show|check  list workflows, draw one (Mermaid), check them
+  doc [<page>[#<id>]]       print the documents of this version (--serve: browse them; no serve needed)
   version                   print the versions of masuda and the masuda-sandbox it connects to
   doctor                    check the prerequisites (QEMU, KVM/HVF, Node, Docker, git, sandbox, token)
   completion bash|zsh       print a shell completion script (no serve needed)
 
-Commands other than serve, init, prime, workflow, version, doctor, completion and privileged-command run
+Commands other than serve, init, prime, doc, workflow, version, doctor, completion and privileged-command run
 talk to the masuda serve given by --socket. Run 'masuda <command> -h' for details.
 `
 
@@ -91,6 +92,8 @@ func main() {
 		err = runVersion(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
+	case "doc":
+		err = runDoc(os.Args[2:])
 	case "completion":
 		err = runCompletion(os.Args[2:])
 	case "help", "-h", "--help":

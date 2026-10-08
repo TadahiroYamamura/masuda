@@ -4,7 +4,7 @@
 masuda <command> [flags]
 ```
 
-`serve`・`init`・`prime`・`version`・`doctor`・`completion`・`privileged-command run`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
+`serve`・`init`・`prime`・`doc`・`version`・`doctor`・`completion`・`privileged-command run`以外のコマンドは、動いている`masuda serve`の公開APIを叩くだけのクライアント。`masuda serve`が起動していなければ接続エラーになる。
 
 ## 共通の約束
 
@@ -371,6 +371,25 @@ masuda-sandbox __MASUDA_VERSION__ (linux/amd64, gondolin 0.12.0)
 `--sandbox-socket`の既定は`masuda serve`と同じ（`config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）。
 
 契約が合わないと`masuda serve`は起動せず、`run`・`resume`も断られる。masudaとmasuda-sandboxは同じバージョンのリリースを組で入れる（[導入](install.md)）。
+
+## doc
+
+```text
+masuda doc [<page>[#<id>]] [--serve]
+```
+
+使っているmasudaの版の文書を引く。`masuda serve`は要らない。リリースのバイナリ（[インストール](install.md)の手順で入れたもの）は、サイトと同じ手順で用意した文書を埋め込んでいる。
+
+| 形 | 動き |
+|---|---|
+| `masuda doc` | ページの一覧（`user/troubleshooting`のようなパスと題） |
+| `masuda doc <page>` | そのページのMarkdown。`.md`や先頭の`docs/`が付いていてもよい |
+| `masuda doc <page>#<id>` | ページのうち、`{#id}`を明示した見出しの節だけ（同じか浅い見出しの手前まで） |
+| `masuda doc --serve` | 埋め込んだサイトを`127.0.0.1`の空いたポートで公開し、URLを出す。Ctrl-Cで止める |
+
+ページの中のリンク（`troubleshooting.md#stalled`）は、そのページのディレクトリからのパスに読み替えて引く（`docs/user/`のページなら`masuda doc user/troubleshooting#stalled`）。
+
+ソースからビルドしたもの（`go install`・手元の`go build`）は文書を埋め込まない。そのときは公開サイトのURLを出す。リリースの版（X.Y.Z）ならその版の`X.Y/`、それ以外は開発版の`dev/`。`doctor`などの案内も、埋め込みがあれば`masuda doc`の形、無ければこのURLで文書を指す。
 
 ## doctor
 

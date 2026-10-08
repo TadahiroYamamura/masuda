@@ -79,7 +79,7 @@ func reportChecks(w io.Writer, results []checkResult) (failed bool) {
 		failed = failed || r.status == checkFail
 	}
 	if failed {
-		fmt.Fprintln(w, "\nsome prerequisites are missing (the NG items); see the fix under each item and docs/user/install.md")
+		fmt.Fprintln(w, "\nsome prerequisites are missing (the NG items); see the fix under each item and "+docRef("user/install", ""))
 	} else {
 		fmt.Fprintln(w, "\nall prerequisites are in place")
 	}
@@ -99,7 +99,7 @@ func checkConfig(path string, err error) checkResult {
 	r := checkResult{name: "config.json", detail: path}
 	if err != nil {
 		r.status, r.detail = checkFail, err.Error()
-		r.fix = "fix or remove config.json (see the config.json section of docs/user/settings.md)"
+		r.fix = "fix or remove config.json (see " + docRef("user/settings", "serve-config") + ")"
 	} else if _, statErr := os.Stat(path); statErr != nil {
 		r.detail = "none (all defaults)"
 	}
@@ -272,7 +272,7 @@ func checkSandbox(ctx context.Context, socket string) checkResult {
 	info, err := serve.SandboxInfo(ctx, serve.DialSandbox(socket))
 	if err != nil {
 		r.status, r.detail = checkFail, socket+": "+unwrapConnect(err).Error()
-		r.fix = fmt.Sprintf("start `masuda-sandbox serve --socket %s`; if it is not installed, `npm install -g` the masuda-sandbox tgz from the release (docs/user/install.md)", socket)
+		r.fix = fmt.Sprintf("start `masuda-sandbox serve --socket %s`; if it is not installed, `npm install -g` the masuda-sandbox tgz from the release (%s)", socket, docRef("user/install", ""))
 		if _, lerr := exec.LookPath("masuda-sandbox"); lerr != nil {
 			r.fix += "\nmasuda-sandbox is not on PATH"
 		}

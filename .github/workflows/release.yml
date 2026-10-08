@@ -21,6 +21,13 @@ jobs:
           ref: ${{ github.ref_name }}
           path: masuda-sandbox
 
+      # masuda docに埋め込む文書の材料（docs-prepare.shがworkflow-schema.mdを写す）。隣に置けば既定の場所で見つかる。
+      - uses: actions/checkout@v4
+        with:
+          repository: TadahiroYamamura/masuda-engine
+          ref: ${{ github.ref_name }}
+          path: masuda-engine
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: masuda/go.mod
@@ -89,6 +96,31 @@ jobs:
         run: |
           go generate ./internal/sandboxcontract/
           git diff --exit-code -- internal/sandboxcontract/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: masuda/requirements-docs.txt
+      - run: pip install -r masuda/requirements-docs.txt
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ github.token }}
+
+      # サイト（docs.yml）と同じ手順で用意した文書を、go buildの前に埋め込みの場所へ写す
+      # （internal/docsembed/content/README.md）。docs-prepare.shはdocs/をその場で書き換えるが、
+      # このcheckoutは使い捨て。
+      - name: Embed documents
+        working-directory: masuda
+        env:
+          MASUDA_DOCS_VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          scripts/docs-prepare.sh
+          dst=internal/docsembed/content
+          mkdocs build --site-dir "$dst/site"
+          cp -r docs "$dst/md"
+          find "$dst/md" -type f ! -name '*.md' -delete
+          test -f "$dst/site/index.html" && test -f "$dst/md/index.md"
 
       - name: Build
         working-directory: masuda
