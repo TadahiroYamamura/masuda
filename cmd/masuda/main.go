@@ -14,33 +14,34 @@ var version = "dev"
 const usage = `usage: masuda <command> [flags]
 
 commands:
-  serve                     公開APIを待ち受ける常駐プロセスを起動する
-  run                       ワークフローを新しいワークスペースで始める
-  resume <id>               止めた（stopped）・中断した（suspended）ワークスペースを記録から再開する
-  list [--all]              ワークスペースの一覧（--allで終わった・止めたものも）
-  chat <id>                 ゲストのメインセッション（tmux）にsshでアタッチする
-  watch [<id>]              状態とイベントを流し続ける
+  serve                     start the long-running process that serves the public API
+  run                       start a workflow in a new workspace
+  resume <id>               resume a stopped or suspended workspace from its records
+  list [--all]              list workspaces (--all: also done and stopped ones)
+  chat <id>                 attach to the guest's main session (tmux) over ssh
+  watch [<id>]              stream status and events
   gate list|show|approve|reject|comment|dismiss|halt|redo
-                            ゲートの一覧・内容・判断（dismiss/halt/redoはtriage）
-  question list|answer      質問の一覧・回答
-  stop <id>                 sandboxを止める（記録は残す）
-  remove <id>               ワークスペースを消す（exportsは残す）
-  init                      対象リポジトリに.masuda/の雛形と、ホストのエージェント向けの案内を置く（serve不要）
-  prime [--hook-json]       ホストのエージェント向けのmasudaの使い方を出す（serve不要）
+                            list, show and decide gates (dismiss/halt/redo are for triage)
+  question list|answer      list and answer questions
+  stop <id>                 stop the sandbox (records are kept)
+  remove <id>               remove a workspace (exports are kept)
+  init                      put the .masuda/ templates and guidance for the host agent into a repository (no serve needed)
+  prime [--hook-json]       print how the host agent uses masuda (no serve needed)
   egress list|approve|reject
-                            egressの宣言と承認
+                            declared and approved egress hosts
   secret list|set|approve|reject
-                            秘密の一覧・値の登録（値は標準入力から）・plaintextの承認
-  env import <file>         .envの値を、宣言済みの秘密は秘密ストアへ、envFilesの公開値はsettings.local.jsonのvarsへ取り込む
+                            list secrets, set a value (read from stdin), approve plaintext secrets
+  env import <file>         import a .env file: declared secrets into the secret store, public envFiles values into vars of settings.local.json
   privileged-command list|approve|run
-                            特権コマンドの一覧・承認・単体実行（runはserve不要。masuda-sandboxへ直接つなぐ）
-  image list|build          ゲストイメージの一覧・ビルド
-  workflow list|show|check  ワークフローの一覧・図（Mermaid）・検査
-  version                   masudaと、接続先のmasuda-sandboxのバージョンを表示する
-  doctor                    前提（QEMU・KVM/HVF・Node・Docker・git・sandbox・トークン）を確かめる
-  completion bash|zsh       シェルの補完スクリプトを標準出力に出す（serve不要）
+                            list, approve and run privileged commands (run needs no serve; it talks to masuda-sandbox directly)
+  image list|build          list and build guest images
+  workflow list|show|check  list workflows, draw one (Mermaid), check them
+  version                   print the versions of masuda and the masuda-sandbox it connects to
+  doctor                    check the prerequisites (QEMU, KVM/HVF, Node, Docker, git, sandbox, token)
+  completion bash|zsh       print a shell completion script (no serve needed)
 
-serve・init・prime・workflow・version・doctor・completion・privileged-command run以外は--socketで指定したmasuda serveを叩く。各コマンドの詳細は -h で出る。
+Commands other than serve, init, prime, workflow, version, doctor, completion and privileged-command run
+talk to the masuda serve given by --socket. Run 'masuda <command> -h' for details.
 `
 
 func main() {
@@ -86,7 +87,7 @@ func main() {
 		err = runPrivilegedCommand(os.Args[2:])
 	case "image":
 		err = runImage(os.Args[2:])
-	case "version", "--version":
+	case "version", "--version", "-v":
 		err = runVersion(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
@@ -95,7 +96,7 @@ func main() {
 	case "help", "-h", "--help":
 		fmt.Print(usage)
 	default:
-		fmt.Fprintf(os.Stderr, "masuda: unknown command %q\n\n%s", os.Args[1], usage)
+		fmt.Fprintf(os.Stderr, "masuda: unknown command %q; run 'masuda -h' for usage\n", os.Args[1])
 		os.Exit(2)
 	}
 	if errors.Is(err, flag.ErrHelp) {
@@ -110,6 +111,10 @@ func main() {
 	var code exitCodeError
 	if errors.As(err, &code) {
 		os.Exit(code.code)
+	}
+	var unreachable *serveUnreachableError
+	if errors.As(err, &unreachable) {
+		err = unreachable
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "masuda: %v\n", err)

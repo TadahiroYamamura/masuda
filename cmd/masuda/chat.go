@@ -24,7 +24,7 @@ func runChat(args []string) error {
 	}
 	res, err := c.clients().ws.AttachInfo(context.Background(), connect.NewRequest(&apiv1.AttachInfoRequest{Id: pos[0]}))
 	if connect.CodeOf(err) == connect.CodeUnimplemented {
-		return fmt.Errorf("このsandboxではsshで接続できません（masuda serveがフェイクsandboxで動いている等）: %w", err)
+		return fmt.Errorf("this sandbox does not provide ssh (for example, masuda serve runs with --fake-sandbox): %w", err)
 	} else if err != nil {
 		return err
 	}
@@ -34,7 +34,7 @@ func runChat(args []string) error {
 	}
 	path, err := exec.LookPath(argv[0])
 	if err != nil {
-		return fmt.Errorf("%s が見つかりません: %w", argv[0], err)
+		return fmt.Errorf("%s not found; install it to attach: %w", argv[0], err)
 	}
 	return syscall.Exec(path, argv, os.Environ())
 }

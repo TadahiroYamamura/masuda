@@ -36,10 +36,10 @@ func TestFormatGateDiffTargets(t *testing.T) {
 	interim := formatGate(&apiv1.Gate{WorkspaceId: "abc", Occurrence: "0005", Gate: "interim", Target: "step-diff", TargetHash: "h", StagingCommit: "c1", Subject: []byte("diff --git a/y b/y")}, nil)
 	for _, tc := range []struct{ out, want, not string }{
 		{review, "changes to be published", "this step will commit"},
-		{review, "publishされる内容", "これからcommit"},
+		{review, "what will be published", "what this step will commit"},
 		{interim, "changes this step will commit", "to be published"},
-		{interim, "これからcommitされる内容", "publishされる内容"},
-		{interim, "c1（作業ツリーのスナップショット", ""},
+		{interim, "what this step will commit", "what will be published"},
+		{interim, "c1 (snapshot of the work tree", ""},
 	} {
 		if !strings.Contains(tc.out, tc.want) || (tc.not != "" && strings.Contains(tc.out, tc.not)) {
 			t.Fatalf("want %q and not %q in:\n%s", tc.want, tc.not, tc.out)

@@ -73,7 +73,7 @@ func SandboxInfo(ctx context.Context, sb sandboxv1connect.SandboxServiceClient) 
 		if errors.As(err, &ce) {
 			msg = ce.Message()
 		}
-		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sandbox service is not reachable: %s", msg))
+		return nil, connect.NewError(connect.CodeUnavailable, fmt.Errorf("sandbox service is not reachable (%s); start masuda-sandbox serve, or check sandboxSocket in config.json", msg))
 	}
 }
 

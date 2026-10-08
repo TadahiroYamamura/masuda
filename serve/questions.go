@@ -69,7 +69,7 @@ func (s *questionService) Answer(_ context.Context, req *connect.Request[apiv1.A
 		}
 	}
 	if rec == nil {
-		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no open question for occurrence %q in workspace %s", m.Occurrence, w.ID))
+		return nil, connect.NewError(connect.CodeNotFound, fmt.Errorf("no open question for occurrence %q in workspace %s; list the open questions to find the occurrence", m.Occurrence, w.ID))
 	}
 	// 答えの過不足と選択肢はengineも見るが、エラーの種類を区別できる形では返さないので、
 	// 引数の誤りはここで先に見てInvalidArgumentにする。
@@ -78,7 +78,7 @@ func (s *questionService) Answer(_ context.Context, req *connect.Request[apiv1.A
 	}
 	c := s.backend.runFor(w.ID)
 	if c == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is not running", w.ID))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is not running; resume it first", w.ID))
 	}
 	err = c.answer(rec, m.Answers)
 	switch {
@@ -98,15 +98,15 @@ func checkAnswers(rec *workspace.QuestionRecord, answers map[string]string) erro
 		asked[q.ID] = true
 		got, ok := answers[q.ID]
 		if !ok {
-			return fmt.Errorf("no answer to %q", q.ID)
+			return fmt.Errorf("no answer to %q; answer every question of the occurrence", q.ID)
 		}
 		if len(q.Options) > 0 && !slices.Contains(q.Options, got) {
-			return fmt.Errorf("%q is not one of %v for %q", got, q.Options, q.ID)
+			return fmt.Errorf("%q is not one of %v for %q; answer with one of the options as written", got, q.Options, q.ID)
 		}
 	}
 	for id := range answers {
 		if !asked[id] {
-			return fmt.Errorf("%q was not asked", id)
+			return fmt.Errorf("%q was not asked; check the question ids", id)
 		}
 	}
 	return nil

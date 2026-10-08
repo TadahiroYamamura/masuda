@@ -12,6 +12,7 @@ masuda <command> [flags]
 - フラグは`-flag`でも`--flag`でもよく、位置引数の前にも後にも書ける（`masuda gate approve <id> <occ> --hash h`も`masuda gate approve --hash h <id> <occ>`も同じ）
 - `--repo <dir>`を省くと、今いる作業ツリーのトップを使い、作業ツリーの外ならエラーになる（`workflow`の3つ・`list`・`doctor`は省いたときの扱いが違う。各コマンドの節を参照）。明示するときは**作業ツリーのトップ**を渡す。サブディレクトリを渡すとエラーになる
 - 終了コード: 成功で0、エラーで1、使い方の誤りで2（`privileged-command run`だけは特権コマンドの終了コードを返す）。各コマンドの`-h`で使い方が出る
+- CLIが出す文（エラー・ヘルプ・`doctor`）は英語。エラーは`masuda: <何が誤りか>; <何をすればよいか>`の形で、使い方の全文は出さない（引数の数が合わなければ、誤りと使い方の1行だけ）
 - `<id>`はワークスペースのID（`masuda run`・`masuda list`が出す12桁）、`<occurrence>`はゲートや質問の出現ID（`masuda gate list`・`masuda question list`が出す）
 
 ## 一覧
@@ -354,6 +355,8 @@ masuda workflow check [<workflow>] [--repo <dir>]
 masuda version [--sandbox-socket <path>] [--config <path>]
 ```
 
+`masuda --version`・`masuda -v`も同じ。
+
 ビルドに埋め込んだバージョン（ソースからビルドしたものは`dev`）、Goの版、masudaが前提にするsandboxの契約（`sandbox.proto`のSHA-256）、このmasudaが実機で検証したVMのClaude Codeの版（`masuda init`の雛形が入れる版）を出す。`masuda-sandbox serve`に届けば、そのバージョン・プラットフォーム・Gondolinの版と、契約がmasudaと合っているか（`contract: ok`か`contract: MISMATCH`）も出す。届かなくても終了コードは0。
 
 ```text
@@ -386,12 +389,12 @@ masudaを動かす前提を1項目ずつ確かめ、`[ok  ]`・`[warn]`・`[NG  
 | qemu | `qemu-system-x86_64`（arm64なら`qemu-system-aarch64`）と`qemu-img`（Gondolinが起動のたびに使う）。どちらか無ければNG |
 | /dev/kvm（Linux）・HVF（macOS） | KVMを読み書きできるか、`kern.hv_support`が1か |
 | masuda-sandbox | `masuda-sandbox serve`に届き、`GetServerInfo`の契約がmasudaと同じか |
-| Claudeトークン | ユーザー単位（`--repo`を付ければそのリポジトリの登録も）に登録されているか |
+| Claude token | ユーザー単位（`--repo`を付ければそのリポジトリの登録も）に登録されているか |
 
 ```text
 [ok  ] git: git version 2.43.0
-[NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable: ...
-       `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`を起動する。...
+[NG  ] masuda-sandbox: /run/user/1000/masuda-sandbox.sock: sandbox service is not reachable (...); start masuda-sandbox serve, or check sandboxSocket in config.json
+       start `masuda-sandbox serve --socket /run/user/1000/masuda-sandbox.sock`; if it is not installed, ...
 ```
 
 ## completion

@@ -12,7 +12,7 @@ import (
 // 変わるようにするため。
 func runPrime(args []string) error {
 	c := newCommand("prime", "prime [--hook-json]")
-	hookJSON := c.fs.Bool("hook-json", false, "Claude CodeのSessionStartフックの出力（additionalContext）の形で出す")
+	hookJSON := c.fs.Bool("hook-json", false, "print as the output of a Claude Code SessionStart hook (additionalContext)")
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return err
 	}

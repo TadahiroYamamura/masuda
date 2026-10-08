@@ -76,7 +76,7 @@ func (s *workspaceService) Stop(_ context.Context, req *connect.Request[apiv1.St
 		return connect.NewResponse(b.toProto(w)), nil
 	case workspace.StateDone:
 		// 終わった実行はsandboxも既に無い（DONEの反映で壊す）。止めるものが無い。
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done", w.ID))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is done; a done workspace cannot be resumed, start a new run instead", w.ID))
 	}
 	blocked := w.State == workspace.StateBlocked
 	b.stopRun(w.ID)
@@ -201,10 +201,10 @@ func (s *workspaceService) AttachInfo(ctx context.Context, req *connect.Request[
 	}
 	c := s.backend.runFor(w.ID)
 	if c == nil {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s has no running sandbox (state %s)", w.ID, w.State))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s has no running sandbox (state %s); resume it first", w.ID, w.State))
 	}
 	if !c.isBooted() {
-		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is still starting its sandbox", w.ID))
+		return nil, connect.NewError(connect.CodeFailedPrecondition, fmt.Errorf("workspace %s is still starting its sandbox; try again once it is running", w.ID))
 	}
 	acc, err := s.backend.sandbox.EnableSsh(ctx, connect.NewRequest(&sandboxv1.EnableSshRequest{Id: w.ID, User: guest.User}))
 	if err != nil {

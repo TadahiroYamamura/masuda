@@ -41,8 +41,8 @@ type checkResult struct {
 func runDoctor(args []string) error {
 	fs := flag.NewFlagSet("doctor", flag.ContinueOnError)
 	sf := addSandboxSocketFlags(fs)
-	dataDir := fs.String("data-dir", defaultDataDir(), "masuda serveの状態を置くディレクトリ（Claudeトークンの確認に使う）")
-	repo := fs.String("repo", "", "このリポジトリの登録も含めてClaudeトークンを確かめる（無ければユーザー単位だけ）")
+	dataDir := fs.String("data-dir", defaultDataDir(), "masuda serve's data directory (used to check the Claude token)")
+	repo := fs.String("repo", "", "also check the Claude token registered for this repository (otherwise only the per-user token)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -57,8 +57,8 @@ func runDoctor(args []string) error {
 		checkAccel(ctx),
 		checkSandbox(ctx, socket),
 		checkToken(*dataDir, *repo),
-		checkLog("masuda serveのログ", filepath.Join(*dataDir, "logs", serveLogName)),
-		checkLog("masuda-sandbox serveのログ", sandboxLogPath()),
+		checkLog("masuda serve log", filepath.Join(*dataDir, "logs", serveLogName)),
+		checkLog("masuda-sandbox serve log", sandboxLogPath()),
 	}
 	if reportChecks(os.Stdout, results) {
 		return errDoctorFailed
@@ -79,9 +79,9 @@ func reportChecks(w io.Writer, results []checkResult) (failed bool) {
 		failed = failed || r.status == checkFail
 	}
 	if failed {
-		fmt.Fprintln(w, "\n足りないものがある（NGの項目）。直し方は各項目の下と docs/user/install.md")
+		fmt.Fprintln(w, "\nsome prerequisites are missing (the NG items); see the fix under each item and docs/user/install.md")
 	} else {
-		fmt.Fprintln(w, "\n前提はそろっている")
+		fmt.Fprintln(w, "\nall prerequisites are in place")
 	}
 	return failed
 }
@@ -99,9 +99,9 @@ func checkConfig(path string, err error) checkResult {
 	r := checkResult{name: "config.json", detail: path}
 	if err != nil {
 		r.status, r.detail = checkFail, err.Error()
-		r.fix = "config.jsonを直すか消す（docs/user/settings.md の config.json の節）"
+		r.fix = "fix or remove config.json (see the config.json section of docs/user/settings.md)"
 	} else if _, statErr := os.Stat(path); statErr != nil {
-		r.detail = "無し（すべて既定）"
+		r.detail = "none (all defaults)"
 	}
 	return r
 }
@@ -110,7 +110,7 @@ func checkGit(ctx context.Context) checkResult {
 	r := checkResult{name: "git"}
 	out, err := commandOutput(ctx, "git", "--version")
 	if err != nil {
-		r.status, r.detail = checkFail, "見つからない"
+		r.status, r.detail = checkFail, "not found"
 		r.fix = installHint("git", "git")
 		return r
 	}
@@ -121,14 +121,14 @@ func checkGit(ctx context.Context) checkResult {
 func checkDocker(ctx context.Context) checkResult {
 	r := checkResult{name: "docker"}
 	if _, err := exec.LookPath("docker"); err != nil {
-		r.status, r.detail = checkFail, "見つからない（VMのイメージのビルドに使う）"
-		r.fix = "Dockerを入れる（Linux: Docker Engine、macOS: Docker Desktop等）"
+		r.status, r.detail = checkFail, "not found (needed to build VM images)"
+		r.fix = "install Docker (Linux: Docker Engine; macOS: Docker Desktop or similar)"
 		return r
 	}
 	out, err := commandOutput(ctx, "docker", "version", "--format", "{{.Server.Version}}")
 	if err != nil {
-		r.status, r.detail = checkFail, "dockerデーモンに繋がらない: "+out
-		r.fix = "dockerデーモンを起動し、sudo無しで`docker`を叩けるようにする（Linux: `sudo usermod -aG docker \"$USER\"`のあとログインし直す）"
+		r.status, r.detail = checkFail, "cannot reach the docker daemon: "+out
+		r.fix = "start the docker daemon and make `docker` usable without sudo (Linux: `sudo usermod -aG docker \"$USER\"`, then log in again)"
 		return r
 	}
 	r.detail = "server " + out
@@ -145,8 +145,8 @@ func checkNode(ctx context.Context) checkResult {
 	r := checkResult{name: "node"}
 	out, err := commandOutput(ctx, "node", "--version")
 	if err != nil {
-		r.status, r.detail = checkFail, "見つからない（masuda-sandboxが動く）"
-		r.fix = "Node 22.19以上・24.17未満を入れる（Linux: nodesource等、macOS: `brew install node@22`）"
+		r.status, r.detail = checkFail, "not found (masuda-sandbox runs on it)"
+		r.fix = "install Node >= 22.19 and < 24.17 (Linux: nodesource or similar; macOS: `brew install node@22`)"
 		return r
 	}
 	r.status, r.detail, r.fix = nodeStatus(out)
@@ -158,11 +158,11 @@ func nodeStatus(out string) (checkStatus, string, string) {
 	v, ok := parseVersion(out)
 	switch {
 	case !ok:
-		return checkWarn, out + "（版を読めない）", "Node 22.19以上・24.17未満であることを確かめる"
+		return checkWarn, out + " (cannot read the version)", "make sure Node is >= 22.19 and < 24.17"
 	case compareVersion(v, nodeMin) < 0:
-		return checkFail, out + "（22.19以上が要る）", "Node 22.19以上・24.17未満を入れる"
+		return checkFail, out + " (22.19 or later is required)", "install Node >= 22.19 and < 24.17"
 	case compareVersion(v, nodeKnownBad) >= 0:
-		return checkWarn, out + "（24.17以上はGondolin #134で外への通信が502になる既知の問題がある）", "Node 22.19以上・24.17未満を使う"
+		return checkWarn, out + " (24.17 and later have a known issue, Gondolin #134, where outbound requests fail with 502)", "use Node >= 22.19 and < 24.17"
 	default:
 		return checkOK, out, ""
 	}
@@ -205,7 +205,7 @@ func checkQEMU(ctx context.Context) checkResult {
 	bin := qemuBinary()
 	out, err := commandOutput(ctx, bin, "--version")
 	if err != nil {
-		r.status, r.detail = checkFail, bin+"が見つからない"
+		r.status, r.detail = checkFail, bin+" not found"
 		r.fix = qemuHint()
 		return r
 	}
@@ -214,7 +214,7 @@ func checkQEMU(ctx context.Context) checkResult {
 	// 配布済みのアセットを使うmasudaの経路では要らない）。
 	if _, err := exec.LookPath("qemu-img"); err != nil {
 		r.status = checkFail
-		r.detail += "（qemu-imgが見つからない）"
+		r.detail += " (qemu-img not found)"
 		r.fix = qemuHint()
 	}
 	return r
@@ -224,14 +224,14 @@ func qemuHint() string {
 	if runtime.GOOS == "darwin" {
 		return "`brew install qemu`"
 	}
-	return "`sudo apt install qemu-system-x86 qemu-utils`（Debian/Ubuntu）"
+	return "`sudo apt install qemu-system-x86 qemu-utils` (Debian/Ubuntu)"
 }
 
 func installHint(what, pkg string) string {
 	if runtime.GOOS == "darwin" {
-		return fmt.Sprintf("%sを入れる（`brew install %s`）", what, pkg)
+		return fmt.Sprintf("install %s (`brew install %s`)", what, pkg)
 	}
-	return fmt.Sprintf("%sを入れる（Debian/Ubuntu: `sudo apt install %s`）", what, pkg)
+	return fmt.Sprintf("install %s (Debian/Ubuntu: `sudo apt install %s`)", what, pkg)
 }
 
 // checkAccel はハードウェア仮想化（LinuxはKVM、macOSはHVF）を使えるかを確かめる。
@@ -243,27 +243,27 @@ func checkAccel(ctx context.Context) checkResult {
 		switch {
 		case err == nil:
 			f.Close()
-			r.detail = "読み書きできる"
+			r.detail = "readable and writable"
 		case errors.Is(err, os.ErrNotExist):
-			r.status, r.detail = checkFail, "無い"
-			r.fix = "BIOSの仮想化支援（Intel VT-x・AMD-V）か、WSL2の入れ子の仮想化を有効にする"
+			r.status, r.detail = checkFail, "missing"
+			r.fix = "enable hardware virtualization in the BIOS (Intel VT-x / AMD-V), or nested virtualization on WSL2"
 		default:
 			r.status, r.detail = checkFail, err.Error()
-			r.fix = "`sudo usermod -aG kvm \"$USER\"`のあとログインし直す"
+			r.fix = "run `sudo usermod -aG kvm \"$USER\"`, then log in again"
 		}
 		return r
 	case "darwin":
 		r := checkResult{name: "HVF"}
 		out, err := commandOutput(ctx, "sysctl", "-n", "kern.hv_support")
 		if err != nil || out != "1" {
-			r.status, r.detail = checkFail, "Hypervisor.frameworkを使えない（kern.hv_support="+out+"）"
-			r.fix = "Apple siliconのmacOSで動かす（仮想マシンの中では使えない）"
+			r.status, r.detail = checkFail, "Hypervisor.framework is not available (kern.hv_support="+out+")"
+			r.fix = "run on macOS on Apple silicon (not inside a virtual machine)"
 			return r
 		}
-		r.detail = "使える（macOSは実験的な対応）"
+		r.detail = "available (macOS support is experimental)"
 		return r
 	default:
-		return checkResult{name: "仮想化", status: checkFail, detail: runtime.GOOS + "には対応していない", fix: "Linux x86_64かmacOS arm64で動かす"}
+		return checkResult{name: "virtualization", status: checkFail, detail: runtime.GOOS + " is not supported", fix: "run on Linux x86_64 or macOS arm64"}
 	}
 }
 
@@ -272,28 +272,28 @@ func checkSandbox(ctx context.Context, socket string) checkResult {
 	info, err := serve.SandboxInfo(ctx, serve.DialSandbox(socket))
 	if err != nil {
 		r.status, r.detail = checkFail, socket+": "+unwrapConnect(err).Error()
-		r.fix = fmt.Sprintf("`masuda-sandbox serve --socket %s`を起動する。入っていなければReleaseのmasuda-sandboxのtgzを`npm install -g`する（docs/user/install.md）", socket)
+		r.fix = fmt.Sprintf("start `masuda-sandbox serve --socket %s`; if it is not installed, `npm install -g` the masuda-sandbox tgz from the release (docs/user/install.md)", socket)
 		if _, lerr := exec.LookPath("masuda-sandbox"); lerr != nil {
-			r.fix += "\nmasuda-sandboxがPATHに無い"
+			r.fix += "\nmasuda-sandbox is not on PATH"
 		}
 		return r
 	}
-	r.detail = fmt.Sprintf("%s（%s、gondolin %s）", info.Version, info.Platform, info.GondolinVersion)
+	r.detail = fmt.Sprintf("%s (%s, gondolin %s)", info.Version, info.Platform, info.GondolinVersion)
 	if err := serve.CheckContract(info, version); err != nil {
 		r.status = checkFail
 		r.detail += ": " + unwrapConnect(err).Error()
-		r.fix = "masudaと同じバージョンのmasuda-sandboxを入れる"
+		r.fix = "install the masuda-sandbox release with the same version as masuda"
 	}
 	return r
 }
 
 func checkToken(dataDir, repo string) checkResult {
-	r := checkResult{name: "Claudeトークン"}
+	r := checkResult{name: "Claude token"}
 	repoRoot := ""
 	if repo != "" {
 		top, err := commandOutput(context.Background(), "git", "-C", repo, "rev-parse", "--show-toplevel")
 		if err != nil {
-			r.status, r.detail = checkFail, repo+"はgitリポジトリではない"
+			r.status, r.detail = checkFail, repo+" is not a git repository"
 			return r
 		}
 		repoRoot = top
@@ -303,10 +303,10 @@ func checkToken(dataDir, repo string) checkResult {
 	case err != nil:
 		r.status, r.detail = checkFail, err.Error()
 	case !ok:
-		r.status, r.detail = checkFail, "登録されていない"
-		r.fix = "`claude setup-token`で作ったトークンを、masuda serveを起動してから`masuda secret set " + guest.TokenEnv + "`で登録する"
+		r.status, r.detail = checkFail, "not registered"
+		r.fix = "create a token with `claude setup-token`, start masuda serve, then register it with `masuda secret set " + guest.TokenEnv + "`"
 	default:
-		r.detail = "登録済み"
+		r.detail = "registered"
 	}
 	return r
 }
@@ -316,9 +316,9 @@ func checkToken(dataDir, repo string) checkResult {
 func checkLog(name, path string) checkResult {
 	r := checkResult{name: name, status: checkOK, detail: path}
 	if st, err := os.Stat(path); err == nil {
-		r.detail += "（最後に書かれたのは" + st.ModTime().Format("2006-01-02 15:04") + "）"
+		r.detail += " (last written " + st.ModTime().Format("2006-01-02 15:04") + ")"
 	} else {
-		r.detail += "（まだ無い）"
+		r.detail += " (not created yet)"
 	}
 	return r
 }
@@ -330,7 +330,7 @@ func sandboxLogPath() string {
 	if base == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "（ホームディレクトリが分からない）"
+			return "(home directory unknown)"
 		}
 		base = filepath.Join(home, ".local", "share")
 	}

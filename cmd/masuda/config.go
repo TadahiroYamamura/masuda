@@ -20,7 +20,7 @@ import (
 
 // repoFlag は設定系のサブコマンドが共通で受ける--repo。値はabsRepoで解決する。
 func repoFlag(c *command) *string {
-	return c.fs.String("repo", "", "対象リポジトリ（作業ツリーのトップ。省略時は今いる作業ツリーのトップ）")
+	return c.fs.String("repo", "", "target repository: the top of a work tree (default: the top of the current work tree)")
 }
 
 // absRepo は--repoの値を絶対パスにする。省略されたときだけ今いる作業ツリーのトップへ読み替える。
@@ -216,7 +216,7 @@ func secretList(args []string) error {
 // secretSet は値を置く。Claudeのトークン（CLAUDE_CODE_OAUTH_TOKEN）は、--repoを付けなければ
 // ユーザー単位（どのリポジトリでも使う）に置く。--repoを付ければそのリポジトリだけの上書き。
 func secretSet(args []string) error {
-	c := newCommand("secret set", "secret set <NAME> [--repo <dir>]  (値は標準入力から。CLAUDE_CODE_OAUTH_TOKENは--repo無しならユーザー単位)")
+	c := newCommand("secret set", "secret set <NAME> [--repo <dir>]  (the value is read from stdin; without --repo, CLAUDE_CODE_OAUTH_TOKEN is set for this user)")
 	repo := repoFlag(c)
 	pos, err := c.parse(args, 1, 1)
 	if err != nil {
@@ -252,7 +252,7 @@ func secretSet(args []string) error {
 func readSecretValue(name string) (string, error) {
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
-		fmt.Fprintf(os.Stderr, "%sの値: ", name)
+		fmt.Fprintf(os.Stderr, "value of %s: ", name)
 		b, err := term.ReadPassword(fd)
 		fmt.Fprintln(os.Stderr)
 		return string(b), err
@@ -366,7 +366,7 @@ func imageList(args []string) error {
 }
 
 func imageBuild(args []string) error {
-	c := newCommand("image build", "image build [<entry>] [--repo <dir>]  (entry省略時はsettings.jsonのimage)")
+	c := newCommand("image build", "image build [<entry>] [--repo <dir>]  (default entry: the image in settings.json)")
 	repo := repoFlag(c)
 	pos, err := c.parse(args, 0, 1)
 	if err != nil {

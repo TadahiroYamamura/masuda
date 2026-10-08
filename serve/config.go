@@ -86,7 +86,7 @@ func (s *configService) ApproveEgress(ctx context.Context, req *connect.Request[
 	}
 	h := req.Msg.Host
 	if !contains(cfg.Egress, h) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("host %q is not declared in egress of .masuda/settings.json", h))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("host %q is not declared in egress of .masuda/settings.json; declare it there first", h))
 	}
 	if !contains(local.EgressApproved, h) {
 		local.EgressApproved = append(local.EgressApproved, h)
@@ -108,7 +108,7 @@ func (s *configService) RejectEgress(ctx context.Context, req *connect.Request[a
 	}
 	h := req.Msg.Host
 	if !contains(cfg.Egress, h) && !contains(local.EgressApproved, h) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("host %q is neither declared nor approved", h))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("host %q is neither declared nor approved; there is nothing to reject", h))
 	}
 	if contains(local.EgressApproved, h) {
 		var kept []string
@@ -178,10 +178,10 @@ func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv
 	name := req.Msg.Name
 	_, declared := cfg.Secret(name)
 	if !declared && name != config.ReservedSecret && name != local.ClaudeTokenName() {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json", name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json; declare it there first", name))
 	}
 	if req.Msg.Value == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty; pass the value on stdin"))
 	}
 	if err := secrets.New(s.backend.dataDir).Set(root, name, req.Msg.Value); err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
@@ -194,10 +194,10 @@ func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv
 // 応答のclaude_token_setは置いた名前に値があるか。entriesは空。
 func (s *configService) setUserSecret(name, value string) (*connect.Response[apiv1.ListSecretsResponse], error) {
 	if !config.ValidName(name) {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid secret name %q", name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid secret name %q; use letters, digits and underscores, not starting with a digit", name))
 	}
 	if value == "" {
-		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty"))
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty; pass the value on stdin"))
 	}
 	store := secrets.New(s.backend.dataDir)
 	if err := store.Set("", name, value); err != nil {
@@ -218,7 +218,7 @@ func (s *configService) ApproveSecret(ctx context.Context, req *connect.Request[
 	name := req.Msg.Name
 	d, ok := cfg.Secret(name)
 	if !ok {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json", name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json; declare it there first", name))
 	}
 	if d.EffectiveMode() != config.ModePlaintext {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is in %s mode and needs no approval", name, d.EffectiveMode()))
@@ -246,7 +246,7 @@ func (s *configService) RejectSecret(ctx context.Context, req *connect.Request[a
 	d, declared := cfg.Secret(name)
 	switch {
 	case !declared && !recorded:
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is neither declared nor approved", name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is neither declared nor approved; there is nothing to reject", name))
 	case declared && d.EffectiveMode() != config.ModePlaintext && !recorded:
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is in %s mode and needs no approval", name, d.EffectiveMode()))
 	}
@@ -317,7 +317,7 @@ func (s *configService) ApprovePrivilegedCommand(ctx context.Context, req *conne
 	}
 	d, ok := cfg.PrivilegedCommands[req.Msg.Name]
 	if !ok {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q is not declared in .masuda/settings.json", req.Msg.Name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q is not declared in .masuda/settings.json; declare it in privilegedCommands first", req.Msg.Name))
 	}
 	if err := privileged.Validate(d, imageExistsIn(filepath.Join(root, config.DirName))); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q: %w", req.Msg.Name, err))
@@ -408,11 +408,11 @@ func (s *configService) BuildImage(ctx context.Context, req *connect.Request[api
 		entry = cfg.ImageEntry()
 	}
 	if !config.ValidCheckName(entry) {
-		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid image entry %q", entry))
+		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid image entry %q; an entry is a directory name under .masuda/images/", entry))
 	}
 	dir := filepath.Join(root, config.DirName, "images", entry)
 	if st, err := os.Stat(filepath.Join(dir, "Dockerfile")); err != nil || !st.Mode().IsRegular() {
-		return connect.NewError(connect.CodeNotFound, fmt.Errorf(".masuda/images/%s/Dockerfile does not exist", entry))
+		return connect.NewError(connect.CodeNotFound, fmt.Errorf(".masuda/images/%s/Dockerfile does not exist; masuda init writes a template for the default image", entry))
 	}
 	id, err := s.backend.buildImage(ctx, root, entry, dir, func(line string) error {
 		return stream.Send(&apiv1.BuildImageEvent{LogLine: line})

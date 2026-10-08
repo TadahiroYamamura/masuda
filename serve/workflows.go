@@ -90,7 +90,7 @@ func (s *workflowService) Show(ctx context.Context, req *connect.Request[apiv1.S
 		return nil, asAPIError(err)
 	}
 	if set.Workflows[req.Msg.Workflow] == nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", req.Msg.Workflow))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined; masuda workflow list shows the defined workflows", req.Msg.Workflow))
 	}
 	mm, err := set.Mermaid(req.Msg.Workflow)
 	if err != nil {
@@ -115,7 +115,7 @@ func (s *workflowService) Check(ctx context.Context, req *connect.Request[apiv1.
 	var roots []string
 	if req.Msg.Workflow != "" {
 		if set.Workflows[req.Msg.Workflow] == nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined", req.Msg.Workflow))
+			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("workflow %q is not defined; masuda workflow list shows the defined workflows", req.Msg.Workflow))
 		}
 		roots = []string{req.Msg.Workflow}
 	} else {
