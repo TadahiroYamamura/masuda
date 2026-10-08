@@ -310,7 +310,7 @@ flowchart TD
 typoの修正や小さなバグの修正のように、計画が1〜2ステップで済む依頼向け。`develop`との違い:
 
 - 調査と計画を1つのセッション（quick-planner）で行う。quick-plannerは読み取り専用で、調査結果（`investigation`）と計画（`plan`）を書く。実装する役はどちらも読む
-- ゲートで却下したときの戻り先が違う。plan gateの却下はquick-plannerが調査と計画をやり直し、review gateの却下は手直し（`rework`）の後に全観点レビューからやり直す
+- ゲートで却下したときの戻り先が違う。plan gateの却下は、quick-plannerが前回の計画と調査結果を受け取り、却下理由で指摘された箇所（とそれで前提が変わる箇所）だけを直す（指摘していないステップは変えない）。review gateの却下は手直し（`rework`）の後に全観点レビューからやり直す
 - 最後のレビューは全観点レビュー（reviewer→review-checker）だけで、横断チェックが無い。指摘が無ければ（`clean`）修正と再確認を飛ばしてコミットへ進む
 - レポートを書かない。`review`ゲートでは差分と、stagingのコメント（指摘）を見て判断する。publishでexportsに書き出すものも無い
 - 指示が曖昧で計画を立てられなければ、quick-plannerは推測で計画を書かず`needs_human`で終える。実行は`outcome needs_human`の`done`になり、確かめたい疑問が理由として`masuda list`のPOSITIONに出る（[運用](operations.md#list)）。疑問に答える形で指示書を直して`run`し直す
