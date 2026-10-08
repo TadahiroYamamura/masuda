@@ -135,13 +135,14 @@ ENV npm_config_offline=true
 - npmのキャッシュはユーザーごとなので、エージェントが動く`ubuntu`で呼ぶ
 - `npm_config_offline=true`にしたのにキャッシュに無いと`ENOTCACHED`で、設定していないと通信のエラー（`EAI_AGAIN`など）で失敗する
 
-## 動いているはずなのに進まない（`stalled`・`waiting_input`） {#stalled}
+## 動いているはずなのに進まない（`stalled`・`waiting_input`・`auth_rejected`） {#stalled}
 
 - **`stalled`**: VMの中のClaude Codeは生きているが、しきい値（既定10分）を超えて、Claude APIへの通信もツールの使用も無い。masudaは何もしない（表示だけ）。`masuda chat <id>`で画面を見る
     - 長いビルドやテストを動かしているだけなら、待てば戻る。マシンが遅くて頻繁に出るなら、`settings.local.json`の`stallAfter`を長くする（例 `"20m"`。次の`run`・`resume`から効く）。どのリポジトリでも長くしたいなら[`config.json`](settings.md#serve-config)の`stallAfter`（`masuda serve`の再起動で効く）
 - **`waiting_input(idle)`**: メインのClaude Codeがターンを終え、人の入力を待っている。多くは、エージェントがmasudaの決まり（質問は`question`ノードでだけ聞く）を外れて、画面の上であなたに問いかけて止まっている。`masuda chat`で読み、続けてよければ「続けて」等と答える。直らなければ`masuda stop`→`masuda resume`で、そのタスクをやり直させる
 - **`waiting_input(permission)`**: 道具の使用の許可を待っている。`chat`で答える
 - **`dead`**: Claude Codeのセッションが無くなった。`masuda stop`→`masuda resume`
+- **`auth_rejected`**: Claude APIがトークンを拒んだ（401・403）。登録した値の誤りか失効。VMの中のClaude Codeは`/login`を求めて止まっている。`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`で登録し直し（`claudeToken`で別の名前を選んでいればその名前）、`masuda stop`→`masuda resume`する（トークンはVMの起動時に渡すので、登録し直しただけでは動いているVMに届かない）。Claude APIへの会話の要求が一度成功すれば、表示は元に戻る
 
 ## 終わるはずのrunが`running`のまま進まない（chatにアタッチしたまま） {#chat-blocks-destroy}
 

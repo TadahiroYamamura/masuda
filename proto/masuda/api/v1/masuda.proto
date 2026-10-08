@@ -124,6 +124,7 @@ enum ActivityKind {
   ACTIVITY_KIND_STALLED = 5;        // alive but silent past the threshold
   ACTIVITY_KIND_DEAD = 6;           // tmux session or claude process gone
   ACTIVITY_KIND_IDLE = 7;           // nothing to do (done/stopped/blocked/suspended)
+  ACTIVITY_KIND_AUTH_REJECTED = 8;  // the Claude API rejected the token (401/403); register it again, then stop and resume
 }
 
 // One event on a Watch stream. Events whose workspace_id is empty concern

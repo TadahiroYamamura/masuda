@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -161,7 +162,32 @@ func TestActivityKinds(t *testing.T) {
 	if k := kind(time.Now().Add(11 * time.Minute)); k != apiv1.ActivityKind_ACTIVITY_KIND_STALLED {
 		t.Fatalf("silent past the threshold: %v", k)
 	}
-	a.update("w", func(act *activity) { act.dead = true })
+	// トークンを拒まれたら、呼び直しのリクエストが進行中でも入力待ちでもAUTH_REJECTEDにする。
+	// 種類とステータスはdetailで伝える。会話の本体が成功したら戻る。
+	a.update("w", func(act *activity) {
+		act.observeClaudeAuth(&apiv1.HttpActivity{Method: "POST", Host: claudeAPIHost, Path: "/v1/messages?beta=true", Status: 401})
+		act.inflight[3] = &inflightReq{http: &apiv1.HttpActivity{}, started: now}
+		act.inputWait = "idle"
+	})
+	if got := a.compute(w, 10*time.Minute, now); got.Kind != apiv1.ActivityKind_ACTIVITY_KIND_AUTH_REJECTED || !strings.Contains(got.Detail, "HTTP 401") || !strings.Contains(got.Detail, "masuda secret set") {
+		t.Fatalf("token rejected: %v %q", got.Kind, got.Detail)
+	}
+	a.update("w", func(act *activity) {
+		act.observeClaudeAuth(&apiv1.HttpActivity{Method: "POST", Host: claudeAPIHost, Path: "/v1/messages", Status: 200})
+		delete(act.inflight, 3)
+	})
+	if k := kind(now); k != apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT {
+		t.Fatalf("a successful request must clear the rejection: %v", k)
+	}
+	a.update("w", func(act *activity) {
+		act.inputWait = ""
+		act.observeClaudeAuth(&apiv1.HttpActivity{Method: "POST", Host: claudeAPIHost, Path: "/v1/messages", Status: 403})
+		act.dead = true
+	})
+	if k := kind(now); k != apiv1.ActivityKind_ACTIVITY_KIND_DEAD {
+		t.Fatalf("a dead session wins over the rejection: %v", k)
+	}
+	a.update("w", func(act *activity) { act.authRejected = 0 })
 	if k := kind(now); k != apiv1.ActivityKind_ACTIVITY_KIND_DEAD {
 		t.Fatalf("dead: %v", k)
 	}
@@ -203,6 +229,38 @@ func (b blockingCreate) CreateSandbox(ctx context.Context, req *connect.Request[
 		return nil, ctx.Err()
 	}
 	return b.SandboxServiceClient.CreateSandbox(ctx, req)
+}
+
+func TestObserveClaudeAuthは会話の本体の応答だけでトークンの拒否を判定する(t *testing.T) {
+	messages := func(status uint32) *apiv1.HttpActivity {
+		return &apiv1.HttpActivity{Method: "POST", Host: claudeAPIHost, Path: "/v1/messages?beta=true", Status: status}
+	}
+	cases := []struct {
+		name string
+		from uint32
+		h    *apiv1.HttpActivity
+		want uint32
+	}{
+		{"会話の本体の401は拒否", 0, messages(401), 401},
+		{"会話の本体の403は拒否", 0, messages(403), 403},
+		{"クエリの無い会話の本体も同じ", 0, &apiv1.HttpActivity{Method: "POST", Host: claudeAPIHost, Path: "/v1/messages", Status: 401}, 401},
+		{"会話の本体の200で忘れる", 401, messages(200), 0},
+		{"会話の本体の429では変わらない", 401, messages(429), 401},
+		{"会話の本体の500では変わらない", 0, messages(500), 0},
+		{"補助のパスの401は見ない", 0, &apiv1.HttpActivity{Method: "GET", Host: claudeAPIHost, Path: "/api/claude_code/settings", Status: 401}, 0},
+		{"補助のパスの200では忘れない", 401, &apiv1.HttpActivity{Method: "GET", Host: claudeAPIHost, Path: "/api/claude_code/settings", Status: 200}, 401},
+		{"別のホストの401は見ない", 0, &apiv1.HttpActivity{Method: "POST", Host: "example.com", Path: "/v1/messages", Status: 401}, 0},
+		{"開始を見ていない応答（ホストが分からない）は見ない", 0, &apiv1.HttpActivity{Status: 401}, 0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			act := &activity{authRejected: c.from}
+			act.observeClaudeAuth(c.h)
+			if act.authRejected != c.want {
+				t.Fatalf("authRejected = %d, want %d", act.authRejected, c.want)
+			}
+		})
+	}
 }
 
 func TestStartingShowsTheBootPhase(t *testing.T) {

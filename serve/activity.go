@@ -3,6 +3,8 @@ package serve
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -79,6 +81,8 @@ type activity struct {
 	// dead はclaude（tmuxのセッション）が無いと分かったこと。SessionEndフック、sandboxの
 	// 停止・失敗、Execでの生存確認のどれかで立つ。
 	dead bool
+	// authRejected はClaude APIがトークンを拒んだ応答のステータス（401・403）。0なら拒まれていない。
+	authRejected uint32
 }
 
 type activities struct {
@@ -117,6 +121,21 @@ func (act *activity) dropInflightBefore(t time.Time) {
 		if !r.started.After(t) {
 			delete(act.inflight, id)
 		}
+	}
+}
+
+// observeClaudeAuth は、終わったリクエストがトークンを拒まれたかどうかを覚える。見るのは
+// 会話の本体（/v1/messages）だけ。Claude Codeは起動時に設定などの補助のパスも呼び、
+// 正しいトークンでもそれらが401・403を返さないとは確かめていないため。成功すれば忘れる。
+func (act *activity) observeClaudeAuth(h *apiv1.HttpActivity) {
+	if h.Host != claudeAPIHost || !strings.HasPrefix(h.Path, "/v1/messages") {
+		return
+	}
+	switch {
+	case h.Status == 401 || h.Status == 403:
+		act.authRejected = h.Status
+	case h.Status >= 200 && h.Status < 300:
+		act.authRejected = 0
 	}
 }
 
@@ -174,6 +193,11 @@ func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, n
 	switch {
 	case cp.dead:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_DEAD
+	case cp.authRejected != 0:
+		// 進行中のリクエストより先に見る。Claude Codeは拒まれても呼び直すので、
+		// 進行中を先に見るとWORKINGと行き来して原因が見えなくなる。
+		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_AUTH_REJECTED
+		out.Detail = fmt.Sprintf("the Claude API rejected the token (HTTP %d); register it again with 'masuda secret set', then 'masuda stop' and 'masuda resume'", cp.authRejected)
 	case inflight > 0:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WORKING
 	case cp.inputWait != "":
@@ -275,6 +299,7 @@ func (b *backend) watchSandbox(ctx context.Context, id string) {
 				if started := act.inflight[e.HttpFinished.RequestId]; started != nil {
 					http.Method, http.Host, http.Path = started.http.Method, started.http.Host, started.http.Path
 				}
+				act.observeClaudeAuth(http)
 				delete(act.inflight, e.HttpFinished.RequestId)
 				act.touch("")
 			})

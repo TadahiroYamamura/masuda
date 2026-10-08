@@ -246,6 +246,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 | `WAITING_GATE` | ゲート待ち | 「判断待ち」。ゲートの画面へのリンク。もっとも目立たせる |
 | `WAITING_QUESTION` | 質問待ち | 「回答待ち」。質問の画面へのリンク。ゲートと同じく目立たせる |
 | `DEAD` | ゲストのClaude Code（tmuxのセッション）が無い、またはVMが止まった・失敗した | 異常。`detail`に理由。進まないので、利用者に`Stop`→`Resume`を案内する |
+| `AUTH_REJECTED` | Claude APIの会話の要求（`/v1/messages`）への直近の応答が401・403。会話の要求が2xxを返せば戻る | 異常。`detail`にステータスと直し方。利用者にトークンの登録し直しと`Stop`→`Resume`を案内する（トークンはVMの起動時に渡すので、動いているVMには届かない） |
 | `WORKING` | Claude APIへのリクエストが進行中 | 「作業中」 |
 | `WAITING_INPUT` | ゲストのClaude Codeが人間の入力を待っていると言っている | `input_wait`で分ける（下記）。APIからは答えられないので、端末で入る（`AttachInfo`・`masuda chat`）よう案内する |
 | `STALLED` | RUNNINGなのに、最後の活動から無活動のしきい値（既定10分）を超えた | 注意。`last_activity`からの経過を見せ、端末で様子を見るか`Stop`→`Resume`を案内する |
@@ -255,7 +256,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 - `detail`: 最後に分かったことの短い説明（`"tool Edit"`・`"mcp next_task"`・`"claude session ended"`・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（`"building image (log: <パス>)"`→`"booting the VM"`→`"preparing the guest"`→`"starting Claude Code"`）で、段階が変わるたびに`status`が流れる
 - `last_activity`: 最後に活動を観測した時刻。`status`は時刻だけの変化では流れないので、経過時間はクライアントが進める
 - 活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（`IDLE`）になり、`Resume`で観測をやり直す
-- `state`がRUNNINGのままでも`activity`が`DEAD`・`STALLED`になる。一覧では`state`より`activity`を目立たせる方が、利用者が手を打つべきものに気づきやすい
+- `state`がRUNNINGのままでも`activity`が`DEAD`・`AUTH_REJECTED`・`STALLED`になる。一覧では`state`より`activity`を目立たせる方が、利用者が手を打つべきものに気づきやすい
 
 ## `Stop`・`Resume`・`Remove` {#lifecycle}
 
