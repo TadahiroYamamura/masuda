@@ -10,7 +10,7 @@ masuda <command> [flags]
 
 - `--socket <path>`: どのクライアントコマンドでも受け付ける。`masuda serve`の待ち受けるUnixソケット。既定は`$XDG_RUNTIME_DIR/masuda.sock`（`XDG_RUNTIME_DIR`が無ければ`/tmp/masuda-<uid>/masuda.sock`）
 - フラグは`-flag`でも`--flag`でもよく、位置引数の前にも後にも書ける（`masuda gate approve <id> <occ> --hash h`も`masuda gate approve --hash h <id> <occ>`も同じ）
-- `--repo <dir>`を省くと、今いる作業ツリーのトップを使い、作業ツリーの外ならエラーになる（`workflow`の3つ・`list`・`doctor`は省いたときの扱いが違う。各コマンドの節を参照）。明示するときは**作業ツリーのトップ**を渡す。サブディレクトリを渡すとエラーになる（`privileged-command run`だけは、渡したディレクトリを含む作業ツリーのトップを使う）
+- `--repo <dir>`を省くと、今いる作業ツリーのトップを使い、作業ツリーの外ならエラーになる（`workflow`の3つ・`list`・`doctor`は省いたときの扱いが違う。各コマンドの節を参照）。明示するときは**作業ツリーのトップ**を渡す。サブディレクトリを渡すとエラーになる
 - 終了コード: 成功で0、エラーで1、使い方の誤りで2（`privileged-command run`だけは特権コマンドの終了コードを返す）。各コマンドの`-h`で使い方が出る
 - `<id>`はワークスペースのID（`masuda run`・`masuda list`が出す12桁）、`<occurrence>`はゲートや質問の出現ID（`masuda gate list`・`masuda question list`が出す）
 
@@ -302,7 +302,7 @@ masuda privileged-command run <name> [--repo <dir>] [--ref <branch|commit>] [--o
 
 | フラグ | 既定 | 意味 |
 |---|---|---|
-| `--repo` | `.` | 対象リポジトリ（作業ツリーのトップ） |
+| `--repo` | 今いる作業ツリーのトップ | 対象リポジトリ（作業ツリーのトップ） |
 | `--ref` | 空 | 作業ツリーの今の状態の代わりに渡すコミット（ブランチ名・コミット） |
 | `--out` | 新しい一時ディレクトリ | 結果を置くディレクトリ |
 | `--sandbox-socket` | `config.json`の`sandboxSocket`、無ければ`$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット |
