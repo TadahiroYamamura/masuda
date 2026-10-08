@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"connectrpc.com/connect"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -246,5 +251,40 @@ answer: masuda question answer abc 0007 'SPEC-1=<answer>' 'REGRESSION-2=<answer>
 `
 	if !strings.HasPrefix(got, "abc 0007 (opened ") || !strings.HasSuffix(got, want) {
 		t.Fatalf("question:\n%s\nwant to end with:\n%s", got, want)
+	}
+}
+
+func TestServeに繋がらないときは繋ごうとしたソケットと次の手を返す(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "missing.sock")
+	_, err := dial(socket).ws.List(context.Background(), connect.NewRequest(&apiv1.ListWorkspacesRequest{}))
+	var unreachable *serveUnreachableError
+	if !errors.As(err, &unreachable) {
+		t.Fatalf("err = %v, want serveUnreachableError", err)
+	}
+	if msg := unreachable.Error(); !strings.Contains(msg, socket) || !strings.Contains(msg, "start 'masuda serve'") || strings.Contains(msg, "dial unix") {
+		t.Fatalf("message = %q", msg)
+	}
+}
+
+func TestParseは引数の数の誤りを使い方の1行で知らせる(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"足りない", nil, "masuda chat: missing arguments\nusage: masuda chat <id>\n"},
+		{"多すぎる", []string{"a", "b"}, "masuda chat: unexpected argument \"b\"\nusage: masuda chat <id>\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			cmd := newCommand("chat", "chat <id>")
+			var out bytes.Buffer
+			cmd.fs.SetOutput(&out)
+			if _, err := cmd.parse(c.args, 1, 1); !errors.Is(err, errUsage) {
+				t.Fatalf("err = %v", err)
+			}
+			if out.String() != c.want {
+				t.Fatalf("output = %q, want %q", out.String(), c.want)
+			}
+		})
 	}
 }
