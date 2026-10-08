@@ -1,17 +1,21 @@
 # HANDOFF
 ## 作業項目
-2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueを片付けた。developは`aa9840b`（push済み）。
+2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueと#101を片付けた。developは`f5f99ab`以降（push済み）。
 
 | Issue | コミット | 中身 |
 |---|---|---|
 | #92 | `bd0ec60`・`9a0af45` | `--repo`を省いたら今いる作業ツリーのトップを使う（外ならエラー）。明示したサブディレクトリは`init`・`privileged-command run`も含めて拒む（`absRepo`＋`requireWorkTreeTop`）。`prime.md`の「トップで打つ」の1行を削除 |
 | #87 | `93c2ca8` | 定義の写し（`records/definitions/`）を元の権限のまま作る。0600だとDockerの`COPY`後に`USER`を切り替えた手順から読めなかった |
 | #64 | （`55eaafe`で実装済み） | 確かめて閉じた |
+| #101 | `9a5ce3a` | **契約の変更**（ユーザー判断）: `ACTIVITY_KIND_AUTH_REJECTED = 8`。`api.anthropic.com`の`/v1/messages`の応答が401・403なら`auth_rejected`（`dead`の次、進行中より前）、2xxで解除。`detail`に直し方（登録し直してstop→resume） |
 
-#92・#87・#64は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。
+#92・#87・#64・#101は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。契約を変えたので、次のリリースは**v0.4.0**の扱い。
+
+ワークフローの形への外部の指摘（ワークフローのoutputs・outcomesの宣言、revise系3ノードの統合、optionalなinput）は検討の上、ユーザーが却下した。
 ## 完了した契約テスト
-- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）が緑（`aa9840b`）
+- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）が緑（`9a5ce3a`）
 - 実機（#87）: 開発版のserveを別のソケット・データディレクトリで動かし、`USER root`で`COPY`したファイルを`USER ubuntu`で読むDockerfileで`run`。修正前（`0a33e8d`）は起動時のビルドが`Permission denied`で`suspended`、修正後は通ってVMが起動した。後片付け済み
+- 実機（#101）: ダミーのトークンの`run`で、起動の2秒後に`auth_rejected`、Notificationフックの後も`auth_rejected(idle)`のまま。観測では、Claude Codeは起動時に`/api/claude_code/settings`・`policy_limits`も呼び、ダミーではそれらも401（正しいトークンでの応答は未確認なので判定に使っていない）
 ## 未完と理由
 - #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
 - #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある
@@ -30,6 +34,7 @@
 - CIの結果で止めたい手順は`&&`でつなぐ（v0.3.0で、CIが赤いまま`main`を合わせた。タグの前に気づいて直した）
 - CIのランナーのgitは2.55（手元は2.43）。gitの既定の変化でCIだけ落ちることがある（#98がそれだった）
 - この端末（WSL2）は時計が前後に約10秒跳ぶ。壁時計の順に頼る処理・テストは壊れうる（`resume`のWIPの選び方、特権コマンドの記録の`started_at`）
+- `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`（キャッシュ済み）で生成する。`buf.gen.yaml`のリモートプラグインの版が固定されていないと、connectの生成物がv2向けに変わる（#101ではconnectの生成物を戻した）
 - `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
 - ハーネスと並べて実機で確かめるときは、ブランチのバイナリで`masuda serve --socket <別> --data-dir <別> --config <無いパス>`を立て、トークンはダミーを`secret set`する（起動時の検査は有無だけ）。イメージの名前は`<リポジトリ名>-<パスのハッシュ>:<entry>`なので、スクラッチのリポジトリならハーネスと衝突しない。`--socket`はサブコマンドの後ろに書く
 - `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す
