@@ -1,20 +1,26 @@
 # HANDOFF
 ## 作業項目
-2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueと#101を片付けた。developは`f5f99ab`以降（push済み）。
+2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueと#101を片付けた。developは`6478296`（push済み、CI緑）。
 
 | Issue | コミット | 中身 |
 |---|---|---|
 | #92 | `bd0ec60`・`9a0af45` | `--repo`を省いたら今いる作業ツリーのトップを使う（外ならエラー）。明示したサブディレクトリは`init`・`privileged-command run`も含めて拒む（`absRepo`＋`requireWorkTreeTop`）。`prime.md`の「トップで打つ」の1行を削除 |
 | #87 | `93c2ca8` | 定義の写し（`records/definitions/`）を元の権限のまま作る。0600だとDockerの`COPY`後に`USER`を切り替えた手順から読めなかった |
 | #64 | （`55eaafe`で実装済み） | 確かめて閉じた |
+| （#101の懸念） | `ae06696` | `buf.gen.yaml`のプラグインの版を固定（protoc-gen-go v1.36.12、connect v1.21.0）。固定した版で生成し直して`gen/`と一致を確認 |
+| #76 | `101b853`・`72d0e7d` | CLIの出力（フラグの説明・使い方・doctor・`gate show`・エラー）を英語に、serveの利用者向けエラーに「; 次の手」。serveに繋がらないときは`serveUnreachableError`でソケットと次の手、引数の数の誤りは使い方の1行、`-v`は`version`。`init.go`が書く`CLAUDE.local.md`の文面・`prime.md`・ゲスト向けの文は日本語のまま |
+| #93 | engine `6fff69f`、masuda `db34f45`・`d6667fe` | **engineの契約の変更**（ユーザー判断）: ワークフローのトップに`user_invocable`（省略時true、`Workflow.UserInvocable`）。同梱の部品と`smoke`はfalse。公開APIは`WorkflowEntry.user_invocable`の追加。`workflow list`は既定でtrueだけ、`--all`で全部。隠したものも`run`・`show`・`check`できる |
+| #72 | `605fa83` | `question answer --note <id>=<text>`。補足は答えの次の行。選択肢のある項目は1行目を検査。補足は役が`ask_human`で組み立てた質問（記録の`ByRole`）だけ。固定の質問には付けられない |
+| #94 | `d9079f3` | `masuda doc`（一覧・ページ・`#<id>`の節・`--serve`）。`internal/docsembed/content/`にサイトと準備後のMarkdownを埋め込む（`release.yml`の`Embed documents`が写す。コミットは目印の`README.md`だけ）。埋め込みが無ければ版のURL。doctorの案内は`docRef` |
 | #101 | `9a5ce3a` | **契約の変更**（ユーザー判断）: `ACTIVITY_KIND_AUTH_REJECTED = 8`。`api.anthropic.com`の`/v1/messages`の応答が401・403なら`auth_rejected`（`dead`の次、進行中より前）、2xxで解除。`detail`に直し方（登録し直してstop→resume） |
 
-#92・#87・#64・#101は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。契約を変えたので、次のリリースは**v0.4.0**の扱い。
+#92・#87・#64・#101・#76・#93・#72・#94は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。契約を変えたので、次のリリースは**v0.4.0**の扱い。go.modのengineは今`main`の擬似バージョン（`v0.3.1-0.20261008061235-6fff69f1e60b`）なので、リリースではengineにもv0.4.0を打ってgo.modをタグに上げる（`release.yml`の版の検査が止める）。
 
 ワークフローの形への外部の指摘（ワークフローのoutputs・outcomesの宣言、revise系3ノードの統合、optionalなinput）は検討の上、ユーザーが却下した。
 ## 完了した契約テスト
-- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）が緑（`9a5ce3a`）
+- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）とCI（ci・docs）が緑（`6478296`）。engineも緑（`6fff69f`）
 - 実機（#87）: 開発版のserveを別のソケット・データディレクトリで動かし、`USER root`で`COPY`したファイルを`USER ubuntu`で読むDockerfileで`run`。修正前（`0a33e8d`）は起動時のビルドが`Permission denied`で`suspended`、修正後は通ってVMが起動した。後片付け済み
+- #94: `release.yml`の`Embed documents`と同じ手順を手元で回し（`.venv-docs`のmkdocs）、埋め込んだバイナリで一覧・節・誤りの案内・doctorの案内・`--serve`を確認。サイト約4.9MB、Markdown約600KB、バイナリ30MB。実際のリリースで走るのは次のタグから
 - 実機（#101）: ダミーのトークンの`run`で、起動の2秒後に`auth_rejected`、Notificationフックの後も`auth_rejected(idle)`のまま。観測では、Claude Codeは起動時に`/api/claude_code/settings`・`policy_limits`も呼び、ダミーではそれらも401（正しいトークンでの応答は未確認なので判定に使っていない）
 ## 未完と理由
 - #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
@@ -22,11 +28,11 @@
 - Gondolinの#155〜#160: メンテナの返事待ち（`gondolin-watch.py`のSessionStartフックが知らせる。外部への書き込みは毎回ユーザーの了解、英文は日本語の草案の承認後）
 - 同梱のdevelopで特権コマンドを強制する方法（engineのHANDOFFの未決）
 - primeの実物のClaude Codeでの確認（SessionStartフックが末尾まで読まれるか、deny/askが効くか）
-- 実機の要らない残り（着手前に決めること）: #76（英語化、量が多いので分けて）、#72（補足の書き方とengineへの渡し方）、#94（埋め込みの置き場所）、#93（YAMLのキーか、rootだけを出すか）
+- v0.4.0のリリース（engineのタグとgo.modの版上げを含む。Skill `release`）
 ## 次の一手
 1. このリポジトリで`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
 2. 下の#85・#83の提案の承認を得たら実装する
-3. 実機の要らない残り（上）を、決めることを決めてから進める
+3. v0.4.0を出す（Skill `release`）。`release.yml`の`Embed documents`が初めて走るので、公開後に配布物の`masuda doc`を確かめる
 4. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正を外し、sandboxのgondolinを上げる
 ## 注意点
 - ハーネスのセッションと決めたこと（2026-10-07）: 特権コマンドに秘密を渡す案は取りやめ（承認済みのコミットだけを新しいVMで秘密付きで動かす案は#96）。記録（`records/definitions/`）は不変の扱い。「観察してから承認する」一般の道具（学習モード）はsandboxの仕事
@@ -34,7 +40,8 @@
 - CIの結果で止めたい手順は`&&`でつなぐ（v0.3.0で、CIが赤いまま`main`を合わせた。タグの前に気づいて直した）
 - CIのランナーのgitは2.55（手元は2.43）。gitの既定の変化でCIだけ落ちることがある（#98がそれだった）
 - この端末（WSL2）は時計が前後に約10秒跳ぶ。壁時計の順に頼る処理・テストは壊れうる（`resume`のWIPの選び方、特権コマンドの記録の`started_at`）
-- `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`（キャッシュ済み）で生成する。`buf.gen.yaml`のリモートプラグインの版が固定されていないと、connectの生成物がv2向けに変わる（#101ではconnectの生成物を戻した）
+- `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`（キャッシュ済み）で生成する。プラグインの版は`buf.gen.yaml`で固定した。BSRは未認証だと短時間に数回の生成でレート制限（`resource_exhausted`）になり、1時間ほど解けない
+- `scripts/docs-prepare.sh`は`docs/`の`__MASUDA_VERSION__`をその場で書き換える。手元で回したら`git checkout -- docs/`で戻す（自分の未コミットの変更と混ざっていないか先に確かめる）
 - `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
 - ハーネスと並べて実機で確かめるときは、ブランチのバイナリで`masuda serve --socket <別> --data-dir <別> --config <無いパス>`を立て、トークンはダミーを`secret set`する（起動時の検査は有無だけ）。イメージの名前は`<リポジトリ名>-<パスのハッシュ>:<entry>`なので、スクラッチのリポジトリならハーネスと衝突しない。`--socket`はサブコマンドの後ろに書く
 - `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す
