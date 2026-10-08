@@ -339,7 +339,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 ## 8. 活動の観測と停止の検知
 
-ワークスペースの活動は`working / waiting_input / waiting_gate / waiting_question / stalled / dead / idle`と最終活動時刻で表し、公開APIの`Watch`で配信する。次の情報源を合成する。
+ワークスペースの活動は`working / waiting_input / waiting_gate / waiting_question / stalled / dead / auth_rejected / idle`と最終活動時刻で表し、公開APIの`Watch`で配信する。次の情報源を合成する。
 
 | 情報源 | 分かること | 信頼性 |
 |---|---|---|
@@ -355,10 +355,11 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 1. ワークスペースの状態: DONE・STOPPED・SUSPENDED・BLOCKEDなら`idle`、ゲート待ちなら`waiting_gate`、質問待ちなら`waiting_question`。STARTINGもエージェントがまだ動いていないので`idle`で、`detail`に起動の段階（`building image (log: ...)`→`booting the VM`→`preparing the guest`→`starting Claude Code`）を入れ、段階が変わるたびに`status`のイベントを流す
 2. `claude`（tmuxのセッション）が無い: `dead`。`SessionEnd`フック、sandboxの停止・失敗、`Exec`での生存確認のどれかで分かる
-3. 進行中のAPIリクエストがある: `working`
-4. ゲストの`Notification`フックが待ちを言っている（`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`input_wait`に入る）: `waiting_input`。その後にHTTP・ツール・MCPの活動があれば消える
-5. RUNNINGで、最終活動からしきい値を超えた: `stalled`
-6. それ以外: `working`
+3. Claude APIの会話の本体（`/v1/messages`）への直近の応答が401・403: `auth_rejected`。`detail`にステータスと直し方（トークンを登録し直してstop→resume）を入れる。会話の本体が2xxを返せば解除する。設定などの補助のパスは見ない（正しいトークンでも401・403を返さないとは確かめていない）。進行中のリクエストより先に見るのは、Claude Codeが拒まれても呼び直すので、`working`と行き来して原因が見えなくなるため
+4. 進行中のAPIリクエストがある: `working`
+5. ゲストの`Notification`フックが待ちを言っている（`idle_prompt`→`idle`、`permission_prompt`→`permission`、`elicitation_dialog`→`question`。`input_wait`に入る）: `waiting_input`。その後にHTTP・ツール・MCPの活動があれば消える
+6. RUNNINGで、最終活動からしきい値を超えた: `stalled`
+7. それ以外: `working`
 
 APIリクエストを入力待ちより先に見るのは、フックがゲストの協力を前提とする補助情報で、ホストが観測したリクエストの方が確かなため。ただしsandboxはクライアントが応答前に切ったリクエストの終わりを知らせないので、進行中のリクエストは次のように打ち切る。
 

@@ -116,6 +116,7 @@ const (
 	ActivityKind_ACTIVITY_KIND_STALLED          ActivityKind = 5 // alive but silent past the threshold
 	ActivityKind_ACTIVITY_KIND_DEAD             ActivityKind = 6 // tmux session or claude process gone
 	ActivityKind_ACTIVITY_KIND_IDLE             ActivityKind = 7 // nothing to do (done/stopped/blocked/suspended)
+	ActivityKind_ACTIVITY_KIND_AUTH_REJECTED    ActivityKind = 8 // the Claude API rejected the token (401/403); register it again, then stop and resume
 )
 
 // Enum value maps for ActivityKind.
@@ -129,6 +130,7 @@ var (
 		5: "ACTIVITY_KIND_STALLED",
 		6: "ACTIVITY_KIND_DEAD",
 		7: "ACTIVITY_KIND_IDLE",
+		8: "ACTIVITY_KIND_AUTH_REJECTED",
 	}
 	ActivityKind_value = map[string]int32{
 		"ACTIVITY_KIND_UNSPECIFIED":      0,
@@ -139,6 +141,7 @@ var (
 		"ACTIVITY_KIND_STALLED":          5,
 		"ACTIVITY_KIND_DEAD":             6,
 		"ACTIVITY_KIND_IDLE":             7,
+		"ACTIVITY_KIND_AUTH_REJECTED":    8,
 	}
 )
 
@@ -4196,7 +4199,7 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\x17WORKSPACE_STATE_STOPPED\x10\x05\x12\x18\n" +
 	"\x14WORKSPACE_STATE_DONE\x10\x06\x12\x1b\n" +
 	"\x17WORKSPACE_STATE_BLOCKED\x10\a\x12\x1d\n" +
-	"\x19WORKSPACE_STATE_SUSPENDED\x10\b*\xf8\x01\n" +
+	"\x19WORKSPACE_STATE_SUSPENDED\x10\b*\x99\x02\n" +
 	"\fActivityKind\x12\x1d\n" +
 	"\x19ACTIVITY_KIND_UNSPECIFIED\x10\x00\x12\x19\n" +
 	"\x15ACTIVITY_KIND_WORKING\x10\x01\x12\x1f\n" +
@@ -4205,7 +4208,8 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\x1eACTIVITY_KIND_WAITING_QUESTION\x10\x04\x12\x19\n" +
 	"\x15ACTIVITY_KIND_STALLED\x10\x05\x12\x16\n" +
 	"\x12ACTIVITY_KIND_DEAD\x10\x06\x12\x16\n" +
-	"\x12ACTIVITY_KIND_IDLE\x10\a2\xc9\x04\n" +
+	"\x12ACTIVITY_KIND_IDLE\x10\a\x12\x1f\n" +
+	"\x1bACTIVITY_KIND_AUTH_REJECTED\x10\b2\xc9\x04\n" +
 	"\x10WorkspaceService\x12:\n" +
 	"\x03Run\x12\x19.masuda.api.v1.RunRequest\x1a\x18.masuda.api.v1.Workspace\x12@\n" +
 	"\x06Resume\x12\x1c.masuda.api.v1.ResumeRequest\x1a\x18.masuda.api.v1.Workspace\x12C\n" +

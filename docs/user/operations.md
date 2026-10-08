@@ -36,6 +36,7 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | `waiting_question` | 質問への回答待ち | `masuda question list`して答える |
 | `stalled` | 生きているが、しきい値（既定10分）を超えて何も起きていない | 画面を見る。masudaは自動では止めない |
 | `dead` | VMの中のClaude Code（tmuxのセッション）が無くなった | `stop`して`resume`する |
+| `auth_rejected` | Claude APIがトークンを拒んだ（401・403）。値の誤り・失効 | トークンを登録し直して`stop`→`resume`（[トラブルシューティング](troubleshooting.md#stalled)） |
 | `idle` | 何もすることが無い（`done`・`stopped`・`suspended`・`blocked`）、またはまだ起動中（`starting`） | `starting`が長いなら[トラブルシューティング](troubleshooting.md#starting-long) |
 
 活動は、ホストが見ているClaude APIへの通信（VMの中から偽れない）を一番に信じ、VMの中のClaude Codeのフックの知らせを補助に使って決める。
