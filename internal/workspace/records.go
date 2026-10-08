@@ -54,6 +54,10 @@ type QuestionRecord struct {
 	OpenedAt   time.Time         `json:"openedAt"`
 	Answers    map[string]string `json:"answers,omitempty"`
 	AnsweredAt *time.Time        `json:"answeredAt,omitempty"`
+	// ByRole は役がask_humanで組み立てた質問であること。答えはエージェントへ返るだけなので、
+	// 選択肢の後に補足を添えてよい。固定の質問（questions:）の答えはそのままデータとして
+	// 保存されて後のノードが読むので、補足を混ぜない。
+	ByRole bool `json:"byRole,omitempty"`
 	// DiscardedAt・DiscardReason は答えを待たずに閉じた質問（ask_humanで聞いている間に止めて
 	// 再開した等）。閉じた質問には答えられない。
 	DiscardedAt   *time.Time `json:"discardedAt,omitempty"`

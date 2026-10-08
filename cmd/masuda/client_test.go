@@ -288,3 +288,42 @@ func TestParseは引数の数の誤りを使い方の1行で知らせる(t *test
 		})
 	}
 }
+
+func TestParseAnswersは補足を答えの次の行に続ける(t *testing.T) {
+	cases := []struct {
+		name    string
+		kvs     []string
+		notes   []string
+		want    map[string]string
+		wantErr string
+	}{
+		{"補足なし", []string{"A=(b) yes"}, nil, map[string]string{"A": "(b) yes"}, ""},
+		{"補足あり", []string{"A=(b) yes", "B=no"}, []string{"A=exportsが残る前提"}, map[string]string{"A": "(b) yes\nexportsが残る前提", "B": "no"}, ""},
+		{"同じ質問に2つの補足", []string{"A=x"}, []string{"A=1つめ", "A=2つめ"}, map[string]string{"A": "x\n1つめ\n2つめ"}, ""},
+		{"答えの無い質問への補足", []string{"A=x"}, []string{"B=理由"}, nil, "B has no answer"},
+		{"補足の形の誤り", []string{"A=x"}, []string{"理由だけ"}, nil, "want <question-id>=<text>"},
+		{"答えの形の誤り", []string{"x"}, nil, nil, "want <question-id>=<answer>"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got, err := parseAnswers(c.kvs, c.notes)
+			if c.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+					t.Fatalf("err = %v, want %q", err, c.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got) != len(c.want) {
+				t.Fatalf("answers = %q, want %q", got, c.want)
+			}
+			for k, v := range c.want {
+				if got[k] != v {
+					t.Fatalf("answers = %q, want %q", got, c.want)
+				}
+			}
+		})
+	}
+}

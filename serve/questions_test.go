@@ -9,6 +9,7 @@ import (
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	"github.com/TadahiroYamamura/masuda/internal/mcp"
+	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
 // developのplan-interviewerは計画の未回答の問いを1回のask_humanでまとめて聞く。公開APIは
@@ -40,6 +41,7 @@ func TestAskHumanWithSeveralQuestions(t *testing.T) {
 		v, err := c.AskHuman(ctx, occ, []mcp.Question{
 			{ID: "SPEC-1", Text: "退化三角形を不正として扱うか\n理由: 指示書に記述が無い"},
 			{ID: "REGRESSION-2", Text: "circle.py の呼び出し元に影響は無いか"},
+			{ID: "DATA-3", Text: "stoppedも消すか", Options: []string{"(a) doneだけ", "(b) stoppedも"}},
 		})
 		asked <- result{v, err}
 	}()
@@ -50,7 +52,7 @@ func TestAskHumanWithSeveralQuestions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Msg.Questions) != 1 || len(list.Msg.Questions[0].Items) != 2 ||
+	if len(list.Msg.Questions) != 1 || len(list.Msg.Questions[0].Items) != 3 ||
 		list.Msg.Questions[0].Items[0].Id != "SPEC-1" || list.Msg.Questions[0].Items[1].Id != "REGRESSION-2" {
 		t.Fatalf("open questions: %v", list.Msg.Questions)
 	}
@@ -58,7 +60,12 @@ func TestAskHumanWithSeveralQuestions(t *testing.T) {
 	if connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("a partial answer must be refused as InvalidArgument: %v", err)
 	}
-	answers := map[string]string{"SPEC-1": "不正とする", "REGRESSION-2": "影響しない"}
+	// 選択肢のある項目は、1行目が選択肢なら2行目からに補足を添えてよい。補足は答えのまま役へ届く。
+	bad := map[string]string{"SPEC-1": "不正とする", "REGRESSION-2": "影響しない", "DATA-3": "(c) 全部\n理由"}
+	if _, err := qs.Answer(ctx, connect.NewRequest(&apiv1.AnswerRequest{WorkspaceId: id, Occurrence: occ, Answers: bad})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("a note does not make a non-option valid: %v", err)
+	}
+	answers := map[string]string{"SPEC-1": "不正とする", "REGRESSION-2": "影響しない", "DATA-3": "(b) stoppedも\nexportsが残る前提"}
 	if _, err := qs.Answer(ctx, connect.NewRequest(&apiv1.AnswerRequest{WorkspaceId: id, Occurrence: occ, Answers: answers})); err != nil {
 		t.Fatal(err)
 	}
@@ -68,10 +75,42 @@ func TestAskHumanWithSeveralQuestions(t *testing.T) {
 			t.Fatal(r.err)
 		}
 		got, _ := r.v.(map[string]any)["answers"].(map[string]string)
-		if len(got) != 2 || got["SPEC-1"] != "不正とする" || got["REGRESSION-2"] != "影響しない" {
+		if len(got) != 3 || got["SPEC-1"] != "不正とする" || got["REGRESSION-2"] != "影響しない" || got["DATA-3"] != "(b) stoppedも\nexportsが残る前提" {
 			t.Fatalf("ask_human returned %v", r.v)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("ask_human must return once every question is answered")
+	}
+}
+
+func TestCheckAnswersは選択肢への補足を役の質問にだけ認める(t *testing.T) {
+	items := []workspace.QuestionItem{
+		{ID: "pick", Options: []string{"yes", "no"}},
+		{ID: "free"},
+	}
+	cases := []struct {
+		name   string
+		byRole bool
+		pick   string
+		free   string
+		ok     bool
+	}{
+		{"役の質問: 選択肢そのもの", true, "yes", "x", true},
+		{"役の質問: 選択肢と補足", true, "yes\n理由", "x", true},
+		{"役の質問: 選択肢に無いものに補足", true, "maybe\n理由", "x", false},
+		{"役の質問: 補足だけ（1行目が空）", true, "\n理由", "x", false},
+		{"固定の質問: 選択肢そのもの", false, "no", "x", true},
+		{"固定の質問: 選択肢と補足", false, "no\n理由", "x", false},
+		{"固定の質問: 自由記述は複数行でよい", false, "no", "1行目\n2行目", true},
+		{"役の質問: 自由記述は複数行でよい", true, "no", "1行目\n2行目", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			rec := &workspace.QuestionRecord{Questions: items, ByRole: c.byRole}
+			err := checkAnswers(rec, map[string]string{"pick": c.pick, "free": c.free})
+			if (err == nil) != c.ok {
+				t.Fatalf("err = %v, want ok=%v", err, c.ok)
+			}
+		})
 	}
 }
