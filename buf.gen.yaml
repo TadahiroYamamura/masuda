@@ -2,16 +2,19 @@ version: v2
 # sandbox.protoのgo_packageはmasuda-sandbox側の生成先を指しているが、masudaは
 # 自分のgen/配下に生成して使う（masuda-sandboxはGoのパッケージを公開しない）。
 # 契約ファイルは変えられないので、プラグインのMオプションで出力先パッケージだけ差し替える。
+# プラグインの版は固定する。省くとリモートの最新が使われ、connectの生成物がgo.modのconnect
+# （v1系）と合わないv2向けに変わる。上げるときはgo.modのgoogle.golang.org/protobuf・
+# connectrpc.com/connectと揃える。
 inputs:
   - directory: proto
   - directory: ../masuda-sandbox/proto
 plugins:
-  - remote: buf.build/protocolbuffers/go
+  - remote: buf.build/protocolbuffers/go:v1.36.12
     out: gen
     opt:
       - paths=source_relative
       - Mmasuda/sandbox/v1/sandbox.proto=github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1;sandboxv1
-  - remote: buf.build/connectrpc/go
+  - remote: buf.build/connectrpc/go:v1.21.0
     out: gen
     opt:
       - paths=source_relative
