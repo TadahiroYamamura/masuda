@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,8 +44,9 @@ func workflowRepoFlag(c *command) func() (string, error) {
 }
 
 func workflowList(args []string) error {
-	c := newCommand("workflow list", "workflow list [--repo <dir>]")
+	c := newCommand("workflow list", "workflow list [--repo <dir>] [--all]")
 	repo := workflowRepoFlag(c)
+	all := c.fs.Bool("all", false, "also show workflows that are not started by users (user_invocable: false)")
 	if _, err := c.parse(args, 0, 0); err != nil {
 		return err
 	}
@@ -56,10 +58,24 @@ func workflowList(args []string) error {
 	if err != nil {
 		return err
 	}
-	tw := newTable(os.Stdout)
-	fmt.Fprintln(tw, "WORKFLOW\tORIGIN\tINPUTS")
-	for _, w := range res.Msg.Workflows {
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", w.Path, w.Origin, orDash(strings.Join(w.Inputs, ",")))
+	return printWorkflows(os.Stdout, res.Msg.Workflows, *all)
+}
+
+// printWorkflows は一覧の表を書く。allでなければ利用者が始めるもの（user_invocable）だけを出す。
+func printWorkflows(w io.Writer, entries []*apiv1.WorkflowEntry, all bool) error {
+	tw := newTable(w)
+	if !all {
+		fmt.Fprintln(tw, "WORKFLOW\tORIGIN\tINPUTS")
+		for _, e := range entries {
+			if e.UserInvocable {
+				fmt.Fprintf(tw, "%s\t%s\t%s\n", e.Path, e.Origin, orDash(strings.Join(e.Inputs, ",")))
+			}
+		}
+		return tw.Flush()
+	}
+	fmt.Fprintln(tw, "WORKFLOW\tORIGIN\tINPUTS\tUSER_INVOCABLE")
+	for _, e := range entries {
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", e.Path, e.Origin, orDash(strings.Join(e.Inputs, ",")), yesNo(e.UserInvocable))
 	}
 	return tw.Flush()
 }

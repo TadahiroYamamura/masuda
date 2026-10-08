@@ -12,7 +12,7 @@
 
 ## 流れ
 
-1. 使うワークフローを選ぶ。`masuda workflow list`が同梱（`bundled`）とこのリポジトリの`.masuda/workflows/`（`repo`）のものと、受け取る入力を出す。中身は`masuda workflow show <workflow>`（図）か定義のYAMLを読む。同梱の主なもの:
+1. 使うワークフローを選ぶ。`masuda workflow list`が、`run`で始めるワークフロー（同梱の`bundled`と、このリポジトリの`.masuda/workflows/`の`repo`）と、受け取る入力を出す。他のワークフローから呼ばれる部品は出ないので、一覧に無いものは`run`しない。中身は`masuda workflow show <workflow>`（図）か定義のYAMLを読む。同梱の主なもの:
    - `workflows/develop`: 指示（`instructions`）から計画・実装・レビューをして、承認されたコミットをブランチへ反映する
    - `workflows/fix`: 小さな修正向けの`develop`
    - `workflows/review`: コードを変えずにレビューし、結果を書き出す

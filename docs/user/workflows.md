@@ -112,7 +112,7 @@ outcomes:
 
 ## 同梱のワークフロー
 
-`masuda workflow list`で一覧が出る。人が始めるのは`develop`・`fix`・`review`で、残りはその部品。
+`masuda workflow list`で一覧が出る。人が始めるのは`develop`・`fix`・`review`で、残りはその部品（と動作確認用の`smoke`）。部品には`user_invocable: false`が書いてあり、`workflow list`には出ない（`--all`で出る）。
 
 | ワークフロー | 入力 | 用途 |
 |---|---|---|
@@ -509,7 +509,7 @@ flowchart TD
 手順:
 
 1. 定義を書く
-2. `masuda workflow list`で、ORIGINが`repo`になっていることを確かめる
+2. `masuda workflow list`で、ORIGINが`repo`になっていることを確かめる。他のワークフローから呼ぶ部品なら、定義のトップに`user_invocable: false`を書くと一覧から外れる（`--all`で確かめる）
 3. `masuda workflow check workflows/<名前>`で検査する（`ok`が出るまで直す）
 4. `masuda workflow show workflows/<名前>`で図を確かめる（Mermaidを表示できる所に貼る）
 5. `masuda run workflows/<名前> --branch ... --input ...`

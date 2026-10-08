@@ -3655,10 +3655,14 @@ func (x *ListWorkflowsResponse) GetWorkflows() []*WorkflowEntry {
 }
 
 type WorkflowEntry struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
-	Origin        string                 `protobuf:"bytes,2,opt,name=origin,proto3" json:"origin,omitempty"`
-	Inputs        []string               `protobuf:"bytes,3,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	state  protoimpl.MessageState `protogen:"open.v1"`
+	Path   string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Origin string                 `protobuf:"bytes,2,opt,name=origin,proto3" json:"origin,omitempty"`
+	Inputs []string               `protobuf:"bytes,3,rep,name=inputs,proto3" json:"inputs,omitempty"`
+	// False for a workflow meant to be called by other workflows (or kept for
+	// checks), not started by a user. Lists hide it by default; Run, Show and
+	// Check still accept it.
+	UserInvocable bool `protobuf:"varint,4,opt,name=user_invocable,json=userInvocable,proto3" json:"user_invocable,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3712,6 +3716,13 @@ func (x *WorkflowEntry) GetInputs() []string {
 		return x.Inputs
 	}
 	return nil
+}
+
+func (x *WorkflowEntry) GetUserInvocable() bool {
+	if x != nil {
+		return x.UserInvocable
+	}
+	return false
 }
 
 type ShowWorkflowRequest struct {
@@ -4174,11 +4185,12 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\blog_line\x18\x01 \x01(\tR\alogLine\x12\x19\n" +
 	"\bbuild_id\x18\x02 \x01(\tR\abuildId\"S\n" +
 	"\x15ListWorkflowsResponse\x12:\n" +
-	"\tworkflows\x18\x01 \x03(\v2\x1c.masuda.api.v1.WorkflowEntryR\tworkflows\"S\n" +
+	"\tworkflows\x18\x01 \x03(\v2\x1c.masuda.api.v1.WorkflowEntryR\tworkflows\"z\n" +
 	"\rWorkflowEntry\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\x12\x16\n" +
 	"\x06origin\x18\x02 \x01(\tR\x06origin\x12\x16\n" +
-	"\x06inputs\x18\x03 \x03(\tR\x06inputs\"N\n" +
+	"\x06inputs\x18\x03 \x03(\tR\x06inputs\x12%\n" +
+	"\x0euser_invocable\x18\x04 \x01(\bR\ruserInvocable\"N\n" +
 	"\x13ShowWorkflowRequest\x12\x1b\n" +
 	"\trepo_root\x18\x01 \x01(\tR\brepoRoot\x12\x1a\n" +
 	"\bworkflow\x18\x02 \x01(\tR\bworkflow\"0\n" +

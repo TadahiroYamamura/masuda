@@ -340,7 +340,7 @@ masuda image build [<entry>] [--repo <dir>]
 ## workflow
 
 ```text
-masuda workflow list [--repo <dir>]
+masuda workflow list [--repo <dir>] [--all]
 masuda workflow show <workflow> [--repo <dir>]
 masuda workflow check [<workflow>] [--repo <dir>]
 ```
@@ -349,7 +349,7 @@ masuda workflow check [<workflow>] [--repo <dir>]
 
 | サブコマンド | 動き |
 |---|---|
-| `list` | ワークフローごとに、どこから来たか（ORIGIN: `bundled`は同梱、`repo`は`.masuda/workflows/`）と受け取る入力 |
+| `list` | 利用者が始めるワークフローごとに、どこから来たか（ORIGIN: `bundled`は同梱、`repo`は`.masuda/workflows/`）と受け取る入力。定義に`user_invocable: false`と書いたもの（同梱の部品と`smoke`）は出さない。`--all`なら全部を、`USER_INVOCABLE`の列を付けて出す。出さないものも`run`・`show`・`check`には渡せる |
 | `show` | ワークフローの図をMermaidで出す。呼び出す部品のワークフローと、masudaが差し込むゲート（`deviation`・`triage`）も描く |
 | `check` | 定義の検査。`.masuda/settings.json`の読み込みと、`agents`の役の名前が定義にあるかの照合も行う。問題を1行ずつ出し、1つでもあれば終了コード1。無ければ`ok` |
 

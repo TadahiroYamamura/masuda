@@ -103,7 +103,7 @@ var completionTable = []compNode{
 		clientLeaf("build", argImage, "repo"),
 	}},
 	{name: "workflow", subs: []compNode{
-		clientLeaf("list", argNone, "repo"),
+		clientLeaf("list", argNone, "repo", "all"),
 		clientLeaf("show", argWorkflow, "repo"),
 		clientLeaf("check", argWorkflow, "repo"),
 	}},
