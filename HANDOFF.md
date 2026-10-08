@@ -1,42 +1,37 @@
 # HANDOFF
 ## 作業項目
-2026-10-07（1日分）。**v0.2.3とv0.3.0を公開し、ハーネスをv0.3.0へ更新した**（追跡#97・#102、どちらも閉じた）。
+2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueを片付けた。developは`aa9840b`（push済み）。
 
-| 版 | masuda | engine | sandbox | 中身 |
-|---|---|---|---|---|
-| v0.2.3 | `ce39569` | `64a8e69` | `34577e9` | #78〜#86の対応、`masuda prime`と`init`のホスト向け設定（`CLAUDE.local.md`・`.claude/settings.local.json`のSessionStartフックとdeny/ask）、ゲストのClaude Code 2.1.292 |
-| v0.3.0 | `4ec83bd` | `ce9a878` | `0d31786` | 特権コマンドをsandboxの`RunJob`へ載せ替え（sandbox#10）、`DeleteImage`（sandbox#5）、engineの`type: privileged`ノード（#99）、宣言のゲストへの写し`/masuda/privileged-commands.json`と`description`（#95）、`masuda privileged-command run`（#100）、公開APIの`suspended`（直せばresumeで続く停止。`blocked`は行き止まりだけ）と、run・resumeの開始時の特権ノードの事前検査、`resume`が時計の巻き戻りで古いWIPを戻す不具合（`312ae7a`）、stagingのgitの自動メンテナンスを同期に（#98、`4ec83bd`）、VMの起動のたびに空になるディレクトリと承認の範囲の文書 |
+| Issue | コミット | 中身 |
+|---|---|---|
+| #92 | `bd0ec60`・`9a0af45` | `--repo`を省いたら今いる作業ツリーのトップを使う（外ならエラー）。明示したサブディレクトリは`init`・`privileged-command run`も含めて拒む（`absRepo`＋`requireWorkTreeTop`）。`prime.md`の「トップで打つ」の1行を削除 |
+| #87 | `93c2ca8` | 定義の写し（`records/definitions/`）を元の権限のまま作る。0600だとDockerの`COPY`後に`USER`を切り替えた手順から読めなかった |
+| #64 | （`55eaafe`で実装済み） | 確かめて閉じた |
 
-v0.3.0の作り方: 設計の材料集め・実装はサブエージェントに出し、監督（このセッション）が差分・テスト・壊す確認・実機の確認をした。
-
-ハーネス（v0.3.0）: ワークスペースは全部removeした（exportsは残る）。gondolinのTCPの修正を当て直した。トークンを`masuda secret set`で登録し直した。masuda自身のイメージ（Claude Code 2.1.292、`247bc1d`）をbuild済み。oncall_pf_templateの2つのDockerfileの版も2.1.292に書き換え、作り直しはoncall-pf-template-20に任せた。
-
-ハーネスのセッション（oncall-pf-template-20）とのやり取りで決めたこと:
-- 特権コマンドに秘密を渡す案は取りやめた（承認するのは`command`の文字列だけで、動くのはエージェントが書き換えられる`/workspace`のコード）。承認済みのコミットだけを新しいVMで秘密付きで動かす案は#96
-- 記録（`records/definitions/`）は不変の扱い
-- 「観察してから承認する」一般の道具（学習モード）はsandboxの仕事
-
-起票したIssue（開いているもの）: #92（サブディレクトリでの`--repo`）、#93（`workflow list`に出すものをYAMLで）、#94（`masuda doc`）、#96（承認済みのコミットだけを秘密付きで）、#101（Claudeのトークンが401で拒否されても`list`から分からない）。
+#92・#87・#64は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。
 ## 完了した契約テスト
-- v0.3.0: `go build`・`go vet`・`go test ./...`（`GOWORK=off`）とCIが緑（`4ec83bd`）。sandboxの契約テスト15件、engineのテスト
-- 実機: 継続テスト（55秒）・実機1周（7分7秒）。`privileged-command run`（root・inputs・outputs・終了コード・拒否した通信先・利用者のリポジトリに書かない）、privilegedノードのfailed/done、承認の取り消しで`suspended`→承認してresumeで続く
+- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）が緑（`aa9840b`）
+- 実機（#87）: 開発版のserveを別のソケット・データディレクトリで動かし、`USER root`で`COPY`したファイルを`USER ubuntu`で読むDockerfileで`run`。修正前（`0a33e8d`）は起動時のビルドが`Permission denied`で`suspended`、修正後は通ってVMが起動した。後片付け済み
 ## 未完と理由
 - #85・#83のC案: 契約（`docs/guest-protocol.md`）の変更が要るため、下の提案の承認待ち
-- #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある。ハーネスでも`masuda chat`の接続が残って承認が約10分戻らなかった
+- #84のコード: sandbox#8（sshでアタッチ中だとDestroySandboxが終わらない）を先に直す必要がある
 - Gondolinの#155〜#160: メンテナの返事待ち（`gondolin-watch.py`のSessionStartフックが知らせる。外部への書き込みは毎回ユーザーの了解、英文は日本語の草案の承認後）
 - 同梱のdevelopで特権コマンドを強制する方法（engineのHANDOFFの未決）
 - primeの実物のClaude Codeでの確認（SessionStartフックが末尾まで読まれるか、deny/askが効くか）
-- 開いているIssue: #87〜#89・#91〜#94・#96・#101
+- 実機の要らない残り（着手前に決めること）: #76（英語化、量が多いので分けて）、#72（補足の書き方とengineへの渡し方）、#94（埋め込みの置き場所）、#93（YAMLのキーか、rootだけを出すか）
 ## 次の一手
 1. このリポジトリで`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
 2. 下の#85・#83の提案の承認を得たら実装する
-3. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正を外し、sandboxのgondolinを上げる
+3. 実機の要らない残り（上）を、決めることを決めてから進める
+4. Gondolinの返事が来たら対応する。マージされたら、ハーネスに手で当てた修正を外し、sandboxのgondolinを上げる
 ## 注意点
+- ハーネスのセッションと決めたこと（2026-10-07）: 特権コマンドに秘密を渡す案は取りやめ（承認済みのコミットだけを新しいVMで秘密付きで動かす案は#96）。記録（`records/definitions/`）は不変の扱い。「観察してから承認する」一般の道具（学習モード）はsandboxの仕事
 - VMを使う確認（live・sandbox契約テスト）は、各段の直前にハーネスで`masuda list`し、走行中のワークスペースが無いことを確かめてから回す
 - CIの結果で止めたい手順は`&&`でつなぐ（v0.3.0で、CIが赤いまま`main`を合わせた。タグの前に気づいて直した）
 - CIのランナーのgitは2.55（手元は2.43）。gitの既定の変化でCIだけ落ちることがある（#98がそれだった）
 - この端末（WSL2）は時計が前後に約10秒跳ぶ。壁時計の順に頼る処理・テストは壊れうる（`resume`のWIPの選び方、特権コマンドの記録の`started_at`）
 - `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
+- ハーネスと並べて実機で確かめるときは、ブランチのバイナリで`masuda serve --socket <別> --data-dir <別> --config <無いパス>`を立て、トークンはダミーを`secret set`する（起動時の検査は有無だけ）。イメージの名前は`<リポジトリ名>-<パスのハッシュ>:<entry>`なので、スクラッチのリポジトリならハーネスと衝突しない。`--socket`はサブコマンドの後ろに書く
 - `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す
 - ほかのセッションとはSendMessageで話せる（このリポジトリのセッションは`masuda-d3`、ハーネスは`oncall-pf-template-20`）。相手の依頼でIssueを起票・返事するときは、こちらのユーザーの判断を取ってから
 - Gondolinの作業の記録は`~/work/gondolin-notes/`（README.mdが入口）。ハーネスのgondolinは手で差し替えてあり、`masuda-sandbox`を入れ直すと元に戻る（`~/work/gondolin-notes/harness-hotfix/`の手順で当て直す）
