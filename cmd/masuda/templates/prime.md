@@ -6,7 +6,6 @@
 
 - `masuda-sandbox serve`と`masuda serve`が動いている。`masuda list`が接続エラーなら、`masuda-sandbox serve`→`masuda serve`の順にバックグラウンドで起動してよい（既に動いていれば起動しない。前提は`masuda doctor`で確かめられる）。起動したserveはこのセッションを閉じると止まりうる。止まるとワークスペースは`stopped`になり、`masuda resume <id>`で続けられる。判断待ちで長く置くなら、人間が別の端末で起動する方が確実
 - 状況はログで分かる: `~/.local/share/masuda/logs/masuda-serve.log`、`~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log`（こちらはJSON Lines）。どちらも起動時の`--log-file`・データディレクトリの指定で場所が変わる
-- コマンドは対象リポジトリのトップで打つ
 - VMに渡るのはコミット済みの内容だけ。作業中の変更は渡らない
 - masudaがこのリポジトリに書き込むのは、ワークフローが反映（publish）するときだけ。反映するのは人間が承認したコミットで、作業ツリーには触れない（チェックアウト中のブランチと同じ名前のときだけ、作業ツリーごとfast-forwardする）。実行中もこのリポジトリで別の作業をしてよい
 

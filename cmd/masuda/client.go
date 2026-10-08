@@ -140,7 +140,7 @@ func newTable(w io.Writer) *tabwriter.Writer { return tabwriter.NewWriter(w, 0, 
 
 func runRun(args []string) error {
 	c := newCommand("run", "run <workflow> --branch <name> [--repo <dir>] [--base <ref>] [--image <entry>] [--input name=value|name=@file]...")
-	repo := c.fs.String("repo", ".", "対象リポジトリ（作業ツリーのトップ）")
+	repo := repoFlag(c)
 	workflow := c.fs.String("workflow", "", "ワークフロー（例: workflows/develop）。位置引数でも渡せる")
 	branch := c.fs.String("branch", "", "作るブランチ。publishしないワークフローなら既存のブランチも指定できる")
 	base := c.fs.String("base", "", "分岐元（空なら今チェックアウトしているブランチ、既存のブランチを指定したときはリポジトリの既定のブランチ）")
@@ -161,7 +161,7 @@ func runRun(args []string) error {
 		c.fs.Usage()
 		return errUsage
 	}
-	root, err := filepath.Abs(*repo)
+	root, err := absRepo(*repo)
 	if err != nil {
 		return err
 	}

@@ -23,7 +23,7 @@
 | `the workflow has a privileged node, but privileged command "X" is not approved`（`is not declared`・`changed since it was approved`も） | ワークフロー（呼び出す部品のワークフローを含む）の`privileged`ノードが動かす特権コマンドの宣言・承認が足りない。宣言を書き、`masuda privileged-command approve X`。`masuda resume`でも同じ検査をする |
 | `image default: .masuda/images/default/Dockerfile is missing` | `masuda init`するか、Dockerfileを置く |
 | `branch already exists` | publishするワークフローでは、`--branch`に対象リポジトリにまだ無い名前を使う（既にあるブランチを指定できるのはpublishしないワークフローだけ） |
-| `repo_root ... is not the top of its work tree` | 作業ツリーのトップで打つか、`--repo`にトップを渡す |
+| `repo_root ... is not the top of its work tree` | `--repo`にサブディレクトリを渡している。トップを渡すか、`--repo`を省く（今いる作業ツリーのトップを使う） |
 | `workflow ... needs inputs [instructions]` | `--input instructions=@task.md`を渡す |
 | `workflow ... has problems:` | 定義の検査で落ちた。`masuda workflow check <workflow>`で同じ問題が出る |
 | `json: unknown field "..."` | `settings.json`・`settings.local.json`に知らないキーがある（綴りの誤り）。[設定ファイル](settings.md) |

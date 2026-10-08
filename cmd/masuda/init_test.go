@@ -172,3 +172,48 @@ func TestInitDoesNotDuplicateIgnoreWhenDirIsIgnored(t *testing.T) {
 		}
 	}
 }
+
+func TestInitは__repoを省くとサブディレクトリからでも作業ツリーのトップに書く(t *testing.T) {
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	if err := runInit(nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(config.SettingsPath(repo)); err != nil {
+		t.Errorf("settings.json is not at the top: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(sub, config.DirName)); !os.IsNotExist(err) {
+		t.Errorf(".masuda/ was created in the subdirectory: %v", err)
+	}
+}
+
+func TestInitは__repoで作業ツリーのトップ以外を明示されたら何も書かずに断る(t *testing.T) {
+	repo := t.TempDir()
+	gitIn(t, repo, "init", "-q", "-b", "main")
+	sub := filepath.Join(repo, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	err := runInit([]string{"--repo", sub})
+	if err == nil || !strings.Contains(err.Error(), "is not the top of its work tree") {
+		t.Fatalf("err = %v", err)
+	}
+	for _, dir := range []string{repo, sub} {
+		if _, err := os.Stat(filepath.Join(dir, config.DirName)); !os.IsNotExist(err) {
+			t.Errorf(".masuda/ was created in %s: %v", dir, err)
+		}
+	}
+}
+
+func TestInitは作業ツリーの外で__repoを省くと断る(t *testing.T) {
+	t.Chdir(t.TempDir())
+	err := runInit(nil)
+	if err == nil || !strings.Contains(err.Error(), "not in a git work tree") {
+		t.Fatalf("err = %v", err)
+	}
+}
