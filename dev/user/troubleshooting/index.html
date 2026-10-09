@@ -1753,12 +1753,7 @@
 </code></pre></div>
 </li>
 <li>
-<p>キャッシュを<code>/tmp</code>（メモリ上）へ向ける。チェックのコマンドには頭に書き、エージェントには<code>claudeSettings.env</code>で渡す（次の節）</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">"checks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"GOCACHE=/tmp/go-cache go test ./..."</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOCACHE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/go-cache"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<p>キャッシュを<code>/tmp</code>へ逃がさない。<code>/tmp</code>はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（<code>images.&lt;entry&gt;.memoryMiB</code>）にすぐ当たる。ディスク（既定の<code>~/.cache</code>等）に置いたまま、上のようにディスクを増やす。既に<code>/tmp</code>へ向けている（<code>ENV GOCACHE=/tmp/...</code>や<code>claudeSettings.env</code>）なら外す</p>
 </li>
 </ul>
 <h2 id="dockerfile-env">Dockerfileの<code>ENV</code>が効かない<a class="headerlink" href="#dockerfile-env" title="Permanent link">&para;</a></h2>
@@ -1772,7 +1767,7 @@
 <li>
 <p><strong>masuda-sandboxが古い</strong>: ENVを引き継がない版がある。<code>masuda version</code>でmasudaと同じバージョンか確かめる</p>
 </li>
-<li><strong>確実に渡すには</strong>: チェックはコマンドの頭に（<code>"test": "GOCACHE=/tmp/go-cache go test ./..."</code>）、エージェントには<code>settings.json</code>の<code>claudeSettings.env</code>に書く</li>
+<li><strong>確実に渡すには</strong>: チェックはコマンドの頭に（<code>"test": "GOTOOLCHAIN=local go test ./..."</code>）、エージェントには<code>settings.json</code>の<code>claudeSettings.env</code>に書く</li>
 </ul>
 <h2 id="vm-tmpfs">Dockerfileで置いたファイルがVMの中に無い<a class="headerlink" href="#vm-tmpfs" title="Permanent link">&para;</a></h2>
 <p><code>/run</code>・<code>/root</code>・<code>/tmp</code>・<code>/var/tmp</code>・<code>/var/cache</code>・<code>/var/log</code>は、VMの起動のたびに空になる。ホストの<code>docker run</code>では見えていたものが、VMでは無いことがある（例: PostgreSQLが<code>/var/run/postgresql</code>にロックファイルを作れず起動しない）。置き場所を変えるか、起動のたびに作る（<a href="../settings/#image">設定のimage</a>）。</p>

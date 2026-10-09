@@ -1624,7 +1624,7 @@ note: the Claude API (api.anthropic.com) is always reachable; list other hosts t
 
 masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span>
 </code></pre></div>
-<p><code>gate show</code>は計画を節に分けて出し、最後に打てるコマンドを添える。<code>goal</code>は計画が達成すること、<code>summary</code>はアプローチとテストの実行の仕方、<code>steps</code>は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、<code>alternatives</code>は検討したが採らなかった案、<code>risks</code>は懸念、<code>expected byproducts</code>はビルド・テストが生む副産物として計画外の変更の検出から外すパターン。<code>checks</code>は計画に立てられた問いと、計画を直す役の答え（<code>[addressed]</code>は計画で扱った、<code>[out_of_scope]</code>は範囲外、<code>[open]</code>は判断できず人間に聞いたもの）。出力例（ヘッダーの<code>gate:</code>〜<code>opened:</code>の行は省略）:</p>
+<p><code>gate show</code>は計画を節に分けて出し、最後に打てるコマンドを添える。<code>goal</code>は計画が達成すること、<code>summary</code>はアプローチとテストの実行の仕方、<code>steps</code>は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、<code>alternatives</code>は検討したが採らなかった案、<code>risks</code>は懸念、<code>expected byproducts</code>はビルド・テストが生む副産物として計画外の変更の検出から外すパターン（<code>*</code>は<code>/</code>をまたがず、<code>**</code>は0階層以上をまたぐ。例 <code>**/__pycache__/**</code>）。<code>checks</code>は計画に立てられた問いと、計画を直す役の答え（<code>[addressed]</code>は計画で扱った、<code>[out_of_scope]</code>は範囲外、<code>[open]</code>は判断できず人間に聞いたもの）。出力例（ヘッダーの<code>gate:</code>〜<code>opened:</code>の行は省略）:</p>
 <div class="highlight"><pre><span></span><code>goal: 三角形の面積と周長を求めるモジュールを追加する
 
 summary:
