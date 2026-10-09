@@ -1,6 +1,7 @@
 package guest
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -78,5 +79,46 @@ func TestClaudeMDAppendsProjectRulesAfterLoopRules(t *testing.T) {
 	}
 	if string(ClaudeMD(nil)) != string(loopRules) || string(ClaudeMD([]byte(" \n"))) != string(loopRules) {
 		t.Fatal("without a project CLAUDE.md the loop rules are placed as they are")
+	}
+}
+
+// ゲストのフックは送信が詰まってもメインセッションを長く止めない（#65）。どのイベントのフックにも、
+// curlの上限とフックのtimeoutが付き、curlの最悪の時間がtimeoutに収まる。
+func TestSettingsのフックはすべて送信の上限とtimeoutを持つ(t *testing.T) {
+	b, err := Settings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Hooks map[string][]struct {
+			Hooks []struct {
+				Command string
+				Timeout int
+			}
+		}
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	events := []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd"}
+	if len(s.Hooks) != len(events) {
+		t.Fatalf("hooks = %v", s.Hooks)
+	}
+	// 再試行を始めない窓（20秒）の直前に始めた1回が上限（15秒）まで走るのが最悪。
+	const worstCurl = 20 + 15
+	for _, ev := range events {
+		h := s.Hooks[ev]
+		if len(h) != 1 || len(h[0].Hooks) != 1 {
+			t.Fatalf("%s: %+v", ev, h)
+		}
+		c := h[0].Hooks[0]
+		for _, opt := range []string{"--connect-timeout 3", "--max-time 15", "--retry-max-time 20", HooksURL} {
+			if !strings.Contains(c.Command, opt) {
+				t.Errorf("%s: command %q lacks %q", ev, c.Command, opt)
+			}
+		}
+		if c.Timeout != HookTimeoutSeconds || c.Timeout <= worstCurl {
+			t.Errorf("%s: timeout %d must be %d and longer than curl's worst %d", ev, c.Timeout, HookTimeoutSeconds, worstCurl)
+		}
 	}
 }
