@@ -6,8 +6,8 @@
 //   - MASUDA_LIVE_TEST=1
 //   - `masuda-sandbox serve`が$XDG_RUNTIME_DIR/masuda-sandbox.sock（MASUDA_SANDBOX_SOCKETで上書き可）で
 //     待ち受けていること
-//   - Claude APIのトークン: MASUDA_LIVE_CLAUDE_TOKEN、無ければmasudaの既定のデータディレクトリの
-//     `claude-oauth-token`
+//   - Claude APIのトークン: MASUDA_LIVE_CLAUDE_TOKEN、無ければmasudaの既定のデータディレクトリに
+//     `masuda secret set CLAUDE_CODE_OAUTH_TOKEN`で登録したユーザー単位の値
 //
 // 1周に15〜20分かかるので、`go test`の既定のタイムアウト（10分）では足りない:
 //
@@ -53,7 +53,9 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/api/v1/apiv1connect"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
+	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/secrets"
 	"github.com/TadahiroYamamura/masuda/serve"
 )
 
@@ -71,8 +73,10 @@ func sandboxSocket() string {
 	return filepath.Join(dir, "masuda-sandbox.sock")
 }
 
-// claudeToken はトークンを環境変数か、masudaの既定のデータディレクトリの暫定ファイルから読む。
-// 値はログに出さない。
+// claudeToken はトークンを環境変数か、masudaの既定のデータディレクトリの秘密ストアから読む。
+// 秘密ストアの読み方（ユーザー単位の`masuda secret set CLAUDE_CODE_OAUTH_TOKEN`、無ければ暫定ファイル）は
+// masuda serveと同じStore.ClaudeTokenに任せる。liveは使い捨てのリポジトリで回すので、リポジトリ単位の
+// 登録は見ない。値はログに出さない。
 func claudeToken() string {
 	if v := strings.TrimSpace(os.Getenv("MASUDA_LIVE_CLAUDE_TOKEN")); v != "" {
 		return v
@@ -85,11 +89,11 @@ func claudeToken() string {
 		}
 		dataHome = filepath.Join(home, ".local", "share")
 	}
-	b, err := os.ReadFile(filepath.Join(dataHome, "masuda", "claude-oauth-token"))
+	v, _, err := secrets.New(filepath.Join(dataHome, "masuda")).ClaudeToken("", config.ReservedSecret)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(b))
+	return v
 }
 
 func run(t *testing.T, dir string, name string, args ...string) string {
@@ -250,7 +254,7 @@ func runLap(t *testing.T, workflow, branch string) {
 	}
 	token := claudeToken()
 	if token == "" {
-		t.Skip("no Claude API token (MASUDA_LIVE_CLAUDE_TOKEN or <data dir>/claude-oauth-token)")
+		t.Skip("no Claude API token (MASUDA_LIVE_CLAUDE_TOKEN, or register it with masuda secret set CLAUDE_CODE_OAUTH_TOKEN)")
 	}
 	if dl, ok := t.Deadline(); ok && time.Until(dl) < lapBudget {
 		t.Fatalf("the lap needs up to %v; run with -timeout 60m (the test deadline is in %v)", lapBudget, time.Until(dl).Round(time.Second))
@@ -524,5 +528,25 @@ func TestLiveDockerfilePinsClaudeCode(t *testing.T) {
 		if !strings.Contains(files[".masuda/images/default/Dockerfile"], want) {
 			t.Errorf("%s: Dockerfile lacks %q", name, want)
 		}
+	}
+}
+
+// liveはmasuda serveと同じ秘密ストアのユーザー単位の値を読む（#71）。環境変数があればそちらが勝つ。
+func TestClaudeTokenは秘密ストアのユーザー単位の値を読み環境変数を優先する(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", data)
+	t.Setenv("MASUDA_LIVE_CLAUDE_TOKEN", "")
+	if got := claudeToken(); got != "" {
+		t.Fatalf("no token registered: got %q", got)
+	}
+	if err := secrets.New(filepath.Join(data, "masuda")).Set("", config.ReservedSecret, "from-store\n"); err != nil {
+		t.Fatal(err)
+	}
+	if got := claudeToken(); got != "from-store" {
+		t.Fatalf("token from the secret store = %q", got)
+	}
+	t.Setenv("MASUDA_LIVE_CLAUDE_TOKEN", "from-env")
+	if got := claudeToken(); got != "from-env" {
+		t.Fatalf("the environment variable must win: %q", got)
 	}
 }
