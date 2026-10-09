@@ -46,12 +46,12 @@
     }
   },
   "checks": {
-    "test": "GOCACHE=/tmp/go-cache go test ./...",
+    "test": "go test ./...",
     "lint": "go vet ./..."
   },
   "claudeSettings": {
     "model": "sonnet",
-    "env": { "GOCACHE": "/tmp/go-cache" }
+    "env": { "GOTOOLCHAIN": "local" }
   },
   "agents": {
     "reviewer": { "model": "opus" },

@@ -68,14 +68,7 @@ VMのルートディスクが足りない。ビルドのキャッシュ（Goの`
     { "images": { "default": { "diskMiB": 8192 } } }
     ```
 
-- キャッシュを`/tmp`（メモリ上）へ向ける。チェックのコマンドには頭に書き、エージェントには`claudeSettings.env`で渡す（次の節）
-
-    ```json
-    {
-      "checks": { "test": "GOCACHE=/tmp/go-cache go test ./..." },
-      "claudeSettings": { "env": { "GOCACHE": "/tmp/go-cache" } }
-    }
-    ```
+- キャッシュを`/tmp`へ逃がさない。`/tmp`はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの`GOCACHE`、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（`images.<entry>.memoryMiB`）にすぐ当たる。ディスク（既定の`~/.cache`等）に置いたまま、上のようにディスクを増やす。既に`/tmp`へ向けている（`ENV GOCACHE=/tmp/...`や`claudeSettings.env`）なら外す
 
 ## Dockerfileの`ENV`が効かない {#dockerfile-env}
 
@@ -88,7 +81,7 @@ DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭に�
     ```
 
 - **masuda-sandboxが古い**: ENVを引き継がない版がある。`masuda version`でmasudaと同じバージョンか確かめる
-- **確実に渡すには**: チェックはコマンドの頭に（`"test": "GOCACHE=/tmp/go-cache go test ./..."`）、エージェントには`settings.json`の`claudeSettings.env`に書く
+- **確実に渡すには**: チェックはコマンドの頭に（`"test": "GOTOOLCHAIN=local go test ./..."`）、エージェントには`settings.json`の`claudeSettings.env`に書く
 
 ## Dockerfileで置いたファイルがVMの中に無い {#vm-tmpfs}
 
