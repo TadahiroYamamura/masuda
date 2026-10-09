@@ -24,6 +24,10 @@ const User = "ubuntu"
 // Home はUserのホームディレクトリ。
 const Home = "/home/" + User
 
+// HookTimeoutSeconds はゲストのClaude Codeのフックのtimeout（秒）。#65では既定（60秒のはず）を超えて
+// 136秒走ったので、既定に任せず明示する。
+const HookTimeoutSeconds = 40
+
 // HooksURL はゲストのClaude Codeフックの送り先。
 const HooksURL = "http://masuda.internal:7000/hooks"
 
@@ -450,8 +454,12 @@ func Settings(claudeSettings json.RawMessage) ([]byte, error) {
 	if hooks == nil {
 		hooks = map[string]any{}
 	}
-	cmd := "curl -s -X POST " + HooksURL + " -d @-"
-	hook := []map[string]any{{"hooks": []map[string]any{{"type": "command", "command": cmd}}}}
+	// フックはメインセッションを止めて走るので、ホストへの送信が詰まっても上限で切り上げる（#65。
+	// ゲストが先に閉じた接続がGondolinに残り、次の接続が約130秒待たされたことがある）。
+	// 送れなかった通知は活動の判定から欠けるが、判定はHTTPの観測が主で、フックは補助。
+	// 再試行の窓（--retry-max-time）と1回の上限（--max-time）を足しても、フックのtimeoutに収まる。
+	cmd := "curl -s --connect-timeout 3 --max-time 15 --retry 2 --retry-connrefused --retry-max-time 20 -X POST " + HooksURL + " -d @-"
+	hook := []map[string]any{{"hooks": []map[string]any{{"type": "command", "command": cmd, "timeout": HookTimeoutSeconds}}}}
 	for _, ev := range []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd"} {
 		hooks[ev] = hook
 	}
