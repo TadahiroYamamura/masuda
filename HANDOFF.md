@@ -1,6 +1,6 @@
 # HANDOFF
 ## 作業項目
-2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueと#101を片付けた。developは`3300fe2`（push済み、CI緑）。
+2026-10-08。ハーネス（oncall_pf_template）がsandboxを使う間に、実機の要らないIssueと#101を片付けた。developは`fdd96cc`（push済み、CI緑）。
 
 | Issue | コミット | 中身 |
 |---|---|---|
@@ -13,13 +13,15 @@
 | #72 | `605fa83` | `question answer --note <id>=<text>`。補足は答えの次の行。選択肢のある項目は1行目を検査。補足は役が`ask_human`で組み立てた質問（記録の`ByRole`）だけ。固定の質問には付けられない |
 | #94 | `d9079f3` | `masuda doc`（一覧・ページ・`#<id>`の節・`--serve`）。`internal/docsembed/content/`にサイトと準備後のMarkdownを埋め込む（`release.yml`の`Embed documents`が写す。コミットは目印の`README.md`だけ）。埋め込みが無ければ版のURL。doctorの案内は`docRef` |
 | engine#11 | engine `20fdcb8`、masuda `3300fe2` | 同梱のfixのplan gateの却下を、前回の計画と調査結果を受け取るreplan（quick-plannerの続き）へ戻す。サブエージェントがengineのworktreeで実装し、監督が差分・テスト・壊す確認をした。masudaはgo.modを上げ、`docs/user/workflows.md`のfixの説明を合わせた |
+| （聞き取り） | `d3d87b1` | `masuda wait <id> [--timeout] [--ignore <event>,...]`。人の出番（done・stopped・suspended・blocked → gate・question → dead・auth_rejected・stalled の順）まで待ち、`<きっかけ> <id> ...; next: <コマンド>`の1行で終わる。時間切れは終了コード3。serveとの接続が切れたら繋ぎ直す（1つでもイベントを受けた後の誤りは切断とみなす。serveを強制終了するとinvalid_argumentの「incomplete envelope」になるため）。`prime.md`は「`sleep`と`list`を繰り返さず`wait`をバックグラウンドで動かす」に変えた。きっかけ: ONCALL-1321のセッションが`sleep 15; masuda list`の空振りでトークンを使っていた |
 | #101 | `9a5ce3a` | **契約の変更**（ユーザー判断）: `ACTIVITY_KIND_AUTH_REJECTED = 8`。`api.anthropic.com`の`/v1/messages`の応答が401・403なら`auth_rejected`（`dead`の次、進行中より前）、2xxで解除。`detail`に直し方（登録し直してstop→resume） |
 
 #92・#87・#64・#101・#76・#93・#72・#94は閉じた。前のセッションの`masuda env import`（`394222d`）もdevelopに入っている（未リリース）。契約を変えたので、次のリリースは**v0.4.0**の扱い。go.modのengineは今`main`の擬似バージョン（`v0.3.1-0.20261008084012-20fdcb8f73ec`）なので、リリースではengineにもv0.4.0を打ってgo.modをタグに上げる（`release.yml`の版の検査が止める）。
 
 ワークフローの形への外部の指摘（ワークフローのoutputs・outcomesの宣言、revise系3ノードの統合、optionalなinput）は検討の上、ユーザーが却下した。
 ## 完了した契約テスト
-- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）とCI（ci・docs）が緑（`3300fe2`）。engineも緑（`20fdcb8`）
+- `go build`・`go vet`・`go test ./...`（`GOWORK=off`、契約テストを含む）とCI（ci・docs）が緑（`fdd96cc`）
+- `masuda wait`: フェイクのserveで、無いID・時間切れ・stopでstopped・serveの`kill -9`と再起動を跨いだ繋ぎ直しを確認。VMの実機（ゲート・質問で終わること）は未確認。engineも緑（`20fdcb8`）
 - 実機（#87）: 開発版のserveを別のソケット・データディレクトリで動かし、`USER root`で`COPY`したファイルを`USER ubuntu`で読むDockerfileで`run`。修正前（`0a33e8d`）は起動時のビルドが`Permission denied`で`suspended`、修正後は通ってVMが起動した。後片付け済み
 - #94: `release.yml`の`Embed documents`と同じ手順を手元で回し（`.venv-docs`のmkdocs）、埋め込んだバイナリで一覧・節・誤りの案内・doctorの案内・`--serve`を確認。サイト約4.9MB、Markdown約600KB、バイナリ30MB。実際のリリースで走るのは次のタグから
 - 実機（#101）: ダミーのトークンの`run`で、起動の2秒後に`auth_rejected`、Notificationフックの後も`auth_rejected(idle)`のまま。観測では、Claude Codeは起動時に`/api/claude_code/settings`・`policy_limits`も呼び、ダミーではそれらも401（正しいトークンでの応答は未確認なので判定に使っていない）
@@ -30,6 +32,7 @@
 - 同梱のdevelopで特権コマンドを強制する方法（engineのHANDOFFの未決）
 - primeの実物のClaude Codeでの確認（SessionStartフックが末尾まで読まれるか、deny/askが効くか）
 - v0.4.0のリリース（engineのタグとgo.modの版上げを含む。Skill `release`）
+- ハーネス（v0.3.0）のエージェントには`masuda wait`の案内が届いていない。v0.4.0でハーネスを更新するか、ハーネスのセッションに直接伝えるかは未決
 ## 次の一手
 1. このリポジトリで`masuda init`し、Claude Codeを開き直してprimeが読み込まれること、`masuda gate approve`がdenyされることを確かめる
 2. 下の#85・#83の提案の承認を得たら実装する
