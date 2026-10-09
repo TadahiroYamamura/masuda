@@ -392,6 +392,7 @@ var completionRunners = map[string]func([]string) error{
 	"list":                       runList,
 	"chat":                       runChat,
 	"watch":                      runWatch,
+	"wait":                       runWait,
 	"stop":                       runStop,
 	"remove":                     runRemove,
 	"init":                       runInit,

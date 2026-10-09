@@ -20,6 +20,7 @@ commands:
   list [--all]              list workspaces (--all: also done and stopped ones)
   chat <id>                 attach to the guest's main session (tmux) over ssh
   watch [<id>]              stream status and events
+  wait <id>                 wait until the workspace needs a human or ends, print one line and exit
   gate list|show|approve|reject|comment|dismiss|halt|redo
                             list, show and decide gates (dismiss/halt/redo are for triage)
   question list|answer      list and answer questions
@@ -66,6 +67,8 @@ func main() {
 		err = runWorkflow(os.Args[2:])
 	case "watch":
 		err = runWatch(os.Args[2:])
+	case "wait":
+		err = runWait(os.Args[2:])
 	case "gate":
 		err = runGate(os.Args[2:])
 	case "question":

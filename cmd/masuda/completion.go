@@ -42,6 +42,8 @@ var compFlagKinds = map[string]string{
 	"comment":        "none",
 	"hash":           "none",
 	"after":          "none",
+	"timeout":        "none",
+	"ignore":         "none",
 	"ref":            "none",
 	"out":            "dir",
 	"stall-after":    "none",
@@ -75,6 +77,7 @@ var completionTable = []compNode{
 	clientLeaf("list", argNone, "repo", "all"),
 	clientLeaf("chat", argWorkspace),
 	clientLeaf("watch", argWorkspace, "after"),
+	clientLeaf("wait", argWorkspace, "timeout", "ignore"),
 	{name: "gate", subs: []compNode{
 		clientLeaf("list", argWorkspace),
 		clientLeaf("show", argWorkspace),
