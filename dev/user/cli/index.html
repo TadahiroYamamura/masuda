@@ -605,6 +605,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#wait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wait
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#chat" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1572,6 +1583,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#wait" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        wait
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#chat" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2050,6 +2072,55 @@
 </tbody>
 </table>
 <p>各行の先頭はイベント番号・時刻・ワークスペースID。種類ごとの形は<a href="../operations/#watch">運用</a>。</p>
+<h2 id="wait">wait<a class="headerlink" href="#wait" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda wait &lt;id&gt; [--timeout &lt;duration&gt;] [--ignore &lt;event&gt;[,&lt;event&gt;...]]
+</code></pre></div>
+<p>人の出番が来るまで待ち、1行出して終わる。呼んだ時点で当てはまればすぐ終わる。<code>sleep</code>と<code>list</code>を繰り返して見に行く代わりに、ホストのエージェント（<a href="#prime">prime</a>）がバックグラウンドで1回動かし、終わったら起こされるためのもの。</p>
+<table>
+<thead>
+<tr>
+<th>きっかけ</th>
+<th>いつ</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>done</code>・<code>stopped</code>・<code>suspended</code>・<code>blocked</code></td>
+<td>ワークスペースがその状態になった。先に見る（このときは開いたゲートの記録や活動では終わらない）</td>
+</tr>
+<tr>
+<td><code>gate</code>・<code>question</code></td>
+<td>ゲート・質問が開いている（却下の後に開き直したときも）</td>
+</tr>
+<tr>
+<td><code>dead</code>・<code>auth_rejected</code>・<code>stalled</code></td>
+<td>活動がその種類になった（<a href="../operations/">運用</a>の活動の表）。<code>stalled</code>は長いテストやビルドの最中にも出る</td>
+</tr>
+</tbody>
+</table>
+<p>出力は<code>&lt;きっかけ&gt; &lt;id&gt; &lt;状態&gt; &lt;活動&gt; &lt;詳細&gt;; next: &lt;次に打つコマンド&gt;</code>の1行（例 <code>gate 4f1c2a9e8b3d waiting_gate waiting_gate plan; next: masuda gate show 4f1c2a9e8b3d 0000006</code>）。</p>
+<table>
+<thead>
+<tr>
+<th>フラグ</th>
+<th>既定</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--timeout</code></td>
+<td><code>0</code>（ずっと待つ）</td>
+<td>これだけ待っても何も起きなければ、終了コード3で終わる</td>
+</tr>
+<tr>
+<td><code>--ignore</code></td>
+<td>なし</td>
+<td>これらのきっかけでは終わらない（繰り返し・カンマ区切り可）。知らない名前はエラー</td>
+</tr>
+</tbody>
+</table>
+<p>終了コード: きっかけが来たら0、時間切れは3、ワークスペースが無いなどの誤りは1。<code>masuda serve</code>との接続が切れたら（再起動など）、繋ぎ直して待ち続ける。繋ぎ直すと最初に今の状態を見るので、切れていた間の変化も取りこぼさない（serveを再起動すると動いていたワークスペースは<code>stopped</code>になるので、<code>stopped</code>で終わる）。</p>
 <h2 id="chat">chat<a class="headerlink" href="#chat" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda chat &lt;id&gt;
 </code></pre></div>
