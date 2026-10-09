@@ -102,7 +102,7 @@ func TestClaudeDirReachesSubagent(t *testing.T) {
 	}
 	token := claudeToken()
 	if token == "" {
-		t.Skip("no Claude API token (MASUDA_LIVE_CLAUDE_TOKEN or <data dir>/claude-oauth-token)")
+		t.Skip("no Claude API token (MASUDA_LIVE_CLAUDE_TOKEN, or register it with masuda secret set CLAUDE_CODE_OAUTH_TOKEN)")
 	}
 	if dl, ok := t.Deadline(); ok && time.Until(dl) < claudeDirBudget {
 		t.Fatalf("the test needs up to %v; run with -timeout 20m (the test deadline is in %v)", claudeDirBudget, time.Until(dl).Round(time.Second))
