@@ -4,7 +4,8 @@ go 1.26.3
 
 require (
 	connectrpc.com/connect v1.21.0
-	github.com/TadahiroYamamura/masuda-engine v0.3.1-0.20261008084012-20fdcb8f73ec
+	github.com/TadahiroYamamura/masuda-engine v0.3.1-0.20261009033421-042dcd526de2
+	github.com/bmatcuk/doublestar/v4 v4.10.2
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	go.yaml.in/yaml/v3 v3.0.4
