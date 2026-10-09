@@ -18,7 +18,7 @@
    - `workflows/review`: コードを変えずにレビューし、結果を書き出す
 2. 入力をファイルに書く。何をしてほしいか、範囲、してはいけないことを具体的に
 3. `masuda run <workflow> --branch <ブランチ> --input <入力名>=@<ファイル>`。`<id> starting`を出してすぐ返る。`--branch`は反映するワークフローでは新しい名前、反映しないワークフローでは既にあるブランチも指せる
-4. `masuda list`で状態を見る（終わったものも見るなら`--all`）。STATEの意味:
+4. `masuda wait <id>`をバックグラウンドで動かし、終わるのを待つ（`sleep`と`masuda list`を繰り返して見に行かない。空振りのたびにトークンを使う）。人の出番（ゲート・質問が開いた、終わった・止まった、エージェントが動いていない）が来ると、きっかけと次に打つコマンドを1行出して終わる。呼んだ時点で当てはまればすぐ終わる。長いテストやビルドでも出る`stalled`で起こされたくなければ`--ignore stalled`。出番を片付けたら、また`masuda wait <id>`で待つ。状態は`masuda list`でも見られる（終わったものも見るなら`--all`）。STATEの意味:
    - `starting`・`running`: 作業中。待つ
    - `waiting_gate`: `masuda gate show <id> <出現ID>`で中身を読み、要点を人間に伝えて判断を待つ
    - `waiting_question`: `masuda question list <id>`で問いを読む。文脈から答えられるなら`masuda question answer`で答えてよい（打つ前に人間に確かめられる）。判断がつかなければ人間に伝えて答えを待つ
