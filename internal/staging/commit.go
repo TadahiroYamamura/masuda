@@ -6,10 +6,11 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 // Identity はstagingに作るコミットの作者兼コミッター。
@@ -52,14 +53,16 @@ type CommitResult struct {
 	Commit string
 }
 
-// matchPath はpがpatternsのどれかに当たるかを返す。パターンは完全一致か、
-// path.Matchのグロブ（`*`は`/`をまたがない）。
+// matchPath はpがpatternsのどれかに当たるかを返す。パターンは完全一致か、doublestarの
+// グロブ（`*`は`/`をまたがず、`**`は0階層以上をまたぐ）。engineもコミット前の逸脱の判定で
+// Byproductsを同じ規則で照合する（masuda-engineのmatchesByproduct）。規則がずれると、
+// 片方が通した副産物をもう片方が逸脱にする。
 func matchPath(p string, patterns []string) bool {
 	for _, pat := range patterns {
 		if pat == p {
 			return true
 		}
-		if ok, _ := path.Match(pat, p); ok {
+		if ok, err := doublestar.Match(pat, p); err == nil && ok {
 			return true
 		}
 	}

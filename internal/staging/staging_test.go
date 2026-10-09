@@ -125,22 +125,23 @@ func TestCommitTakesOnlyAllowedAndReportsDeviations(t *testing.T) {
 	repo := newRepo(t)
 	s, res := newStaging(t, repo, "feat/x")
 	wip := guestSnapshot(t, s, "feat/x", "0001",
-		map[string]string{"b.go": "package b\n", "notes.txt": "scratch\n", "go.sum": "x\n"}, "a.go")
+		map[string]string{"b.go": "package b\n", "notes.txt": "scratch\n", "go.sum": "x\n", "src/pkg/__pycache__/m.pyc": "pyc\n", "logs/x.log": "log\n"}, "a.go")
 
-	// notes.txtは計画外なので何もコミットしない。
-	r, err := s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*"}, Message: "feat: add b"})
+	// notes.txtは計画外なので何もコミットしない。副産物のグロブはengineと同じ規則で照合する（#66）:
+	// **/__pycache__/**は深さを問わず当たり、*.logは/をまたがないのでlogs/x.logには当たらない。
+	r, err := s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*", "**/__pycache__/**", "*.log"}, Message: "feat: add b"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(r.Deviations, ",") != "notes.txt" || r.Commit != "" {
-		t.Fatalf("want deviation notes.txt, got %+v", r)
+	if strings.Join(r.Deviations, ",") != "logs/x.log,notes.txt" || r.Commit != "" {
+		t.Fatalf("want deviations logs/x.log and notes.txt, got %+v", r)
 	}
 	if h, _ := s.ResolveCommit(ctx, "refs/heads/feat/x"); h != res.BaseCommit {
 		t.Fatalf("branch moved on deviation")
 	}
 
 	// 逸脱をByproductsへ回せばAllowedだけが入る（削除も含む）。
-	r, err = s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*", "notes.txt"}, Message: "feat: add b"})
+	r, err = s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*", "notes.txt", "**/__pycache__/**", "logs/*"}, Message: "feat: add b"})
 	if err != nil || len(r.Deviations) != 0 || r.Commit == "" {
 		t.Fatalf("Commit: %v %+v", err, r)
 	}
@@ -157,9 +158,39 @@ func TestCommitTakesOnlyAllowedAndReportsDeviations(t *testing.T) {
 	}
 
 	// 変更が無ければブランチは動かない。
-	r2, err := s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*", "notes.txt"}, Message: "again"})
+	r2, err := s.Commit(ctx, CommitOptions{Branch: "feat/x", WIP: wip, Allowed: []string{"b.go", "a.go"}, Byproducts: []string{"go.*", "notes.txt", "**/__pycache__/**", "logs/*"}, Message: "again"})
 	if err != nil || r2.Commit != r.Commit {
 		t.Fatalf("no-op commit: %v %+v", err, r2)
+	}
+}
+
+// engine（masuda-engineのTestMatchesByproduct）と同じ入力と期待値。両方の照合の規則がそろっていることを、
+// 同じ表で確かめる。
+func TestMatchPathは完全一致とdoublestarのグロブで照合する(t *testing.T) {
+	cases := []struct {
+		pattern, path string
+		want          bool
+	}{
+		{"go.sum", "go.sum", true},
+		{"go.sum", "sub/go.sum", false},
+		{"**/__pycache__/**", "__pycache__/a.pyc", true},
+		{"**/__pycache__/**", "pkg/__pycache__/a.pyc", true},
+		{"**/__pycache__/**", "a/b/__pycache__/c/d.pyc", true},
+		{"**/__pycache__/**", "pkg/__pycache__x/a.pyc", false},
+		{"*.log", "debug.log", true},
+		{"*.log", "logs/debug.log", false},
+		{"**/*.pyc", "a.pyc", true},
+		{"**/*.pyc", "a/b/c.pyc", true},
+		{"build/*", "build/x", true},
+		{"build/*", "build/x/y", false},
+		{"build/**", "build/x/y", true},
+		{"[", "[", true},
+		{"[", "a", false},
+	}
+	for _, c := range cases {
+		if got := matchPath(c.path, []string{c.pattern}); got != c.want {
+			t.Errorf("matchPath(%q, [%q]) = %v, want %v", c.path, c.pattern, got, c.want)
+		}
 	}
 }
 
