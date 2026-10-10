@@ -51,7 +51,26 @@ v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え�
   - `~/.config/masuda/config.json`はハーネスと共有で、`sandboxSocket`が書いてあれば明示しない限りそちらが使われる。開発版は`--sandbox-socket`を必ず明示する
   - 開発版のCLIは毎回`--socket "$XDG_RUNTIME_DIR/masuda-dev.sock"`を付ける（既定はハーネスの`masuda.sock`）
   - 秘密はデータディレクトリに置かれるので、開発版のserveにはトークンを別に登録する: `./masuda secret set CLAUDE_CODE_OAUTH_TOKEN --socket "$XDG_RUNTIME_DIR/masuda-dev.sock"`（値は標準入力から）
-- **sandbox**: 普段は共有（ハーネスの`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）で、開発版のmasudaの`--sandbox-socket`もそこを指してよい。`masuda version`の`contract: ok`はハーネスのmasudaと共有のsandboxの組で見る。`sandbox.proto`を変える作業では、開発版の`masuda-sandbox serve`（`../masuda-sandbox`の`node dist/cli.js serve`）を`$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock`で立て、開発版のmasudaはそちらを指す
+- **sandbox**: 普段は共有（ハーネスの`$XDG_RUNTIME_DIR/masuda-sandbox.sock`）で、開発版のmasudaの`--sandbox-socket`もそこを指してよい。`masuda version`の`contract: ok`はハーネスのmasudaと共有のsandboxの組で見る。`sandbox.proto`を変える作業とリリース前の確認（手順1-0・1-2）では、下の**開発版のsandbox**を立て、開発版のmasudaとliveはそちらを指す
+- **開発版のsandbox**: ソケットに加えて、記録とイメージの資産もハーネスから切り離して立てる。こうしておけば、ハーネスでワークスペースが走っていても（ゲート待ちを含む）並べて確かめられる
+
+  ```sh
+  (cd ../masuda-sandbox && pnpm build && \
+    XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" \
+    exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
+  ```
+
+  | 切り離すもの | 既定の場所 | 共有したときに起きること |
+  |---|---|---|
+  | ソケット | `$XDG_RUNTIME_DIR/masuda-sandbox.sock` | ハーネスのserveと同じソケットで待ち受けられない |
+  | 記録（`sandboxes.json`・`images.json`）: `XDG_DATA_HOME` | `~/.local/share/masuda-sandbox` | 2つのserveが同じファイルを書き換え、ハーネスのVMやイメージの記録を上書きしうる |
+  | イメージの資産: `GONDOLIN_IMAGE_STORE` | `~/.cache/gondolin/images` | 契約テストの`DeleteImage`や`prune`が、自分の`images.json`に無い資産としてハーネスのイメージを消しうる |
+
+  - 開発版の資産の置き場は初回は空なので、イメージは作り直しになる（数分。2回目からはそこに残る）
+  - **メモリ**: VMは既定で4096MiB。立てる前に`grep MemAvailable /proc/meminfo`が「VMの分＋1.5GiB」以上あること。回している間も見て、1.5GiBを切ったら止める（WSL2がOOMになるとハーネスのVMも巻き込まれる）
+  - 開発版のVMを使うもの同士（liveの2つ、契約テスト）は同時に走らせない。同じ開発版のsandboxを順に使う
+  - **孤児の確認**: 立てる前に`pgrep -a qemu-system`でハーネスのqemuのpidを控え、終わった後にそれ以外が残っていないことを見る
+  - ハーネスの更新（手順6）だけは、従来どおりハーネスのワークスペースをすべて終わらせてから行う
 - **masuda自身の`.masuda/`**: 入っているハーネスの版で読める範囲に留める。新しい設定・スキーマは、その版をハーネスにしてから使う
 - **gate・questionの操作**: serveとCLIは同じ版の組で使う。ハーネスのserveのgate・questionはハーネスのCLI（`masuda`）で操作し、開発版のCLI（`./masuda`）をハーネスのserveに向けない。開発版のserveは開発版のCLIで操作する
 - **liveテスト（`live/`）**: VMの中では回せないので、ホストで開発版として回す。liveは既定で共有のsandboxに繋ぐ。`sandbox.proto`が変わる作業とリリース前の確認（手順1-0・1-2）では、`MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"`で開発版のsandboxを指す
@@ -75,13 +94,15 @@ v0.1.0の初回にだけ要った作業（`redesign`→`develop`の付け替え�
 .claude/skills/release/scripts/claude-code-latest.sh   # 例 2.1.288
 ```
 
-`internal/guest/guest.go`の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。
+`internal/guest/guest.go`の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。VMを使う段は、「開発版との分離」の**開発版のsandbox**で回す（メモリと孤児の確認もそこに従う）。
 
 ```sh
 GOWORK=off go test -count=1 ./cmd/masuda/ ./internal/guest/ ./live/
 .claude/skills/release/scripts/precheck.sh --claude-code    # 版が雛形・liveに入り、配布元に実在する
 # 開発版のsandboxを立てる（liveは既定でハーネスのsandboxに繋ぎ、sandbox.protoが変わるリリースでは契約が合わず起動しない）
-(cd ../masuda-sandbox && pnpm build && exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
+(cd ../masuda-sandbox && pnpm build && \
+  XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" \
+  exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
 # 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）
 MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
 # 実機1周（15〜20分）
@@ -109,11 +130,13 @@ liveのイメージはDockerfileが変われば作り直される（初回は数
 
 ### 1-2. 遅い確認
 
-遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。
+遅い確認は手で回す。VMを使うものは同時に走らせず、1-0と同じく「開発版との分離」の**開発版のsandbox**で回す。記録と資産を切り離してあるので、ハーネスで走っているワークスペースとは並べてよい（契約テストは資産を消すので、切り離さずに回すとハーネスのイメージを消しうる）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。
 
 ```sh
 # masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）
-(cd ../masuda-sandbox && pnpm build && exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
+(cd ../masuda-sandbox && pnpm build && \
+  XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" \
+  exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock") & sbpid=$!
 (cd ../masuda-sandbox && MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" pnpm test:contract)
 # masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす
 cd ../masuda && MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock" MASUDA_LIVE_TEST=1 GOWORK=off go test -count=1 -timeout 20m -v -run TestGuestSubagentContinuation ./live/
@@ -135,7 +158,7 @@ t=$(mktemp -d)
   "$t/prefix/bin/masuda-sandbox" --version
 )
 rm -rf "$t"
-pgrep -af qemu-system   # 孤児が無いこと
+pgrep -a qemu-system   # 立てる前に控えたハーネスのqemu以外が残っていないこと
 ```
 
 liveが完走したら、ログに2分以上の無反応が無いかも見る（#65の停止は1周に2回ほど出る。完走を妨げないが、増えていたら記録する）。
@@ -252,4 +275,4 @@ scripts/gh.sh run watch <docs-run-id> --exit-status
 - **GitHubのランナー（Ubuntu 24.04）**: AppArmorが非特権ユーザー名前空間を禁じているため、フェイクsandboxの`unshare -Urm`を使うテスト（C-M7・serveの特権コマンド）が落ちる。`ci.yml`・`release.yml`に`sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0`のステップがある。ランナーの像が変わったら最初に疑う
 - **同じソケットに2つのserve**: 既定のソケットとデータディレクトリはハーネスが使う。確かめるもの・開発版のserveは別のソケットとデータディレクトリで立てる。データディレクトリを2つのmasuda serveで共有しない（「開発版との分離」）
 - **`docs.yml`のengineの文書**: サイトはmasuda-engineの既定ブランチ（`main`）から`workflow-schema.md`を取り込む。engineの`main`の先頭がタグと同じ時点で打てば一致する
-- **sandboxの契約テストと資産ストア**: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveとも、ハーネスで走っているワークスペースとも同時に走らせない
+- **sandboxの契約テストと資産ストア**: 契約テストはサービス稼働中に資産ストアを書き換える（masuda-sandbox #5）。開発版のsandboxを`XDG_DATA_HOME`・`GONDOLIN_IMAGE_STORE`で切り離さずに回すと、ハーネスのイメージの記録や資産を壊しうる。liveとは同時に走らせない
