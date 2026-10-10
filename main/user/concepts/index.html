@@ -1678,6 +1678,7 @@
 <li>ワークスペースのブランチ（<code>--branch</code>で決めた名前）はstagingの中にだけ作られ、コミットもstagingに積まれる</li>
 <li>ワークフローのノードが1つ終わるたびに、masudaがVMの作業ツリー全体のスナップショット（WIP）を取り込む。gitignoreされたファイルは含まない</li>
 <li>VMの中のエージェントにはstagingへ書く手段が無い。取り込みは常にホストから取りに行く</li>
+<li><strong>走行中のワークスペースは分岐元に追従しない。</strong> stagingは始めたときの複製で、その後にあなたのリポジトリの分岐元へ入った修正（他のワークスペースがpublishしたものを含む）は届かない。VMの中からあなたのリポジトリへ取りに行く経路も無い。走行中に分岐元の修正が要るなら、<code>gate reject --comment</code>で「直した」と伝えても届かないので、<code>masuda remove</code>して新しく<code>masuda run</code>し直す</li>
 </ul>
 <h2 id="vm">VM<a class="headerlink" href="#vm" title="Permanent link">&para;</a></h2>
 <p>1ワークスペースにつき1つ。<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>から作ったイメージで起動する。イメージは<code>masuda run</code>を打った<strong>作業ツリー</strong>の<code>.masuda/</code>から作る（<code>--branch</code>で指したブランチの<code>.masuda/</code>は使わない）。<code>Dockerfile</code>の<code>RUN</code>はホストのDockerで動くので、信頼できないブランチの定義を作業ツリーに取り出してから<code>run</code>しないこと。レビューしたいだけなら<code>--branch</code>で指せば、作業ツリーは<code>main</code>のままでよい。</p>

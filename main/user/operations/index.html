@@ -1542,6 +1542,11 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 <td><code>stop</code>して<code>resume</code>する</td>
 </tr>
 <tr>
+<td><code>auth_rejected</code></td>
+<td>Claude APIがトークンを拒んだ（401・403）。値の誤り・失効</td>
+<td>トークンを登録し直して<code>stop</code>→<code>resume</code>（<a href="../troubleshooting/#stalled">トラブルシューティング</a>）</td>
+</tr>
+<tr>
 <td><code>idle</code></td>
 <td>何もすることが無い（<code>done</code>・<code>stopped</code>・<code>suspended</code>・<code>blocked</code>）、またはまだ起動中（<code>starting</code>）</td>
 <td><code>starting</code>が長いなら<a href="../troubleshooting/#starting-long">トラブルシューティング</a></td>

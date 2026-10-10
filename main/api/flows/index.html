@@ -1911,8 +1911,9 @@
 </code></pre></div>
 </li>
 <li>
-<p>過不足・選択肢以外は<code>invalid_argument</code>（メッセージにどの項目かが入る）。答えると実行が進み、答えは次のノードの入力になる</p>
+<p>役が組み立てた質問では、<code>options</code>がある項目の答えを複数行にでき、1行目が選択肢、2行目からが補足になる（補足もそのまま役へ届く）。定義に書いた固定の質問は1行の選択肢だけを受け付ける。<code>options</code>の無い項目は複数行でもそのまま答え</p>
 </li>
+<li>過不足・選択肢以外（1行目が選択肢に無い、固定の質問に補足がある）は<code>invalid_argument</code>（メッセージにどの項目かが入る）。答えると実行が進み、答えは次のノードの入力になる</li>
 <li>エージェントは同じ出現で何度も聞けるので、答えた後に同じ<code>occurrence</code>で新しい質問が現れることがある</li>
 <li>ワークスペースを止めて再開すると、エージェントが出していた質問は破棄される（聞いていたエージェントは前のVMと共に無くなり、再開後に新しいエージェントが改めて聞く）。定義に書いた固定の質問は残る</li>
 </ul>
@@ -1948,6 +1949,11 @@
 <td>異常。<code>detail</code>に理由。進まないので、利用者に<code>Stop</code>→<code>Resume</code>を案内する</td>
 </tr>
 <tr>
+<td><code>AUTH_REJECTED</code></td>
+<td>Claude APIの会話の要求（<code>/v1/messages</code>）への直近の応答が401・403。会話の要求が2xxを返せば戻る</td>
+<td>異常。<code>detail</code>にステータスと直し方。利用者にトークンの登録し直しと<code>Stop</code>→<code>Resume</code>を案内する（トークンはVMの起動時に渡すので、動いているVMには届かない）</td>
+</tr>
+<tr>
 <td><code>WORKING</code></td>
 <td>Claude APIへのリクエストが進行中</td>
 <td>「作業中」</td>
@@ -1974,7 +1980,7 @@
 <li><code>detail</code>: 最後に分かったことの短い説明（<code>"tool Edit"</code>・<code>"mcp next_task"</code>・<code>"claude session ended"</code>・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（<code>"building image (log: &lt;パス&gt;)"</code>→<code>"booting the VM"</code>→<code>"preparing the guest"</code>→<code>"starting Claude Code"</code>）で、段階が変わるたびに<code>status</code>が流れる</li>
 <li><code>last_activity</code>: 最後に活動を観測した時刻。<code>status</code>は時刻だけの変化では流れないので、経過時間はクライアントが進める</li>
 <li>活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（<code>IDLE</code>）になり、<code>Resume</code>で観測をやり直す</li>
-<li><code>state</code>がRUNNINGのままでも<code>activity</code>が<code>DEAD</code>・<code>STALLED</code>になる。一覧では<code>state</code>より<code>activity</code>を目立たせる方が、利用者が手を打つべきものに気づきやすい</li>
+<li><code>state</code>がRUNNINGのままでも<code>activity</code>が<code>DEAD</code>・<code>AUTH_REJECTED</code>・<code>STALLED</code>になる。一覧では<code>state</code>より<code>activity</code>を目立たせる方が、利用者が手を打つべきものに気づきやすい</li>
 </ul>
 <h2 id="lifecycle"><code>Stop</code>・<code>Resume</code>・<code>Remove</code><a class="headerlink" href="#lifecycle" title="Permanent link">&para;</a></h2>
 <table>

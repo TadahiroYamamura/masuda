@@ -1658,12 +1658,12 @@
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"checks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"GOCACHE=/tmp/go-cache go test ./..."</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"go test ./..."</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"lint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"go vet ./..."</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sonnet"</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOCACHE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/go-cache"</span><span class="w"> </span><span class="p">}</span>
+<span class="w">    </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOTOOLCHAIN"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="w"> </span><span class="p">}</span>
 <span class="w">  </span><span class="p">},</span>
 <span class="w">  </span><span class="nt">"agents"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"reviewer"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"opus"</span><span class="w"> </span><span class="p">},</span>
@@ -2102,7 +2102,7 @@
 <td>オブジェクト（名前→値）</td>
 <td>空</td>
 <td><code>envFiles</code>の公開値（秘密として宣言していない変数の値）。<code>envFiles</code>の変数で、秘密でもなくここにも無いものがあれば<code>masuda run</code>が断る</td>
-<td>手で書く</td>
+<td>手で書く。手元の<code>.env</code>からは<code>masuda env import</code>でまとめて書ける</td>
 </tr>
 <tr>
 <td><code>stallAfter</code></td>

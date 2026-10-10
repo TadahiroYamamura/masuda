@@ -837,7 +837,7 @@
   <a href="#stalled" class="md-nav__link">
     <span class="md-ellipsis">
       
-        動いているはずなのに進まない（stalled・waiting_input）
+        動いているはずなのに進まない（stalled・waiting_input・auth_rejected）
       
     </span>
   </a>
@@ -1514,7 +1514,7 @@
   <a href="#stalled" class="md-nav__link">
     <span class="md-ellipsis">
       
-        動いているはずなのに進まない（stalled・waiting_input）
+        動いているはずなのに進まない（stalled・waiting_input・auth_rejected）
       
     </span>
   </a>
@@ -1661,7 +1661,7 @@
 </tr>
 <tr>
 <td><code>repo_root ... is not the top of its work tree</code></td>
-<td>作業ツリーのトップで打つか、<code>--repo</code>にトップを渡す</td>
+<td><code>--repo</code>にサブディレクトリを渡している。トップを渡すか、<code>--repo</code>を省く（今いる作業ツリーのトップを使う）</td>
 </tr>
 <tr>
 <td><code>workflow ... needs inputs [instructions]</code></td>
@@ -1753,12 +1753,7 @@
 </code></pre></div>
 </li>
 <li>
-<p>キャッシュを<code>/tmp</code>（メモリ上）へ向ける。チェックのコマンドには頭に書き、エージェントには<code>claudeSettings.env</code>で渡す（次の節）</p>
-<div class="highlight"><pre><span></span><code><span class="p">{</span>
-<span class="w">  </span><span class="nt">"checks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"GOCACHE=/tmp/go-cache go test ./..."</span><span class="w"> </span><span class="p">},</span>
-<span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOCACHE"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/tmp/go-cache"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<span class="p">}</span>
-</code></pre></div>
+<p>キャッシュを<code>/tmp</code>へ逃がさない。<code>/tmp</code>はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（<code>images.&lt;entry&gt;.memoryMiB</code>）にすぐ当たる。ディスク（既定の<code>~/.cache</code>等）に置いたまま、上のようにディスクを増やす。既に<code>/tmp</code>へ向けている（<code>ENV GOCACHE=/tmp/...</code>や<code>claudeSettings.env</code>）なら外す</p>
 </li>
 </ul>
 <h2 id="dockerfile-env">Dockerfileの<code>ENV</code>が効かない<a class="headerlink" href="#dockerfile-env" title="Permanent link">&para;</a></h2>
@@ -1772,7 +1767,7 @@
 <li>
 <p><strong>masuda-sandboxが古い</strong>: ENVを引き継がない版がある。<code>masuda version</code>でmasudaと同じバージョンか確かめる</p>
 </li>
-<li><strong>確実に渡すには</strong>: チェックはコマンドの頭に（<code>"test": "GOCACHE=/tmp/go-cache go test ./..."</code>）、エージェントには<code>settings.json</code>の<code>claudeSettings.env</code>に書く</li>
+<li><strong>確実に渡すには</strong>: チェックはコマンドの頭に（<code>"test": "GOTOOLCHAIN=local go test ./..."</code>）、エージェントには<code>settings.json</code>の<code>claudeSettings.env</code>に書く</li>
 </ul>
 <h2 id="vm-tmpfs">Dockerfileで置いたファイルがVMの中に無い<a class="headerlink" href="#vm-tmpfs" title="Permanent link">&para;</a></h2>
 <p><code>/run</code>・<code>/root</code>・<code>/tmp</code>・<code>/var/tmp</code>・<code>/var/cache</code>・<code>/var/log</code>は、VMの起動のたびに空になる。ホストの<code>docker run</code>では見えていたものが、VMでは無いことがある（例: PostgreSQLが<code>/var/run/postgresql</code>にロックファイルを作れず起動しない）。置き場所を変えるか、起動のたびに作る（<a href="../settings/#image">設定のimage</a>）。</p>
@@ -1827,7 +1822,7 @@
 <li>npmのキャッシュはユーザーごとなので、エージェントが動く<code>ubuntu</code>で呼ぶ</li>
 <li><code>npm_config_offline=true</code>にしたのにキャッシュに無いと<code>ENOTCACHED</code>で、設定していないと通信のエラー（<code>EAI_AGAIN</code>など）で失敗する</li>
 </ul>
-<h2 id="stalled">動いているはずなのに進まない（<code>stalled</code>・<code>waiting_input</code>）<a class="headerlink" href="#stalled" title="Permanent link">&para;</a></h2>
+<h2 id="stalled">動いているはずなのに進まない（<code>stalled</code>・<code>waiting_input</code>・<code>auth_rejected</code>）<a class="headerlink" href="#stalled" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong><code>stalled</code></strong>: VMの中のClaude Codeは生きているが、しきい値（既定10分）を超えて、Claude APIへの通信もツールの使用も無い。masudaは何もしない（表示だけ）。<code>masuda chat &lt;id&gt;</code>で画面を見る<ul>
 <li>長いビルドやテストを動かしているだけなら、待てば戻る。マシンが遅くて頻繁に出るなら、<code>settings.local.json</code>の<code>stallAfter</code>を長くする（例 <code>"20m"</code>。次の<code>run</code>・<code>resume</code>から効く）。どのリポジトリでも長くしたいなら<a href="../settings/#serve-config"><code>config.json</code></a>の<code>stallAfter</code>（<code>masuda serve</code>の再起動で効く）</li>
@@ -1836,6 +1831,7 @@
 <li><strong><code>waiting_input(idle)</code></strong>: メインのClaude Codeがターンを終え、人の入力を待っている。多くは、エージェントがmasudaの決まり（質問は<code>question</code>ノードでだけ聞く）を外れて、画面の上であなたに問いかけて止まっている。<code>masuda chat</code>で読み、続けてよければ「続けて」等と答える。直らなければ<code>masuda stop</code>→<code>masuda resume</code>で、そのタスクをやり直させる</li>
 <li><strong><code>waiting_input(permission)</code></strong>: 道具の使用の許可を待っている。<code>chat</code>で答える</li>
 <li><strong><code>dead</code></strong>: Claude Codeのセッションが無くなった。<code>masuda stop</code>→<code>masuda resume</code></li>
+<li><strong><code>auth_rejected</code></strong>: Claude APIがトークンを拒んだ（401・403）。登録した値の誤りか失効。VMの中のClaude Codeは<code>/login</code>を求めて止まっている。<code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>で登録し直し（<code>claudeToken</code>で別の名前を選んでいればその名前）、<code>masuda stop</code>→<code>masuda resume</code>する（トークンはVMの起動時に渡すので、登録し直しただけでは動いているVMに届かない）。Claude APIへの会話の要求が一度成功すれば、表示は元に戻る</li>
 </ul>
 <h2 id="chat-blocks-destroy">終わるはずのrunが<code>running</code>のまま進まない（chatにアタッチしたまま）<a class="headerlink" href="#chat-blocks-destroy" title="Permanent link">&para;</a></h2>
 <p>ワークフローがpublish・discardに着いたのに、<code>masuda list</code>が<code>running</code>のまま変わらない。<code>masuda chat</code>でアタッチしたままだと、VMの破棄が終わらない（masuda-sandboxの不具合、TadahiroYamamura/masuda-sandbox#8）。</p>
