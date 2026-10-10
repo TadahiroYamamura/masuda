@@ -1,0 +1,1814 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/0.4/user/install/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../quickstart/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>導入 - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              導入
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前提
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="前提">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kvmlinux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KVMを使えるか確かめる（Linux）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        入れる
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="入れる">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        かんたんな入れ方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        手で入れる
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="手で入れる">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#masuda-sandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda-sandbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        確かめる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補完を有効にする
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        起動
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claudeのトークンを登録する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claudeのトークンを登録する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. トークンを作る
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. masudaに登録する
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新と削除
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../design/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        前提
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="前提">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#kvmlinux" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KVMを使えるか確かめる（Linux）
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        入れる
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="入れる">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        かんたんな入れ方
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        手で入れる
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="手で入れる">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#masuda-sandbox" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda-sandbox
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        確かめる
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        補完を有効にする
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_8" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        起動
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#claude-token" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Claudeのトークンを登録する
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Claudeのトークンを登録する">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. トークンを作る
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#2-masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. masudaに登録する
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_9" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        更新と削除
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">導入<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>masudaは2つの常駐プロセスで動く。</p>
+<ul>
+<li><code>masuda-sandbox serve</code>: VM（QEMU）を作り、中でコマンドを動かし、VMから外への通信を見張る</li>
+<li><code>masuda serve</code>: ワークフローを進め、ゲートや質問を人間に出し、gitへの反映を行う。<code>masuda</code>の各コマンドはこれに話しかける</li>
+</ul>
+<p>どちらもsudo無しで動く。Claude Codeはホストではなく、VMのイメージの中に入る。VMのClaude Codeの版は対象リポジトリの<code>.masuda/images/&lt;entry&gt;/Dockerfile</code>で固定されている。masudaの各リリースはその時点の最新版で実機検証し、<code>masuda init</code>の雛形にその版を書く（検証した版は<code>masuda version</code>の<code>claude code:</code>の行とReleaseのノートに出る）。上げるときは<a href="../settings/#image">設定のimage</a>を見る。</p>
+<p>配布物は<a href="https://github.com/TadahiroYamamura/masuda/releases">GitHub Release</a>に添付したtarballだけで、npmレジストリやパッケージマネージャーには公開していない。<strong>masudaとmasuda-sandboxは同じバージョンを組で入れる</strong>（違うと<code>masuda serve</code>が起動しない）。</p>
+<h2 id="_2">前提<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Linux x86_64（WSL2を含む）</th>
+<th>macOS arm64（実験的）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>仮想化</td>
+<td>QEMU + KVM（<code>/dev/kvm</code>）</td>
+<td>QEMU + HVF</td>
+</tr>
+<tr>
+<td>パッケージ</td>
+<td><code>sudo apt install qemu-system-x86 qemu-utils</code></td>
+<td><code>brew install qemu node@22</code></td>
+</tr>
+<tr>
+<td>Node</td>
+<td>22.19以上（npmを含む）</td>
+<td>22.19以上</td>
+</tr>
+<tr>
+<td>Docker</td>
+<td>VMのイメージのビルドに使う。sudo無しで<code>docker</code>を叩けること</td>
+<td>Docker Desktop等</td>
+</tr>
+<tr>
+<td>git</td>
+<td>必須</td>
+<td>必須</td>
+</tr>
+<tr>
+<td>検証状況</td>
+<td>実機で1周を確認済み（WSL2 Ubuntu 24.04）</td>
+<td><strong>未検証</strong></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">macOSは実験的</p>
+<p>macOS arm64は設計上の対応先で、Releaseにもバイナリを添付しているが、まだ実機で1周させていない。手順は同じになるはずだが、動かなかった場合はIssueで知らせてほしい。</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Nodeの版</p>
+<p>VMを動かすGondolinには、Node 24.17以上で外への通信が502になる既知の問題（Gondolin #134）がある。22.19以上・24.17未満を使うのが無難。</p>
+</div>
+<h3 id="kvmlinux">KVMを使えるか確かめる（Linux）<a class="headerlink" href="#kvmlinux" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>ls<span class="w"> </span>-l<span class="w"> </span>/dev/kvm
+<span class="c1"># crw-rw---- 1 root kvm 10, 232 ... /dev/kvm</span>
+id<span class="w"> </span>-nG<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-w<span class="w"> </span>kvm
+</code></pre></div>
+<p><code>/dev/kvm</code>が無ければ、BIOSの仮想化支援（Intel VT-x・AMD-V）か、WSL2の入れ子の仮想化が無効になっている。自分が<code>kvm</code>グループに入っていなければ<code>sudo usermod -aG kvm "$USER"</code>のあとログインし直す。</p>
+<h2 id="_3">入れる<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
+<h3 id="_4">かんたんな入れ方<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-fsSL<span class="w"> </span>https://github.com/TadahiroYamamura/masuda/releases/download/v0.4.0/masuda_installer.sh<span class="w"> </span><span class="p">|</span><span class="w"> </span>sh
+</code></pre></div>
+<p>別のバージョンを入れるときは、<code>MASUDA_VERSION=X.Y.Z</code>（先頭の<code>v</code>は付けない）を<code>sh</code>の前に付ける（<code>... | MASUDA_VERSION=X.Y.Z sh</code>）。</p>
+<ul>
+<li>プラットフォームを判定し、masudaとmasuda-sandboxの同じバージョンの配布物を一時ディレクトリに取得する</li>
+<li><code>SHA256SUMS</code>で検証してから、masudaを<code>~/.local/bin/masuda</code>に、masuda-sandboxを<code>npm install -g</code>で入れる（既にあれば上書きする）</li>
+<li>最後に両方のバージョンを表示する</li>
+</ul>
+<p>curl・tar・npm・sha256sum（macOSはshasum）が要る。</p>
+<h3 id="_5">手で入れる<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h3>
+<p>以下では入れるバージョンを<code>VERSION</code>に置く（<a href="https://github.com/TadahiroYamamura/masuda/releases">Releaseの一覧</a>の最新。先頭の<code>v</code>は付けない）。</p>
+<div class="highlight"><pre><span></span><code><span class="nv">VERSION</span><span class="o">=</span><span class="m">0</span>.4.0
+</code></pre></div>
+<h4 id="masuda-sandbox">masuda-sandbox<a class="headerlink" href="#masuda-sandbox" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/masuda-sandbox-<span class="nv">$VERSION</span>
+<span class="nv">BASE</span><span class="o">=</span>https://github.com/TadahiroYamamura/masuda-sandbox/releases/download/v<span class="nv">$VERSION</span>
+curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">"</span><span class="nv">$BASE</span><span class="s2">/masuda-sandbox-</span><span class="nv">$VERSION</span><span class="s2">.tgz"</span>
+curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">"</span><span class="nv">$BASE</span><span class="s2">/SHA256SUMS"</span>
+sha256sum<span class="w"> </span>-c<span class="w"> </span>SHA256SUMS<span class="w">        </span><span class="c1"># macOS: shasum -a 256 -c SHA256SUMS</span>
+npm<span class="w"> </span>install<span class="w"> </span>-g<span class="w"> </span><span class="s2">"./masuda-sandbox-</span><span class="nv">$VERSION</span><span class="s2">.tgz"</span>
+masuda-sandbox<span class="w"> </span>--version<span class="w">       </span><span class="c1"># X.Y.Z</span>
+</code></pre></div>
+<p><code>npm install -g</code>が権限で失敗するなら、npmのグローバルの置き場所を自分のディレクトリにする（<code>npm config set prefix ~/.local</code>。<code>~/.local/bin</code>をPATHに入れる）。sudoは使わない。</p>
+<h4 id="masuda">masuda<a class="headerlink" href="#masuda" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/masuda-<span class="nv">$VERSION</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/masuda-<span class="nv">$VERSION</span>
+<span class="k">case</span><span class="w"> </span><span class="s2">"</span><span class="k">$(</span>uname<span class="w"> </span>-s<span class="k">)</span><span class="s2">/</span><span class="k">$(</span>uname<span class="w"> </span>-m<span class="k">)</span><span class="s2">"</span><span class="w"> </span><span class="k">in</span>
+<span class="w">  </span>Linux/x86_64<span class="o">)</span><span class="w"> </span><span class="nv">TARGET</span><span class="o">=</span>linux_amd64<span class="w"> </span><span class="p">;;</span>
+<span class="w">  </span>Darwin/arm64<span class="o">)</span><span class="w"> </span><span class="nv">TARGET</span><span class="o">=</span>darwin_arm64<span class="w"> </span><span class="p">;;</span>
+<span class="w">  </span>*<span class="o">)</span><span class="w"> </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"このプラットフォーム向けの配布物は無い"</span><span class="w"> </span>&gt;<span class="p">&amp;</span><span class="m">2</span><span class="w"> </span><span class="p">;;</span>
+<span class="k">esac</span>
+<span class="nv">BASE</span><span class="o">=</span>https://github.com/TadahiroYamamura/masuda/releases/download/v<span class="nv">$VERSION</span>
+curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">"</span><span class="nv">$BASE</span><span class="s2">/masuda_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_</span><span class="si">${</span><span class="nv">TARGET</span><span class="si">}</span><span class="s2">.tar.gz"</span>
+curl<span class="w"> </span>-fLO<span class="w"> </span><span class="s2">"</span><span class="nv">$BASE</span><span class="s2">/SHA256SUMS"</span>
+grep<span class="w"> </span><span class="s2">" masuda_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_</span><span class="si">${</span><span class="nv">TARGET</span><span class="si">}</span><span class="s2">.tar.gz\$"</span><span class="w"> </span>SHA256SUMS<span class="w"> </span><span class="p">|</span><span class="w"> </span>sha256sum<span class="w"> </span>-c<span class="w"> </span>-<span class="w">   </span><span class="c1"># macOS: shasum -a 256 -c -</span>
+tar<span class="w"> </span>-xzf<span class="w"> </span><span class="s2">"masuda_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_</span><span class="si">${</span><span class="nv">TARGET</span><span class="si">}</span><span class="s2">.tar.gz"</span>
+mkdir<span class="w"> </span>-p<span class="w"> </span>~/.local/bin
+install<span class="w"> </span>-m<span class="w"> </span><span class="m">0755</span><span class="w"> </span><span class="s2">"masuda_</span><span class="si">${</span><span class="nv">VERSION</span><span class="si">}</span><span class="s2">_</span><span class="si">${</span><span class="nv">TARGET</span><span class="si">}</span><span class="s2">/masuda"</span><span class="w"> </span>~/.local/bin/masuda
+masuda<span class="w"> </span>version
+</code></pre></div>
+<p><code>~/.local/bin</code>がPATHに入っていなければ足す。<code>SHA256SUMS</code>にはそのリリースの全部の添付物が載っているので、<code>grep</code>で自分のものの行だけを確かめる。</p>
+<h3 id="_6">確かめる<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>doctor
+</code></pre></div>
+<p>QEMU・KVM（macOSはHVF）・Node・Docker・gitと、<code>masuda-sandbox serve</code>への到達、Claudeのトークンを1項目ずつ確かめ、足りないものに直し方を添える。この時点では<code>masuda-sandbox</code>（まだ起動していない）とClaudeトークン（まだ登録していない）がNGになる。次の「起動」と「Claudeのトークンを登録する」のあとでもう一度打ち、すべて<code>ok</code>になることを確かめる（<a href="../cli/#doctor">CLIリファレンス</a>）。</p>
+<h3 id="_7">補完を有効にする<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
+<p>シェルの起動ファイルに<code>source &lt;(masuda completion bash)</code>（zshは<code>source &lt;(masuda completion zsh)</code>）を書くと、コマンド・フラグ・ワークスペースIDなどをTabで補完できる。ワークスペースIDなどの候補は<code>masuda serve</code>が動いているときだけ出る（<a href="../cli/#completion">CLIリファレンス</a>）。</p>
+<h2 id="_8">起動<a class="headerlink" href="#_8" title="Permanent link">&para;</a></h2>
+<p>ターミナルを2つ使う（またはtmux等で両方を常駐させる）。先に<code>masuda-sandbox serve</code>を起動する。</p>
+<div class="highlight"><pre><span></span><code><span class="c1"># 1つめ</span>
+masuda-sandbox<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox.sock"</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><span class="c1"># 2つめ</span>
+masuda<span class="w"> </span>serve
+<span class="c1"># masuda: serving on /run/user/1000/masuda.sock</span>
+<span class="c1"># masuda: logs: /home/&lt;you&gt;/.local/share/masuda/logs/masuda-serve.log</span>
+</code></pre></div>
+<ul>
+<li>
+<p>どちらも、ログは端末ではなくデータディレクトリの<code>logs/</code>の下のファイルに書く（<code>masuda serve</code>は<code>~/.local/share/masuda/logs/masuda-serve.log</code>、<code>masuda-sandbox serve</code>は<code>~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log</code>）。置き場所は<code>masuda doctor</code>でも出る。端末に出したいときは<code>--log-file -</code></p>
+</li>
+<li>
+<p><code>masuda serve</code>は既定で<code>$XDG_RUNTIME_DIR/masuda.sock</code>で待ち受け、<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>の<code>masuda-sandbox serve</code>に繋ぐ。状態は<code>~/.local/share/masuda/</code>（<code>$XDG_DATA_HOME/masuda</code>）に置く</p>
+</li>
+<li><code>masuda serve</code>は起動時に<code>masuda-sandbox serve</code>のバージョンと契約を確かめ、組が合わなければ起動しない。<code>masuda-sandbox serve</code>がまだ起動していなければ警告を出して起動し、<code>masuda run</code>のときにもう一度確かめる</li>
+<li><code>masuda-sandbox serve</code>には既定のソケットが無いので、<code>--socket</code>を必ず渡す</li>
+<li><code>XDG_RUNTIME_DIR</code>が設定されていない環境（WSL2で起こる）では、masudaは代わりに<code>/tmp/masuda-&lt;uid&gt;/</code>を使う。その場合は<code>masuda-sandbox serve --socket /tmp/masuda-$(id -u)/masuda-sandbox.sock</code>のように同じ場所を渡す（先にそのディレクトリを作っておく）</li>
+<li>初めてVMを起動するとき、Gondolinがカーネル等の資産をダウンロードする</li>
+</ul>
+<p>止めるときは、どちらもCtrl-C。<code>masuda serve</code>を止めると動いていたワークスペースは「止めた（stopped）」扱いになり、自動では再開しない（<a href="../operations/#serve-restart">運用</a>）。</p>
+<h2 id="claude-token">Claudeのトークンを登録する<a class="headerlink" href="#claude-token" title="Permanent link">&para;</a></h2>
+<p>VMの中のClaude Codeは、あなたのClaudeのサブスクリプションで動く。そのためのOAuthトークンを作り、masudaに登録する。登録はユーザーごとに1回でよく、どのリポジトリのワークスペースでも使われる。</p>
+<h3 id="1">1. トークンを作る<a class="headerlink" href="#1" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code>claude<span class="w"> </span>setup-token
+</code></pre></div>
+<p><code>claude setup-token</code>はClaude Codeのコマンドで、Claude Codeが入っているマシンならどこで実行してもよい。ホストに入っていなければ、<code>npm install -g @anthropic-ai/claude-code</code>で入れて実行する（作ったあとに消してもよい。masudaはホストのClaude Codeを使わない）。ブラウザでログインすると、<code>sk-ant-oat01-</code>で始まるトークンが表示されるので控えておく。</p>
+<h3 id="2-masuda">2. masudaに登録する<a class="headerlink" href="#2-masuda" title="Permanent link">&para;</a></h3>
+<p><code>masuda serve</code>が動いている状態で打つ（登録先は<code>masuda serve</code>の状態ディレクトリ）。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>CLAUDE_CODE_OAUTH_TOKEN
+<span class="c1"># CLAUDE_CODE_OAUTH_TOKENの値: （貼り付けてEnter。入力は画面に出ない）</span>
+</code></pre></div>
+<p>値を引数で渡す形にしていないのは、シェルの履歴や<code>ps</code>に残さないため。端末以外から渡すときは標準入力に流す（<code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN &lt; token.txt</code>）。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>secret<span class="w"> </span>list
+<span class="c1"># NAME  MODE  HOSTS  VALUE  APPROVED</span>
+<span class="c1"># Claude token: set</span>
+masuda<span class="w"> </span>doctor
+<span class="c1"># ... [ok  ] Claude token: registered</span>
+</code></pre></div>
+<p>特定のリポジトリだけ別のトークンを使うなら、そのリポジトリで<code>--repo .</code>を付けて登録する（リポジトリごとの登録が優先される）。</p>
+<p>トークンの本物の値はホストの<code>~/.local/share/masuda/secrets/</code>にだけ置かれ、VMには入らない（<a href="../concepts/#secrets">概念</a>）。</p>
+<h2 id="_9">更新と削除<a class="headerlink" href="#_9" title="Permanent link">&para;</a></h2>
+<p>更新は、インストーラをもう一度実行すればよい。手で入れたときは、両方を<strong>同じ新しいバージョン</strong>で入れ直す（上の手順を新しい<code>VERSION</code>で繰り返す）。入れ直す前に<code>masuda serve</code>と<code>masuda-sandbox serve</code>を止める。ワークスペースの状態（<code>~/.local/share/masuda/</code>）はそのまま残るが、v1.0までは版をまたいだ互換性を保証しない。VMのClaude Codeの版は対象リポジトリのDockerfileに書いたままなので、新しいmasudaが検証した版（<code>masuda version</code>の<code>claude code:</code>）に合わせるときは、Dockerfileのinstall行の数字を変えて<code>masuda image build</code>する。</p>
+<p>削除は<code>npm uninstall -g masuda-sandbox</code>と<code>rm ~/.local/bin/masuda</code>。状態とトークンも消すなら<code>~/.local/share/masuda/</code>と<code>~/.config/masuda/</code>も消す。</p>
+<p>masuda自体を直す人がソースからビルドする手順は<a href="../../design/#source">開発者向け</a>にある。</p>
+<p>次は<a href="../quickstart/">はじめての1周</a>。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

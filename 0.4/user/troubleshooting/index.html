@@ -1,0 +1,1973 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/0.4/user/troubleshooting/">
+      
+      
+        <link rel="prev" href="../operations/">
+      
+      
+        <link rel="next" href="../../api/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>トラブルシューティング - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              トラブルシューティング
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#masuda-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda runがすぐエラーになる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suspended-or-blocked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった（suspendedとblocked）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boot-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMが起動しない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-space-left-on-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No space left on device
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dockerfile-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DockerfileのENVが効かない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vm-tmpfs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dockerfileで置いたファイルがVMの中に無い
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eacces-modcacherw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        イメージのビルドがEACCESで失敗する（-modcacherw）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#node_extra_ca_certs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        証明書のエラー・NODE_EXTRA_CA_CERTSの警告
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#offline-deps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依存をイメージに入れたのに、VMの中で取りに行って失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stalled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        動いているはずなのに進まない（stalled・waiting_input・auth_rejected）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chat-blocks-destroy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        終わるはずのrunがrunningのまま進まない（chatにアタッチしたまま）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-stopped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった・終わった原因を調べる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deviation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deviationゲートが思わぬファイルで開く（__pycache__等）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        planゲートで止まらない・思った所で止まらない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publishに失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#masuda-workflow-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda workflow checkが同梱の定義で失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../design/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#masuda-run" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda runがすぐエラーになる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#suspended-or-blocked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった（suspendedとblocked）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#boot-failed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMが起動しない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#starting-long" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        startingのまま進まない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#no-space-left-on-device" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No space left on device
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dockerfile-env" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DockerfileのENVが効かない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#vm-tmpfs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dockerfileで置いたファイルがVMの中に無い
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#eacces-modcacherw" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        イメージのビルドがEACCESで失敗する（-modcacherw）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#node_extra_ca_certs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        証明書のエラー・NODE_EXTRA_CA_CERTSの警告
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#offline-deps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        依存をイメージに入れたのに、VMの中で取りに行って失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stalled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        動いているはずなのに進まない（stalled・waiting_input・auth_rejected）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#chat-blocks-destroy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        終わるはずのrunがrunningのまま進まない（chatにアタッチしたまま）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#why-stopped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        止まった・終わった原因を調べる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#deviation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        deviationゲートが思わぬファイルで開く（__pycache__等）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        planゲートで止まらない・思った所で止まらない
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#publish" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        publishに失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#masuda-workflow-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masuda workflow checkが同梱の定義で失敗する
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="_1">トラブルシューティング<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
+<p>まず見る場所:</p>
+<ul>
+<li><code>masuda doctor</code>（前提がそろっているか。足りないものと直し方が出る）</li>
+<li><code>masuda list --all</code>のSTATEとPOSITION（<code>suspended</code>・<code>blocked</code>なら理由が出る。違いは下の<a href="#suspended-or-blocked">止まった</a>）</li>
+<li><code>masuda watch &lt;id&gt;</code>の流れ</li>
+<li><code>masuda chat &lt;id&gt;</code>でVMの中のClaude Codeの画面</li>
+<li>ホストの記録<code>~/.local/share/masuda/workspaces/&lt;id&gt;/records/</code>（<code>execution-log.jsonl</code>・<code>image-build.log</code>）</li>
+<li><code>masuda serve</code>と<code>masuda-sandbox serve</code>のログ（<code>~/.local/share/masuda/logs/masuda-serve.log</code>と<code>~/.local/share/masuda-sandbox/logs/masuda-sandbox-serve.log</code>。置き場所は<code>masuda doctor</code>でも出る。前回の起動の分は末尾が<code>.1</code>のファイル）</li>
+</ul>
+<h2 id="masuda-run"><code>masuda run</code>がすぐエラーになる<a class="headerlink" href="#masuda-run" title="Permanent link">&para;</a></h2>
+<p><code>masuda run</code>は始める前に設定と定義をまとめて確かめ、足りないものを一度に返す。よく出るもの:</p>
+<table>
+<thead>
+<tr>
+<th>メッセージ（抜粋）</th>
+<th>直し方</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>connection refused</code>、<code>no such file or directory</code>（ソケット）</td>
+<td><code>masuda serve</code>が起動していない、または<code>--socket</code>の場所が違う</td>
+</tr>
+<tr>
+<td><code>sandbox service is not reachable</code></td>
+<td><code>masuda-sandbox serve</code>が起動していない、またはソケットの場所が<code>masuda serve</code>の<code>--sandbox-socket</code>（<code>config.json</code>の<code>sandboxSocket</code>）と違う</td>
+</tr>
+<tr>
+<td><code>was built from a different sandbox.proto than masuda</code>、<code>does not implement GetServerInfo</code></td>
+<td>masudaとmasuda-sandboxのバージョンが組になっていない。<code>masuda version</code>で両方を確かめ、同じバージョンのリリースを入れ直す（<a href="../install/">導入</a>）。<code>masuda serve</code>も同じ理由で起動しない</td>
+</tr>
+<tr>
+<td><code>the Claude API token CLAUDE_CODE_OAUTH_TOKEN has no value</code></td>
+<td><code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>（ユーザー単位。<code>claudeToken</code>で別名を選んでいるならその名前で）</td>
+</tr>
+<tr>
+<td><code>the workflow runs /masuda/checks/test but checks.test is not declared</code></td>
+<td><code>settings.json</code>の<code>checks</code>に<code>test</code>を書く</td>
+</tr>
+<tr>
+<td><code>the workflow has a privileged node, but privileged command "X" is not approved</code>（<code>is not declared</code>・<code>changed since it was approved</code>も）</td>
+<td>ワークフロー（呼び出す部品のワークフローを含む）の<code>privileged</code>ノードが動かす特権コマンドの宣言・承認が足りない。宣言を書き、<code>masuda privileged-command approve X</code>。<code>masuda resume</code>でも同じ検査をする</td>
+</tr>
+<tr>
+<td><code>image default: .masuda/images/default/Dockerfile is missing</code></td>
+<td><code>masuda init</code>するか、Dockerfileを置く</td>
+</tr>
+<tr>
+<td><code>branch already exists</code></td>
+<td>publishするワークフローでは、<code>--branch</code>に対象リポジトリにまだ無い名前を使う（既にあるブランチを指定できるのはpublishしないワークフローだけ）</td>
+</tr>
+<tr>
+<td><code>repo_root ... is not the top of its work tree</code></td>
+<td><code>--repo</code>にサブディレクトリを渡している。トップを渡すか、<code>--repo</code>を省く（今いる作業ツリーのトップを使う）</td>
+</tr>
+<tr>
+<td><code>workflow ... needs inputs [instructions]</code></td>
+<td><code>--input instructions=@task.md</code>を渡す</td>
+</tr>
+<tr>
+<td><code>workflow ... has problems:</code></td>
+<td>定義の検査で落ちた。<code>masuda workflow check &lt;workflow&gt;</code>で同じ問題が出る</td>
+</tr>
+<tr>
+<td><code>json: unknown field "..."</code></td>
+<td><code>settings.json</code>・<code>settings.local.json</code>に知らないキーがある（綴りの誤り）。<a href="../settings/">設定ファイル</a></td>
+</tr>
+<tr>
+<td><code>secret X is plaintext ... and is not approved</code></td>
+<td><code>masuda secret approve X</code></td>
+</tr>
+<tr>
+<td><code>envFiles ...: X is not a declared secret and has no value in vars</code></td>
+<td><code>settings.local.json</code>の<code>vars</code>に値を書くか、秘密として宣言する</td>
+</tr>
+</tbody>
+</table>
+<h2 id="suspended-or-blocked">止まった（<code>suspended</code>と<code>blocked</code>）<a class="headerlink" href="#suspended-or-blocked" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>STATE</th>
+<th>意味</th>
+<th>続けるには</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>suspended</code></td>
+<td>ワークフローの記録の外で止まった。理由が<code>sandbox boot failed:</code>ならVMの起動の失敗（<a href="#boot-failed">下</a>）、<code>engine:</code>ならホストで動かすノードを動かせなかった（特権コマンドの承認が取り消されていた・宣言が変わった、ノードが選んだ通信先が承認されていない、publishが対象リポジトリに書けなかった、sandbox serviceがコマンドを動かせなかった等）</td>
+<td>理由を読んで直し、<code>stop</code>を挟まずに<code>masuda resume &lt;id&gt;</code>。止まったノードからやり直す。直す前に中を見たければ<code>masuda chat</code>（VMが残っていれば）</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>ワークフローが行き止まりを記録した（進入回数の上限を使い切って行き先が無い、出力が検証で落ち続けた、triageの<code>halt</code>等）</td>
+<td>再開できない。原因を調べて（<a href="#why-stopped">下</a>）、定義や指示を直して<code>run</code>し直す</td>
+</tr>
+</tbody>
+</table>
+<h2 id="boot-failed">VMが起動しない<a class="headerlink" href="#boot-failed" title="Permanent link">&para;</a></h2>
+<p><code>masuda list</code>で<code>suspended</code>、理由が<code>sandbox boot failed:</code>で始まる。原因を直したら、<code>stop</code>を挟まずにそのまま<code>masuda resume &lt;id&gt;</code>できる。</p>
+<ul>
+<li><strong><code>masuda-sandbox serve</code>に繋がらない</strong>: 起動しているか、<code>--socket</code>のパスが<code>masuda serve --sandbox-socket</code>（既定<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>）と同じかを確かめる</li>
+<li><strong>KVMが使えない</strong>（Linux）: <code>ls -l /dev/kvm</code>で存在とパーミッションを、<code>id -nG</code>で<code>kvm</code>グループに入っているかを確かめる（<a href="../install/">導入</a>）。WSL2なら入れ子の仮想化が有効か</li>
+<li><strong><code>disk_mib needs resize2fs in the image (install e2fsprogs)</code></strong>: masudaはVMのディスクを<code>diskMiB</code>（既定4096MiB）まで広げて起動するので、イメージに<code>resize2fs</code>が要る。<code>ubuntu:24.04</code>には入っているが、軽量なベースイメージには無いことがある。Dockerfileで<code>e2fsprogs</code>を入れる</li>
+<li><strong>イメージのビルドに失敗した</strong>: <code>records/image-build.log</code>を読む。<code>masuda image build</code>で同じビルドを手元で繰り返せる</li>
+<li><strong>VMからの通信が軒並み502になる</strong>: Nodeが24.17以上だと、Gondolinの既知の問題に当たる。<code>masuda-sandbox serve</code>を22.19以上・24.17未満のNodeで動かす</li>
+</ul>
+<h2 id="starting-long"><code>starting</code>のまま進まない<a class="headerlink" href="#starting-long" title="Permanent link">&para;</a></h2>
+<p><code>masuda list</code>のPOSITION（<code>masuda watch</code>なら<code>status</code>の行）に、起動のどの段階にいるかが出る。</p>
+<table>
+<thead>
+<tr>
+<th>段階</th>
+<th>時間がかかる理由と見るもの</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>building image (log: &lt;パス&gt;)</code></td>
+<td>Dockerfileのビルド。初回や<code>Dockerfile</code>を変えた後は数分かかることがある。進み具合は括弧の中のログを<code>tail -f</code>で見る</td>
+</tr>
+<tr>
+<td><code>booting the VM</code></td>
+<td>VMの起動とディスクの拡張。普段は数秒〜数十秒。長いなら<code>masuda-sandbox serve</code>のログ（<code>masuda doctor</code>が場所を出す）を見る</td>
+</tr>
+<tr>
+<td><code>preparing the guest</code></td>
+<td>VMの中にブランチをcloneし、設定とチェックを置く。リポジトリが大きいと長くなる</td>
+</tr>
+<tr>
+<td><code>starting Claude Code</code></td>
+<td>VMの中でClaude Codeを起動している</td>
+</tr>
+</tbody>
+</table>
+<h2 id="no-space-left-on-device"><code>No space left on device</code><a class="headerlink" href="#no-space-left-on-device" title="Permanent link">&para;</a></h2>
+<p>VMのルートディスクが足りない。ビルドのキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）やテストの生成物で埋まりやすい。gitのスナップショットも取れなくなり、<code>suspended</code>で止まることがある。</p>
+<ul>
+<li>
+<p><code>settings.json</code>で、使うイメージのエントリのディスクを増やす。次の<code>run</code>・<code>resume</code>から効く</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"images"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"diskMiB"</span><span class="p">:</span><span class="w"> </span><span class="mi">8192</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+</li>
+<li>
+<p>キャッシュを<code>/tmp</code>へ逃がさない。<code>/tmp</code>はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（<code>images.&lt;entry&gt;.memoryMiB</code>）にすぐ当たる。ディスク（既定の<code>~/.cache</code>等）に置いたまま、上のようにディスクを増やす。既に<code>/tmp</code>へ向けている（<code>ENV GOCACHE=/tmp/...</code>や<code>claudeSettings.env</code>）なら外す</p>
+</li>
+</ul>
+<h2 id="dockerfile-env">Dockerfileの<code>ENV</code>が効かない<a class="headerlink" href="#dockerfile-env" title="Permanent link">&para;</a></h2>
+<p>DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭には<code>~/.local/bin</code>が足される。それでも<code>ENV PATH=/usr/local/go/bin:$PATH</code>等が届かないときは、次を確かめる。</p>
+<ul>
+<li>
+<p><strong>PATH</strong>: チェック（<code>/masuda/checks/*</code>）とメインのClaude Codeはログインシェルで動く。<code>/etc/profile</code>がPATHを置き換えるイメージ（Debian系のベースイメージ等。<code>ubuntu</code>は置き換えない）では、<code>ENV PATH</code>の追加分が消える。道具は<code>/usr/local/bin</code>に置くか、リンクを張る</p>
+<div class="highlight"><pre><span></span><code><span class="k">RUN</span><span class="w"> </span>ln<span class="w"> </span>-s<span class="w"> </span>/usr/local/go/bin/go<span class="w"> </span>/usr/local/bin/go
+</code></pre></div>
+</li>
+<li>
+<p><strong>masuda-sandboxが古い</strong>: ENVを引き継がない版がある。<code>masuda version</code>でmasudaと同じバージョンか確かめる</p>
+</li>
+<li><strong>確実に渡すには</strong>: チェックはコマンドの頭に（<code>"test": "GOTOOLCHAIN=local go test ./..."</code>）、エージェントには<code>settings.json</code>の<code>claudeSettings.env</code>に書く</li>
+</ul>
+<h2 id="vm-tmpfs">Dockerfileで置いたファイルがVMの中に無い<a class="headerlink" href="#vm-tmpfs" title="Permanent link">&para;</a></h2>
+<p><code>/run</code>・<code>/root</code>・<code>/tmp</code>・<code>/var/tmp</code>・<code>/var/cache</code>・<code>/var/log</code>は、VMの起動のたびに空になる。ホストの<code>docker run</code>では見えていたものが、VMでは無いことがある（例: PostgreSQLが<code>/var/run/postgresql</code>にロックファイルを作れず起動しない）。置き場所を変えるか、起動のたびに作る（<a href="../settings/#image">設定のimage</a>）。</p>
+<h2 id="eacces-modcacherw">イメージのビルドが<code>EACCES</code>で失敗する（<code>-modcacherw</code>）<a class="headerlink" href="#eacces-modcacherw" title="Permanent link">&para;</a></h2>
+<p>非rootでGoのモジュールを<code>go mod download</code>したイメージ（モジュールのキャッシュが読み取り専用になる）は、古い<code>masuda-sandbox</code>ではビルドが<code>Build failed: EACCES, Permission denied: /tmp/gondolin-build-XXXX</code>で失敗する。</p>
+<ul>
+<li>masudaと同じバージョンの<code>masuda-sandbox</code>を入れ直し（<a href="../install/">導入</a>）、<code>masuda-sandbox serve</code>を起動し直す</li>
+<li>更新できないなら、Dockerfileで<code>go mod download -modcacherw all</code>のように<code>-modcacherw</code>を付けてキャッシュを書き込める形で取る</li>
+</ul>
+<h2 id="node_extra_ca_certs">証明書のエラー・<code>NODE_EXTRA_CA_CERTS</code>の警告<a class="headerlink" href="#node_extra_ca_certs" title="Permanent link">&para;</a></h2>
+<p>VMからのHTTPSは、masuda-sandboxが途中で復号して検査する（MITM）。そのためのCAは、VMの起動時にシステムのCAバンドルへ加えられる。</p>
+<ul>
+<li>Claude Codeが<code>NODE_EXTRA_CA_CERTS=/etc/gondolin/mitm/ca.crt</code>を読めないと警告することがある。元のファイルが非rootから読めないためで、通信はシステムのCAバンドルで成り立っている。無視してよい</li>
+<li>イメージに<code>ca-certificates</code>が入っていないと、どのツールもHTTPSに失敗する。雛形のDockerfileには入っている</li>
+<li>システムのCAバンドル（<code>/etc/ssl/certs/ca-certificates.crt</code>）を読まず、自前の証明書の束を持つツールは、証明書の検証に失敗する。そのツールの設定でシステムのバンドルを指す（例: Pythonのrequestsなら<code>REQUESTS_CA_BUNDLE</code>、Nodeなら<code>NODE_EXTRA_CA_CERTS</code>）。エージェントには<code>claudeSettings.env</code>、チェックにはコマンドの頭で渡す</li>
+<li>許可していないホストへの通信は証明書の問題ではなく拒否される。<code>masuda watch</code>に<code>http denied &lt;host&gt;</code>が出ていれば<a href="../secrets-and-egress/#egress">egress</a>の設定を見る</li>
+</ul>
+<h2 id="offline-deps">依存をイメージに入れたのに、VMの中で取りに行って失敗する<a class="headerlink" href="#offline-deps" title="Permanent link">&para;</a></h2>
+<p>実行中のVMは許可したホストへしか通信できない。イメージのビルド時に入れた依存でも、ツールによっては実行時にネットワークへ取りに行き、そこで失敗する。<code>masuda watch</code>に<code>http denied &lt;host&gt;</code>が出ているか、名前解決・通信のエラーで止まっていればこれ。</p>
+<table>
+<thead>
+<tr>
+<th>ツール</th>
+<th>実行時に取りに行くもの</th>
+<th>対処（Dockerfile）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>npx &lt;パッケージ&gt;</code></td>
+<td><code>npm install -g</code>で入れてあっても、レジストリのメタデータ</td>
+<td>下を参照</td>
+</tr>
+<tr>
+<td>Go</td>
+<td><code>go.mod</code>の<code>toolchain</code>行が指す版のツールチェーン、モジュール</td>
+<td><code>ENV GOTOOLCHAIN=local</code>と<code>ENV GOPROXY=off</code>。依存はビルド時に<code>go mod download</code>しておく</td>
+</tr>
+</tbody>
+</table>
+<p>npxは、ビルド時に一度呼んでnpmのキャッシュにメタデータを残し、実行時はキャッシュだけで解決させる。</p>
+<div class="highlight"><pre><span></span><code><span class="k">USER</span><span class="w"> </span><span class="s">ubuntu</span>
+<span class="c"># 実行時と同じ状況（package.jsonはあるがnode_modulesは無いディレクトリ）で一度呼ぶ。</span>
+<span class="c"># package.jsonの無い場所で呼ぶと、別の場所のnode_modulesの版で解決してしまい、実行時に要るメタデータが残らない</span>
+<span class="k">RUN</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>/tmp/npx-warmup<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>cp<span class="w"> </span>&lt;リポジトリのpackage.jsonの写し&gt;<span class="w"> </span>/tmp/npx-warmup/<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>/tmp/npx-warmup<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>npx<span class="w"> </span>@redocly/cli<span class="w"> </span>--version<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/tmp/npx-warmup
+<span class="k">ENV</span><span class="w"> </span><span class="nv">npm_config_offline</span><span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<ul>
+<li>npmのキャッシュはユーザーごとなので、エージェントが動く<code>ubuntu</code>で呼ぶ</li>
+<li><code>npm_config_offline=true</code>にしたのにキャッシュに無いと<code>ENOTCACHED</code>で、設定していないと通信のエラー（<code>EAI_AGAIN</code>など）で失敗する</li>
+</ul>
+<h2 id="stalled">動いているはずなのに進まない（<code>stalled</code>・<code>waiting_input</code>・<code>auth_rejected</code>）<a class="headerlink" href="#stalled" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong><code>stalled</code></strong>: VMの中のClaude Codeは生きているが、しきい値（既定10分）を超えて、Claude APIへの通信もツールの使用も無い。masudaは何もしない（表示だけ）。<code>masuda chat &lt;id&gt;</code>で画面を見る<ul>
+<li>長いビルドやテストを動かしているだけなら、待てば戻る。マシンが遅くて頻繁に出るなら、<code>settings.local.json</code>の<code>stallAfter</code>を長くする（例 <code>"20m"</code>。次の<code>run</code>・<code>resume</code>から効く）。どのリポジトリでも長くしたいなら<a href="../settings/#serve-config"><code>config.json</code></a>の<code>stallAfter</code>（<code>masuda serve</code>の再起動で効く）</li>
+</ul>
+</li>
+<li><strong><code>waiting_input(idle)</code></strong>: メインのClaude Codeがターンを終え、人の入力を待っている。多くは、エージェントがmasudaの決まり（質問は<code>question</code>ノードでだけ聞く）を外れて、画面の上であなたに問いかけて止まっている。<code>masuda chat</code>で読み、続けてよければ「続けて」等と答える。直らなければ<code>masuda stop</code>→<code>masuda resume</code>で、そのタスクをやり直させる</li>
+<li><strong><code>waiting_input(permission)</code></strong>: 道具の使用の許可を待っている。<code>chat</code>で答える</li>
+<li><strong><code>dead</code></strong>: Claude Codeのセッションが無くなった。<code>masuda stop</code>→<code>masuda resume</code></li>
+<li><strong><code>auth_rejected</code></strong>: Claude APIがトークンを拒んだ（401・403）。登録した値の誤りか失効。VMの中のClaude Codeは<code>/login</code>を求めて止まっている。<code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>で登録し直し（<code>claudeToken</code>で別の名前を選んでいればその名前）、<code>masuda stop</code>→<code>masuda resume</code>する（トークンはVMの起動時に渡すので、登録し直しただけでは動いているVMに届かない）。Claude APIへの会話の要求が一度成功すれば、表示は元に戻る</li>
+</ul>
+<h2 id="chat-blocks-destroy">終わるはずのrunが<code>running</code>のまま進まない（chatにアタッチしたまま）<a class="headerlink" href="#chat-blocks-destroy" title="Permanent link">&para;</a></h2>
+<p>ワークフローがpublish・discardに着いたのに、<code>masuda list</code>が<code>running</code>のまま変わらない。<code>masuda chat</code>でアタッチしたままだと、VMの破棄が終わらない（masuda-sandboxの不具合、TadahiroYamamura/masuda-sandbox#8）。</p>
+<ul>
+<li>chatの画面で<code>C-b d</code>を押して切り離す。すぐに破棄が進み、<code>done</code>になる</li>
+<li>runが終わりそうなとき（reviewゲートを承認した後など）は、先に切り離しておく</li>
+</ul>
+<h2 id="why-stopped">止まった・終わった原因を調べる<a class="headerlink" href="#why-stopped" title="Permanent link">&para;</a></h2>
+<p>ワークスペースの<code>exports/</code>（<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>）に、実行ログ（<code>execution-log.jsonl</code>）とVMの中のClaude Codeの会話ログ（<code>transcripts/</code>）が残る。どの終わり方（<code>done</code>・<code>stop</code>・<code>remove</code>）でも書き出され、<code>remove</code>の後も消えない（<a href="../operations/#exports">exports</a>）。</p>
+<ul>
+<li>どのノードでどう終わったかは実行ログで追う。<code>jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl</code></li>
+<li>エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが<code>transcripts/-workspace/&lt;session&gt;.jsonl</code>、サブエージェントがその下の<code>subagents/agent-*.jsonl</code></li>
+<li><code>blocked</code>と、ワークフローの途中で止まった<code>suspended</code>はVMを残しているので、会話ログはまだ書き出されていない。<code>masuda chat</code>で画面を見るか、<code>masuda stop</code>で書き出してから読む</li>
+<li><code>done</code>ではVMが壊れているので<code>masuda chat</code>は使えない。会話ログを読む</li>
+</ul>
+<h2 id="deviation"><code>deviation</code>ゲートが思わぬファイルで開く（<code>__pycache__</code>等）<a class="headerlink" href="#deviation" title="Permanent link">&para;</a></h2>
+<p>書き込めない役（調査・レビュー等）がテストを走らせただけで、追跡しているファイルが書き換わると、<code>deviation</code>ゲートが開く。例: gitで追跡している<code>__pycache__/*.pyc</code>、ロックファイル、テストが更新するスナップショット。</p>
+<ul>
+<li>その場は<code>masuda gate approve &lt;id&gt; &lt;出現ID&gt;</code>（<code>--file</code>無し）で続けられる。変更は計画に加わらず、コミットされない。却下すると実行全体が<code>blocked</code>で止まる</li>
+<li>根本的には、生成物をgitで追跡しない。<code>git rm -r --cached __pycache__</code>して<code>.gitignore</code>に足し、コミットしてから<code>masuda run</code>する（VMへ渡るのはコミット済みの内容だけ）</li>
+<li>計画の対象外のファイルを実装が変えた場合も、コミットの直前に開く。必要な変更なら<code>--file &lt;path&gt;</code>で計画に加え、そうでなければ却下して実装をやり直させる</li>
+</ul>
+<h2 id="plan">planゲートで止まらない・思った所で止まらない<a class="headerlink" href="#plan" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>症状</th>
+<th>原因と対処</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>planゲートの前に<code>done</code>で終わった（<code>outcome out_of_scope</code>）</td>
+<td>計画を立てる役が、依頼をこのリポジトリで扱うものではないと判断した。<code>exports/</code>には実行ログと会話ログだけが残る。役が書いた理由（<code>feedback</code>）は<code>masuda list --all</code>のPOSITIONに1行目が出て、全文は<code>workspace.json</code>の<code>reason</code>にある。課題の書き方を直して<code>run</code>し直す</td>
+</tr>
+<tr>
+<td>planゲートの前に<code>done</code>で終わった（<code>outcome needs_human</code>）</td>
+<td><code>workflows/fix</code>の計画を立てる役が、指示が曖昧で計画を立てられないと判断した。役が確かめたい疑問は<code>masuda list --all</code>のPOSITIONに1行目が出て、全文は<code>workspace.json</code>の<code>reason</code>にある。疑問に答える形で指示書を直して<code>run</code>し直す</td>
+</tr>
+<tr>
+<td>planゲートの前に<code>blocked</code></td>
+<td>POSITIONの理由を読む。出力が検証で落ち続けた（<code>invalid</code>）等</td>
+</tr>
+<tr>
+<td>planゲートの前に<code>suspended</code></td>
+<td>POSITIONの理由を読む。許可されていない通信を選んだノードがある（<code>masuda egress approve</code>してから<code>resume</code>）等</td>
+</tr>
+<tr>
+<td><code>waiting_input</code>のまま、ゲートが開かない</td>
+<td>上の<code>waiting_input(idle)</code>。エージェントが画面の上で問いかけている</td>
+</tr>
+<tr>
+<td>計画を承認したのに、もう一度planゲートが開く</td>
+<td>あるステップの実装が行き詰まった（<code>stuck</code>）か、テストが3回通らなかった。<code>checks.test</code>を雛形のまま（必ず失敗する）にしていないか確かめる。理由（実装の役の<code>feedback</code>）は<code>records/engine.json</code>にある。計画を却下（コメント付き）して直させる</td>
+</tr>
+<tr>
+<td>ゲートがまったく開かない</td>
+<td>自分のワークフローに<code>approval</code>ノードが無い。<code>masuda workflow show</code>で確かめる</td>
+</tr>
+<tr>
+<td><code>interim</code>ゲートで止まる</td>
+<td>同梱のワークフローでは開かない。自分のワークフローに<code>gate: interim</code>のノードがあり、そこに達した（例: ステップの途中レビューで、自動では直しきれない指摘が残った）。<code>masuda gate show</code>で差分（このステップでこれからコミットされる内容）を見て、承認（そのままコミット）か却下（実装をやり直す）を選ぶ</td>
+</tr>
+</tbody>
+</table>
+<h2 id="publish">publishに失敗する<a class="headerlink" href="#publish" title="Permanent link">&para;</a></h2>
+<p>reviewゲートを承認した後に<code>suspended</code>になり、理由に<code>has diverged from staging; not a fast-forward</code>等が出る。</p>
+<ul>
+<li>対象リポジトリに、同じ名前のブランチが後から作られていて、fast-forwardにならない</li>
+<li>チェックアウト中のブランチと同じ名前で、作業ツリーに衝突する変更がある</li>
+</ul>
+<p>masudaはリポジトリを無理に書き換えない。原因を直せば<code>masuda resume &lt;id&gt;</code>でpublishからやり直せる。結果はstagingに残っているので、別の名前で取り込んでもよい。</p>
+<div class="highlight"><pre><span></span><code>git<span class="w"> </span>fetch<span class="w"> </span>~/.local/share/masuda/workspaces/&lt;id&gt;/staging.git<span class="w"> </span>feat/triangle:feat/triangle-masuda
+</code></pre></div>
+<h2 id="masuda-workflow-check"><code>masuda workflow check</code>が同梱の定義で失敗する<a class="headerlink" href="#masuda-workflow-check" title="Permanent link">&para;</a></h2>
+<p>引数無しの<code>masuda workflow check</code>は、部品のワークフローも単独で検査するので、同梱の定義だけでも問題が出て終了コード1になる。<code>masuda workflow check workflows/develop</code>のように、始めるワークフローを指定する（<a href="../cli/#workflow">CLIリファレンス</a>）。</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

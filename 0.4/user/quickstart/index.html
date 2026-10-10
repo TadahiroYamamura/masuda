@@ -1,0 +1,1767 @@
+
+<!doctype html>
+<html lang="ja" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ローカルPC上の使い捨てVMでClaude Codeのワークフローを無人実行するツール">
+      
+      
+      
+        <link rel="canonical" href="https://tadahiroyamamura.github.io/masuda/0.4/user/quickstart/">
+      
+      
+        <link rel="prev" href="../install/">
+      
+      
+        <link rel="next" href="../concepts/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>はじめての1周 - masuda</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#1" class="md-skip">
+          コンテンツにスキップ
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="ヘッダー">
+    <a href="../.." title="masuda" class="md-header__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            masuda
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              はじめての1周
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ダークモードへ"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="ダークモードへ" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="grey" data-md-color-accent="grey"  aria-label="ライトモードへ"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="ライトモードへ" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="検索" placeholder="検索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="検索">
+        
+        <button type="reset" class="md-search__icon md-icon" title="クリア" aria-label="クリア" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            検索を初期化
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="ナビゲーション" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="masuda" class="md-nav__button md-logo" aria-label="masuda" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M21 16.5c0 .38-.21.71-.53.88l-7.9 4.44c-.16.12-.36.18-.57.18s-.41-.06-.57-.18l-7.9-4.44A.99.99 0 0 1 3 16.5v-9c0-.38.21-.71.53-.88l7.9-4.44c.16-.12.36-.18.57-.18s.41.06.57.18l7.9 4.44c.32.17.53.5.53.88zM12 4.15 6.04 7.5 12 10.85l5.96-3.35zM5 15.91l6 3.38v-6.71L5 9.21zm14 0v-6.7l-6 3.37v6.71z"/></svg>
+
+    </a>
+    masuda
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/TadahiroYamamura/masuda" title="リポジトリへ" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    TadahiroYamamura/masuda
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ホーム
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    利用者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    利用者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    導入
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    はじめての1周
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        始める前に
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. .masuda/の雛形を置く
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. イメージにプロジェクトの道具を足す
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. テストのコマンドを書く
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. トークンを確かめる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. イメージをビルドする
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 課題を書いて実行する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 様子を見る
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-plan-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 計画を承認する（plan gate）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-review-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. レビュー結果を承認する（review gate）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 結果を確かめる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stuck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        途中で止まったら
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../concepts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    概念
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cli/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    設定ファイル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/workflow-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ワークフロー定義の仕様
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reviews/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    レビュー観点
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secrets-and-egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    秘密・egress・特権コマンド
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../operations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    運用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    トラブルシューティング
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../api/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    統合開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    統合開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/connect/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    接続
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/services/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    サービスとRPC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/flows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    典型的な流れ
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/errors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    エラーコード
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../api/reference/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    APIリファレンス
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../design/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    開発者向け
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    開発者向け
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    全体設計
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/contracts/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    契約
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../guest-protocol/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ゲストプロトコル
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/release/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    リリース手順
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../design/redesign-background/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    再設計の経緯
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目次">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目次
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        始める前に
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#1-masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. .masuda/の雛形を置く
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. イメージにプロジェクトの道具を足す
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. テストのコマンドを書く
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. トークンを確かめる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. イメージをビルドする
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 課題を書いて実行する
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 様子を見る
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-plan-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 計画を承認する（plan gate）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-review-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. レビュー結果を承認する（review gate）
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 結果を確かめる
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stuck" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        途中で止まったら
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="1">はじめての1周<a class="headerlink" href="#1" title="Permanent link">&para;</a></h1>
+<p>手元のリポジトリで、同梱の<code>develop</code>ワークフロー（調査→計画→計画の承認→実装→レビュー→レビューの承認→反映）を1回通す。</p>
+<p>所要の目安は10〜30分。イメージの初回ビルドに数分、エージェントの作業に10〜20分かかる（小さなPythonのリポジトリに関数を1つ足す課題で、約18分だった）。人間の出番は計画の承認とレビューの承認の2回。</p>
+<h2 id="_1">始める前に<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../install/">導入</a>を終え、<code>masuda-sandbox serve</code>と<code>masuda serve</code>が起動している</li>
+<li>対象リポジトリはgitの作業ツリーで、コミットが1つ以上ある。エージェントが見るのは<strong>コミット済みの内容</strong>（作業中の変更はVMへ渡らない）</li>
+<li>対象リポジトリで<code>git config user.name</code>・<code>user.email</code>が引ける。masudaが作るコミットの作者になる</li>
+</ul>
+<p>以下、コマンドはすべて対象リポジトリのトップで打つ。</p>
+<h2 id="1-masuda">1. <code>.masuda/</code>の雛形を置く<a class="headerlink" href="#1-masuda" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>init
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>created .masuda/images/default/Dockerfile
+created .masuda/settings.json
+created .masuda/reviews/comment-history-leakage.md
+created .masuda/reviews/dead-code.md
+created .masuda/reviews/error-handling-gaps.md
+created .masuda/reviews/heavy-loop-processing.md
+created .masuda/reviews/implicit-type-conversion.md
+created .masuda/reviews/injection-vulnerability.md
+created .masuda/reviews/input-validation-gaps.md
+created .masuda/reviews/logging-secrets.md
+created .masuda/reviews/missing-tests-guard-clauses.md
+created .masuda/reviews/missing-tests-new-code.md
+created .masuda/reviews/n-plus-one-query.md
+created .masuda/reviews/nil-check-gaps.md
+created .masuda/reviews/resource-leak.md
+created .masuda/reviews/secret-hardcode.md
+created CLAUDE.local.md
+created .claude/settings.local.json (SessionStart: masuda prime --hook-json)
+created .claude/settings.local.json (permissions.deny: 13 rules)
+created .claude/settings.local.json (permissions.ask: 1 rule)
+created .gitignore (.masuda/settings.local.json)
+created .gitignore (.masuda/claude.local/)
+created .gitignore (CLAUDE.local.md)
+created .gitignore (.claude/settings.local.json)
+note: the Claude API (api.anthropic.com) is always reachable; list other hosts the VM needs in egress of .masuda/settings.json
+</code></pre></div>
+<p><code>masuda init</code>は<code>masuda serve</code>無しで動く。既にあるファイルは上書きせず、足りないものだけ足す。<code>.gitignore</code>には利用者ごとの承認を書く<code>.masuda/settings.local.json</code>を足す（<code>.masuda/</code>ごと無視している行があれば足さない）。</p>
+<p><code>CLAUDE.local.md</code>と<code>.claude/settings.local.json</code>は、ホストのClaude Codeにmasudaの使い方を読ませるためのもの。このリポジトリで開いたClaude Codeに「この課題をmasudaで実装して」のように頼めば、ワークフローの選択と<code>masuda run</code>から判断待ちの報告までを任せられる（ゲートの承認、秘密・egressの承認などはエージェントに打たせない。質問への回答は打つ前にあなたに確かめる）。中身は<code>masuda prime</code>で見られる（<a href="../cli/#init">CLI</a>）。</p>
+<p><code>.masuda/</code>はコミットしてもしなくてもよい。masudaは実行を始めるときに作業ツリーの<code>.masuda/</code>を読む。チームで共有するならコミットする。</p>
+<h2 id="2">2. イメージにプロジェクトの道具を足す<a class="headerlink" href="#2" title="Permanent link">&para;</a></h2>
+<p><code>.masuda/images/default/Dockerfile</code>がVMの中身になる。雛形にはmasudaが要るもの（Claude Code・tmux・git等）だけが入っているので、対象リポジトリのビルドとテストに要るものを足す。</p>
+<p>Pythonの例（<code>apt-get install</code>の行に<code>python3</code>を足す）:</p>
+<div class="highlight"><pre><span></span><code><span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>--no-install-recommends<span class="w"> </span><span class="se">\</span>
+<span class="w">      </span>ca-certificates<span class="w"> </span>curl<span class="w"> </span>git<span class="w"> </span>tmux<span class="w"> </span>openssh-server<span class="w"> </span>python3<span class="w"> </span><span class="se">\</span>
+<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+</code></pre></div>
+<p>実行中のVMから外へ出られるのは許可したホストだけなので、依存パッケージはここで入れておく。書き方の注意（キャッシュの置き場所、環境変数）は<a href="../troubleshooting/#dockerfile-env">トラブルシューティング</a>にもある。</p>
+<h2 id="3">3. テストのコマンドを書く<a class="headerlink" href="#3" title="Permanent link">&para;</a></h2>
+<p><code>develop</code>は実装の各ステップの後に<code>/masuda/checks/test</code>を走らせ、通らなければ実装をやり直させる。雛形の<code>checks.test</code>は「まだ設定していない」と言って必ず失敗するので、<code>.masuda/settings.json</code>で本物のテストのコマンドに書き換える。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"default"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"egress"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"secrets"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"envFiles"</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">  </span><span class="nt">"checks"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"python3 -m unittest discover -s tests -v"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>コマンドはVMの中の<code>/workspace</code>（対象リポジトリのclone）で、シェルの1行として動く。</p>
+<h2 id="4">4. トークンを確かめる<a class="headerlink" href="#4" title="Permanent link">&para;</a></h2>
+<p><a href="../install/#claude-token">導入</a>でClaudeのトークンを登録していれば、ここですることは無い。まだなら導入の手順で登録する（<code>masuda secret set CLAUDE_CODE_OAUTH_TOKEN</code>）。</p>
+<ul>
+<li>Claude APIへの経路は宣言や承認に関係なく常に開いているので、雛形の<code>egress</code>は空。VMから他のホストへ出る必要があれば、<code>settings.json</code>の<code>egress</code>に宣言して<code>masuda egress approve &lt;host&gt;</code>で承認する（<a href="../secrets-and-egress/">秘密・egress・特権コマンド</a>）</li>
+<li>トークンはユーザー単位に登録されていて、どのリポジトリでも使われる。このリポジトリだけ別のトークンにしたいときだけ、ここで<code>--repo .</code>を付けて登録する</li>
+</ul>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>secret<span class="w"> </span>list
+<span class="c1"># NAME  MODE  HOSTS  VALUE  APPROVED</span>
+<span class="c1"># Claude token: set</span>
+</code></pre></div>
+<h2 id="5">5. イメージをビルドする<a class="headerlink" href="#5" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>image<span class="w"> </span>build<span class="w"> </span>default
+</code></pre></div>
+<p>ビルドのログが流れ、最後にイメージのIDが出る。初回は数分かかる。<code>masuda run</code>も起動のたびにビルドする（変わっていなければすぐ終わる）が、Dockerfileの誤りは先にここで見つけておく方が早い。</p>
+<h2 id="6">6. 課題を書いて実行する<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
+<p>課題（エージェントへの指示書）をファイルに書く。何を作るか、どこを変えてよいか、何を変えてはいけないかを具体的に書く。</p>
+<div class="highlight"><span class="filename">task.md</span><pre><span></span><code><span class="sb">`shapes/`</span> に <span class="sb">`shapes/triangle.py`</span> を追加してください。
+
+<span class="k">-</span><span class="w"> </span><span class="sb">`area(a, b, c)`</span>: 3辺の長さから面積を返す（ヘロンの公式）
+<span class="k">-</span><span class="w"> </span><span class="sb">`perimeter(a, b, c)`</span>: 周の長さを返す
+<span class="k">-</span><span class="w"> </span>負の辺と、三角形が成り立たない辺には <span class="sb">`ValueError`</span> を投げる
+<span class="k">-</span><span class="w"> </span><span class="sb">`tests/test_triangle.py`</span> に unittest のテストを足す
+
+標準ライブラリだけを使うこと。他のファイルは変更しないこと。
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>run<span class="w"> </span>workflows/develop<span class="w"> </span>--branch<span class="w"> </span>feat/triangle<span class="w"> </span>--input<span class="w"> </span><span class="nv">instructions</span><span class="o">=</span>@task.md
+<span class="c1"># 55a7dbe1b35f starting</span>
+</code></pre></div>
+<ul>
+<li><code>--branch</code>は作るブランチの名前。対象リポジトリに既にある名前は使えない</li>
+<li>分岐元は、今チェックアウトしているブランチ。変えるなら<code>--base main</code>のように渡す</li>
+<li><code>--input instructions=@task.md</code>の<code>@</code>は「ファイルの中身」。<code>instructions=文字列</code>と直接書いてもよい</li>
+<li>出てきた<code>55a7dbe1b35f</code>がワークスペースのID。以下<code>&lt;id&gt;</code>と書く</li>
+<li>typoの修正のような小さな修正なら、<code>workflows/develop</code>の代わりに<code>masuda run workflows/fix</code>を使える。調査と計画を1つのセッションで済ませ、横断チェックとレポートを省く（<a href="../workflows/#fix">ワークフロー</a>）。以下の手順は同じで、9節のレポートが無い</li>
+</ul>
+<p><code>masuda run</code>はすぐ返る。VMの起動は裏で進む。設定に足りないもの（トークン未登録、テストのコマンド未宣言等）があれば、この時点でまとめてエラーになり、何も始まらない。</p>
+<h2 id="7">7. 様子を見る<a class="headerlink" href="#7" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>watch<span class="w"> </span>&lt;id&gt;
+</code></pre></div>
+<p>状態の変化、ワークフローの進み、VMからの通信が1行ずつ流れる。Ctrl-Cで見るのをやめても実行は続く。</p>
+<div class="highlight"><pre><span></span><code>3 01:38:08 55a7dbe1b35f status running working
+27 01:38:12 55a7dbe1b35f engine enter occ=0000001 workflows/develop/investigate
+28 01:38:12 55a7dbe1b35f status running working agent investigator (occ 0000001)
+31 01:38:13 55a7dbe1b35f http POST api.anthropic.com/v1/messages ...
+32 01:38:14 55a7dbe1b35f http POST api.anthropic.com/v1/messages 200 869ms
+33 01:38:14 55a7dbe1b35f hook PostToolUse Read
+...
+</code></pre></div>
+<p>一覧で見るなら<code>masuda list</code>。</p>
+<div class="highlight"><pre><span></span><code>ID            BRANCH         STATE         ACTIVITY              POSITION                 OPEN
+55a7dbe1b35f  feat/triangle  waiting_gate  waiting_gate 10s ago  gate plan (occ 0000003)  gate:plan
+</code></pre></div>
+<p>各列の意味は<a href="../operations/#list">運用</a>。VMの中のClaude Codeの画面を直接見たければ<code>masuda chat &lt;id&gt;</code>（<code>C-b d</code>で抜ける。抜けても実行は続く）。</p>
+<h2 id="8-plan-gate">8. 計画を承認する（plan gate）<a class="headerlink" href="#8-plan-gate" title="Permanent link">&para;</a></h2>
+<p>調査と計画が終わると、計画の承認待ち（<code>waiting_gate</code>、OPENに<code>gate:plan</code>）で止まる。</p>
+<p>計画を書いた役とは別の役が計画に問いを立て（「退化三角形を不正として扱うか」など）、計画を直す役がそれに答えてから、このゲートが開く。答えられない問い（<code>open</code>）が残ったときは、ゲートより前に質問（<code>waiting_question</code>、OPENに<code>question:&lt;出現ID&gt;</code>）として届くので、<code>masuda question list</code>で読んで<code>masuda question answer &lt;id&gt; &lt;出現ID&gt; SPEC-1=&lt;答え&gt; ...</code>で問いのidごとに答える（<a href="#stuck">途中で止まったら</a>）。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>list
+<span class="c1"># WORKSPACE     OCCURRENCE  GATE  TARGET  OPENED</span>
+<span class="c1"># 55a7dbe1b35f  0000003     plan  plan    10-03 01:38:54</span>
+
+masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span>
+</code></pre></div>
+<p><code>gate show</code>は計画を節に分けて出し、最後に打てるコマンドを添える。<code>goal</code>は計画が達成すること、<code>summary</code>はアプローチとテストの実行の仕方、<code>steps</code>は機能単位のステップごとに内容・そのステップで通すテスト・変更するファイル、<code>alternatives</code>は検討したが採らなかった案、<code>risks</code>は懸念、<code>expected byproducts</code>はビルド・テストが生む副産物として計画外の変更の検出から外すパターン（<code>*</code>は<code>/</code>をまたがず、<code>**</code>は0階層以上をまたぐ。例 <code>**/__pycache__/**</code>）。<code>checks</code>は計画に立てられた問いと、計画を直す役の答え（<code>[addressed]</code>は計画で扱った、<code>[out_of_scope]</code>は範囲外、<code>[open]</code>は判断できず人間に聞いたもの）。出力例（ヘッダーの<code>gate:</code>〜<code>opened:</code>の行は省略）:</p>
+<div class="highlight"><pre><span></span><code>goal: 三角形の面積と周長を求めるモジュールを追加する
+
+summary:
+  shapes/triangle.py を新規追加し、ヘルパー _check で辺の検証を共通化する。テストは PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v で実行し、追跡済みの pyc を汚さない
+
+steps:
+  1. 三角形モジュールの実装
+     _check(a,b,c) で辺&lt;=0 と三角不等式違反を ValueError にする。area はヘロンの公式、perimeter は和。標準ライブラリ math のみ
+     tests:
+       - 3,4,5 で area が 6、perimeter が 12
+       - 負の辺・0 の辺で両関数が ValueError
+       - 不成立 (1,2,10) と退化 (1,2,3) で ValueError
+     files: shapes/triangle.py, tests/test_triangle.py
+
+checks (questions raised about the plan, with the planner's answers):
+  SPEC-1 [addressed] 退化三角形（1,2,3）を不正として扱うか
+      ステップ1の _check で a+b&gt;c の厳密不等式を要求する
+  REGRESSION-1 [out_of_scope] 既存の shapes/circle.py・rectangle.py の呼び出し元に影響は無いか
+      新規モジュールの追加だけで既存ファイルは変更しないため
+
+alternatives (considered, not taken):
+  - 退化三角形を許容する (&lt;=): 面積 0 が無意味
+
+risks:
+  - 浮動小数の境界誤差は未対応
+
+expected byproducts: **/__pycache__/**, **/*.pyc
+
+approve: masuda gate approve 55a7dbe1b35f 0000003 --hash &lt;target_hash&gt; [--comment &lt;text&gt;]
+reject:  masuda gate reject 55a7dbe1b35f 0000003 [--comment &lt;text&gt;]
+</code></pre></div>
+<p>計画は実行のたびにエージェントが書くので、ステップの分け方や文面は毎回変わる。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span><span class="m">0000003</span><span class="w"> </span>--hash<span class="w"> </span>&lt;gate<span class="w"> </span>showが出したtarget_hash&gt;
+</code></pre></div>
+<ul>
+<li><code>--hash</code>を渡すと、あなたが読んだ内容と同じものだけを承認する。省くと、その時点で開いているゲートの内容を承認する</li>
+<li>直してほしければ<code>masuda gate reject &lt;id&gt; 0000003 --comment "ステップ2でテストも書くこと"</code>。計画がコメントを踏まえて書き直され、もう一度このゲートが開く</li>
+</ul>
+<p>承認すると、計画のステップごとに「実装→テスト→コミット」が進む。テストが通らなければ実装をやり直す。レビューは全ステップが終わった後に1回だけ行う（9節）。計画に無いファイルが変わっていれば、コミットの前に<code>deviation</code>ゲートでも止まる（gitで追跡している<code>__pycache__</code>等が典型。<a href="../troubleshooting/#deviation">トラブルシューティング</a>）。</p>
+<h2 id="9-review-gate">9. レビュー結果を承認する（review gate）<a class="headerlink" href="#9-review-gate" title="Permanent link">&para;</a></h2>
+<p>全ステップが終わると、全観点でのレビュー（とその指摘の確かめ）・横断的な問題の確認・指摘の一括修正と再確認・レポートの作成が走り、レビューの承認待ち（<code>gate:review</code>）で止まる。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>show<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;
+</code></pre></div>
+<p><code>gate show</code>は分岐元から反映されるコミット（<code>commit:</code>）までの差分を出す。コミットされずに作業ツリーに残ったファイルがあれば、差分の後に「publishされない変更（未コミット）」として名前だけが並ぶ（これらは反映されない）。レビューの指摘はstagingのそのコミットへのコメントとしても残る。レビューのレポート（残っている指摘、自動で直した指摘）はホストのファイルで読める。</p>
+<div class="highlight"><pre><span></span><code>cat<span class="w"> </span>~/.local/share/masuda/workspaces/&lt;id&gt;/data/*/report
+</code></pre></div>
+<p>承認すると、そのコミットが手元のリポジトリの<code>feat/triangle</code>ブランチへ反映（publish）され、VMは片付けられる。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>approve<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>--hash<span class="w"> </span>&lt;target_hash&gt;
+</code></pre></div>
+<p>却下（<code>reject --comment ...</code>）すると、実装した役の続きがコメントを踏まえて手直しし、テストとコミットの後にもう一度このゲートが開く。レビューの段はやり直さないので、指摘が直ったかを差分で確かめる。差分の特定の行を直してほしいときは、却下の前に<code>gate comment</code>で行コメントを付けておく。付けたコメントは<code>gate show</code>の差分の後に並び、却下したときに<code>--comment</code>の本文とともに手直しのエージェントへ届く（承認したときは届かない）。</p>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>gate<span class="w"> </span>comment<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>shapes/triangle.py:12<span class="w"> </span><span class="s2">"負の長さも弾く"</span>
+masuda<span class="w"> </span>gate<span class="w"> </span>reject<span class="w"> </span>&lt;id&gt;<span class="w"> </span>&lt;出現ID&gt;<span class="w"> </span>--comment<span class="w"> </span><span class="s2">"入力の検証を足す"</span>
+<span class="c1"># エージェントへ届く差し戻し:</span>
+<span class="c1">#   入力の検証を足す</span>
+<span class="c1">#</span>
+<span class="c1">#   ## 差分への行コメント</span>
+<span class="c1">#   - shapes/triangle.py:12: 負の長さも弾く</span>
+</code></pre></div>
+<h2 id="10">10. 結果を確かめる<a class="headerlink" href="#10" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>list<span class="w"> </span>--all
+<span class="c1"># ID            BRANCH         STATE  ACTIVITY      POSITION      OPEN</span>
+<span class="c1"># 55a7dbe1b35f  feat/triangle  done   idle 59s ago  outcome done  -</span>
+
+git<span class="w"> </span>log<span class="w"> </span>--oneline<span class="w"> </span>main..feat/triangle
+git<span class="w"> </span>switch<span class="w"> </span>feat/triangle
+python3<span class="w"> </span>-m<span class="w"> </span>unittest<span class="w"> </span>discover<span class="w"> </span>-s<span class="w"> </span>tests<span class="w"> </span>-v
+</code></pre></div>
+<p>反映されるのはブランチだけで、今チェックアウトしているブランチや作業ツリーには触れない（チェックアウト中のブランチと同じ名前のときだけ、作業ツリーごとfast-forwardする）。</p>
+<p>レビューのレポートと実行ログ、エージェントの会話ログは<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>に残る（<a href="../operations/#exports">運用</a>）。ワークスペースが要らなくなったら<code>masuda remove &lt;id&gt;</code>（exportsだけは残る）。</p>
+<h2 id="stuck">途中で止まったら<a class="headerlink" href="#stuck" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>masuda list</code>のSTATEが<code>suspended</code>・<code>blocked</code>: POSITIONに理由が出る。<code>suspended</code>は原因を直せば<code>masuda resume &lt;id&gt;</code>で続けられ、<code>blocked</code>は続けられない。<a href="../troubleshooting/#suspended-or-blocked">トラブルシューティング</a></li>
+<li>ACTIVITYが<code>stalled</code>や<code>waiting_input</code>のまま: <a href="../troubleshooting/#stalled">トラブルシューティング</a></li>
+<li>計画の承認より前に<code>done</code>で終わった: 計画を立てる役が「この依頼はこのリポジトリで扱うべきものではない」と判断した（<code>outcome out_of_scope</code>）。課題の書き方を見直す</li>
+<li><code>develop</code>で、計画の承認より前に<code>waiting_question</code>（OPENに<code>question:&lt;出現ID&gt;</code>）になった: 計画に立てられた問いのうち、計画を直す役が判断できなかったものを聞いている。<code>masuda question list &lt;id&gt;</code>で問い（<code>SPEC-1</code>等のidと、問いと判断できなかった理由）を読み、<code>masuda question answer &lt;id&gt; &lt;出現ID&gt; SPEC-1=&lt;答え&gt; REGRESSION-2=&lt;答え&gt;</code>で<strong>すべての問いに</strong>答える（<code>question list</code>の最後の行に、そのまま埋めればよい形が出る）。答えを踏まえて計画が直され、plan gateが開く</li>
+<li><code>workflows/fix</code>で、計画の承認より前に<code>outcome needs_human</code>で終わった: 指示が曖昧で計画を立てられなかった。POSITIONに役の疑問が出るので、答える形で課題を書き直す</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  ページトップへ戻る
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.indexes", "navigation.top", "search.suggest", "search.highlight", "content.code.copy"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u30b3\u30d4\u30fc\u3057\u307e\u3057\u305f", "clipboard.copy": "\u30af\u30ea\u30c3\u30d7\u30dc\u30fc\u30c9\u3078\u30b3\u30d4\u30fc", "search.result.more.one": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3082\u30461\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.more.other": "\u3053\u306e\u30da\u30fc\u30b8\u5185\u306b\u3042\u3068#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.none": "\u4f55\u3082\u898b\u3064\u304b\u308a\u307e\u305b\u3093\u3067\u3057\u305f", "search.result.one": "1\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.other": "#\u4ef6\u898b\u3064\u304b\u308a\u307e\u3057\u305f", "search.result.placeholder": "\u691c\u7d22\u30ad\u30fc\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044", "search.result.term.missing": "\u691c\u7d22\u306b\u542b\u307e\u308c\u306a\u3044", "select.version": "\u30d0\u30fc\u30b8\u30e7\u30f3\u5207\u308a\u66ff\u3048"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
