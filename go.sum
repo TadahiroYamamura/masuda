@@ -1,7 +1,7 @@
 connectrpc.com/connect v1.21.0 h1:LhqSJt7jHf5NJBo9Jq/t/9FjcYAideif0mg+qe2jCUs=
 connectrpc.com/connect v1.21.0/go.mod h1:A2ygJrukXwWy32vkCAAHNVguZrqZ+jeZ9rGRnGR4dN4=
-github.com/TadahiroYamamura/masuda-engine v0.3.1-0.20261009033421-042dcd526de2 h1:3xRnAUUKhnALtgFI2mBb5tUPzookfEbtTIMY+FlwiTU=
-github.com/TadahiroYamamura/masuda-engine v0.3.1-0.20261009033421-042dcd526de2/go.mod h1:r1RZs0hh2X0ufoLa9xjQeXjnxyy03n0V0AUKN7Dp0f8=
+github.com/TadahiroYamamura/masuda-engine v0.4.0 h1:DWZ5mfmtQvknZoGjpEmrGKXIZa9mPyxLs0wtC5PDMG4=
+github.com/TadahiroYamamura/masuda-engine v0.4.0/go.mod h1:r1RZs0hh2X0ufoLa9xjQeXjnxyy03n0V0AUKN7Dp0f8=
 github.com/bmatcuk/doublestar/v4 v4.10.2 h1:eF7W7HWKg3z9NrWV9pTLnNeoXaqq3Tq9DNKXVMfoCnw=
 github.com/bmatcuk/doublestar/v4 v4.10.2/go.mod h1:xBQ8jztBU6kakFMg+8WGxn0c6z1fTSPVIjEY1Wr7jzc=
 github.com/dlclark/regexp2 v1.11.0 h1:G/nrcoOa7ZXlpoa/91N3X7mM3r8eIlMBBJZvsz/mxKI=
