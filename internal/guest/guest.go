@@ -52,7 +52,7 @@ const TmuxSession = "claude-work"
 // ClaudeCodeVersion は、このmasudaが実機で検証したゲストのClaude Codeの版。リリース時に
 // その時点の最新へ上げ、live（継続テストと1周）で検証する。`masuda init`の雛形のDockerfile・
 // liveのDockerfile・`masuda version`の表示が参照する（.claude/skills/release/SKILL.mdの1-0）。
-const ClaudeCodeVersion = "2.1.292"
+const ClaudeCodeVersion = "2.1.296"
 
 //go:embed loop-claude.md
 var loopRules []byte
