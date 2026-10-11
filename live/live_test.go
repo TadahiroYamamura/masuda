@@ -233,17 +233,28 @@ func connectAPI(sock string) clients {
 // 答えを返す。それ以外のゲート（deviation・triage等）が開いたら失敗にする。publishで実リポジトリの
 // ブランチに着地し、そのブランチでテストが通ることまで確かめる。
 func TestDevelopLapOnPythonRepo(t *testing.T) {
-	runLap(t, "workflows/develop", "feat/live")
+	runLap(t, "workflows/develop", "feat/live", 0)
 }
 
 // TestFixLapOnPythonRepo は同梱のfix（調査と計画を1セッションで済ませる軽いワークフロー）を、
 // developと同じリポジトリ・同じ課題で1周させる。検査もdevelopと同じ。
 func TestFixLapOnPythonRepo(t *testing.T) {
-	runLap(t, "workflows/fix", "feat/live-fix")
+	runLap(t, "workflows/fix", "feat/live-fix", 0)
+}
+
+// planGateHold は、TestFixLapHoldsPlanGateがplanゲートを開いたままにする時間。Claude Codeは
+// 応答の無いMCPの呼び出しを120秒でバックグラウンドに回し、そこから300秒で打ち切るので、それより長く。
+const planGateHold = 8 * time.Minute
+
+// TestFixLapHoldsPlanGate はfixのplanゲートを長く開いたままにしてから承認し、1周が終わることを
+// 確かめる（#85）。メインセッションはnext_taskのwaitingでターンを終え、承認の後にmasudaが起こす。
+func TestFixLapHoldsPlanGate(t *testing.T) {
+	runLap(t, "workflows/fix", "feat/live-hold", planGateHold)
 }
 
 // runLap はworkflowを三角形の課題で1周させ、branchに着地してテストが通ることを確かめる。
-func runLap(t *testing.T, workflow, branch string) {
+// holdPlanが0でなければ、planゲートを開いてからその時間待って承認する。
+func runLap(t *testing.T, workflow, branch string, holdPlan time.Duration) {
 	t.Helper()
 	if os.Getenv("MASUDA_LIVE_TEST") != "1" {
 		t.Skip("set MASUDA_LIVE_TEST=1 to run against the real sandbox service")
@@ -256,15 +267,16 @@ func runLap(t *testing.T, workflow, branch string) {
 	if token == "" {
 		t.Skip("no Claude API token (MASUDA_LIVE_CLAUDE_TOKEN, or register it with masuda secret set CLAUDE_CODE_OAUTH_TOKEN)")
 	}
-	if dl, ok := t.Deadline(); ok && time.Until(dl) < lapBudget {
-		t.Fatalf("the lap needs up to %v; run with -timeout 60m (the test deadline is in %v)", lapBudget, time.Until(dl).Round(time.Second))
+	budget := lapBudget + holdPlan
+	if dl, ok := t.Deadline(); ok && time.Until(dl) < budget {
+		t.Fatalf("the lap needs up to %v; run with a longer -timeout (the test deadline is in %v)", budget, time.Until(dl).Round(time.Second))
 	}
 	started := time.Now()
 
 	repo := newPythonRepo(t)
 	dataDir := keepOnFailure(t, "masuda-live-data-")
 	sock := filepath.Join(dataDir, "masuda.sock")
-	ctx, cancel := context.WithTimeout(context.Background(), lapBudget)
+	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	t.Cleanup(cancel)
 	srv, err := serve.Start(ctx, serve.Options{Socket: sock, DataDir: dataDir, SandboxSocket: sbSock})
 	if err != nil {
@@ -293,7 +305,7 @@ func runLap(t *testing.T, workflow, branch string) {
 	t.Logf("workspace %s (data %s)", id, dataDir)
 	destroyVMOnCleanup(t, api, sbSock, id)
 
-	final, err := driveLap(ctx, t, api, id)
+	final, err := driveLap(ctx, t, api, id, holdPlan)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,9 +336,11 @@ func runLap(t *testing.T, workflow, branch string) {
 var approvable = map[string]bool{"plan": true, "review": true, "interim": true}
 
 // driveLap はワークスペースがDONEになるまで状態を見て、開いたゲートを承認し、開いた質問に答える。
-// BLOCKED・STOPPED、承認してよくないゲート、DEADは失敗として返す。
-func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1.Workspace, error) {
-	lastLine := ""
+// BLOCKED・STOPPED、承認してよくないゲート、DEADは失敗として返す。holdPlanが0でなければ、
+// planゲートは開いてからその時間待って承認する。
+func driveLap(ctx context.Context, t *testing.T, api clients, id string, holdPlan time.Duration) (*apiv1.Workspace, error) {
+	lastLine, lastDetail := "", ""
+	opened := map[string]time.Time{}
 	for {
 		got, err := api.ws.Get(ctx, connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: id}))
 		if err != nil {
@@ -338,6 +352,11 @@ func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1
 			t.Logf("%s %s", time.Now().Format("15:04:05"), line)
 			lastLine = line
 		}
+		// 待ちと起こした記録だけを出す（他のdetailはツールごとに変わり、多すぎる）。
+		if d := w.GetActivity().GetDetail(); d != lastDetail && (strings.Contains(d, "waiting") || strings.Contains(d, "woke") || strings.Contains(d, "起こす")) {
+			t.Logf("%s detail: %s", time.Now().Format("15:04:05"), d)
+			lastDetail = d
+		}
 		switch w.State {
 		case apiv1.WorkspaceState_WORKSPACE_STATE_DONE:
 			return w, nil
@@ -348,7 +367,16 @@ func driveLap(ctx context.Context, t *testing.T, api clients, id string) (*apiv1
 				return nil, err
 			}
 		case apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE:
-			if err := approveOpenGates(ctx, t, api, id); err != nil {
+			if err := approveOpenGates(ctx, t, api, id, func(g *apiv1.Gate) bool {
+				if g.Gate != "plan" || holdPlan == 0 {
+					return true
+				}
+				if _, ok := opened[g.Occurrence]; !ok {
+					opened[g.Occurrence] = time.Now()
+					t.Logf("holding gate plan (occ %s) for %v", g.Occurrence, holdPlan)
+				}
+				return time.Since(opened[g.Occurrence]) >= holdPlan
+			}); err != nil {
 				return nil, err
 			}
 		}
@@ -395,7 +423,8 @@ func answerOpenQuestions(ctx context.Context, t *testing.T, api clients, id stri
 	return nil
 }
 
-func approveOpenGates(ctx context.Context, t *testing.T, api clients, id string) error {
+// approveOpenGates は開いているゲートのうち、readyがtrueを返すものを承認する。
+func approveOpenGates(ctx context.Context, t *testing.T, api clients, id string, ready func(*apiv1.Gate) bool) error {
 	open, err := api.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
 	if err != nil {
 		return err
@@ -403,6 +432,9 @@ func approveOpenGates(ctx context.Context, t *testing.T, api clients, id string)
 	for _, g := range open.Msg.Gates {
 		if !approvable[g.Gate] {
 			return fmt.Errorf("gate %s (occ %s) opened; this test approves only %v:\n%s", g.Gate, g.Occurrence, approvable, g.Subject)
+		}
+		if !ready(g) {
+			continue
 		}
 		t.Logf("approving gate %s (occ %s)", g.Gate, g.Occurrence)
 		_, err := api.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{

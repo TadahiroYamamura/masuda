@@ -82,7 +82,7 @@ func TestGuestSubagentContinuation(t *testing.T) {
 	t.Logf("workspace %s (data %s)", id, dataDir)
 	destroyVMOnCleanup(t, api, sbSock, id)
 
-	final, err := driveLap(ctx, t, api, id)
+	final, err := driveLap(ctx, t, api, id, 0)
 	wsDir := filepath.Join(dataDir, "workspaces", id)
 	if report := findFile(filepath.Join(wsDir, "data"), "continuation-report"); report != "" {
 		t.Logf("continuation-report:\n%s", report)
