@@ -28,6 +28,9 @@ const Home = "/home/" + User
 // 136秒走ったので、既定に任せず明示する。
 const HookTimeoutSeconds = 40
 
+// permissionDenyMessage は、確認が要る操作をPermissionRequestフックが拒否したときにモデルへ返す理由。
+const permissionDenyMessage = "無人実行のため、確認が必要な操作は実行できない（masudaが拒否した）。確認の要らない別の方法で進めること。一時ディレクトリは mktemp -d で作り、rm -rf は自分で作ったディレクトリの中だけにする。ルート直下・ホームディレクトリそのもの・システムのディレクトリを対象にした削除はしない。"
+
 // HooksURL はゲストのClaude Codeフックの送り先。
 const HooksURL = "http://masuda.internal:7000/hooks"
 
@@ -438,7 +441,8 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 }
 
 // Settings はゲストの`~/.claude/settings.json`。対象リポジトリのclaudeSettings（nil可）に
-// masudaのフックを重ねる。フックはいずれもstdinのJSONをそのまま`/hooks`へ送る。
+// masudaのフックを重ねる。フックはいずれもstdinのJSONをそのまま`/hooks`へ送る。PermissionRequestは
+// 送った上で拒否を返す。
 //
 // masudaが使うイベントはmasudaのフックで置き換え、それ以外のイベントのフックは残す。
 // 同じイベントに対象リポジトリのフックを並べて残さないのは、活動の判定（Notification等）に
@@ -463,6 +467,21 @@ func Settings(claudeSettings json.RawMessage) ([]byte, error) {
 	for _, ev := range []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd"} {
 		hooks[ev] = hook
 	}
+	// 無人のrunでは確認に答える人がいないので、確認が要る操作（bypass modeでも出る、重要なパスを
+	// 狙うrm等）は待たずに拒否して理由を返す（#74）。Claude Codeも約2分で自動で拒否するが、それまで
+	// 止まり、代わりの手段も伝わらない。許可にしないのは、安全判定が止めたものを機械的に通さないため。
+	// 記録の送信を拒否の出力より先に同期で行うのは、裏に回すとフックの終了と共に送信が消えうるため。
+	// 送信が詰まっても上の上限で切り上がり、拒否は出る。
+	deny, err := json.Marshal(map[string]any{"hookSpecificOutput": map[string]any{
+		"hookEventName": "PermissionRequest",
+		"decision":      map[string]any{"behavior": "deny", "message": permissionDenyMessage},
+	}})
+	if err != nil {
+		return nil, err
+	}
+	hooks["PermissionRequest"] = []map[string]any{{"hooks": []map[string]any{{
+		"type": "command", "command": cmd + " >/dev/null 2>&1; printf '%s' " + shellQuote(string(deny)), "timeout": HookTimeoutSeconds,
+	}}}}
 	out["hooks"] = hooks
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {

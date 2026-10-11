@@ -586,6 +586,15 @@ func TestCM5_WatchStreamsStatusAndHookActivity(t *testing.T) {
 	if ws.Msg.Activity == nil || ws.Msg.Activity.Kind != apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT {
 		t.Fatalf("idle_prompt hook must surface as WAITING_INPUT: %+v", ws.Msg.Activity)
 	}
+	// The guest's PermissionRequest hook denies on the spot (#74), so it is progress, not a wait.
+	perm := `{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}`
+	if r, err := http.Post("http://127.0.0.1:"+strings.TrimSpace(string(port))+"/hooks", "application/json", strings.NewReader(perm)); err != nil || r.StatusCode >= 300 {
+		t.Fatalf("hooks POST: %v %v", err, r)
+	}
+	ws, _ = h.ws.Get(context.Background(), connect.NewRequest(&apiv1.GetWorkspaceRequest{Id: id}))
+	if a := ws.Msg.Activity; a == nil || a.Kind == apiv1.ActivityKind_ACTIVITY_KIND_WAITING_INPUT || a.InputWait != "" || !strings.Contains(a.Detail, "permission denied") {
+		t.Fatalf("PermissionRequest hook must clear the wait and show the denial: %+v", a)
+	}
 	// Stop keeps records; Resume brings it back RUNNING with a new (fake) sandbox.
 	if _, err := h.ws.Stop(context.Background(), connect.NewRequest(&apiv1.StopRequest{Id: id})); err != nil {
 		t.Fatal(err)
