@@ -57,6 +57,16 @@ func TestLoopRulesForbidAskingInConversation(t *testing.T) {
 	}
 }
 
+// ループ規約は、next_taskがwaitingを返したらターンを終え、masudaが送る文（WakeText）を受け取ったら
+// next_taskを呼び直し、失敗してもループをやめないことを書く（#85）。
+func Testループ規約はwaitingでターンを終えて起こされたら呼び直すことを書く(t *testing.T) {
+	for _, want := range []string{`{kind: "waiting"}`, "そのターンを終えてください", "「" + WakeText + "」", "数回呼び直してください", "自分の判断でループをやめないでください"} {
+		if !strings.Contains(string(loopRules), want) {
+			t.Errorf("loop rules lack %q", want)
+		}
+	}
+}
+
 // ループ規約は、続きのタスクをSendMessageで同じサブエージェントへ送り、送れなければ新しく起動し、
 // 委譲したサブエージェントのIDをnext_taskで報告することを書く（docs/guest-protocol.md）。
 func TestLoopRulesDescribeContinuation(t *testing.T) {

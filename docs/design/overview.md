@@ -43,7 +43,7 @@ masuda
   └─ ゲストで tmux 上の claude を起動（ループ規約）
   │
 ゲスト（メインエージェント）         ホスト（masuda / engine）
-  next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
+  next_task ─────────────────────▶ engine.Advance → Runner.RunAgent（無ければ最大90秒待ち、waiting を返す）
   ◀──── タスクファイルのパス ─────  /masuda/in/<occ>/ に入力を書き込み済み
   サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
   （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
@@ -52,6 +52,7 @@ masuda
                                    次ノード: egress/秘密の方針を SetPolicy で切替
   ...
   （approval ノード）              ゲートを開き、人間の判断を待つ（API/CLI）
+  waiting → ターンを終える ◀────── 判断・ホストの処理の終わりで tmux へ1文送って起こす
   （exec ノード）                  sandbox.Exec で決定論コマンドを実行、出力を検証
   （commit ノード）                staging 上でホストがコミットを作る（計画の範囲内のみ）
   （publish ノード）               staging → 実リポジトリへ fast-forward、または remote へ push
@@ -146,7 +147,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 `Resume`できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（`chat`で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの`Stop`はVMを壊してSTOPPEDにする。BLOCKEDへの`Stop`はVMを壊すだけで状態はBLOCKEDのまま残し、`Stop`を挟んで再開できてしまうことを防ぐ。
 
-ゲストの`next_task`には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（`blocked`とは返さない）。ループ規約は`done`・`blocked`でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に`next_task`を呼び直せばResumeを待たずに進むこともある。
+ゲストの`next_task`には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（`blocked`とは返さない）。ループ規約は`done`・`blocked`でだけメインセッションを終え、失敗したときは数回呼び直してからターンを終えるだけなので、SUSPENDEDの間もメインセッションは残る。masudaはエラーでは起こさない（人間が原因を直してResumeする）。
 
 1. 定義は`records/definitions/`の写しから読み直す。作業ツリーの`.masuda/`がその後変わっていても、始めたときと同じ定義で進む
 2. 承認・秘密の値・`stallAfter`は作業ツリーの`settings.local.json`と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（`Run`と同じ）
@@ -328,7 +329,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 
 | ツール | 用途 |
 |---|---|
-| `next_task` | メインエージェントが次のタスクを受け取る。ゲート待ち・質問待ちの間はブロックする |
+| `next_task` | メインエージェントが次のタスクを受け取る。まだ無ければ最大90秒待ち、`waiting`を返す。メインエージェントはターンを終え、待っていたものが進むとmasudaがtmuxへ1文送って起こす |
 | `write_output(name, content)` | サブエージェントが出力データを書く。ホストが検証して受け付ける |
 | `report_result(outcome, feedback?)` | ノードの終わり方を報告する |
 | `report_concern(text)` | セキュリティ上の懸念を自己申告する（triage） |

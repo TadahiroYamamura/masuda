@@ -12,10 +12,6 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/guest"
 )
 
-// wakeText はメインセッションを起こすときに入力欄へ送る1文（docs/guest-protocol.md「masudaが
-// メインセッションを起こす」）。
-const wakeText = "masudaからの知らせ: 待っていたものが進みました。next_taskを呼んで続けてください。"
-
 // wakeRetryAfter・wakeMaxSends は、送ってもnext_taskが来ないときに送り直すまでの間と、送る回数の上限。
 // 送った文が入力欄で失われた場合に備えて送り直すが、Claude Codeが応えない状態を回数で打ち切る。
 const (
@@ -80,7 +76,7 @@ func (c *runCtl) tryWake() {
 	c.b.statusChanged(c.id)
 }
 
-// sendWake はゲストのメインセッションのtmuxへwakeTextを送る。誰かがアタッチしている間は、
+// sendWake はゲストのメインセッションのtmuxへguest.WakeTextを送る。誰かがアタッチしている間は、
 // 打っている途中の入力に混ざるので送らずにattachedを返す。
 func (b *backend) sendWake(ctx context.Context, id string) (attached bool, err error) {
 	if b.fake {
@@ -116,7 +112,7 @@ func (b *backend) sendWake(ctx context.Context, id string) (attached bool, err e
 	}
 	// 文と改行を分けて送る。-lで文字どおりに打ち、Enterはキーとして押す（文の中の語を
 	// キー名と解釈させないため）。
-	if _, err := tmux("send-keys", "-t", guest.TmuxSession, "-l", wakeText); err != nil {
+	if _, err := tmux("send-keys", "-t", guest.TmuxSession, "-l", guest.WakeText); err != nil {
 		return false, err
 	}
 	_, err = tmux("send-keys", "-t", guest.TmuxSession, "Enter")

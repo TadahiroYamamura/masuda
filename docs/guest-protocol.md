@@ -6,7 +6,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 
 - ゲストからは`http://masuda.internal:7000/`。sandbox serviceの`tcp.hosts`で、そのワークスペース専用のホスト側ローカルポートへ対応付ける。別のVMからは届かない
 - `/mcp`がMCP（Streamable HTTP）、`/hooks`がClaude Codeフックの受け口
-- MCPの`timeout`は7日。`next_task`はゲート待ち・質問待ちの間ブロックするため
+- MCPの`timeout`は7日。`ask_human`は答えが来るまで、`run_privileged_command`は宣言の`timeoutSeconds`（既定3600秒）まで待つため。`next_task`は最大90秒で返る（下記）
 
 ## 起動時にホストがゲストへ置くもの
 
@@ -35,6 +35,8 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 2. タスクに`continues`があり、その`agent_id`のサブエージェントがまだいれば、そのサブエージェントに`SendMessage`でタスクファイルのパスだけを送る。いなければ（VMの再開後など）、タスクが指す役（`role`）のサブエージェントを新しく起動し、タスクファイルのパスだけを渡して委譲する。自分では調査・実装・レビューをしない
 3. サブエージェントが`write_output`と`report_result`を呼び終えるのを待つ。呼んでいなければ、呼ぶよう差し戻す
 4. `next_task`に直前のサブエージェントの`agent_id`を渡して1へ戻る。`next_task`が`done`または`blocked`を返したら終了する
+5. `next_task`が`waiting`を返したら、何も呼ばず待たずにターンを終える。masudaに起こされたら（下記「masudaがメインセッションを起こす」）、同じ`agent_id`で`next_task`を呼んで続ける
+6. `next_task`が失敗した（接続の失敗等）ときは、間を置いて数回呼び直す。それでも失敗するならターンを終える。自分の判断でループをやめない
 
 続きは「記憶はあれば使う。無くても成立する入力を常に渡す」。続けられたかどうかでタスクの入力は変わらないので、送る相手がいない・送れないときに新しく起動しても実行は成り立つ。
 

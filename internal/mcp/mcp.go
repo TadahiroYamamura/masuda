@@ -143,7 +143,7 @@ func register(srv *sdk.Server, host Host) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}}, nil
 		})
 	}
-	add("next_task", "次のタスクを受け取る。人間の判断（ゲート・質問）を待つ間はブロックする。",
+	add("next_task", "次のタスクを受け取る。まだ無ければ最大90秒待ち、それでも無ければkind: waitingを返す（人間の判断・ホストの処理を待っている）。waitingならターンを終え、masudaが起こしたら呼び直す。",
 		schema(`"agent_id":{"type":"string","description":"直前に完了したタスクを担当したサブエージェントのID（Agentツールの結果のagentId）。続きを送って同じサブエージェントを続けたときもそのID"}`),
 		func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var a struct {
@@ -165,7 +165,7 @@ func register(srv *sdk.Server, host Host) {
 			return host.WriteOutput(ctx, a.Occurrence, a.Name, a.Content)
 		})
 
-	add("report_result", "タスクの終わり方（outcome）を報告する。",
+	add("report_result", "タスクの終わり方（outcome）を報告する。記録した時点で返り、その後のホスト側の処理は待たない。",
 		schema(occProp+`,"outcome":{"type":"string"},"feedback":{"type":"string"},"agent_id":{"type":"string"}`, "occurrence", "outcome"),
 		func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var a struct {
