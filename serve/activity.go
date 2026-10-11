@@ -253,6 +253,10 @@ func (b *backend) observeHook(id string, body []byte) {
 	case "PostToolUse":
 		detail = in.ToolName
 		b.acts.update(id, func(act *activity) { act.touch("tool " + in.ToolName) })
+	case "PermissionRequest":
+		// ゲストのフックがその場で拒否するので、待ちではなく進行中として扱う（#74）
+		detail = in.ToolName
+		b.acts.update(id, func(act *activity) { act.touch("permission denied: tool " + in.ToolName) })
 	case "Stop", "SubagentStop":
 		b.acts.update(id, func(act *activity) {
 			act.last = time.Now().UTC()

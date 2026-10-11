@@ -2,6 +2,9 @@ package guest
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -100,7 +103,7 @@ func TestSettingsのフックはすべて送信の上限とtimeoutを持つ(t *t
 	if err := json.Unmarshal(b, &s); err != nil {
 		t.Fatal(err)
 	}
-	events := []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd"}
+	events := []string{"Notification", "PostToolUse", "Stop", "SubagentStop", "SessionEnd", "PermissionRequest"}
 	if len(s.Hooks) != len(events) {
 		t.Fatalf("hooks = %v", s.Hooks)
 	}
@@ -120,5 +123,53 @@ func TestSettingsのフックはすべて送信の上限とtimeoutを持つ(t *t
 		if c.Timeout != HookTimeoutSeconds || c.Timeout <= worstCurl {
 			t.Errorf("%s: timeout %d must be %d and longer than curl's worst %d", ev, c.Timeout, HookTimeoutSeconds, worstCurl)
 		}
+	}
+}
+
+// 無人のrunでは確認に答える人がいない（#74）。PermissionRequestのフックは、入力をホストへ送った上で、
+// 標準出力に拒否だけを出す。curlの応答が混ざるとClaude Codeが判定を読めないので、出力は拒否のJSONだけ。
+func TestSettingsのPermissionRequestは入力をホストへ送り拒否と理由だけを出力する(t *testing.T) {
+	b, err := Settings(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var s struct {
+		Hooks map[string][]struct{ Hooks []struct{ Command string } }
+	}
+	if err := json.Unmarshal(b, &s); err != nil {
+		t.Fatal(err)
+	}
+	command := s.Hooks["PermissionRequest"][0].Hooks[0].Command
+
+	// curlの代わりに、受け取った標準入力を書き残し、応答らしいものを標準出力に出すものを置く
+	bin := t.TempDir()
+	sent := filepath.Join(bin, "sent")
+	fake := "#!/bin/sh\ncat > " + sent + "\necho 'response body'\n"
+	if err := os.WriteFile(filepath.Join(bin, "curl"), []byte(fake), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	input := `{"hook_event_name":"PermissionRequest","tool_name":"Bash","tool_input":{"command":"rm -rf /x"}}`
+	cmd := exec.Command("/bin/sh", "-c", command)
+	cmd.Env = append(os.Environ(), "PATH="+bin+":/usr/bin:/bin")
+	cmd.Stdin = strings.NewReader(input)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(sent); string(got) != input {
+		t.Errorf("sent to the host = %q, want the hook input as is", got)
+	}
+	var res struct {
+		HookSpecificOutput struct {
+			HookEventName string
+			Decision      struct{ Behavior, Message string }
+		}
+	}
+	if err := json.Unmarshal(out, &res); err != nil {
+		t.Fatalf("stdout must be the decision JSON only: %q (%v)", out, err)
+	}
+	d := res.HookSpecificOutput
+	if d.HookEventName != "PermissionRequest" || d.Decision.Behavior != "deny" || !strings.Contains(d.Decision.Message, "mktemp -d") {
+		t.Fatalf("decision = %+v", d)
 	}
 }

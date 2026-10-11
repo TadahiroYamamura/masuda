@@ -72,6 +72,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `PostToolUse` | 活動のハートビート。ツール名だけ記録する |
 | `Stop` / `SubagentStop` | ターンの終了 |
 | `SessionEnd` | セッション終了（`dead`判定の補助） |
+| `PermissionRequest` | 確認が必要な操作（bypass modeでも出る、重要なパスを狙う`rm`等）。送った上で、`hookSpecificOutput.decision`を`deny`にし、無人実行であることと代わりの手段を`message`で返す。答える人がいないため待たない。許可はしない |
 
 フックは補助情報で、masudaは「APIリクエストの観測」（sandbox serviceの`WatchEvents`）を一次情報として扱う。
 
