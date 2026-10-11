@@ -50,6 +50,8 @@ type Options struct {
 	// Version はmasudaのバージョン（`-ldflags -X main.version`）。sandboxとの契約が合わないときの
 	// 理由に含める。空なら"dev"。
 	Version string
+	// NextTaskWait はnext_taskが次のタスクを待つ上限。0なら90秒。契約テストが短くする。
+	NextTaskWait time.Duration
 }
 
 // Server は起動中の`masuda serve`。
@@ -96,6 +98,8 @@ type backend struct {
 	// stallDefault はリポジトリが上書きしないときのしきい値（config.json、既定10分）。
 	stallOverride time.Duration
 	stallDefault  time.Duration
+	// nextTaskWait はnext_taskが次のタスクを待つ上限（Options.NextTaskWait）。
+	nextTaskWait time.Duration
 	// diskWarn はディスク使用量の警告のしきい値（config.json、既定20GiB）。
 	diskWarn int64
 
@@ -110,6 +114,7 @@ func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient
 		store: store, sandbox: sb, dataDir: opts.DataDir, fake: opts.FakeSandbox, version: opts.Version,
 		ctx: ctx, cancel: cancel, closeSandbox: closeSandbox, runs: map[string]*runCtl{},
 		events: newEventBus(), acts: newActivities(), stallOverride: max(opts.StallAfter, 0),
+		nextTaskWait: cmp.Or(max(opts.NextTaskWait, 0), defaultNextTaskWait),
 		stallDefault: cmp.Or(max(opts.DefaultStallAfter, 0), DefaultStallAfter),
 		diskWarn:     cmp.Or(max(opts.DiskWarnBytes, 0), config.DefaultDiskWarnBytes),
 	}

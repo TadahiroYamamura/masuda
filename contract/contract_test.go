@@ -59,6 +59,9 @@ func git(t *testing.T, dir string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+// nextTaskWait はnext_taskが次のタスクを待つ上限。既定の90秒では`waiting`を見るテストが遅いので縮める。
+const nextTaskWait = 2 * time.Second
+
 func newRepo(t *testing.T, files map[string]string) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -81,7 +84,7 @@ func start(t *testing.T, repoFiles map[string]string) *harness {
 	t.Cleanup(cancel)
 	dataDir := t.TempDir()
 	sock := filepath.Join(t.TempDir(), "masuda.sock")
-	srv, err := serve.Start(ctx, serve.Options{Socket: sock, DataDir: dataDir, FakeSandbox: true})
+	srv, err := serve.Start(ctx, serve.Options{Socket: sock, DataDir: dataDir, FakeSandbox: true, NextTaskWait: nextTaskWait})
 	if err != nil {
 		t.Fatalf("serve.Start: %v", err)
 	}
@@ -390,8 +393,14 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 		t.Fatalf("report_result: %v", r)
 	}
 
-	// 2. plan gate: next_task blocks; approve via API with the right hash.
+	// 2. plan gate: next_task waits, then returns waiting; approve via API with the right hash.
 	ws = h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	began := time.Now()
+	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "gate" || !strings.HasPrefix(w["position"].(string), "gate plan (occ ") {
+		t.Fatalf("next_task at the plan gate: %v", w)
+	} else if d := time.Since(began); d < nextTaskWait || d > nextTaskWait+5*time.Second {
+		t.Fatalf("next_task at the gate must wait about %v before returning waiting: %v", nextTaskWait, d)
+	}
 	open, err := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
 	if err != nil || len(open.Msg.Gates) != 1 || open.Msg.Gates[0].Gate != "plan" {
 		t.Fatalf("open gates: %v %+v", err, open)
@@ -400,12 +409,16 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: "wrong"}})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
 		t.Fatalf("approval with wrong hash: %v, want FailedPrecondition", err)
 	}
+	// A decision while next_task waits hands out the next task in that same call.
+	waited := make(chan map[string]any, 1)
+	go func() { waited <- h.mcp(id, "next_task", nil) }()
+	time.Sleep(nextTaskWait / 4)
 	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); err != nil {
 		t.Fatalf("Decide: %v", err)
 	}
 
 	// 3. implementer edits the guest clone, reports; commit lands in staging only.
-	task = h.mcp(id, "next_task", nil)
+	task = <-waited
 	if task["role"] != "smoke-implementer" {
 		t.Fatalf("next_task after approval: %v", task)
 	}
@@ -1216,6 +1229,9 @@ func TestCM12_EngineBlockedCannotBeResumed(t *testing.T) {
 		t.Fatalf("report_concern: %v", r)
 	}
 	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "triage" {
+		t.Fatalf("next_task at the triage gate: %v", w)
+	}
 	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: occ, Decision: &apiv1.Decision{Outcome: "halt"}})); err != nil {
 		t.Fatalf("halt: %v", err)
 	}
@@ -1237,4 +1253,60 @@ func TestCM12_EngineBlockedCannotBeResumed(t *testing.T) {
 			t.Fatalf("Resume after Stop of a blocked workspace: %v", err)
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// C-M13: MCP calls do not wait for host nodes
+// ---------------------------------------------------------------------------
+
+const slowWorkflow = `version: 1
+inputs: [instructions]
+start: plan
+nodes:
+  plan: {type: agent, role: agents/smoke-planner, inputs: [instructions], outputs: [plan], next: approve}
+  approve: {type: approval, gate: plan, target: plan, next: {approved: work, rejected: plan}}
+  work: {type: agent, role: agents/smoke-implementer, outputs: [commit-message], next: verify}
+  verify: {type: privileged, name: slow, next: {done: end, failed: end}}
+`
+
+// slowFor はslowの特権コマンドが走る時間。next_taskの待ちの上限より長く、2回分より短い。
+const slowFor = 3 * time.Second
+
+const slowSettings = `{"image":"default","egress":[],"secrets":[],"checks":{},"privilegedCommands":{"slow":{"image":"default","command":"sleep 3"}}}`
+
+// report_result returns once the result is recorded, without waiting for the host
+// node that follows (#83). next_task returns waiting with reason running while that
+// node is still running, and the end once it has finished.
+func TestCM13_report_resultはホスト側のノードを待たずに返りnext_taskは実行中ならwaitingを返す(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = slowSettings
+	files[".masuda/workflows/slow.yaml"] = slowWorkflow
+	h := start(t, files)
+	ctx := context.Background()
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "slow"})); err != nil {
+		t.Fatal(err)
+	}
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/slow", Branch: "feat/slow", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApprove(id)
+	task := h.mcp(id, "next_task", nil)
+	occ := task["occurrence"].(string)
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: x"})
+	began := time.Now()
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+	if d := time.Since(began); d >= slowFor {
+		t.Fatalf("report_result must not wait for the privileged node: took %v", d)
+	}
+	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "running" {
+		t.Fatalf("next_task while the privileged node runs: %v", w)
+	}
+	if done := h.mcp(id, "next_task", nil); done["kind"] != "done" {
+		t.Fatalf("next_task after the privileged node: %v", done)
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -37,6 +38,11 @@ func (b *backend) stopRun(id string) {
 	if c := b.runFor(id); c != nil {
 		c.cancel()
 		<-c.bootDone
+		// 裏で回っているadvance（ホスト側のノード）が取り消しで戻るのを待ってから、書き出しと
+		// sandboxの破棄に進む。戻らないノードでStopが止まり続けないよう、上限を置く。
+		if !c.waitAdvance(stopExportTimeout) {
+			log.Printf("masuda: workspace %s: the engine did not return within %v after stopping; stopping anyway", id, stopExportTimeout)
+		}
 		b.removeRun(id)
 		r = c.runner
 	}
