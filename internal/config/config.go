@@ -59,6 +59,9 @@ type Settings struct {
 	PrivilegedCommands map[string]PrivilegedCommandDecl `json:"privilegedCommands,omitempty"`
 	// Checks はチェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`に実行可能スクリプトとして置く。
 	Checks map[string]string `json:"checks,omitempty"`
+	// Prepare は準備（生成・依存の配置）のシェルコマンド。エージェントのVMの起動時・各チェックの前・
+	// 特権コマンドの前に同じものを流す。コマンドごとに書き写すと、漏れたものだけが落ちるため（#111）。
+	Prepare string `json:"prepare,omitempty"`
 	// ClaudeSettings はゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaが優先）。
 	ClaudeSettings json.RawMessage `json:"claudeSettings,omitempty"`
 	// Images はイメージのエントリ（`.masuda/images/<entry>/`）ごとのVMの設定。書かなかった
@@ -183,10 +186,16 @@ type PinnedDecl interface {
 // 未承認と同じに扱う。名前だけで承認すると、承認済みの宣言の中身をコミットで
 // 差し替えられてしまう。Descriptionは空にした写しで取るので、説明だけの変更では失効せず、
 // Descriptionを足す前に記録した承認のハッシュもそのまま通る。
-func DeclHash[T PinnedDecl](decl T) (string, error) {
+//
+// prepare（Settings.Prepare）も含める。特権VMではコマンドの前にrootで動くので、人間が承認する
+// ものの一部になる。空なら含めないので、準備を宣言していなければ前に記録した承認のハッシュのまま通る。
+func DeclHash[T PinnedDecl](decl T, prepare string) (string, error) {
 	d := PrivilegedCommandDecl(decl)
 	d.Description = ""
-	data, err := json.Marshal(d)
+	data, err := json.Marshal(struct {
+		PrivilegedCommandDecl
+		Prepare string `json:"prepare,omitempty"`
+	}{d, prepare})
 	if err != nil {
 		return "", err
 	}

@@ -105,7 +105,7 @@ func privilegedRepo(t *testing.T, decls string, approve ...string) string {
 	}
 	local := config.LocalSettings{PrivilegedCommandsApproved: map[string]config.PrivilegedCommandApproval{}}
 	for _, name := range approve {
-		hash, err := config.DeclHash(cfg.PrivilegedCommands[name])
+		hash, err := config.DeclHash(cfg.PrivilegedCommands[name], cfg.Prepare)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -278,7 +278,7 @@ func privilegedEntries(cfg config.Settings, local config.LocalSettings) (*apiv1.
 	out := &apiv1.ListPrivilegedCommandsResponse{}
 	for _, name := range names {
 		d := cfg.PrivilegedCommands[name]
-		_, state, err := privileged.ApprovalOf(name, d, local)
+		_, state, err := privileged.ApprovalOf(name, d, cfg.Prepare, local)
 		if err != nil {
 			return nil, connect.NewError(connect.CodeInternal, err)
 		}
@@ -322,7 +322,7 @@ func (s *configService) ApprovePrivilegedCommand(ctx context.Context, req *conne
 	if err := privileged.Validate(d, imageExistsIn(filepath.Join(root, config.DirName))); err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("privileged command %q: %w", req.Msg.Name, err))
 	}
-	hash, err := config.DeclHash(d)
+	hash, err := config.DeclHash(d, cfg.Prepare)
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

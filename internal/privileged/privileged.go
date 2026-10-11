@@ -92,9 +92,9 @@ const (
 	Stale
 )
 
-// ApprovalOf は宣言dのハッシュと、localでのnameの承認の状態を返す。
-func ApprovalOf(name string, d config.PrivilegedCommandDecl, local config.LocalSettings) (string, Approval, error) {
-	hash, err := config.DeclHash(d)
+// ApprovalOf は宣言dと準備prepareのハッシュと、localでのnameの承認の状態を返す。
+func ApprovalOf(name string, d config.PrivilegedCommandDecl, prepare string, local config.LocalSettings) (string, Approval, error) {
+	hash, err := config.DeclHash(d, prepare)
 	if err != nil {
 		return "", NotApproved, err
 	}
@@ -133,7 +133,7 @@ func Resolve(cfg config.Settings, local config.LocalSettings, name string, image
 	if err := Validate(decl, imageExists); err != nil {
 		return nil, fmt.Errorf("privileged command %q: %w", name, err)
 	}
-	hash, state, err := ApprovalOf(name, decl, local)
+	hash, state, err := ApprovalOf(name, decl, cfg.Prepare, local)
 	if err != nil {
 		return nil, err
 	}

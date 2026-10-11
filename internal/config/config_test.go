@@ -30,6 +30,7 @@ func TestLoadReadsFullSchema(t *testing.T) {
 		"envFiles": [{"path": ".env", "vars": ["LINEAR_API_KEY", "PUBLIC_URL"]}],
 		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60}},
 		"checks": {"test": "go test ./..."},
+		"prepare": "make generate",
 		"claudeSettings": {"theme": "dark"},
 		"images": {"go": {"diskMiB": 8192, "memoryMiB": 8192, "cpus": 2}}
 	}`)
@@ -37,7 +38,7 @@ func TestLoadReadsFullSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ImageEntry() != "go" || len(cfg.Egress) != 2 || cfg.Checks["test"] != "go test ./..." {
+	if cfg.ImageEntry() != "go" || len(cfg.Egress) != 2 || cfg.Checks["test"] != "go test ./..." || cfg.Prepare != "make generate" {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	lin, _ := cfg.Secret("LINEAR_API_KEY")
@@ -116,11 +117,11 @@ func TestHostAllowed(t *testing.T) {
 
 func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
 	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", TimeoutSeconds: 600}
-	base, err := DeclHash(decl)
+	base, err := DeclHash(decl, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := DeclHash(decl); again != base {
+	if again, _ := DeclHash(decl, ""); again != base {
 		t.Fatalf("DeclHash() not stable: %q != %q", base, again)
 	}
 	variants := []PrivilegedCommandDecl{
@@ -130,9 +131,19 @@ func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
 		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds, Inputs: []string{"**"}},
 	}
 	for i, v := range variants {
-		if h, _ := DeclHash(v); h == base {
+		if h, _ := DeclHash(v, ""); h == base {
 			t.Fatalf("DeclHash(variant %d) equals the base hash", i)
 		}
+	}
+}
+
+func TestDeclHashは準備を宣言すると準備の中身ごとに変わる(t *testing.T) {
+	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", TimeoutSeconds: 600}
+	without, _ := DeclHash(decl, "")
+	withGen, _ := DeclHash(decl, "make generate")
+	withOther, _ := DeclHash(decl, "make generate && cp a b")
+	if withGen == without || withOther == without || withGen == withOther {
+		t.Fatalf("hashes must differ: none=%s gen=%s other=%s", without, withGen, withOther)
 	}
 }
 
@@ -142,14 +153,14 @@ func TestDeclHashIgnoresDescription(t *testing.T) {
 	// をsha256sumで計算した値。既存の承認の記録はこの値を持っている。
 	const recorded = "010f65a25816ce10c84e806aabc809efcff33ee47c74ba82c862721ce7461206"
 	t.Run("descriptionの無い宣言のハッシュはdescriptionを足す前と同じ値になる", func(t *testing.T) {
-		if h, err := DeclHash(decl); err != nil || h != recorded {
+		if h, err := DeclHash(decl, ""); err != nil || h != recorded {
 			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
 		}
 	})
 	t.Run("descriptionだけを変えてもハッシュは変わらない", func(t *testing.T) {
 		d := decl
 		d.Description = "DBを立ててマイグレーションとテストを流す"
-		if h, err := DeclHash(d); err != nil || h != recorded {
+		if h, err := DeclHash(d, ""); err != nil || h != recorded {
 			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
 		}
 	})
