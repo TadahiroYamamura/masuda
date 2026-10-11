@@ -20,8 +20,13 @@ import (
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
 )
 
-// maxBlock はnext_task・ask_humanが人間の判断を待つ上限（docs/guest-protocol.md「到達経路」）。
+// maxBlock はask_humanが人間の答えを待つ上限（docs/guest-protocol.md「到達経路」）。
 const maxBlock = 7 * 24 * time.Hour
+
+// defaultNextTaskWait はnext_taskが次のタスクを待つ上限の既定。Claude Codeは120秒応答の無い
+// MCPの呼び出しをバックグラウンドに回し、そこから300秒で打ち切るので、それより短く返して
+// `waiting`を伝え、メインセッションにはターンを終えさせる（起こすのはmasuda）。
+const defaultNextTaskWait = 90 * time.Second
 
 // runCtl は1つのワークスペースで動いている実行。engineとRunner、ゲスト向けのMCPサーバーを束ね、
 // MCPのツール（mcp.Host）と公開API（ゲートの判断）の両方からengineを呼ぶ窓口になる。
@@ -77,6 +82,35 @@ type runCtl struct {
 	// 次のnext_taskで報告されたサブエージェントのIDをこの出現に結び付ける。
 	lastTaskMu sync.Mutex
 	lastTask   string
+
+	// advNext は次に回すadvanceの回。advRunningの間に頼まれた分はここにまとめ、今の回が
+	// 終わってから1回だけ回す（advanceLoop）。advIdle はadvanceLoopが動いていない間は閉じている。
+	advMu      sync.Mutex
+	advRunning bool
+	advNext    *advanceRun
+	advIdle    chan struct{}
+
+	// seq は状態が変わりうる出来事（報告・判断・回答・裏のadvanceの終わり）の通し番号。
+	// waitingは、next_taskが`waiting`を返し、まだ次のnext_taskが来ていないこと。
+	// 両方をseqMuの中で読み書きするのは、`waiting`を返すのと状態が変わるのがほぼ同時でも、
+	// 後から来た側が先の側に気づけるようにするため（起こす側が、まだ`waiting`を返していない
+	// と見て起こさず、next_taskの側も変化に気づかずに`waiting`を返すと、誰も起こさない）。
+	seqMu   sync.Mutex
+	seq     uint64
+	waiting bool
+	// wantWake は`waiting`を返した後に状態が変わり、メインセッションを起こす必要があること。
+	// wakingは送っている途中、wakeSends・wakeSentAtは送った回数と最後に送った時刻（serve/wake.go）。
+	wantWake   bool
+	waking     bool
+	wakeSends  int
+	wakeSentAt time.Time
+}
+
+// advanceRun はadvanceの1回。doneが閉じた後にst・errが読める。
+type advanceRun struct {
+	done chan struct{}
+	st   engine.Status
+	err  error
 }
 
 func (c *runCtl) run() engine.RunID { return engine.RunID(c.id) }
@@ -89,9 +123,56 @@ func (c *runCtl) waitCh() <-chan struct{} {
 
 func (c *runCtl) notify() {
 	c.chMu.Lock()
-	defer c.chMu.Unlock()
 	close(c.changed)
 	c.changed = make(chan struct{})
+	c.chMu.Unlock()
+	c.bump(true)
+}
+
+// bump は状態が変わりうる出来事を数え、wakeならメインセッションを起こすよう頼む（`waiting`を
+// 受け取った後のときだけ起こす）。
+func (c *runCtl) bump(wake bool) {
+	c.seqMu.Lock()
+	c.seq++
+	c.seqMu.Unlock()
+	if wake {
+		c.requestWake()
+	}
+}
+
+func (c *runCtl) currentSeq() uint64 {
+	c.seqMu.Lock()
+	defer c.seqMu.Unlock()
+	return c.seq
+}
+
+// markWaiting はnext_taskが`waiting`（reason）を返すことを記録する。seqの時点の状態を見て
+// `waiting`と決めた後に出来事があったなら、それを取りこぼしているので、すぐに起こすよう頼む。
+func (c *runCtl) markWaiting(seq uint64, reason string) {
+	c.seqMu.Lock()
+	c.waiting = true
+	missed := c.seq != seq
+	c.seqMu.Unlock()
+	c.b.acts.update(c.id, func(a *activity) { a.detail = "next_task returned waiting (" + reason + ")" })
+	if missed {
+		c.requestWake()
+	}
+}
+
+// undelivered はnext_taskの結果がゲストに届かなかったことを記録し、起こすよう頼む。
+func (c *runCtl) undelivered() {
+	c.seqMu.Lock()
+	c.waiting = true
+	c.seqMu.Unlock()
+	c.b.acts.update(c.id, func(a *activity) { a.detail = "next_task's response was not delivered (the guest disconnected)" })
+	c.requestWake()
+}
+
+// clearWaiting はnext_taskが来たので、起こす必要も送った回数も忘れる。
+func (c *runCtl) clearWaiting() {
+	c.seqMu.Lock()
+	defer c.seqMu.Unlock()
+	c.waiting, c.wantWake, c.wakeSends = false, false, 0
 }
 
 func (c *runCtl) isBooted() bool { return c.booted.Load() }
@@ -114,6 +195,77 @@ func (c *runCtl) advance() (engine.Status, error) {
 	return st, err
 }
 
+// kick はadvanceを呼び出し元の外で回すよう頼み、頼んだ後に始まる回を返す。回っている途中なら、
+// その回の後にもう1回回す。MCPの呼び出しの中で回さないのは、ホスト側のノード（execのテスト、
+// commit、publish・discard）が長くかかっても、ゲストの接続を待たせないため。
+func (c *runCtl) kick() *advanceRun {
+	c.advMu.Lock()
+	defer c.advMu.Unlock()
+	if c.advNext == nil {
+		c.advNext = &advanceRun{done: make(chan struct{})}
+	}
+	r := c.advNext
+	if !c.advRunning {
+		c.advRunning = true
+		c.advIdle = make(chan struct{})
+		go c.advanceLoop()
+	}
+	return r
+}
+
+func (c *runCtl) advanceLoop() {
+	for {
+		c.advMu.Lock()
+		r := c.advNext
+		c.advNext = nil
+		if r == nil || c.ctx.Err() != nil {
+			c.advRunning = false
+			close(c.advIdle)
+			c.advMu.Unlock()
+			if r != nil {
+				r.err = errors.New("the workspace is stopping")
+				close(r.done)
+			}
+			return
+		}
+		c.advMu.Unlock()
+		r.st, r.err = c.advance()
+		// 数えてからdoneを閉じる。next_taskはdoneの後に読んだseqを、自分の見た状態の時点とする。
+		c.bump(wakesMainSession(r.st, r.err))
+		close(r.done)
+	}
+}
+
+// wakesMainSession はadvanceがこの結果で終わったとき、メインセッションを起こすか。起こすのは
+// 次にすることのある位置（タスク・終わり）へ進んだときだけ。ゲート・質問では起こしても次の
+// next_taskが`waiting`を返し、engineのエラー（SUSPENDED）では人間が直してから再開する。
+func wakesMainSession(st engine.Status, err error) bool {
+	if err != nil {
+		return false
+	}
+	switch st.Kind {
+	case engine.StatusAgent, engine.StatusDone, engine.StatusBlocked:
+		return true
+	}
+	return false
+}
+
+// waitAdvance はadvanceLoopが止まるのをd待つ。止まらなければfalse。
+func (c *runCtl) waitAdvance(d time.Duration) bool {
+	c.advMu.Lock()
+	idle := c.advIdle
+	c.advMu.Unlock()
+	if idle == nil {
+		return true
+	}
+	select {
+	case <-idle:
+		return true
+	case <-time.After(d):
+		return false
+	}
+}
+
 func (c *runCtl) status(ctx context.Context) (engine.Status, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -122,8 +274,10 @@ func (c *runCtl) status(ctx context.Context) (engine.Status, error) {
 
 // reflect はengineの状態をワークスペースの状態（公開APIのWorkspaceState）に写す。
 func (c *runCtl) reflect(st engine.Status, err error) {
-	if err != nil && c.ctx.Err() != nil {
-		return // Stop・serveの停止で取り消されただけ
+	if c.ctx.Err() != nil {
+		// Stop・serveの停止で取り消された。状態はStopが書くので、裏で回っていたadvanceが
+		// 後から書き戻さないようにする。
+		return
 	}
 	switch {
 	case err == nil && st.Kind == engine.StatusDone:
@@ -240,17 +394,39 @@ func (c *runCtl) waitingAgent(ctx context.Context, occ string) (engine.Status, s
 
 func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 	c.touch("next_task")
+	c.clearWaiting()
+	// 返す前にゲストとの接続が切れていたら、結果（用意したタスク等）は届かない。ゲストが呼び直しを
+	// 使い切ってターンを終えても進めるよう、`waiting`を返したのと同じ扱いにしてすぐに起こす。
+	// 呼び直されれば、engineは同じタスクを返す。
+	defer func() {
+		if ctx.Err() != nil && c.ctx.Err() == nil {
+			c.undelivered()
+		}
+	}()
 	if err := c.recordSubagent(agentID); err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, maxBlock)
+	// 待つ上限はwaitだけに掛ける。タスクファイルの書き出しまで上限で切ると、上限の間際に
+	// 用意できたタスクを渡し損ねる。
+	wait, cancel := context.WithTimeout(ctx, c.b.nextTaskWait)
 	defer cancel()
 	for {
 		ch := c.waitCh()
-		st, err := c.advance()
-		if err != nil {
-			return nil, err
+		seen := c.currentSeq()
+		r := c.kick()
+		select {
+		case <-r.done:
+		case <-wait.Done():
+			c.markWaiting(seen, "running")
+			return c.waitingRunning(), nil
+		case <-c.ctx.Done():
+			return nil, errors.New("the workspace is stopping")
 		}
+		if r.err != nil {
+			return nil, r.err
+		}
+		st := r.st
+		seen = c.currentSeq()
 		switch st.Kind {
 		case engine.StatusAgent:
 			p, err := c.runner.MaterializeTask(ctx, st.Task)
@@ -274,12 +450,36 @@ func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 		}
 		select {
 		case <-ch:
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case <-wait.Done():
+			w := waitingOf(st)
+			c.markWaiting(seen, w["reason"].(string))
+			return w, nil
 		case <-c.ctx.Done():
 			return nil, errors.New("the workspace is stopping")
 		}
 	}
+}
+
+// waitingOf はゲート・質問の待ちを、next_taskの`waiting`にする。
+func waitingOf(st engine.Status) map[string]any {
+	reason := "gate"
+	switch {
+	case st.Kind == engine.StatusQuestion:
+		reason = "question"
+	case st.Gate != nil && st.Gate.Gate == engine.GateTriage:
+		reason = "triage"
+	}
+	return map[string]any{"kind": "waiting", "reason": reason, "position": positionOf(st)}
+}
+
+// waitingRunning は、ホスト側のノードの実行が待つ上限を過ぎても終わらないときのnext_taskの
+// `waiting`。位置は最後に状態へ写したもの（実行中のノードはengineの位置に現れないため）。
+func (c *runCtl) waitingRunning() map[string]any {
+	pos := ""
+	if w, err := c.b.store.Get(c.id); err == nil {
+		pos = w.Position
+	}
+	return map[string]any{"kind": "waiting", "reason": "running", "position": pos}
 }
 
 // recordSubagent は、メインセッションが報告したサブエージェントのIDを、そのメインセッションに
@@ -387,7 +587,8 @@ func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ str
 	c.fbMu.Unlock()
 	c.notify()
 	// 次の待ち（ゲート等）まで進めておく。APIから見える状態がnext_taskを待たずに変わるように。
-	_, _ = c.advance()
+	// 結果を待たずに返す（#83: discardのVMの破棄が止まり、report_resultが返らなくなった）。
+	c.kick()
 	return map[string]any{"accepted": true}, nil
 }
 
@@ -400,7 +601,7 @@ func (c *runCtl) ReportConcern(ctx context.Context, occ, text string) (any, erro
 		return nil, err
 	}
 	c.notify()
-	_, _ = c.advance()
+	c.kick()
 	return map[string]any{"recorded": true}, nil
 }
 

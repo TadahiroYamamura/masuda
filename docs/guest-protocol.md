@@ -6,7 +6,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 
 - ゲストからは`http://masuda.internal:7000/`。sandbox serviceの`tcp.hosts`で、そのワークスペース専用のホスト側ローカルポートへ対応付ける。別のVMからは届かない
 - `/mcp`がMCP（Streamable HTTP）、`/hooks`がClaude Codeフックの受け口
-- MCPの`timeout`は7日。`next_task`はゲート待ち・質問待ちの間ブロックするため
+- MCPの`timeout`は7日。`ask_human`は答えが来るまで、`run_privileged_command`は宣言の`timeoutSeconds`（既定3600秒）まで待つため。`next_task`は最大90秒で返る（下記）
 
 ## 起動時にホストがゲストへ置くもの
 
@@ -35,6 +35,8 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 2. タスクに`continues`があり、その`agent_id`のサブエージェントがまだいれば、そのサブエージェントに`SendMessage`でタスクファイルのパスだけを送る。いなければ（VMの再開後など）、タスクが指す役（`role`）のサブエージェントを新しく起動し、タスクファイルのパスだけを渡して委譲する。自分では調査・実装・レビューをしない
 3. サブエージェントが`write_output`と`report_result`を呼び終えるのを待つ。呼んでいなければ、呼ぶよう差し戻す
 4. `next_task`に直前のサブエージェントの`agent_id`を渡して1へ戻る。`next_task`が`done`または`blocked`を返したら終了する
+5. `next_task`が`waiting`を返したら、何も呼ばず待たずにターンを終える。masudaに起こされたら（下記「masudaがメインセッションを起こす」）、同じ`agent_id`で`next_task`を呼んで続ける
+6. `next_task`が失敗した（接続の失敗等）ときは、間を置いて数回呼び直す。それでも失敗するならターンを終える。自分の判断でループをやめない
 
 続きは「記憶はあれば使う。無くても成立する入力を常に渡す」。続けられたかどうかでタスクの入力は変わらないので、送る相手がいない・送れないときに新しく起動しても実行は成り立つ。
 
@@ -44,10 +46,10 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 
 | ツール | 引数 | 戻り | 備考 |
 |---|---|---|---|
-| `next_task` | `agent_id?` | `{kind: "task", occurrence, role, task_path, continues?}` / `{kind: "done", outcome}` / `{kind: "blocked", reason}` | engine.Advanceを1回進める。待ちの間はブロック。`agent_id`と`continues`は下記 |
+| `next_task` | `agent_id?` | `{kind: "task", occurrence, role, task_path, continues?}` / `{kind: "done", outcome}` / `{kind: "blocked", reason}` / `{kind: "waiting", reason, position}` | engine.Advanceを1回進める。次のタスクがまだ無い（ゲート・質問・triageの待ち、ホスト側のノードの実行中）ときは最大90秒待ち、その間に用意できなければ`waiting`を返す。`reason`は`gate` / `question` / `triage` / `running`、`position`は人間向けの位置（`gate plan (occ 0002)`等）。engineのエラーはエラーで返す。`agent_id`と`continues`は下記 |
 | `write_output` | `occurrence`, `name`, `content` | `{accepted: true}` / `{accepted: false, problems: [...]}` | ホストが`/masuda/out/<occ>/<name>`へ置いた内容をスキーマ検証して受け付ける。受け付けない場合は理由を返す |
-| `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | 宣言外のoutcome、`done`なのに未出力のoutputがあれば拒否。`done`以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。`agent_id`はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは`next_task`の`agent_id`で行う |
-| `report_concern` | `occurrence`, `text` | `{recorded: true}` | triageゲートを開く。以後`next_task`は人間の判断までブロック |
+| `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | engineに記録した時点で返し、その後のホスト側のノード（exec・commit・publish等）の実行は待たない。宣言外のoutcome、`done`なのに未出力のoutputがあれば拒否。`done`以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。`agent_id`はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは`next_task`の`agent_id`で行う |
+| `report_concern` | `occurrence`, `text` | `{recorded: true}` | triageゲートを開く。以後、人間が判断するまで`next_task`は`{kind: "waiting", reason: "triage"}`を返す |
 | `ask_human` | `occurrence`, `questions: [{id, text, options?}]` | `{answers: {id: answer}}` | `question`ノードのエージェントだけが使う。答えが来るまでブロック |
 | `run_privileged_command` | `name` | `{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}` | 宣言済み・承認済みの名前のみ。`results_dir`は`/masuda/privileged/<run-id>/`。`outputs_error`は宣言した`outputs`のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は`outputs`に返る |
 
@@ -57,6 +59,21 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 
 - 引数`agent_id`（任意）: 直前に完了したタスクを担当したサブエージェントのID。メインセッションが`Agent`ツールの結果から得る。続きのタスクで同じサブエージェントを続けたときも、そのサブエージェントのIDを渡す。masudaはそのメインセッションに最後に渡したタスクの出現にIDを結び付けて記録する。VMを作り直す再開では記録を消す（前のVMのIDは通じないため）
 - 戻り`continues`（任意）: `{occurrence, agent_id?}`。このタスクを続けて渡す宛先。`occurrence`はengineが決めた出現（ワークフローの`continues: agents/<役>`）、`agent_id`はその出現について`next_task`で報告されたID（報告が無ければ省く）
+
+## masudaがメインセッションを起こす
+
+`next_task`が`waiting`を返した後、次のどれかが起きると、masudaはメインセッションのtmux（`claude-work`）の入力欄に決まった1文を送って起こす。
+
+- ゲートの判断・質問の回答・エージェントの報告が記録された
+- ホスト側のノードが終わり、次のタスクか終わり（`done`・`blocked`）に進んだ
+- `waiting`を返すのとほぼ同時に上のどちらかが起き、`next_task`がそれを見ずに`waiting`を返した
+
+送る文は「masudaからの知らせ: 待っていたものが進みました。next_taskを呼んで続けてください。」。sandboxのExecで`tmux send-keys -t claude-work -l <文>`を打ち、続けて`Enter`を押す。メインセッションが作業中でも、Claude Codeは入力を溜めて今の作業の後に処理する。
+
+- `tmux list-clients -t claude-work`にクライアントがいる（`masuda chat`でアタッチ中）間は送らない。人間が打っている入力に混ざるため。活動の`detail`に「起こす待ち（chat中）」と出し、見回り（長くても30秒ごと）でデタッチの後に送る
+- 送ってから60秒たっても`next_task`が来なければ送り直す。3回送っても来なければやめる
+- `next_task`が来れば、起こす必要も回数も忘れる
+- `resume`では起こさない。新しく起動したメインセッションが開始の文で自分から`next_task`を呼ぶ
 
 ## タスクファイル
 

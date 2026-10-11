@@ -52,6 +52,10 @@ const TokenEnv = "CLAUDE_CODE_OAUTH_TOKEN"
 // TmuxSession はメインセッションを動かすtmuxのセッション名。
 const TmuxSession = "claude-work"
 
+// WakeText はmasudaがメインセッションを起こすときに入力欄へ送る1文（docs/guest-protocol.md
+// 「masudaがメインセッションを起こす」）。ループ規約に同じ文を書き、受け取ったら何をするかを教える。
+const WakeText = "masudaからの知らせ: 待っていたものが進みました。next_taskを呼んで続けてください。"
+
 // ClaudeCodeVersion は、このmasudaが実機で検証したゲストのClaude Codeの版。リリース時に
 // その時点の最新へ上げ、live（継続テストと1周）で検証する。`masuda init`の雛形のDockerfile・
 // liveのDockerfile・`masuda version`の表示が参照する（.claude/skills/release/SKILL.mdの1-0）。
@@ -411,7 +415,8 @@ func Launch(ctx context.Context, c sandboxv1connect.SandboxServiceClient, o Laun
 	for k, v := range map[string]string{
 		TokenEnv: o.Token,
 		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-		// next_taskはゲート・質問の間ブロックするので、MCPのツール呼び出しを7日まで待たせる。
+		// next_taskは90秒で返るが、ask_human（答えが来るまで）とrun_privileged_command（既定で
+		// 最長1時間）はまだ長く待つので、MCPのツール呼び出しを7日まで待たせる。
 		"MCP_TOOL_TIMEOUT":    "604800000",
 		"GIT_AUTHOR_NAME":     o.GitName,
 		"GIT_AUTHOR_EMAIL":    o.GitEmail,

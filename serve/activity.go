@@ -338,7 +338,8 @@ func (b *backend) watchSandbox(ctx context.Context, id string) {
 const livenessEvery = 30 * time.Second
 
 // patrol は動いているワークスペースを定期的に見て、時間の経過だけで変わる活動
-// （STALLED）と、Execで分かるプロセスの死（DEAD）をstatusイベントに反映する。
+// （STALLED）と、Execで分かるプロセスの死（DEAD）をstatusイベントに反映する。メインセッションを
+// 起こす処理の送り直し（アタッチ中で送れなかった分を含む）もここで拾う。
 func (b *backend) patrol(ctx context.Context) {
 	t := time.NewTimer(b.patrolTick())
 	defer t.Stop()
@@ -360,6 +361,9 @@ func (b *backend) patrol(ctx context.Context) {
 					act.dead = true
 					act.detail = "tmux session " + guest.TmuxSession + " is gone"
 				})
+			}
+			if c.isBooted() {
+				go c.tryWake()
 			}
 			b.statusChanged(c.id)
 		}

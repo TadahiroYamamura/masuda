@@ -79,7 +79,9 @@ func Start(host Host) (*Server, error) {
 		DisableLocalhostProtection: true,
 	})
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", handler)
+	mux.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), requestCtxKey{}, r.Context())))
+	}))
 	mux.HandleFunc("/hooks", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -101,13 +103,28 @@ func Start(host Host) (*Server, error) {
 	return s, nil
 }
 
+// requestCtxKey はツールのハンドラーへHTTPリクエストのctxを渡す値のキー。go-sdk（v1.7.0、
+// stateless）は、クライアントが切断してもツールのハンドラーのctxを取り消さない（値は引き継ぐ）。
+type requestCtxKey struct{}
+
+// withDisconnect はctxを、HTTPリクエストのctxが取り消されたとき（ゲストの切断）にも取り消されるようにする。
+func withDisconnect(ctx context.Context) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(ctx)
+	if rc, ok := ctx.Value(requestCtxKey{}).(context.Context); ok {
+		stop := context.AfterFunc(rc, cancel)
+		return ctx, func() { stop(); cancel() }
+	}
+	return ctx, cancel
+}
+
 // Port は待ち受けているポート。
 func (s *Server) Port() int { return s.ln.Addr().(*net.TCPAddr).Port }
 
 // Addr は"127.0.0.1:<port>"。
 func (s *Server) Addr() string { return "127.0.0.1:" + strconv.Itoa(s.Port()) }
 
-// Close は待ち受けを止める。ブロック中のnext_task等はリクエストのctxが取り消されて戻る。
+// Close は待ち受けを止める。ブロック中のツールのctxは取り消されないので、Hostの側で戻す
+// （serveは実行のctxで待ちを打ち切る）。
 func (s *Server) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -143,7 +160,7 @@ func register(srv *sdk.Server, host Host) {
 			return &sdk.CallToolResult{Content: []sdk.Content{&sdk.TextContent{Text: string(b)}}}, nil
 		})
 	}
-	add("next_task", "次のタスクを受け取る。人間の判断（ゲート・質問）を待つ間はブロックする。",
+	add("next_task", "次のタスクを受け取る。まだ無ければ最大90秒待ち、それでも無ければkind: waitingを返す（人間の判断・ホストの処理を待っている）。waitingならターンを終え、masudaが起こしたら呼び直す。",
 		schema(`"agent_id":{"type":"string","description":"直前に完了したタスクを担当したサブエージェントのID（Agentツールの結果のagentId）。続きを送って同じサブエージェントを続けたときもそのID"}`),
 		func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var a struct {
@@ -152,6 +169,11 @@ func register(srv *sdk.Server, host Host) {
 			if err := decode(raw, &a); err != nil {
 				return nil, err
 			}
+			// next_taskだけはゲストの切断で取り消す。Hostが、返す結果の届かないことに気づいて
+			// メインセッションを起こせるように。ほかのツールにはまだ広げない
+			// （run_privileged_commandは、ゲストが切断しても最後まで動かしている）。
+			ctx, cancel := withDisconnect(ctx)
+			defer cancel()
 			return host.NextTask(ctx, a.AgentID)
 		})
 
@@ -165,7 +187,7 @@ func register(srv *sdk.Server, host Host) {
 			return host.WriteOutput(ctx, a.Occurrence, a.Name, a.Content)
 		})
 
-	add("report_result", "タスクの終わり方（outcome）を報告する。",
+	add("report_result", "タスクの終わり方（outcome）を報告する。記録した時点で返り、その後のホスト側の処理は待たない。",
 		schema(occProp+`,"outcome":{"type":"string"},"feedback":{"type":"string"},"agent_id":{"type":"string"}`, "occurrence", "outcome"),
 		func(ctx context.Context, raw json.RawMessage) (any, error) {
 			var a struct {

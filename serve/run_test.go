@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
+	"github.com/TadahiroYamamura/masuda-engine/engine"
 
 	apiv1 "github.com/TadahiroYamamura/masuda/gen/masuda/api/v1"
 	sandboxv1 "github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1"
@@ -153,5 +154,29 @@ func TestStopAndRemoveExportLogs(t *testing.T) {
 	}
 	if b, err := os.ReadFile(exportedLog); err != nil || len(b) == 0 {
 		t.Fatalf("Remove must export the execution log: %q %v", b, err)
+	}
+}
+
+// next_taskの`waiting`の理由は、engineが待っているものの種類で決まる。triageはゲートの1つだが、
+// 理由を分ける。
+func TestWaitingOfはゲートとtriageと質問を理由で分ける(t *testing.T) {
+	cases := []struct {
+		name   string
+		st     engine.Status
+		reason string
+		pos    string
+	}{
+		{"計画のゲート", engine.Status{Kind: engine.StatusGate, Occurrence: "0002", Gate: &engine.GateRequest{Gate: "plan"}}, "gate", "gate plan (occ 0002)"},
+		{"逸脱のゲート", engine.Status{Kind: engine.StatusGate, Occurrence: "0005", Gate: &engine.GateRequest{Gate: "deviation"}}, "gate", "gate deviation (occ 0005)"},
+		{"triage", engine.Status{Kind: engine.StatusGate, Occurrence: "0003", Gate: &engine.GateRequest{Gate: engine.GateTriage}}, "triage", "gate triage (occ 0003)"},
+		{"質問", engine.Status{Kind: engine.StatusQuestion, Occurrence: "0004", Question: &engine.QuestionRequest{}}, "question", "question (occ 0004)"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := waitingOf(c.st)
+			if got["kind"] != "waiting" || got["reason"] != c.reason || got["position"] != c.pos {
+				t.Fatalf("waitingOf = %v, want reason %q position %q", got, c.reason, c.pos)
+			}
+		})
 	}
 }
