@@ -174,8 +174,9 @@ func TestEngineContinuationKeepsMemory(t *testing.T) {
 // TestEngineContinuationFallsBackAfterResume は、続けられる側のサブエージェントがいなくなった
 // （firstの後のゲートで止めて再開し、VMを作り直した）とき、メインセッションがSendMessageではなく
 // 新しいサブエージェントを起動し、続きのタスクの入力だけでsecondを終えることを確かめる。
-// 新しいサブエージェントで進んだ証拠は、再開で消えたIDの記録にsecondの出現が前と違うIDで
-// 載ることと、フックの記録でSendMessageが使われずAgentでcopierが起動されたこと。
+// 新しいサブエージェントで進んだ証拠は、フックの記録でSendMessageが使われずAgentでcopierが
+// 起動されたこと。secondのIDの記録は見ない。IDはsecondの後のnext_taskで報告されるが、その前に
+// 実行がDONEになってVMが壊れるので、記録されないことがある。
 func TestEngineContinuationFallsBackAfterResume(t *testing.T) {
 	ctx, api, id, wsDir := startEngineContinuation(t, "workflows/continuation-resume")
 	start := time.Now()
@@ -216,24 +217,14 @@ func TestEngineContinuationFallsBackAfterResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("finished in %v: outcome %q", time.Since(start).Round(time.Second), final.Outcome)
-	// secondのIDは、メインセッションがDONEの後に呼ぶ最後のnext_taskで報告される。
-	after := waitSubagentIDs(ctx, t, wsDir, func(m map[string]string) bool { return len(m) > 0 })
 	logEngineContinuation(t, wsDir)
 	token, recall := strings.TrimSpace(findFile(filepath.Join(wsDir, "data"), "token")), strings.TrimSpace(findFile(filepath.Join(wsDir, "data"), "recall"))
-	t.Logf("token %q, recall %q; ids after resume %v", token, recall, after)
+	t.Logf("token %q, recall %q", token, recall)
 	if outcome := nodeFinish(t, wsDir, "second"); outcome != "done" {
 		t.Fatalf("second must finish done after the fallback, got %q", outcome)
 	}
 	if token == "" || recall != token {
 		t.Fatalf("second must copy its input token (token %q, recall %q)", token, recall)
-	}
-	if _, ok := after["0000001"]; ok || len(after) != 1 {
-		t.Fatalf("after resume only the second occurrence may be recorded: %v", after)
-	}
-	for occ, aid := range after {
-		if aid == "" || aid == before["0000001"] {
-			t.Fatalf("second (occ %s) must be a new subagent, got id %q (first was %q)", occ, aid, before["0000001"])
-		}
 	}
 	uses := toolUses(t, wsDir)
 	if n := countTool(uses, "SendMessage"); n != 0 {
