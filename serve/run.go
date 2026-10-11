@@ -159,6 +159,15 @@ func (c *runCtl) markWaiting(seq uint64, reason string) {
 	}
 }
 
+// undelivered はnext_taskの結果がゲストに届かなかったことを記録し、起こすよう頼む。
+func (c *runCtl) undelivered() {
+	c.seqMu.Lock()
+	c.waiting = true
+	c.seqMu.Unlock()
+	c.b.acts.update(c.id, func(a *activity) { a.detail = "next_task's response was not delivered (the guest disconnected)" })
+	c.requestWake()
+}
+
 // clearWaiting はnext_taskが来たので、起こす必要も送った回数も忘れる。
 func (c *runCtl) clearWaiting() {
 	c.seqMu.Lock()
@@ -386,6 +395,14 @@ func (c *runCtl) waitingAgent(ctx context.Context, occ string) (engine.Status, s
 func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 	c.touch("next_task")
 	c.clearWaiting()
+	// 返す前にゲストとの接続が切れていたら、結果（用意したタスク等）は届かない。ゲストが呼び直しを
+	// 使い切ってターンを終えても進めるよう、`waiting`を返したのと同じ扱いにしてすぐに起こす。
+	// 呼び直されれば、engineは同じタスクを返す。
+	defer func() {
+		if ctx.Err() != nil && c.ctx.Err() == nil {
+			c.undelivered()
+		}
+	}()
 	if err := c.recordSubagent(agentID); err != nil {
 		return nil, err
 	}

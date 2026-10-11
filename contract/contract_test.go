@@ -200,6 +200,23 @@ func (h *harness) waitWakes(wsID string, n int) {
 	h.t.Fatalf("woke the main session %d times, want %d", h.wakes(wsID), n)
 }
 
+// mcpGone calls one tool and disconnects before it returns, as a guest whose
+// connection broke would.
+func (h *harness) mcpGone(wsID, tool string) {
+	h.t.Helper()
+	port, err := os.ReadFile(filepath.Join(h.dataDir, "fake", wsID, "mcp.port"))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": map[string]any{"name": tool, "arguments": map[string]any{}}})
+	req, _ := http.NewRequest("POST", "http://127.0.0.1:"+strings.TrimSpace(string(port))+"/mcp", strings.NewReader(string(body)))
+	req.Header.Set("content-type", "application/json")
+	req.Header.Set("accept", "application/json, text/event-stream")
+	if _, err := (&http.Client{Timeout: nextTaskWait / 4}).Do(req); err == nil {
+		h.t.Fatalf("mcp %s returned before the client gave up", tool)
+	}
+}
+
 func (h *harness) guestWrite(wsID, guestPath, content string) {
 	h.t.Helper()
 	full := filepath.Join(h.dataDir, "fake", wsID, "root", guestPath)
@@ -1270,6 +1287,9 @@ func TestCM12_EngineBlockedCannotBeResumed(t *testing.T) {
 	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "triage" {
 		t.Fatalf("next_task at the triage gate: %v", w)
 	}
+	// A guest that disconnects before next_task returns never sees the result, so it is woken.
+	h.mcpGone(id, "next_task")
+	h.waitWakes(id, 1)
 	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: occ, Decision: &apiv1.Decision{Outcome: "halt"}})); err != nil {
 		t.Fatalf("halt: %v", err)
 	}

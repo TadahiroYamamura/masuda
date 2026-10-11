@@ -172,3 +172,21 @@ func TestWakesMainSessionはタスクと終わりへ進んだときだけ起こ�
 		})
 	}
 }
+
+// goneAfterResult は、待っている間には切れず、結果を返す時点では切れていると分かる接続。
+// next_taskが結果を用意し終えた後でゲストが切断した場合を、順番を固定して作る。
+type goneAfterResult struct{ context.Context }
+
+func (goneAfterResult) Done() <-chan struct{} { return nil }
+func (goneAfterResult) Err() error            { return context.Canceled }
+
+// next_taskが結果を用意している間にゲストとの接続が切れていたら、結果が届かないので起こす。
+func TestNext_taskが結果を用意している間に接続が切れたら起こす(t *testing.T) {
+	c, wakes := startWaitingRun(t)
+	// 切れた接続ではタスクファイルの書き出しも取り消されるので、結果はエラーになりうる。どちらでも起こす。
+	_, _ = c.NextTask(goneAfterResult{context.Background()}, "")
+	waitWakes(t, c, wakes, 1)
+	if task, err := c.NextTask(context.Background(), ""); err != nil || task.(map[string]any)["kind"] != "task" {
+		t.Fatalf("after waking, next_task hands out the task: %v %v", task, err)
+	}
+}
