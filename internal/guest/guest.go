@@ -11,6 +11,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/TadahiroYamamura/masuda-engine/engine"
 
@@ -85,6 +86,8 @@ type Layout struct {
 	EnvFiles []EnvFile
 	// Checks はチェック名→シェルコマンド。`/masuda/checks/<名前>`に実行可能スクリプトとして置く。
 	Checks map[string]string
+	// Prepare は準備のシェルコマンド（空なら無し）。PreparePathに置き、各チェックの先頭で呼ぶ。
+	Prepare string
 	// Reviews はレビュー観点の写し（`<id>.md`→中身）。ReviewsDirへ置く。
 	Reviews map[string][]byte
 	// Pitfalls は落とし穴（検査済みのJSON Lines）。空でなければPitfallsPathへ置く。
@@ -107,6 +110,12 @@ type EnvVar struct{ Name, Value string }
 
 // ChecksDir はチェックのスクリプトを置くゲストのディレクトリ。
 const ChecksDir = "/masuda/checks"
+
+// PreparePath は準備のスクリプトを置くゲストのパス。エージェントも定義を変えた後に呼び直せる。
+const PreparePath = "/masuda/prepare"
+
+// PrepareLogPath は起動時に流した準備の出力を置くゲストのパス。
+const PrepareLogPath = "/masuda/prepare.log"
 
 // ReviewsDir はレビュー観点を置くゲストのディレクトリ。同梱のreviewer・review-checkerはここを読む。
 const ReviewsDir = "/masuda/reviews"
@@ -169,7 +178,12 @@ func Prepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, l Lay
 	if err := writeEnvFiles(ctx, c, l.SandboxID, l.EnvFiles); err != nil {
 		return err
 	}
-	if err := writeChecks(ctx, c, l.SandboxID, l.Checks); err != nil {
+	if l.Prepare != "" {
+		if err := WriteBytes(ctx, c, l.SandboxID, PreparePath, CheckScript(l.Prepare, false), 0o755); err != nil {
+			return err
+		}
+	}
+	if err := writeChecks(ctx, c, l.SandboxID, l.Checks, l.Prepare != ""); err != nil {
 		return err
 	}
 	if err := writeReviews(ctx, c, l.SandboxID, l.Reviews); err != nil {
@@ -279,7 +293,7 @@ func writeEnvFiles(ctx context.Context, c sandboxv1connect.SandboxServiceClient,
 
 // writeChecks はチェックをゲストの`/masuda/checks/<名前>`へ実行可能スクリプトとして置く。
 // コマンドはsettings.jsonにシェルの1行として書かれるので、`sh -el`で/workspaceから動かす。
-func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, checks map[string]string) error {
+func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, checks map[string]string, prepare bool) error {
 	names := make([]string, 0, len(checks))
 	for name := range checks {
 		names = append(names, name)
@@ -289,7 +303,7 @@ func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, i
 		if name == "" || name != path.Base(name) || strings.HasPrefix(name, ".") {
 			return fmt.Errorf("invalid check name %q", name)
 		}
-		if err := WriteBytes(ctx, c, id, ChecksDir+"/"+name, CheckScript(checks[name]), 0o755); err != nil {
+		if err := WriteBytes(ctx, c, id, ChecksDir+"/"+name, CheckScript(checks[name], prepare), 0o755); err != nil {
 			return err
 		}
 	}
@@ -299,8 +313,27 @@ func writeChecks(ctx context.Context, c sandboxv1connect.SandboxServiceClient, i
 // CheckScript はチェック1つのスクリプトの中身。ログインシェル（-l）にするのは、execノードの
 // argvはsandboxでログインシェルを経ないため。/etc/profileと~/.profileが足すものを、メインセッション
 // （sandboxはshellのExecを`/bin/sh -lc`で動かす）とそのサブエージェントが見るものと揃える。
-func CheckScript(command string) []byte {
-	return []byte("#!/bin/sh -el\ncd /workspace\n" + strings.TrimRight(command, "\n") + "\n")
+// prepareなら先にPreparePathを呼ぶ。準備の失敗はそのチェックの失敗になる。
+func CheckScript(command string, prepare bool) []byte {
+	head := "#!/bin/sh -el\ncd /workspace\n"
+	if prepare {
+		head += PreparePath + "\n"
+	}
+	return []byte(head + strings.TrimRight(command, "\n") + "\n")
+}
+
+// RunPrepare は準備を/workspaceで一度流し、標準出力・標準エラーをPrepareLogPathへ置く。
+// PreparePathのスクリプトを呼ばずに同じコマンドをshellで流すのは、スクリプトの`cd /workspace`を
+// フェイクsandboxが写像できないため（Prepareの説明）。`set -e`でスクリプトの`sh -e`と揃える。
+func RunPrepare(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id, command string, env map[string]string, timeout time.Duration) (ExecResult, []byte, error) {
+	res, err := Exec(ctx, c, &sandboxv1.ExecRequest{
+		Id: id, Shell: "set -e\n" + command, Cwd: "/workspace", Env: env, TimeoutMs: uint32(timeout.Milliseconds()),
+	})
+	if err != nil {
+		return res, nil, err
+	}
+	out := append(append([]byte(nil), res.Stdout...), res.Stderr...)
+	return res, out, WriteBytes(ctx, c, id, PrepareLogPath, out, 0o644)
 }
 
 // DotEnv はvarsをdotenv形式にする。値は常にダブルクォートで囲み、`\`・`"`・`$`・バッククォートを

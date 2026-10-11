@@ -391,6 +391,73 @@ func TestCM3_FakeSandboxBootsGuestLayout(t *testing.T) {
 	}
 }
 
+// The prepare declared in settings.json is placed at /masuda/prepare, called at
+// the head of every check, and run once in /workspace at boot. Its output is kept
+// in the guest and in the records; a failing prepare does not stop the boot.
+func TestCM3_準備を起動時に一度流しチェックの先頭で呼び失敗しても起動する(t *testing.T) {
+	cases := []struct {
+		name, prepare string
+		wantLog       string
+	}{
+		{"準備が通る", `echo prepared`, "prepared"},
+		{"準備が失敗する", `echo before-fail; exit 7; echo after-fail`, "before-fail"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			files := smokeRepo()
+			settings, _ := json.Marshal(map[string]any{"image": "default", "checks": map[string]string{"test": "go test ./..."}, "prepare": c.prepare})
+			files[".masuda/settings.json"] = string(settings)
+			h := start(t, files)
+			res, err := h.ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{
+				RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/prepare", Inputs: map[string][]byte{"instructions": []byte("x")},
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			ws := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+			root := filepath.Join(h.dataDir, "fake", ws.Id, "root")
+
+			script, err := os.ReadFile(filepath.Join(root, "masuda/prepare"))
+			if err != nil || string(script) != "#!/bin/sh -el\ncd /workspace\n"+c.prepare+"\n" {
+				t.Fatalf("prepare script %q %v", script, err)
+			}
+			check, _ := os.ReadFile(filepath.Join(root, "masuda/checks/test"))
+			if string(check) != "#!/bin/sh -el\ncd /workspace\n/masuda/prepare\ngo test ./...\n" {
+				t.Fatalf("check must call the prepare first: %q", check)
+			}
+			guestLog, _ := os.ReadFile(filepath.Join(root, "masuda/prepare.log"))
+			if !strings.Contains(string(guestLog), c.wantLog) || strings.Contains(string(guestLog), "after-fail") {
+				t.Fatalf("guest prepare.log: %q", guestLog)
+			}
+			var recorded []byte
+			_ = filepath.WalkDir(h.dataDir, func(p string, d os.DirEntry, err error) error {
+				if err == nil && strings.HasSuffix(p, filepath.Join(ws.Id, "records", "prepare.log")) {
+					recorded, _ = os.ReadFile(p)
+				}
+				return nil
+			})
+			if string(recorded) != string(guestLog) {
+				t.Fatalf("records/prepare.log %q != guest log %q", recorded, guestLog)
+			}
+		})
+	}
+	t.Run("準備はゲストの/workspaceで動く", func(t *testing.T) {
+		files := smokeRepo()
+		files[".masuda/settings.json"] = `{"image":"default","checks":{},"prepare":"pwd > generated.txt"}`
+		h := start(t, files)
+		res, err := h.ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{
+			RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/prepare", Inputs: map[string][]byte{"instructions": []byte("x")},
+		}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws := h.waitState(res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+		if _, err := os.Stat(filepath.Join(h.dataDir, "fake", ws.Id, "root", "workspace", "generated.txt")); err != nil {
+			t.Fatalf("prepare did not run in /workspace: %v", err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // C-M4: one lap through the guest protocol
 // ---------------------------------------------------------------------------

@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"connectrpc.com/connect"
 
@@ -348,10 +350,17 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 			return err
 		}
 	}
+	var prepareNote string
+	if c.plan.prepare != "" {
+		b.bootPhase(c.id, "running prepare")
+		if prepareNote, err = b.bootPrepare(ctx, w, c.id, c.plan.prepare, env); err != nil {
+			return err
+		}
+	}
 	if b.fake {
 		return nil
 	}
-	b.bootPhase(c.id, "starting Claude Code")
+	b.bootPhase(c.id, "starting Claude Code"+prepareNote)
 	return guest.Launch(ctx, b.sandbox, guest.LaunchOptions{
 		SandboxID: c.id,
 		Token:     sb.Placeholders[guest.TokenEnv],
@@ -359,6 +368,38 @@ func (b *backend) bootSandbox(c *runCtl, resume bool) error {
 		GitEmail:  c.author.Email,
 		Env:       env,
 	})
+}
+
+// prepareBootTimeout は起動時の準備の上限。準備が終わらないとClaude Codeが起動しないので打ち切る。
+const prepareBootTimeout = 30 * time.Minute
+
+// bootPrepare は起動時に準備を一度流し、出力を`records/prepare.log`にも残す。準備が失敗しても
+// 起動は止めず、活動に出す文（失敗していなければ空）を返す。エージェントが定義を壊した後に
+// VMが落ちると、resumeのたびに起動が失敗して人が直すまで進めなくなるため。生成し直しは
+// チェックと特権コマンドの前でも必ず行うので、起動時の分は最初に置いておく便宜に留める。
+func (b *backend) bootPrepare(ctx context.Context, w *workspace.Workspace, id, command string, env map[string]string) (string, error) {
+	res, out, err := guest.RunPrepare(ctx, b.sandbox, id, command, env, prepareBootTimeout)
+	if err != nil {
+		return "", fmt.Errorf("running prepare: %w", err)
+	}
+	logPath := filepath.Join(w.RecordsDir(), "prepare.log")
+	if err := os.WriteFile(logPath, out, 0o600); err != nil {
+		return "", err
+	}
+	if res.ExitCode == 0 && res.Signal == "" && !res.TimedOut {
+		return "", nil
+	}
+	how := fmt.Sprintf("exit %d", res.ExitCode)
+	switch {
+	case res.TimedOut:
+		how = "timed out after " + prepareBootTimeout.String()
+	case res.Signal != "":
+		how = "killed by " + res.Signal
+	}
+	note := " (prepare failed: " + how + "; log: " + logPath + ")"
+	log.Printf("workspace %s: prepare failed at boot: %s; log: %s", id, how, logPath)
+	b.bootPhase(id, "prepare failed"+note)
+	return note, nil
 }
 
 // bootPhase は起動の段階を活動のdetailに書き、状態のイベントで知らせる。
@@ -448,6 +489,7 @@ func (b *backend) prepareGuest(ctx context.Context, w *workspace.Workspace, c *r
 		ClaudeSettings:     plan.claudeSettings,
 		EnvFiles:           plan.guestEnvFiles(placeholders),
 		Checks:             plan.checks,
+		Prepare:            plan.prepare,
 		Reviews:            c.reviews,
 		Pitfalls:           c.pitfalls,
 		PrivilegedCommands: c.privilegedCommands,

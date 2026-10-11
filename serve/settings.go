@@ -46,6 +46,7 @@ type bootPlan struct {
 	// vars はenvFilesの公開値（settings.local.jsonのvars）。
 	vars           map[string]string
 	checks         map[string]string
+	prepare        string
 	claudeSettings json.RawMessage
 	agents         map[string]config.AgentOverride
 	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
@@ -84,6 +85,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		envFiles:       cfg.EnvFiles,
 		vars:           local.Vars,
 		checks:         cfg.Checks,
+		prepare:        cfg.Prepare,
 		claudeSettings: cfg.ClaudeSettings,
 		agents:         cfg.Agents,
 	}
