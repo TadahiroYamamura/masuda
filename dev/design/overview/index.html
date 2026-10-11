@@ -2261,7 +2261,7 @@ masuda
   └─ ゲストで tmux 上の claude を起動（ループ規約）
   │
 ゲスト（メインエージェント）         ホスト（masuda / engine）
-  next_task ─────────────────────▶ engine.Advance → Runner.RunAgent
+  next_task ─────────────────────▶ engine.Advance → Runner.RunAgent（無ければ最大90秒待ち、waiting を返す）
   ◀──── タスクファイルのパス ─────  /masuda/in/&lt;occ&gt;/ に入力を書き込み済み
   サブエージェントが作業              （continues のノードなら応答に宛先の出現とその agent_id を添える）
   （続きは SendMessage で同じサブエージェントへ。いなければ新しく起動。次の next_task で agent_id を報告）
@@ -2270,6 +2270,7 @@ masuda
                                    次ノード: egress/秘密の方針を SetPolicy で切替
   ...
   （approval ノード）              ゲートを開き、人間の判断を待つ（API/CLI）
+  waiting → ターンを終える ◀────── 判断・ホストの処理の終わりで tmux へ1文送って起こす
   （exec ノード）                  sandbox.Exec で決定論コマンドを実行、出力を検証
   （commit ノード）                staging 上でホストがコミットを作る（計画の範囲内のみ）
   （publish ノード）               staging → 実リポジトリへ fast-forward、または remote へ push
@@ -2463,7 +2464,7 @@ masuda
 </tbody>
 </table>
 <p><code>Resume</code>できるのはSTOPPEDとSUSPENDED。SUSPENDEDはStopを挟まずに再開できる。engineへの呼び出しのエラーで止まったSUSPENDEDはVMと実行の窓口が残っている（<code>chat</code>で中を見られる）ので、再開の前提の確認（下の2と、特権ノードの事前検査）が通ってから、Stopと同じ手順（会話ログと実行ログを書き出してVMを壊す）で片付けて作り直す。確認で断ったときはVMを残す。SUSPENDEDへの<code>Stop</code>はVMを壊してSTOPPEDにする。BLOCKEDへの<code>Stop</code>はVMを壊すだけで状態はBLOCKEDのまま残し、<code>Stop</code>を挟んで再開できてしまうことを防ぐ。</p>
-<p>ゲストの<code>next_task</code>には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（<code>blocked</code>とは返さない）。ループ規約は<code>done</code>・<code>blocked</code>でだけメインセッションを終えるので、SUSPENDEDの間もメインセッションは残り、人間が原因を直した後に<code>next_task</code>を呼び直せばResumeを待たずに進むこともある。</p>
+<p>ゲストの<code>next_task</code>には、engineへの呼び出しのエラーをそのままMCPのエラーとして返す（<code>blocked</code>とは返さない）。ループ規約は<code>done</code>・<code>blocked</code>でだけメインセッションを終え、失敗したときは数回呼び直してからターンを終えるだけなので、SUSPENDEDの間もメインセッションは残る。masudaはエラーでは起こさない（人間が原因を直してResumeする）。</p>
 <ol>
 <li>定義は<code>records/definitions/</code>の写しから読み直す。作業ツリーの<code>.masuda/</code>がその後変わっていても、始めたときと同じ定義で進む</li>
 <li>承認・秘密の値・<code>stallAfter</code>は作業ツリーの<code>settings.local.json</code>と秘密ストアから読み直す（取り消し・値の入れ替えを反映するため）。ワークフローが届く特権ノードの宣言（写しから）と承認もここで確かめる（<code>Run</code>と同じ）</li>
@@ -2846,7 +2847,7 @@ masuda
 <tbody>
 <tr>
 <td><code>next_task</code></td>
-<td>メインエージェントが次のタスクを受け取る。ゲート待ち・質問待ちの間はブロックする</td>
+<td>メインエージェントが次のタスクを受け取る。まだ無ければ最大90秒待ち、<code>waiting</code>を返す。メインエージェントはターンを終え、待っていたものが進むとmasudaがtmuxへ1文送って起こす</td>
 </tr>
 <tr>
 <td><code>write_output(name, content)</code></td>
