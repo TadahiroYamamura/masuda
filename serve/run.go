@@ -98,6 +98,12 @@ type runCtl struct {
 	seqMu   sync.Mutex
 	seq     uint64
 	waiting bool
+	// wantWake は`waiting`を返した後に状態が変わり、メインセッションを起こす必要があること。
+	// wakingは送っている途中、wakeSends・wakeSentAtは送った回数と最後に送った時刻（serve/wake.go）。
+	wantWake   bool
+	waking     bool
+	wakeSends  int
+	wakeSentAt time.Time
 }
 
 // advanceRun はadvanceの1回。doneが閉じた後にst・errが読める。
@@ -120,15 +126,18 @@ func (c *runCtl) notify() {
 	close(c.changed)
 	c.changed = make(chan struct{})
 	c.chMu.Unlock()
-	c.bump()
+	c.bump(true)
 }
 
-// bump は状態が変わりうる出来事を数え、メインセッションが`waiting`を受け取った後ならtrueを返す。
-func (c *runCtl) bump() bool {
+// bump は状態が変わりうる出来事を数え、wakeならメインセッションを起こすよう頼む（`waiting`を
+// 受け取った後のときだけ起こす）。
+func (c *runCtl) bump(wake bool) {
 	c.seqMu.Lock()
-	defer c.seqMu.Unlock()
 	c.seq++
-	return c.waiting
+	c.seqMu.Unlock()
+	if wake {
+		c.requestWake()
+	}
 }
 
 func (c *runCtl) currentSeq() uint64 {
@@ -137,19 +146,24 @@ func (c *runCtl) currentSeq() uint64 {
 	return c.seq
 }
 
-// markWaiting はnext_taskが`waiting`を返すことを記録する。seqの時点の状態を見て`waiting`と
-// 決めた後に出来事があったなら、それを取りこぼしているのでtrueを返す。
-func (c *runCtl) markWaiting(seq uint64) bool {
+// markWaiting はnext_taskが`waiting`（reason）を返すことを記録する。seqの時点の状態を見て
+// `waiting`と決めた後に出来事があったなら、それを取りこぼしているので、すぐに起こすよう頼む。
+func (c *runCtl) markWaiting(seq uint64, reason string) {
 	c.seqMu.Lock()
-	defer c.seqMu.Unlock()
 	c.waiting = true
-	return c.seq != seq
+	missed := c.seq != seq
+	c.seqMu.Unlock()
+	c.b.acts.update(c.id, func(a *activity) { a.detail = "next_task returned waiting (" + reason + ")" })
+	if missed {
+		c.requestWake()
+	}
 }
 
+// clearWaiting はnext_taskが来たので、起こす必要も送った回数も忘れる。
 func (c *runCtl) clearWaiting() {
 	c.seqMu.Lock()
 	defer c.seqMu.Unlock()
-	c.waiting = false
+	c.waiting, c.wantWake, c.wakeSends = false, false, 0
 }
 
 func (c *runCtl) isBooted() bool { return c.booted.Load() }
@@ -208,9 +222,23 @@ func (c *runCtl) advanceLoop() {
 		c.advMu.Unlock()
 		r.st, r.err = c.advance()
 		// 数えてからdoneを閉じる。next_taskはdoneの後に読んだseqを、自分の見た状態の時点とする。
-		c.bump()
+		c.bump(wakesMainSession(r.st, r.err))
 		close(r.done)
 	}
+}
+
+// wakesMainSession はadvanceがこの結果で終わったとき、メインセッションを起こすか。起こすのは
+// 次にすることのある位置（タスク・終わり）へ進んだときだけ。ゲート・質問では起こしても次の
+// next_taskが`waiting`を返し、engineのエラー（SUSPENDED）では人間が直してから再開する。
+func wakesMainSession(st engine.Status, err error) bool {
+	if err != nil {
+		return false
+	}
+	switch st.Kind {
+	case engine.StatusAgent, engine.StatusDone, engine.StatusBlocked:
+		return true
+	}
+	return false
 }
 
 // waitAdvance はadvanceLoopが止まるのをd待つ。止まらなければfalse。
@@ -372,7 +400,7 @@ func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 		select {
 		case <-r.done:
 		case <-wait.Done():
-			_ = c.markWaiting(seen)
+			c.markWaiting(seen, "running")
 			return c.waitingRunning(), nil
 		case <-c.ctx.Done():
 			return nil, errors.New("the workspace is stopping")
@@ -406,8 +434,9 @@ func (c *runCtl) NextTask(ctx context.Context, agentID string) (any, error) {
 		select {
 		case <-ch:
 		case <-wait.Done():
-			_ = c.markWaiting(seen)
-			return waitingOf(st), nil
+			w := waitingOf(st)
+			c.markWaiting(seen, w["reason"].(string))
+			return w, nil
 		case <-c.ctx.Done():
 			return nil, errors.New("the workspace is stopping")
 		}

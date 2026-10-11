@@ -58,6 +58,21 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 - 引数`agent_id`（任意）: 直前に完了したタスクを担当したサブエージェントのID。メインセッションが`Agent`ツールの結果から得る。続きのタスクで同じサブエージェントを続けたときも、そのサブエージェントのIDを渡す。masudaはそのメインセッションに最後に渡したタスクの出現にIDを結び付けて記録する。VMを作り直す再開では記録を消す（前のVMのIDは通じないため）
 - 戻り`continues`（任意）: `{occurrence, agent_id?}`。このタスクを続けて渡す宛先。`occurrence`はengineが決めた出現（ワークフローの`continues: agents/<役>`）、`agent_id`はその出現について`next_task`で報告されたID（報告が無ければ省く）
 
+## masudaがメインセッションを起こす
+
+`next_task`が`waiting`を返した後、次のどれかが起きると、masudaはメインセッションのtmux（`claude-work`）の入力欄に決まった1文を送って起こす。
+
+- ゲートの判断・質問の回答・エージェントの報告が記録された
+- ホスト側のノードが終わり、次のタスクか終わり（`done`・`blocked`）に進んだ
+- `waiting`を返すのとほぼ同時に上のどちらかが起き、`next_task`がそれを見ずに`waiting`を返した
+
+送る文は「masudaからの知らせ: 待っていたものが進みました。next_taskを呼んで続けてください。」。sandboxのExecで`tmux send-keys -t claude-work -l <文>`を打ち、続けて`Enter`を押す。メインセッションが作業中でも、Claude Codeは入力を溜めて今の作業の後に処理する。
+
+- `tmux list-clients -t claude-work`にクライアントがいる（`masuda chat`でアタッチ中）間は送らない。人間が打っている入力に混ざるため。活動の`detail`に「起こす待ち（chat中）」と出し、見回り（長くても30秒ごと）でデタッチの後に送る
+- 送ってから60秒たっても`next_task`が来なければ送り直す。3回送っても来なければやめる
+- `next_task`が来れば、起こす必要も回数も忘れる
+- `resume`では起こさない。新しく起動したメインセッションが開始の文で自分から`next_task`を呼ぶ
+
 ## タスクファイル
 
 `next_task`が返す`task_path`は`/masuda/in/<occ>/task.md`。構成は、役割と実行位置、続き（宛先の出現ID。`continues`があるときだけ）、エージェント定義の本文、入力データのパス（`/masuda/in/<occ>/<name>`）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、`report_concern`の案内。大きなものはすべてパスで渡し、埋め込まない。

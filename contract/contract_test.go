@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -169,6 +170,34 @@ func (h *harness) mcp(wsID, tool string, args map[string]any) map[string]any {
 		_ = json.Unmarshal([]byte(rpc.Result.Content[0].Text), &out)
 	}
 	return out
+}
+
+// wakes counts how many times serve woke the workspace's main session (the fake
+// sandbox records each wake instead of typing into the guest's tmux).
+func (h *harness) wakes(wsID string) int {
+	h.t.Helper()
+	b, err := os.ReadFile(filepath.Join(h.dataDir, "fake", wsID, "wakes"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	} else if err != nil {
+		h.t.Fatal(err)
+	}
+	return strings.Count(string(b), "\n")
+}
+
+// waitWakes waits until the main session has been woken exactly n times.
+func (h *harness) waitWakes(wsID string, n int) {
+	h.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if got := h.wakes(wsID); got == n {
+			return
+		} else if got > n {
+			h.t.Fatalf("woke the main session %d times, want %d", got, n)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	h.t.Fatalf("woke the main session %d times, want %d", h.wakes(wsID), n)
 }
 
 func (h *harness) guestWrite(wsID, guestPath, content string) {
@@ -471,9 +500,18 @@ func TestCM4_GuestProtocolLapToPublish(t *testing.T) {
 	}
 
 	// 4. approve review → publish fast-forwards the real repo to that exact commit.
+	// The main session got waiting and ended its turn, so the decision wakes it. The plan
+	// gate's decision woke nobody: next_task was already waiting in a call.
+	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "gate" {
+		t.Fatalf("next_task at the review gate: %v", w)
+	}
+	if n := h.wakes(id); n != 0 {
+		t.Fatalf("woke the main session %d times before any decision it waited for", n)
+	}
 	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: rg.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: rg.TargetHash}})); err != nil {
 		t.Fatal(err)
 	}
+	h.waitWakes(id, 1)
 	done := h.mcp(id, "next_task", nil)
 	if done["kind"] != "done" {
 		t.Fatalf("next_task after publish: %v", done)
@@ -1306,6 +1344,8 @@ func TestCM13_report_resultはホスト側のノードを待たずに返りnext_
 	if w := h.mcp(id, "next_task", nil); w["kind"] != "waiting" || w["reason"] != "running" {
 		t.Fatalf("next_task while the privileged node runs: %v", w)
 	}
+	// The node's end wakes the main session that ended its turn on waiting.
+	h.waitWakes(id, 1)
 	if done := h.mcp(id, "next_task", nil); done["kind"] != "done" {
 		t.Fatalf("next_task after the privileged node: %v", done)
 	}
