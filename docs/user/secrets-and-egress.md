@@ -206,7 +206,7 @@ masuda privileged-command approve integration-test
 
 - `image`は特権VMのイメージのエントリ（`.masuda/images/privileged/Dockerfile`等）。エージェントのVMと同じエントリでもよい
 - `description`はエージェント向けの説明（何をするコマンドか、いつ使うか）。動くものを変えないので承認には含まれず、書き換えても承認し直す必要は無い
-- 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`）に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため
+- 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`）と、settings.jsonの[`prepare`](settings.md#prepare)に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため。`prepare`は特権VMでコマンドの前にrootで流れるので含める。`list`には表示されないので、`settings.json`で読む
 - 承認はイメージの中身（`.masuda/images/<image>/`のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは`/workspace`のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、`.masuda/images/`の変更はレビューで見る
 - 特権VMが通信できるのは、宣言かつ承認済みのegressのホスト
 

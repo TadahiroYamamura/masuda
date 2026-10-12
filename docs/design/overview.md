@@ -236,7 +236,8 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `/masuda/out/<出現ID>/` | そのノードの出力データ | ゲスト。ホストが`ReadFile`で読み出して検証する |
 | `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`） | ホスト |
 | `/masuda/reviews/*.md` | 実行開始時に固定したレビュー観点 | ホスト（起動時） |
-| `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの | ホスト（起動時） |
+| `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの。`prepare`があれば先頭で`/masuda/prepare`を呼ぶ | ホスト（起動時） |
+| `/masuda/prepare`、`/masuda/prepare.log` | `settings.json`の`prepare`のスクリプトと、起動時に一度流した出力 | ホスト（起動時） |
 | `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない | ホスト（起動時） |
 | `~/.claude/CLAUDE.md`、`~/.claude/agents/` | ループ規約、サブエージェント定義 | ホスト（起動時） |
 
@@ -297,6 +298,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `envFiles` | ゲストの作業ツリーに生成するdotenv（`path`・`vars`）。`.git/`の下と作業ツリーの外は書けない |
 | `privilegedCommands` | 特権コマンドの宣言（`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。`description`は承認のハッシュに含めない） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
+| `prepare` | 準備のシェルの1行。起動時・各チェックの前・各特権コマンドの前（`HOME=/home/ubuntu`）に流す。特権コマンドの承認のハッシュに含める |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |
 | `agents` | 役の名前→`model`・`effort`の上書き。エージェント定義のfrontmatterより優先。定義に無い役の名前は`run`・`resume`・`workflow check`が断る |
 | `publish.remote` | `target: remote`のpublishがpushする実リポジトリのremoteの名前。既定`origin` |

@@ -19,6 +19,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文と、あれば`model`・`effort`を写す。`model`・`effort`は`.masuda/settings.json`の`agents`に上書きがあればその値 |
 | `~/.claude/settings.json` | フック設定（下記）と、対象リポジトリの`claudeSettings` |
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
+| `/masuda/prepare`・`/masuda/prepare.log` | `.masuda/settings.json`の`prepare`（準備のシェルの1行）を実行可能スクリプトとして置き、起動時（再開ならWIPを戻した後）に`/workspace`で一度流した出力を`prepare.log`に置く。起動時の失敗では起動を止めない。`/masuda/checks/*`は先頭でこれを呼ぶ。エージェントも定義を変えた後に呼び直してよい。特権VMでは、宣言のコマンドの前に`HOME=/home/ubuntu`で流れる（失敗はコマンドの失敗）。宣言が無ければ置かない |
 | `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |
 | `/masuda/pitfalls.jsonl` | プロジェクト固有の落とし穴。ホストの`.masuda/pitfalls.jsonl`を実行開始時に写して検査し、空行と`#`の行を除いたもの（1行1件`{id, category, trigger, question, background}`）。無ければ置かない。同梱のplan-questionsが読む |
 | `/masuda/privileged-commands.json` | 特権コマンドの宣言。実行開始時に定義の写し（`records/definitions/`）の`privilegedCommands`から作る。名前→`{description?, command, image, inputs, outputs, timeoutSeconds}`（`timeoutSeconds`は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの`settings.local.json`の承認で行う） |
