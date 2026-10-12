@@ -100,6 +100,7 @@ func (c *runCtl) runPrivileged(ctx context.Context, occurrence, name string) (*p
 		CPUs:        cfg.CPUs(cmd.Decl.Image),
 		Egress:      cmd.Egress,
 		Decl:        cmd.Decl,
+		Prepare:     cmd.Prepare,
 		Staging:     c.runner.Staging(),
 		SnapshotRef: ref,
 		HostDir:     hostDir,

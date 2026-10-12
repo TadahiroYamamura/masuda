@@ -112,6 +112,8 @@ func ApprovalOf(name string, d config.PrivilegedCommandDecl, prepare string, loc
 type Resolved struct {
 	Name string
 	Decl config.PrivilegedCommandDecl
+	// Prepare は準備（settings.jsonのprepare、空なら無し）。Hashに含まれている。
+	Prepare string
 	// Hash は承認と一致した宣言のハッシュ。
 	Hash string
 	// Egress は特権VMに許すホスト（宣言と承認の積）。
@@ -143,7 +145,7 @@ func Resolve(cfg config.Settings, local config.LocalSettings, name string, image
 	case Stale:
 		return nil, fmt.Errorf("privileged command %q changed since it was approved; a human must run `masuda privileged-command approve %s` again", name, name)
 	}
-	return &Resolved{Name: name, Decl: decl, Hash: hash, Egress: config.AllowedEgress(cfg, local)}, nil
+	return &Resolved{Name: name, Decl: decl, Prepare: cfg.Prepare, Hash: hash, Egress: config.AllowedEgress(cfg, local)}, nil
 }
 
 // Options は1回の実行に要るもの。
@@ -162,6 +164,8 @@ type Options struct {
 	// Egress は特権sandboxに許すホスト（宣言と承認の積）。
 	Egress []string
 	Decl   config.PrivilegedCommandDecl
+	// Prepare はコマンドの前に流す準備（Resolved.Prepare）。
+	Prepare string
 	// Staging と SnapshotRef は、メインの作業ツリーを取り込んだstagingとそのref。
 	Staging     *staging.Repo
 	SnapshotRef string
@@ -252,7 +256,7 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		User:           User,
 		Cwd:            guestWorkspace,
 		SetupShell:     checkoutScript(o.SnapshotRef),
-		Shell:          o.Decl.Command,
+		Shell:          commandShell(o.Prepare, o.Decl.Command),
 		TimeoutMs:      uint32(min(timeout.Milliseconds(), int64(^uint32(0)))),
 		Inputs:         inputs,
 		Outputs:        o.Decl.Outputs,
@@ -333,6 +337,21 @@ func checkoutScript(ref string) string {
 		"git checkout -q -f --detach " + ref,
 		"rm -f " + bundleGuest,
 	}, "\n")
+}
+
+// commandShell は準備を流してからcommandを動かすshell。準備はsetup_shellに入れない。setup_shellの
+// 失敗は基盤の失敗（エラー）になるが、準備の失敗はコードの問題で、エージェントがログを読んで直せる
+// ようコマンドの失敗（exit_code）として返すため。準備はHOMEをエージェントのVMと同じguest.Homeに
+// して別のログインシェルで流す。イメージのビルドでその下に入れたツールやキャッシュを、rootでも同じ
+// パスで見つけられるように。別のshellにするのは、`set -e`を`||`の左辺で効かせるため（`||`の左辺の
+// 中では`set -e`が無視される）と、HOMEの変更をコマンド本体へ持ち込まないため。
+func commandShell(prepare, command string) string {
+	if prepare == "" {
+		return command
+	}
+	return "mkdir -p " + guest.Home + "\n" +
+		"HOME=" + guest.Home + " /bin/sh -elc " + shellQuote(prepare) + " || exit $?\n" +
+		command
 }
 
 func describeSetup(fin *sandboxv1.RunJobEvent_Finished) string {
@@ -469,4 +488,8 @@ func (t *tailBuffer) bytes() []byte {
 		b = b[len(b)-t.max:]
 	}
 	return append([]byte(nil), b...)
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }

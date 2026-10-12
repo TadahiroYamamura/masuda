@@ -848,6 +848,35 @@ func TestCM7_PrivilegedCommandRunsInSecondSandbox(t *testing.T) {
 	}
 }
 
+// The prepare runs in the privileged sandbox before the command, on the
+// snapshot of the main worktree, so a generated file the command needs is
+// made from what the agent wrote even though nothing carries it over.
+func TestCM7_特権コマンドの前に準備がスナップショットの上で流れる(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = `{"image":"default","checks":{},"prepare":"cat spec.txt > gen.txt","privilegedCommands":{"itest":{"image":"default","command":"cat gen.txt > out.txt","outputs":["out.txt"],"timeoutSeconds":60}}}`
+	h := start(t, files)
+	ctx := context.Background()
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+		t.Fatal(err)
+	}
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/smoke", Branch: "feat/p", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	_ = h.mcp(id, "next_task", nil)
+	h.guestWrite(id, "workspace/spec.txt", "from the agent\n")
+	r := h.mcp(id, "run_privileged_command", map[string]any{"name": "itest"})
+	if r["error"] != nil || r["exit_code"] != float64(0) {
+		t.Fatalf("run_privileged_command: %v", r)
+	}
+	out, _ := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", r["results_dir"].(string), "outputs", "out.txt"))
+	if string(out) != "from the agent\n" {
+		t.Fatalf("out.txt %q", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // C-M8: a workflow without publish may run on an existing branch
 // ---------------------------------------------------------------------------

@@ -165,6 +165,7 @@ func runPrivilegedJob(ctx context.Context, o privilegedRunOptions, stdout, stder
 		CPUs:        cfg.CPUs(cmd.Decl.Image),
 		Egress:      cmd.Egress,
 		Decl:        cmd.Decl,
+		Prepare:     cmd.Prepare,
 		Staging:     snap,
 		SnapshotRef: staging.WorktreeSnapshotRef,
 		HostDir:     out,
