@@ -78,6 +78,7 @@ masuda
 |---|---|
 | `refs/heads/<branch>` | ワークスペースのブランチ。commitノードが進める。新しいブランチなら分岐元と同じコミットから、既存のブランチ（下記）ならその先頭から始まる |
 | `refs/masuda/wip/<出現ID>` | ノード境界のWIPスナップショット（作業ツリー全体を`git add -A`したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う |
+| `refs/masuda/approved/<run-id>` | 秘密を使う特権コマンドに渡した、承認済みのコミット（「特権コマンド」の節） |
 | `refs/masuda/base` | 分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base） |
 | `refs/masuda/latest-wip` | 最後に取り込んだ`refs/masuda/wip/*`を指すシンボリックref。再開で作業ツリーへ戻すWIPを決める（コミットの日時は時計が戻ると当てにならないため） |
 
@@ -234,11 +235,11 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `/workspace` | stagingからのclone | ゲスト |
 | `/masuda/in/<出現ID>/` | そのノードの入力データ・タスクファイル | ホスト（`WriteFile`） |
 | `/masuda/out/<出現ID>/` | そのノードの出力データ | ゲスト。ホストが`ReadFile`で読み出して検証する |
-| `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`） | ホスト |
+| `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`）。秘密を使う宣言の結果は置かない | ホスト |
 | `/masuda/reviews/*.md` | 実行開始時に固定したレビュー観点 | ホスト（起動時） |
 | `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの。`prepare`があれば先頭で`/masuda/prepare`を呼ぶ | ホスト（起動時） |
 | `/masuda/prepare`、`/masuda/prepare.log` | `settings.json`の`prepare`のスクリプトと、起動時に一度流した出力 | ホスト（起動時） |
-| `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない | ホスト（起動時） |
+| `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態と、秘密を使う宣言を除く）。ホストは読み戻さない | ホスト（起動時） |
 | `~/.claude/CLAUDE.md`、`~/.claude/agents/` | ループ規約、サブエージェント定義 | ホスト（起動時） |
 
 ホストはゲストが書いた場所を読むとき、そのノードの出力ディレクトリ以外は読まない。読んだものは必ず検証を通す。
@@ -270,13 +271,14 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 - 結果: `outputs`は`RunJob`がホストの`records/privileged/<run-id>/outputs/`へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの`/masuda/privileged/<run-id>/`へ置く。特権VMはAPIトークンもMCPも持たない
 - 呼び出し口はMCPツール`run_privileged_command(name)`と、ワークフローの`privileged`ノード（`name`で宣言を指し、終了コードで`done`/`failed`に分岐する。engineの`Runner.RunPrivileged`）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は`records/definitions/`の写しから読み、承認は作業ツリーの`settings.local.json`のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの名前は、`Run`・`Resume`の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（`privileged.Resolve`）、足りなければ何も作らずにまとめて`FailedPrecondition`で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の`Resume`（または`Advance`）で同じ出現をやり直す
 - 宣言（承認の状態を除く）は実行開始時にゲストの`/masuda/privileged-commands.json`へ置く（[guest-protocol.md](../guest-protocol.md)）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない
+- 秘密を使う宣言（`secrets`を持つもの）: reviewゲートで承認したコミットに対してだけ、ワークフローの`privileged`ノードからだけ動く。MCPと`masuda privileged-command run`からは断る。承認済みのコミットはengineの`PrivilegedTask.ApprovedCommit`（publishが着地させるコミット）で受け取り、空なら断る（engineのエラーとしてSUSPENDED）。stagingのブランチ先頭とも突き合わせ（publishと同じ`staging.CheckHead`）、`refs/masuda/approved/<run-id>`に張ってbundleにする。作業ツリーのスナップショットは取らない。`inputs`は宣言の検証で禁じる。秘密は`RunJob`の`secrets`（placeholderだけ。ジョブの間ずっと置き換える）で渡す。`CreateSandbox`+`Exec`で組まないのは、masudaが落ちたときに秘密を持ったVMが残るため。通信先は宣言と承認の積に、コマンドの宣言の`egress`を足したもの（秘密の宛先をエージェントのVMから届かせないため、トップレベルの`egress`とは分ける）。結果はメインVMに置かず、engineへ返すログは決まった文に差し替える（差し戻しに載るのは終了コードだけになる）
 - 同じワークスペースでは1つずつ動かす。`<run-id>`は`0001`からの連番
 
 ホストの記録は`records/privileged/<run-id>/`に置く。
 
 | ファイル | 中身 |
 |---|---|
-| `result.json` | 名前・呼んだ`privileged`ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
+| `result.json` | 名前・呼んだ`privileged`ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref（秘密を使う宣言では空で、代わりに`approved_commit`）・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した`outputs`・`outputs_error`、または失敗の理由 |
 | `exit-code` | 終了コード |
 | `log` | 標準出力と標準エラーの末尾 |
 | `outputs/` | 回収した`outputs`のファイル |
@@ -296,7 +298,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `egress` | ゲストが届いてよいホストの宣言（先頭の`*.`だけワイルドカード） |
 | `secrets` | 秘密の宣言（`name`・`hosts`・`mode`・`in`）。`CLAUDE_CODE_OAUTH_TOKEN`は予約済みで宣言できない |
 | `envFiles` | ゲストの作業ツリーに生成するdotenv（`path`・`vars`）。`.git/`の下と作業ツリーの外は書けない |
-| `privilegedCommands` | 特権コマンドの宣言（`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。`description`は承認のハッシュに含めない） |
+| `privilegedCommands` | 特権コマンドの宣言（`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`・`egress`・`secrets`。`description`は承認のハッシュに含めない。`secrets`はこの特権VMにだけ渡し、トップレベルの`secrets`と同じ名前は書けない） |
 | `checks` | チェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`になる |
 | `prepare` | 準備のシェルの1行。起動時・各チェックの前・各特権コマンドの前（`HOME=/home/ubuntu`）に流す。特権コマンドの承認のハッシュに含める |
 | `claudeSettings` | ゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaのものが優先） |

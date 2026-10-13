@@ -120,7 +120,7 @@ Claude APIのホスト（`api.anthropic.com`）は、宣言や承認に関係な
 |---|---|
 | オブジェクトの配列 | 空 |
 
-秘密の宣言。値はここに書かず、`masuda secret set <name>`で登録する。
+秘密の宣言。値はここに書かず、`masuda secret set <name>`で登録する。ここに書いた秘密はエージェントのVMに渡る。特権コマンドにだけ渡したい秘密は、[`privilegedCommands`](#privilegedcommands)の`secrets`に書く。
 
 | キー | 型 | 既定 | 意味 |
 |---|---|---|---|
@@ -160,6 +160,15 @@ rootやDockerが要るコマンドを、別の使い捨てVM（root）で動か�
 | `inputs` | globの配列 | 空 | gitで運ばれない（gitignoreされた）ファイルのうち、特権VMへ運ぶもの |
 | `outputs` | globの配列 | 空 | 終わった後に特権VMから回収するファイル |
 | `timeoutSeconds` | 整数（秒） | `0`（= 1時間） | 打ち切りまでの時間。負は不可 |
+| `egress` | 文字列の配列（ホスト名） | 空 | この特権VMにだけ足す通信先（[`egress`](#egress)と同じ書き方）。承認済みの`egress`に加えて開く。承認の対象（宣言のハッシュ）に入るので、`masuda egress approve`は要らない |
+| `secrets` | オブジェクトの配列 | 空 | この特権VMにだけ渡す秘密（[`secrets`](#secrets)と同じキー）。値は`masuda secret set <name>`で登録する。これを持つ宣言は、reviewゲートで承認したコミットに対して、ワークフローの`privileged`ノードからだけ動く（[秘密を使う特権コマンド](secrets-and-egress.md#privileged-secrets)） |
+
+`secrets`には次の制約があり、破ると`settings.json`の読み込みで断られる。
+
+- `mode`は`placeholder`だけ。`CLAUDE_CODE_OAUTH_TOKEN`は書けない
+- トップレベルの`secrets`と同じ名前は書けない（そちらはエージェントのVMに渡るため）
+- 各秘密の`hosts`は、そのコマンドの`egress`に含まれていなければならない（`*.`のワイルドカードで含んでもよい）
+- `inputs`と一緒には書けない（承認したコミットのツリーだけを渡すため）
 
 globは`/workspace`からの相対パスで、`*`・`?`・`[...]`は1つの階層の中、`**`は0個以上の階層に当たる。`..`・`.`・空の階層は書けない。ディレクトリ名だけのパターンは中のファイルに当たらないので、中身は`dir/**`と書く。
 
