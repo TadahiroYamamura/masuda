@@ -111,9 +111,15 @@ func (c *runCtl) runPrivileged(ctx context.Context, occurrence, name, approvedCo
 	if err != nil {
 		return nil, err
 	}
+	// 秘密を使うコマンドの結果はメインのゲストに置かない。宛先の応答（アクセストークン等）が
+	// ログや出力に含まれうるので、エージェントからは読めないようにする。
+	mainID := c.id
+	if withSecrets {
+		mainID = ""
+	}
 	res, err := privileged.Run(ctx, privileged.Options{
 		Sandbox:     c.b.sandbox,
-		MainID:      c.id,
+		MainID:      mainID,
 		RunID:       runID,
 		BuildID:     buildID,
 		DiskMiB:     cfg.DiskMiB(cmd.Decl.Image),
@@ -145,7 +151,17 @@ func (c *runCtl) runPrivileged(ctx context.Context, occurrence, name, approvedCo
 	if err != nil {
 		return nil, err
 	}
+	if withSecrets {
+		// ログはホストの記録に書き終えている。engineは戻りのログの末尾をエージェントへの差し戻しに
+		// 載せるので、決まった文に差し替える。
+		res.Log, res.Truncated = withheldLog(runID), false
+	}
 	return res, nil
+}
+
+// withheldLog は秘密を使うコマンドのログの代わりにエージェントへ返す文。
+func withheldLog(runID string) string {
+	return "秘密を使うコマンドのため、ログは人間だけが読める（records/privileged/" + runID + "/log）"
 }
 
 // privilegedRecord は`records/privileged/<run-id>/result.json`。ログと出力は同じディレクトリの別ファイル。

@@ -1386,43 +1386,63 @@ func TestCM11_秘密を使う特権ノードは承認済みのコミットのツ
 		}
 	})
 
-	h.guestWrite(id, "workspace/answer.txt", "ok")
-	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: answer"})
-	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
-		t.Fatalf("report_result: %v", r)
+	// submit は作業ツリーにanswer.txtを書いて報告し、開いたreviewゲートを返す。
+	submit := func(occ, answer string) *apiv1.Gate {
+		t.Helper()
+		h.guestWrite(id, "workspace/answer.txt", answer)
+		h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: answer " + answer})
+		if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+			t.Fatalf("report_result: %v", r)
+		}
+		h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+		open, err := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
+		if err != nil || len(open.Msg.Gates) != 1 || open.Msg.Gates[0].Gate != "review" {
+			t.Fatalf("want review gate: %v %+v", err, open)
+		}
+		return open.Msg.Gates[0]
 	}
-	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
-	open, err := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
-	if err != nil || len(open.Msg.Gates) != 1 || open.Msg.Gates[0].Gate != "review" {
-		t.Fatalf("want review gate: %v %+v", err, open)
+	approveReview := func(g *apiv1.Gate) {
+		t.Helper()
+		if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); err != nil {
+			t.Fatal(err)
+		}
 	}
-	rg := open.Msg.Gates[0]
-	// 承認の後に作業ツリーを書き換える。特権VMに作業ツリーのスナップショットが渡ればanswer.txtが
-	// okでなくなり、コマンドが落ちる。
+
+	// 1周目は落ちる答えで出し、承認すると秘密を使うコマンドが落ちて手直しへ戻る。
+	approveReview(submit(occ, "bad"))
+	retry := h.mcp(id, "next_task", nil)
+	if retry["role"] != "smoke-implementer" {
+		t.Fatalf("a failed privileged command must send the run back to work: %v", retry)
+	}
+
+	t.Run("落ちたときエージェントには終了コードと決まった文だけが届き、ログはホストの記録にだけ残る", func(t *testing.T) {
+		task, _ := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", retry["task_path"].(string)))
+		if !strings.Contains(string(task), `特権コマンド"e2e": コマンドが失敗した（exit 1）`) || !strings.Contains(string(task), "ログは人間だけが読める（records/privileged/0001/log）") || strings.Contains(string(task), "secret=") {
+			t.Fatalf("the retry's feedback must carry only the exit code and the fixed text:\n%s", task)
+		}
+		if _, err := os.Stat(filepath.Join(h.dataDir, "fake", id, "root", "masuda", "privileged")); !os.IsNotExist(err) {
+			t.Fatalf("the result must not be placed in the main guest: %v", err)
+		}
+		log, _ := os.ReadFile(filepath.Join(h.dataDir, "workspaces", id, "records", "privileged", "0001", "log"))
+		if !strings.Contains(string(log), "secret=masuda-fake-placeholder-") || strings.Contains(string(log), "auth_real") {
+			t.Fatalf("the host record must keep the log, with the placeholder and not the real value:\n%s", log)
+		}
+	})
+
+	// 2周目は通る答えで出す。承認の後に作業ツリーを書き換える。特権VMに作業ツリーのスナップショットが
+	// 渡ればanswer.txtがokでなくなり、コマンドが落ちる。
+	rg := submit(retry["occurrence"].(string), "ok")
 	h.guestWrite(id, "workspace/answer.txt", "tampered")
-	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: rg.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: rg.TargetHash}})); err != nil {
-		t.Fatal(err)
-	}
+	approveReview(rg)
 	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
 
 	t.Run("承認済みのコミットのツリーで動いて通り、記録には作業ツリーのスナップショットでなく承認済みのコミットが残る", func(t *testing.T) {
-		rec := h.privilegedResult(id, "0001")
+		rec := h.privilegedResult(id, "0002")
 		if rec["exit_code"] != float64(0) || rec["approved_commit"] != rg.StagingCommit || rec["snapshot"] != "" {
 			t.Fatalf("record %v; approved %s", rec, rg.StagingCommit)
 		}
 		if got := git(t, h.repo, "rev-parse", "feat/e"); got != rg.StagingCommit {
 			t.Fatalf("published %s, approved %s", got, rg.StagingCommit)
-		}
-	})
-
-	t.Run("コマンドの環境には秘密の本物の値でなくplaceholderが入る", func(t *testing.T) {
-		logs, _ := filepath.Glob(filepath.Join(h.dataDir, "workspaces", id, "records", "privileged", "0001", "log"))
-		if len(logs) != 1 {
-			t.Fatalf("log: %v", logs)
-		}
-		b, _ := os.ReadFile(logs[0])
-		if !strings.Contains(string(b), "secret=masuda-fake-placeholder-") || strings.Contains(string(b), "auth_real") {
-			t.Fatalf("log:\n%s", b)
 		}
 	})
 }
