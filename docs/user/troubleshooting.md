@@ -70,6 +70,22 @@ VMのルートディスクが足りない。ビルドのキャッシュ（Goの`
 
 - キャッシュを`/tmp`へ逃がさない。`/tmp`はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの`GOCACHE`、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（`images.<entry>.memoryMiB`）にすぐ当たる。ディスク（既定の`~/.cache`等）に置いたまま、上のようにディスクを増やす。既に`/tmp`へ向けている（`ENV GOCACHE=/tmp/...`や`claudeSettings.env`）なら外す
 
+## 活動に`[memory low]`・`[oom-kill ...]`が出る・チェックが急に遅い {#vm-memory}
+
+VMの中のメモリが足りない（[VMの中の資源の警告](operations.md#vm-resources)）。メモリが尽きかけるとチェックやClaude Codeが極端に遅くなり、OOM killerがプロセスを殺すとチェックが失敗する。
+
+- `/tmp`に大きなものを置いていないか確かめる。`/tmp`はtmpfsでメモリを使う。`/tmp over 90%`が一緒に出ていれば、ほぼこれ。上の`No space left on device`の2つ目のとおり、キャッシュはディスクへ置く
+- テストの並列数を減らす（jestの`--maxWorkers`、`go test -p`等）。ワーカーごとにメモリを使う
+- `settings.json`で、使うイメージのエントリのメモリを増やす。次の`run`・`resume`から効く
+
+    ```json
+    { "images": { "default": { "memoryMiB": 8192 } } }
+    ```
+
+- 中を見るには`masuda chat <id>`で入り、`free -m`・`df -h / /tmp`を見る
+
+`/ over 90%`なら、上の`No space left on device`と同じ手当て（ディスクを増やす）。
+
 ## Dockerfileの`ENV`が効かない {#dockerfile-env}
 
 DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭には`~/.local/bin`が足される。それでも`ENV PATH=/usr/local/go/bin:$PATH`等が届かないときは、次を確かめる。

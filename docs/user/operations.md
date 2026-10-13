@@ -20,7 +20,7 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | ID | ワークスペースのID |
 | BRANCH | 作っているブランチ |
 | STATE | ワークスペースの状態（[概念](concepts.md#workspace)） |
-| ACTIVITY | VMの中のClaude Codeが今何をしているか（下表）と、最後に活動してからの経過 |
+| ACTIVITY | VMの中のClaude Codeが今何をしているか（下表）と、最後に活動してからの経過。VMの中のメモリ・ディスクが逼迫していれば`[...]`で添える（[下記](#vm-resources)） |
 | POSITION | ワークフローの今の位置。止まった理由（`reason`）か結果（`outcome ...`）があれば、そちらの1行目。`starting`の間は起動の段階（`building image (log: ...)`・`booting the VM`・`preparing the guest`・`starting Claude Code`） |
 | OPEN | 開いているゲート（`gate:<ゲート名>`）と質問（`question:<出現ID>`） |
 
@@ -40,6 +40,18 @@ ID            BRANCH         STATE         ACTIVITY                 POSITION    
 | `idle` | 何もすることが無い（`done`・`stopped`・`suspended`・`blocked`）、またはまだ起動中（`starting`） | `starting`が長いなら[トラブルシューティング](troubleshooting.md#starting-long) |
 
 活動は、ホストが見ているClaude APIへの通信（VMの中から偽れない）を一番に信じ、VMの中のClaude Codeのフックの知らせを補助に使って決める。
+
+### VMの中の資源の警告 {#vm-resources}
+
+masudaは動いているVMの中のメモリとディスクを30秒ごとに測り、逼迫していれば活動に添える（例: `working [memory low, /tmp over 90%] 2m ago`）。`masuda watch`の`status`の行にも同じものが出る。
+
+| 表示 | 意味 |
+|---|---|
+| `memory low` | 使えるメモリが合計の10%を下回った |
+| `/ over 90%`・`/tmp over 90%` | ルートディスク・`/tmp`（tmpfs。メモリを使う）の使用率が90%を超えた |
+| `oom-kill x<回数>` | VMの中でOOM killerがプロセスを殺した（VMの起動からの回数。起動し直すまで消えない） |
+
+しきい値は[`config.json`](settings.md#serve-config)で変えられる。出たときの手当ては[トラブルシューティング](troubleshooting.md#vm-memory)。
 
 ## 流れを見る {#watch}
 

@@ -387,6 +387,18 @@ APIリクエストを入力待ちより先に見るのは、フックがゲス�
 - 下回っていた状態から超えたときにだけ、標準エラーへのログとWatchの`ServeNotice{kind: "disk-warning", value: 使用量}`（`workspace_id`が空）を1回出す。超えたままなら繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）
 - 何も消さない。何を残すかは利用者が`masuda remove`で決める
 
+### VMの中の資源
+
+VMの中のメモリやディスクが尽きると、チェックやエージェントが止まったのか遅いだけなのかをホストから区別できない（#88。tmpfsの`/tmp`に置いたビルドキャッシュとjestでメモリが尽きた）。そこで、エージェントのVMの中を測り、逼迫を活動の`resource_warning`に載せる。
+
+- `Exec`での生存確認（30秒ごと）の後に、同じVMで`/proc/meminfo`・`/proc/vmstat`・`df -Pk / /tmp`を読む。ゲストのClaude Codeやワークフローの協力は要らない。sandboxの`metrics`はホストから見たQEMUのRSSだけで、VMの中の使えるメモリやtmpfsの使用量は分からないため、こちらで測る
+- 警告するのは、使えるメモリ（`MemAvailable`）が合計の`vmMemoryWarnPercent`（既定10）%未満、`/`・`/tmp`の使用率が`vmDiskWarnPercent`（既定90）%超、`oom_kill`（VMの起動からの回数）が1以上のとき。しきい値は`config.json`。マシンの大きさに依るので、リポジトリごとの設定には置かない
+- `resource_warning`には数値を入れず（`"memory low"`・`"/tmp over 90%"`・`"oom-kill x2"`）、逼迫が続く間は同じ文字列にする。`status`は内容が変わったときだけ流れるので、測るたびに流さずに済む。測った値は、警告が変わったときに標準エラーへのログに出す
+- 測れなかった（Execの失敗・出力が読めない）ときは前の表示を残し、ログだけ出す。測れていないものを「余裕がある」とみなさない
+- `ServeNotice`には載せない。serve全体についての通知（`workspace_id`が空）という意味を変えずに済み、`masuda list`のACTIVITYにも同じものが出せる
+- 特権コマンドのVM（`RunJob`）は測らない。使い捨てで、ジョブの終わりに消える
+- DONE・STOPPED・BLOCKED・SUSPENDEDでは見せない。ゲート・質問の待ちでは見せる（tmpfsはその間もメモリを占める）
+
 ## 9. 公開API
 
 `masuda serve`がConnectで提供する。UIもCLIも同じAPIを使う。Protobufで定義し、gRPCとHTTP+JSONの両方で呼べる。
