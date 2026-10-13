@@ -117,6 +117,11 @@ func runPrivilegedJob(ctx context.Context, o privilegedRunOptions, stdout, stder
 	if err != nil {
 		return 0, err
 	}
+	// --refの中身を人間がレビューしたかは確かめられないので、秘密を渡すのはワークフローで
+	// 差分の承認を通ったコミットに限る。
+	if len(cmd.Decl.Secrets) > 0 {
+		return 0, fmt.Errorf("privileged command %q uses secrets, so it runs only from a privileged node of a workflow after the review is approved", o.name)
+	}
 
 	sb := serve.DialSandbox(o.socket)
 	info, err := serve.SandboxInfo(ctx, sb)
@@ -165,6 +170,7 @@ func runPrivilegedJob(ctx context.Context, o privilegedRunOptions, stdout, stder
 		CPUs:        cfg.CPUs(cmd.Decl.Image),
 		Egress:      cmd.Egress,
 		Decl:        cmd.Decl,
+		Prepare:     cmd.Prepare,
 		Staging:     snap,
 		SnapshotRef: staging.WorktreeSnapshotRef,
 		HostDir:     out,

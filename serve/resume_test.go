@@ -76,6 +76,33 @@ func TestResumeRestoresLatestWIPIntoWorkTree(t *testing.T) {
 	}
 }
 
+// 再開では、準備はWIPを戻した後に流れる。エージェントが変えた定義から生成し直すため。
+func TestResumeRunsPrepareAfterRestoringWIP(t *testing.T) {
+	dataDir := t.TempDir()
+	srv, ws := startServe(t, dataDir)
+	repo := newSmokeRepo(t)
+	writeRepoFile(t, repo, ".masuda/settings.json", `{"prepare": "cat spec.txt > generated.txt"}`)
+	ctx := context.Background()
+	res, err := ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/prep", Inputs: smokeInputs}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+	guestTree := filepath.Join(FakeDir(dataDir), id, "root", "workspace")
+	writeRepoFile(t, guestTree, "spec.txt", "changed by the agent\n")
+	if _, err := srv.backend.runFor(id).runner.SnapshotNamed(ctx, "9999999"); err != nil {
+		t.Fatal(err)
+	}
+
+	stopAndResume(t, ws, id)
+	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+
+	if b, err := os.ReadFile(filepath.Join(guestTree, "generated.txt")); err != nil || string(b) != "changed by the agent\n" {
+		t.Fatalf("generated.txt after resume: %q %v", b, err)
+	}
+}
+
 const askWorkflow = `version: 1
 start: ask
 nodes:

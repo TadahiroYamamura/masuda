@@ -52,6 +52,11 @@ func (s *Service) RunJob(ctx context.Context, req *connect.Request[sandboxv1.Run
 	}
 	jobCtx, cancel := context.WithTimeout(ctx, jobTimeout)
 	defer cancel()
+	// 実物と同じく、秘密はplaceholderだけをsetup_shellとshellの環境に置く。置き換えは通信が無いのでしない。
+	placeholders := map[string]string{}
+	for _, d := range m.Secrets {
+		placeholders[d.Name] = placeholder(d)
+	}
 
 	var buf [8]byte
 	_, _ = rand.Read(buf[:])
@@ -99,7 +104,7 @@ func (s *Service) RunJob(ctx context.Context, req *connect.Request[sandboxv1.Run
 		return stream.Send(&sandboxv1.RunJobEvent{Event: &sandboxv1.RunJobEvent_Stderr{Stderr: b}})
 	}}
 	run := func(shell string, timeoutMs uint32) (*sandboxv1.ExecEvent_Exited, error) {
-		cmd, err := prepareExec(root, user, nil, &sandboxv1.ExecRequest{Shell: shell, User: user, Cwd: cwd, Env: m.Env, TimeoutMs: timeoutMs})
+		cmd, err := prepareExec(root, user, placeholders, &sandboxv1.ExecRequest{Shell: shell, User: user, Cwd: cwd, Env: m.Env, TimeoutMs: timeoutMs})
 		if err != nil {
 			return nil, err
 		}

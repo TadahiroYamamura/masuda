@@ -46,6 +46,7 @@ type bootPlan struct {
 	// vars はenvFilesの公開値（settings.local.jsonのvars）。
 	vars           map[string]string
 	checks         map[string]string
+	prepare        string
 	claudeSettings json.RawMessage
 	agents         map[string]config.AgentOverride
 	// stallAfter はsettings.local.jsonのstallAfter（無ければ0で、serve全体の既定に従う）。
@@ -84,6 +85,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		envFiles:       cfg.EnvFiles,
 		vars:           local.Vars,
 		checks:         cfg.Checks,
+		prepare:        cfg.Prepare,
 		claudeSettings: cfg.ClaudeSettings,
 		agents:         cfg.Agents,
 	}
@@ -144,15 +146,7 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 		if !ok {
 			add("secret %s has no value (masuda secret set %s)", d.Name, d.Name)
 		}
-		decl := &sandboxv1.SecretDecl{Name: d.Name, Value: value, Hosts: d.Hosts}
-		for _, in := range d.EffectiveIn() {
-			if in == config.InBody {
-				decl.SubstituteIn = append(decl.SubstituteIn, sandboxv1.SubstituteIn_SUBSTITUTE_IN_BODY)
-			} else {
-				decl.SubstituteIn = append(decl.SubstituteIn, sandboxv1.SubstituteIn_SUBSTITUTE_IN_HEADER)
-			}
-		}
-		p.secrets = append(p.secrets, decl)
+		p.secrets = append(p.secrets, sandboxSecret(d, value))
 		p.placeholderNames = append(p.placeholderNames, d.Name)
 	}
 
@@ -181,6 +175,11 @@ func (b *backend) planBoot(defsDir, repoRoot string, set *engine.Set, workflow, 
 	for _, name := range privNames {
 		if _, err := privileged.Resolve(cfg, local, name, imageExistsIn(defsDir)); err != nil {
 			add("the workflow has a privileged node, but %v", err)
+		}
+		for _, d := range cfg.PrivilegedCommands[name].Secrets {
+			if !store.Has(repoRoot, d.Name) {
+				add("the workflow has a privileged node running %s, but its secret %s has no value (masuda secret set %s)", name, d.Name, d.Name)
+			}
 		}
 	}
 
@@ -317,4 +316,17 @@ func unknownAgentOverrides(set *engine.Set, overrides map[string]config.AgentOve
 		out = append(out, fmt.Sprintf("agents.%s in .masuda/settings.json is not a defined agent (defined: %s)", name, strings.Join(known, ", ")))
 	}
 	return out
+}
+
+// sandboxSecret はplaceholderモードの秘密の宣言dに値valueを入れて、sandboxへ渡す形にする。
+func sandboxSecret(d config.SecretDecl, value string) *sandboxv1.SecretDecl {
+	decl := &sandboxv1.SecretDecl{Name: d.Name, Value: value, Hosts: d.Hosts}
+	for _, in := range d.EffectiveIn() {
+		if in == config.InBody {
+			decl.SubstituteIn = append(decl.SubstituteIn, sandboxv1.SubstituteIn_SUBSTITUTE_IN_BODY)
+		} else {
+			decl.SubstituteIn = append(decl.SubstituteIn, sandboxv1.SubstituteIn_SUBSTITUTE_IN_HEADER)
+		}
+	}
+	return decl
 }

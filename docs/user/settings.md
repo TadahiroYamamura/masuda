@@ -49,6 +49,7 @@
     "test": "go test ./...",
     "lint": "go vet ./..."
   },
+  "prepare": "make generate",
   "claudeSettings": {
     "model": "sonnet",
     "env": { "GOTOOLCHAIN": "local" }
@@ -119,7 +120,7 @@ Claude APIのホスト（`api.anthropic.com`）は、宣言や承認に関係な
 |---|---|
 | オブジェクトの配列 | 空 |
 
-秘密の宣言。値はここに書かず、`masuda secret set <name>`で登録する。
+秘密の宣言。値はここに書かず、`masuda secret set <name>`で登録する。ここに書いた秘密はエージェントのVMに渡る。特権コマンドにだけ渡したい秘密は、[`privilegedCommands`](#privilegedcommands)の`secrets`に書く。
 
 | キー | 型 | 既定 | 意味 |
 |---|---|---|---|
@@ -159,6 +160,15 @@ rootやDockerが要るコマンドを、別の使い捨てVM（root）で動か�
 | `inputs` | globの配列 | 空 | gitで運ばれない（gitignoreされた）ファイルのうち、特権VMへ運ぶもの |
 | `outputs` | globの配列 | 空 | 終わった後に特権VMから回収するファイル |
 | `timeoutSeconds` | 整数（秒） | `0`（= 1時間） | 打ち切りまでの時間。負は不可 |
+| `egress` | 文字列の配列（ホスト名） | 空 | この特権VMにだけ足す通信先（[`egress`](#egress)と同じ書き方）。承認済みの`egress`に加えて開く。承認の対象（宣言のハッシュ）に入るので、`masuda egress approve`は要らない |
+| `secrets` | オブジェクトの配列 | 空 | この特権VMにだけ渡す秘密（[`secrets`](#secrets)と同じキー）。値は`masuda secret set <name>`で登録する。これを持つ宣言は、reviewゲートで承認したコミットに対して、ワークフローの`privileged`ノードからだけ動く（[秘密を使う特権コマンド](secrets-and-egress.md#privileged-secrets)） |
+
+`secrets`には次の制約があり、破ると`settings.json`の読み込みで断られる。
+
+- `mode`は`placeholder`だけ。`CLAUDE_CODE_OAUTH_TOKEN`は書けない
+- トップレベルの`secrets`と同じ名前は書けない（そちらはエージェントのVMに渡るため）
+- 各秘密の`hosts`は、そのコマンドの`egress`に含まれていなければならない（`*.`のワイルドカードで含んでもよい）
+- `inputs`と一緒には書けない（承認したコミットのツリーだけを渡すため）
 
 globは`/workspace`からの相対パスで、`*`・`?`・`[...]`は1つの階層の中、`**`は0個以上の階層に当たる。`..`・`.`・空の階層は書けない。ディレクトリ名だけのパターンは中のファイルに当たらないので、中身は`dir/**`と書く。
 
@@ -174,6 +184,27 @@ VMの中に`/masuda/checks/<チェック名>`という実行可能スクリプ�
 - 終了コード0で成功（`done`）、それ以外で失敗（`failed`）
 - ワークフローが呼ぶチェックが宣言されていなければ、`masuda run`が始める前に断る。同梱の`develop`は`test`を使う
 - チェック名は`image`と同じ文字種
+- `prepare`を宣言していれば、コマンドの前に準備が流れる。準備が失敗すればそのチェックの失敗になる
+
+### prepare {#prepare}
+
+| 型 | 既定 |
+|---|---|
+| 文字列（シェルの1行） | 空（準備しない） |
+
+コード生成や、Gitで運ばれない依存・生成物の配置といった準備。`checks`や特権コマンドのそれぞれに書き写さず、ここに1つ書く。同じものが次の3か所で流れる。
+
+| いつ | どこで | 失敗したとき |
+|---|---|---|
+| VMの起動時（`resume`ならWIPを戻した後）に一度 | エージェントのVM | 起動は止めない。出力はVMの`/masuda/prepare.log`とワークスペースの`records/prepare.log`に残る。起動中の`masuda list`に`prepare failed`と出て、serveのログにも残る（起動を終えると表示は次の活動に替わる） |
+| 各チェックの前 | エージェントのVM | そのチェックの失敗 |
+| 各特権コマンドの前 | 特権VM | そのコマンドの失敗（ログに準備の出力も入る） |
+
+- `checks`と同じく、ログインシェル（`sh -el`）で`/workspace`から動く
+- VMには`/masuda/prepare`として置かれるので、エージェントも定義を変えた後に呼び直せる
+- 特権VMはrootで動くが、準備だけは`HOME=/home/ubuntu`で流れる。イメージのビルドで`/home/ubuntu`の下に入れたツールやキャッシュを、エージェントのVMと同じパスで見つけられるように。コマンドの本体は`HOME=/root`のまま
+- 準備は特権コマンドの承認の対象に入る。`prepare`を変えると、すべての特権コマンドが`stale`になり、承認し直しが要る（[特権コマンド](secrets-and-egress.md#privileged)）。`masuda privileged-command list`には準備は表示されないので、承認の前に`settings.json`で読む
+- 起動時の準備は30分で打ち切る
 
 ### claudeSettings
 

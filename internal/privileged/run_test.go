@@ -175,6 +175,44 @@ func TestRunPassesSnapshotAndInputsThroughRunJob(t *testing.T) {
 	})
 }
 
+func TestRunは準備をHOMEをエージェントのVMに合わせて流してからコマンドを動かす(t *testing.T) {
+	e := newEnv(t, config.PrivilegedCommandDecl{
+		Command: `echo "$HOME" > cmd-home.txt; echo cmd`,
+		Image:   "default", Outputs: []string{"prep-home.txt", "cmd-home.txt"},
+	})
+	e.opts.Prepare = `echo "$HOME" > prep-home.txt; echo prepared`
+	res, err := privileged.Run(context.Background(), e.opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.ExitCode != 0 && strings.Contains(res.Log, "unshare") {
+		t.Skipf("unprivileged user namespaces unavailable here: %s", res.Log)
+	}
+	if res.ExitCode != 0 || res.Log != "prepared\ncmd\n" {
+		t.Fatalf("result %+v", res)
+	}
+	prep, _ := os.ReadFile(filepath.Join(e.opts.HostDir, "outputs", "prep-home.txt"))
+	cmd, _ := os.ReadFile(filepath.Join(e.opts.HostDir, "outputs", "cmd-home.txt"))
+	if string(prep) != "/home/ubuntu\n" || string(cmd) != "/root\n" {
+		t.Fatalf("HOME: prepare %q, command %q", prep, cmd)
+	}
+}
+
+func TestRunは準備が失敗したらコマンドを動かさずコマンドの失敗として返す(t *testing.T) {
+	e := newEnv(t, config.PrivilegedCommandDecl{Command: "echo cmd-ran", Image: "default"})
+	e.opts.Prepare = "echo gen-fail; exit 3; echo after-fail"
+	res, err := privileged.Run(context.Background(), e.opts)
+	if err != nil {
+		t.Fatalf("準備の失敗は基盤のエラーにしない: %v", err)
+	}
+	if res.ExitCode != 0 && strings.Contains(res.Log, "unshare") {
+		t.Skipf("unprivileged user namespaces unavailable here: %s", res.Log)
+	}
+	if res.ExitCode != 3 || res.Log != "gen-fail\n" {
+		t.Fatalf("result %+v", res)
+	}
+}
+
 func TestRunSetupFailureIsAnError(t *testing.T) {
 	e := newEnv(t, config.PrivilegedCommandDecl{Command: "touch /workspace/ran", Image: "default"})
 	e.stub.runJob = func(ctx context.Context, req *connect.Request[sandboxv1.RunJobRequest], stream *connect.ServerStream[sandboxv1.RunJobEvent]) error {

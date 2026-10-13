@@ -98,7 +98,8 @@ func TestRunPlacesPrivilegedCommandsInGuest(t *testing.T) {
 	repo := newSmokeRepo(t)
 	writeRepoFile(t, repo, ".masuda/settings.json", `{"checks": {"test": "true"}, "privilegedCommands": {
 		"itest": {"description": "DBを立てて結合テストを流す", "image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["report.xml"], "timeoutSeconds": 600},
-		"lint":  {"image": "default", "command": "make lint"}
+		"lint":  {"image": "default", "command": "make lint"},
+		"e2e":   {"image": "default", "command": "make e2e", "egress": ["auth.example"], "secrets": [{"name": "AUTH_SECRET", "hosts": ["auth.example"]}]}
 	}}`)
 	cs := &configService{backend: srv.backend}
 	ctx := context.Background()
@@ -134,7 +135,7 @@ func TestRunPlacesPrivilegedCommandsInGuest(t *testing.T) {
 	id := res.Msg.Id
 	waitFor(t, ws, id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
 	guestFile := filepath.Join(FakeDir(dataDir), id, "root", "masuda", "privileged-commands.json")
-	t.Run("宣言を名前ごとに置き、承認の状態は含めず、timeoutSecondsの省略は既定の3600で埋める", func(t *testing.T) {
+	t.Run("秘密を使う宣言を除いて名前ごとに置き、承認の状態は含めず、timeoutSecondsの省略は既定の3600で埋める", func(t *testing.T) {
 		got, err := os.ReadFile(guestFile)
 		if err != nil || string(got) != want {
 			t.Fatalf("guest file %v:\n%s", err, got)
@@ -152,19 +153,27 @@ func TestRunPlacesPrivilegedCommandsInGuest(t *testing.T) {
 }
 
 func TestRunWithoutPrivilegedCommandsPlacesNothing(t *testing.T) {
-	dataDir := t.TempDir()
-	_, ws := startServe(t, dataDir)
-	repo := newSmokeRepo(t)
-	res, err := ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/pc", Inputs: smokeInputs}))
-	if err != nil {
-		t.Fatal(err)
+	for _, c := range []struct{ name, settings string }{
+		{"宣言が無ければ/masuda/privileged-commands.jsonを置かない", ""},
+		{"秘密を使う宣言しか無ければ/masuda/privileged-commands.jsonを置かない", `{"checks": {"test": "true"}, "privilegedCommands": {"e2e": {"image": "default", "command": "make e2e", "egress": ["auth.example"], "secrets": [{"name": "AUTH_SECRET", "hosts": ["auth.example"]}]}}}`},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dataDir := t.TempDir()
+			_, ws := startServe(t, dataDir)
+			repo := newSmokeRepo(t)
+			if c.settings != "" {
+				writeRepoFile(t, repo, ".masuda/settings.json", c.settings)
+			}
+			res, err := ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: repo, Workflow: "workflows/smoke", Branch: "feat/pc", Inputs: smokeInputs}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			waitFor(t, ws, res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
+			if _, err := os.Stat(filepath.Join(FakeDir(dataDir), res.Msg.Id, "root", "masuda", "privileged-commands.json")); !os.IsNotExist(err) {
+				t.Fatalf("placed: %v", err)
+			}
+		})
 	}
-	waitFor(t, ws, res.Msg.Id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING)
-	t.Run("宣言が無ければ/masuda/privileged-commands.jsonを置かない", func(t *testing.T) {
-		if _, err := os.Stat(filepath.Join(FakeDir(dataDir), res.Msg.Id, "root", "masuda", "privileged-commands.json")); !os.IsNotExist(err) {
-			t.Fatalf("placed: %v", err)
-		}
-	})
 }
 
 // precheckWorkflow は特権ノードを、自身と呼び出す部品のワークフローの両方に持つ。

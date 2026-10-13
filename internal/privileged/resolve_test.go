@@ -10,7 +10,7 @@ import (
 
 func TestResolve(t *testing.T) {
 	decl := config.PrivilegedCommandDecl{Command: "make itest", Image: "default"}
-	hash, err := config.DeclHash(decl)
+	hash, err := config.DeclHash(decl, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,23 @@ func TestResolve(t *testing.T) {
 			t.Fatalf("resolved %+v", r)
 		}
 	})
+	t.Run("コマンドの宣言のegressは承認の積に重ならないものだけを後ろに足す", func(t *testing.T) {
+		withEgress := decl
+		withEgress.Egress = []string{"b.example", "auth.example"}
+		h, err := config.DeclHash(withEgress, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := cfg
+		c.PrivilegedCommands = map[string]config.PrivilegedCommandDecl{"itest": withEgress}
+		r, err := Resolve(c, approved(h), "itest", images)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(r.Egress, []string{"b.example", "auth.example"}) {
+			t.Fatalf("egress %v", r.Egress)
+		}
+	})
 	cases := []struct {
 		name, cmd string
 		local     config.LocalSettings
@@ -57,9 +74,25 @@ func TestResolve(t *testing.T) {
 	}
 }
 
+func TestResolveは承認の後に準備を宣言したら承認し直しを促して断る(t *testing.T) {
+	decl := config.PrivilegedCommandDecl{Command: "make itest", Image: "default"}
+	hash, _ := config.DeclHash(decl, "")
+	cfg := config.Settings{Prepare: "make generate", PrivilegedCommands: map[string]config.PrivilegedCommandDecl{"itest": decl}}
+	local := config.LocalSettings{PrivilegedCommandsApproved: map[string]config.PrivilegedCommandApproval{"itest": {DeclHash: hash}}}
+	images := func(entry string) bool { return entry == "default" }
+	if _, err := Resolve(cfg, local, "itest", images); err == nil || !strings.Contains(err.Error(), "changed since it was approved") {
+		t.Fatalf("err %v", err)
+	}
+	withPrepare, _ := config.DeclHash(decl, cfg.Prepare)
+	local.PrivilegedCommandsApproved["itest"] = config.PrivilegedCommandApproval{DeclHash: withPrepare}
+	if r, err := Resolve(cfg, local, "itest", images); err != nil || r.Hash != withPrepare {
+		t.Fatalf("resolved %+v, %v", r, err)
+	}
+}
+
 func TestApprovalOf(t *testing.T) {
 	decl := config.PrivilegedCommandDecl{Command: "make itest", Image: "default"}
-	hash, _ := config.DeclHash(decl)
+	hash, _ := config.DeclHash(decl, "")
 	cases := []struct {
 		name  string
 		local config.LocalSettings
@@ -71,7 +104,7 @@ func TestApprovalOf(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			h, got, err := ApprovalOf("itest", decl, c.local)
+			h, got, err := ApprovalOf("itest", decl, "", c.local)
 			if err != nil || got != c.want || h != hash {
 				t.Fatalf("ApprovalOf = %q, %v, %v; want %v", h, got, err, c.want)
 			}

@@ -19,10 +19,11 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `~/.claude/agents/*.md` | その実行で使うサブエージェント定義。エージェント定義（engine）から`name`・`description`・`tools`・本文と、あれば`model`・`effort`を写す。`model`・`effort`は`.masuda/settings.json`の`agents`に上書きがあればその値 |
 | `~/.claude/settings.json` | フック設定（下記）と、対象リポジトリの`claudeSettings` |
 | `/workspace/.env`等 | `envFiles`宣言から生成（秘密はプレースホルダ） |
+| `/masuda/prepare`・`/masuda/prepare.log` | `.masuda/settings.json`の`prepare`（準備のシェルの1行）を実行可能スクリプトとして置き、起動時（再開ならWIPを戻した後）に`/workspace`で一度流した出力を`prepare.log`に置く。起動時の失敗では起動を止めない。`/masuda/checks/*`は先頭でこれを呼ぶ。エージェントも定義を変えた後に呼び直してよい。特権VMでは、宣言のコマンドの前に`HOME=/home/ubuntu`で流れる（失敗はコマンドの失敗）。宣言が無ければ置かない |
 | `/masuda/reviews/*.md` | レビュー観点。ホストの実リポジトリの`.masuda/reviews/`（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと`Runner.Items(perspectives)`は**ここ**を読む。ゲストのcloneの`.masuda/reviews/`は読まない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように） |
 | `/masuda/pitfalls.jsonl` | プロジェクト固有の落とし穴。ホストの`.masuda/pitfalls.jsonl`を実行開始時に写して検査し、空行と`#`の行を除いたもの（1行1件`{id, category, trigger, question, background}`）。無ければ置かない。同梱のplan-questionsが読む |
-| `/masuda/privileged-commands.json` | 特権コマンドの宣言。実行開始時に定義の写し（`records/definitions/`）の`privilegedCommands`から作る。名前→`{description?, command, image, inputs, outputs, timeoutSeconds}`（`timeoutSeconds`は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの`settings.local.json`の承認で行う） |
-| `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`）。`run_privileged_command`か`privileged`ノードで動かすたびに置く。`<run-id>`は`0001`からの連番 |
+| `/masuda/privileged-commands.json` | 特権コマンドの宣言。実行開始時に定義の写し（`records/definitions/`）の`privilegedCommands`から作る。名前→`{description?, command, image, inputs, outputs, timeoutSeconds}`（`timeoutSeconds`は省略時の既定3600を埋めた値）。秘密を使う宣言（`secrets`を持つもの）はエージェントから呼べないので載せない。載せる宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの`settings.local.json`の承認で行う） |
+| `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`）。`run_privileged_command`か`privileged`ノードで動かすたびに置く。ただし秘密を使う宣言の結果は置かない（記録はホストにだけ残る）。`<run-id>`は`0001`からの連番 |
 | `~/.claude/.mcp.json`相当 | `masuda`サーバー1つ（`http://masuda.internal:7000/mcp`） |
 
 環境変数（tmuxサーバーに継承させる）: `CLAUDE_CODE_OAUTH_TOKEN=<プレースホルダ>`、`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`、`GIT_AUTHOR_*`/`GIT_COMMITTER_*`。
@@ -51,7 +52,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 | `report_result` | `occurrence`, `outcome`, `feedback?`, `agent_id?` | `{accepted: true}` / `{accepted: false, reason}` | engineに記録した時点で返し、その後のホスト側のノード（exec・commit・publish等）の実行は待たない。宣言外のoutcome、`done`なのに未出力のoutputがあれば拒否。`done`以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。`agent_id`はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは`next_task`の`agent_id`で行う |
 | `report_concern` | `occurrence`, `text` | `{recorded: true}` | triageゲートを開く。以後、人間が判断するまで`next_task`は`{kind: "waiting", reason: "triage"}`を返す |
 | `ask_human` | `occurrence`, `questions: [{id, text, options?}]` | `{answers: {id: answer}}` | `question`ノードのエージェントだけが使う。答えが来るまでブロック |
-| `run_privileged_command` | `name` | `{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}` | 宣言済み・承認済みの名前のみ。`results_dir`は`/masuda/privileged/<run-id>/`。`outputs_error`は宣言した`outputs`のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は`outputs`に返る |
+| `run_privileged_command` | `name` | `{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}` | 宣言済み・承認済みの名前のみ。秘密を使う宣言の名前は断る（ワークフローの`privileged`ノードからだけ動く）。`results_dir`は`/masuda/privileged/<run-id>/`。`outputs_error`は宣言した`outputs`のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は`outputs`に返る |
 
 ツールは`occurrence`で今のタスクを指す。現在待っている出現と一致しない呼び出しは拒否する。
 

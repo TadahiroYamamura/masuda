@@ -166,27 +166,27 @@ func TestRunPrivileged(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	task := engine.PrivilegedTask{Run: "r", Occurrence: "0004", Node: "verify", Name: "itest"}
-	t.Run("出現と名前で実行の関数を呼び、終了コード・時間切れ・execと同じ長さのログの末尾を返す", func(t *testing.T) {
-		var gotOcc, gotName string
+	task := engine.PrivilegedTask{Run: "r", Occurrence: "0004", Node: "verify", Name: "itest", ApprovedCommit: "abc123"}
+	t.Run("出現と名前と承認済みのコミットで実行の関数を呼び、終了コード・時間切れ・execと同じ長さのログの末尾を返す", func(t *testing.T) {
+		var gotOcc, gotName, gotApproved string
 		long := strings.Repeat("x", 9000) + "tail"
-		r := New(Options{Workspace: ws, RunPrivileged: func(_ context.Context, occ, name string) (*privileged.Result, error) {
-			gotOcc, gotName = occ, name
+		r := New(Options{Workspace: ws, RunPrivileged: func(_ context.Context, occ, name, approved string) (*privileged.Result, error) {
+			gotOcc, gotName, gotApproved = occ, name, approved
 			return &privileged.Result{ExitCode: 3, TimedOut: true, Log: long}, nil
 		}})
 		res, err := r.RunPrivileged(context.Background(), task)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if gotOcc != "0004" || gotName != "itest" || res.ExitCode != 3 || !res.TimedOut {
-			t.Fatalf("called with %q %q, result %+v", gotOcc, gotName, res)
+		if gotOcc != "0004" || gotName != "itest" || gotApproved != "abc123" || res.ExitCode != 3 || !res.TimedOut {
+			t.Fatalf("called with %q %q %q, result %+v", gotOcc, gotName, gotApproved, res)
 		}
 		if len(res.LogTail) != 8<<10 || !strings.HasSuffix(res.LogTail, "tail") {
 			t.Fatalf("log tail len %d", len(res.LogTail))
 		}
 	})
 	t.Run("実行の関数のエラーはそのまま返す", func(t *testing.T) {
-		r := New(Options{Workspace: ws, RunPrivileged: func(context.Context, string, string) (*privileged.Result, error) {
+		r := New(Options{Workspace: ws, RunPrivileged: func(context.Context, string, string, string) (*privileged.Result, error) {
 			return nil, errors.New("not approved")
 		}})
 		if _, err := r.RunPrivileged(context.Background(), task); err == nil || err.Error() != "not approved" {

@@ -28,8 +28,10 @@ func TestLoadReadsFullSchema(t *testing.T) {
 		"secrets": [{"name": "LINEAR_API_KEY", "hosts": ["api.linear.app"], "in": ["header", "body"]},
 		            {"name": "LEGACY", "mode": "plaintext"}],
 		"envFiles": [{"path": ".env", "vars": ["LINEAR_API_KEY", "PUBLIC_URL"]}],
-		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60}},
+		"privilegedCommands": {"itest": {"image": "default", "command": "make itest", "inputs": ["build/**"], "outputs": ["out.txt"], "timeoutSeconds": 60},
+		                       "e2e": {"image": "default", "command": "make e2e", "egress": ["*.auth0.example"], "secrets": [{"name": "AUTH0_SECRET", "hosts": ["t.auth0.example"]}]}},
 		"checks": {"test": "go test ./..."},
+		"prepare": "make generate",
 		"claudeSettings": {"theme": "dark"},
 		"images": {"go": {"diskMiB": 8192, "memoryMiB": 8192, "cpus": 2}}
 	}`)
@@ -37,7 +39,7 @@ func TestLoadReadsFullSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.ImageEntry() != "go" || len(cfg.Egress) != 2 || cfg.Checks["test"] != "go test ./..." {
+	if cfg.ImageEntry() != "go" || len(cfg.Egress) != 2 || cfg.Checks["test"] != "go test ./..." || cfg.Prepare != "make generate" {
 		t.Fatalf("cfg = %+v", cfg)
 	}
 	lin, _ := cfg.Secret("LINEAR_API_KEY")
@@ -48,7 +50,8 @@ func TestLoadReadsFullSchema(t *testing.T) {
 	if legacy.EffectiveMode() != ModePlaintext || legacy.EffectiveIn()[0] != InHeader {
 		t.Fatalf("LEGACY = %+v", legacy)
 	}
-	if cfg.PrivilegedCommands["itest"].Inputs[0] != "build/**" {
+	e2e := cfg.PrivilegedCommands["e2e"]
+	if cfg.PrivilegedCommands["itest"].Inputs[0] != "build/**" || e2e.Egress[0] != "*.auth0.example" || e2e.Secrets[0].EffectiveMode() != ModePlaceholder {
 		t.Fatalf("privilegedCommands = %+v", cfg.PrivilegedCommands)
 	}
 	if cfg.DiskMiB("go") != 8192 || cfg.DiskMiB("default") != DefaultDiskMiB {
@@ -83,6 +86,13 @@ func TestLoadRejectsInvalidDeclarations(t *testing.T) {
 		"negative memory":   `{"images": {"go": {"memoryMiB": -1}}}`,
 		"negative cpus":     `{"images": {"go": {"cpus": -1}}}`,
 		"remote as option":  `{"publish": {"remote": "--upload-pack=x"}}`,
+		"特権コマンドのegressがホスト名でない":         `{"privilegedCommands": {"x": {"command": "c", "image": "default", "egress": ["https://a.example/"]}}}`,
+		"特権コマンドの秘密がplaintext":           `{"privilegedCommands": {"x": {"command": "c", "image": "default", "egress": ["a.example"], "secrets": [{"name": "A", "hosts": ["a.example"], "mode": "plaintext"}]}}}`,
+		"特権コマンドの秘密がClaudeのトークンの名前":      `{"privilegedCommands": {"x": {"command": "c", "image": "default", "egress": ["a.example"], "secrets": [{"name": "CLAUDE_CODE_OAUTH_TOKEN", "hosts": ["a.example"]}]}}}`,
+		"特権コマンドの秘密がエージェントのVMの秘密と同じ名前":   `{"secrets": [{"name": "A", "hosts": ["a.example"]}], "privilegedCommands": {"x": {"command": "c", "image": "default", "egress": ["a.example"], "secrets": [{"name": "A", "hosts": ["a.example"]}]}}}`,
+		"特権コマンドの秘密の宛先がそのコマンドのegressに無い": `{"egress": ["a.example"], "privilegedCommands": {"x": {"command": "c", "image": "default", "secrets": [{"name": "A", "hosts": ["a.example"]}]}}}`,
+		"特権コマンドの秘密とinputsを同時に宣言する":      `{"privilegedCommands": {"x": {"command": "c", "image": "default", "inputs": ["build/**"], "egress": ["a.example"], "secrets": [{"name": "A", "hosts": ["a.example"]}]}}}`,
+		"特権コマンドの秘密が同じコマンドで2回宣言される":      `{"privilegedCommands": {"x": {"command": "c", "image": "default", "egress": ["a.example"], "secrets": [{"name": "A", "hosts": ["a.example"]}, {"name": "A", "hosts": ["a.example"]}]}}}`,
 	}
 	for name, content := range cases {
 		dir := t.TempDir()
@@ -116,11 +126,11 @@ func TestHostAllowed(t *testing.T) {
 
 func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
 	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", TimeoutSeconds: 600}
-	base, err := DeclHash(decl)
+	base, err := DeclHash(decl, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again, _ := DeclHash(decl); again != base {
+	if again, _ := DeclHash(decl, ""); again != base {
 		t.Fatalf("DeclHash() not stable: %q != %q", base, again)
 	}
 	variants := []PrivilegedCommandDecl{
@@ -128,11 +138,23 @@ func TestDeclHashPrivilegedCommandSensitiveToChange(t *testing.T) {
 		{Command: decl.Command, Image: "other-image", TimeoutSeconds: decl.TimeoutSeconds},
 		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: 60},
 		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds, Inputs: []string{"**"}},
+		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds, Egress: []string{"a.example"}},
+		{Command: decl.Command, Image: decl.Image, TimeoutSeconds: decl.TimeoutSeconds, Secrets: []SecretDecl{{Name: "A", Hosts: []string{"a.example"}}}},
 	}
 	for i, v := range variants {
-		if h, _ := DeclHash(v); h == base {
+		if h, _ := DeclHash(v, ""); h == base {
 			t.Fatalf("DeclHash(variant %d) equals the base hash", i)
 		}
+	}
+}
+
+func TestDeclHashは準備を宣言すると準備の中身ごとに変わる(t *testing.T) {
+	decl := PrivilegedCommandDecl{Command: "go test ./...", Image: "default", TimeoutSeconds: 600}
+	without, _ := DeclHash(decl, "")
+	withGen, _ := DeclHash(decl, "make generate")
+	withOther, _ := DeclHash(decl, "make generate && cp a b")
+	if withGen == without || withOther == without || withGen == withOther {
+		t.Fatalf("hashes must differ: none=%s gen=%s other=%s", without, withGen, withOther)
 	}
 }
 
@@ -142,14 +164,14 @@ func TestDeclHashIgnoresDescription(t *testing.T) {
 	// をsha256sumで計算した値。既存の承認の記録はこの値を持っている。
 	const recorded = "010f65a25816ce10c84e806aabc809efcff33ee47c74ba82c862721ce7461206"
 	t.Run("descriptionの無い宣言のハッシュはdescriptionを足す前と同じ値になる", func(t *testing.T) {
-		if h, err := DeclHash(decl); err != nil || h != recorded {
+		if h, err := DeclHash(decl, ""); err != nil || h != recorded {
 			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
 		}
 	})
 	t.Run("descriptionだけを変えてもハッシュは変わらない", func(t *testing.T) {
 		d := decl
 		d.Description = "DBを立ててマイグレーションとテストを流す"
-		if h, err := DeclHash(d); err != nil || h != recorded {
+		if h, err := DeclHash(d, ""); err != nil || h != recorded {
 			t.Fatalf("DeclHash = %q, %v; want %q", h, err, recorded)
 		}
 	})

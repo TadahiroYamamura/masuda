@@ -4,4 +4,4 @@ package sandboxcontract
 
 // SHA256 はmasudaのsandboxクライアント（gen/masuda/sandbox/v1）の生成元sandbox.protoの
 // SHA-256（16進小文字）。GetServerInfoのcontract_sha256と同じ計算。
-const SHA256 = "c2a02fd5214b4011104a2a8090dc87777e43381e83b83a0fe60c7c5b6189abf2"
+const SHA256 = "96fc81443de81ab6ddb5430b76e7fff514a0c10c525fcd3486e6a524cb69b22a"

@@ -59,6 +59,9 @@ type Settings struct {
 	PrivilegedCommands map[string]PrivilegedCommandDecl `json:"privilegedCommands,omitempty"`
 	// Checks はチェック名→シェルコマンド。ゲストの`/masuda/checks/<名前>`に実行可能スクリプトとして置く。
 	Checks map[string]string `json:"checks,omitempty"`
+	// Prepare は準備（生成・依存の配置）のシェルコマンド。エージェントのVMの起動時・各チェックの前・
+	// 特権コマンドの前に同じものを流す。コマンドごとに書き写すと、漏れたものだけが落ちるため（#111）。
+	Prepare string `json:"prepare,omitempty"`
 	// ClaudeSettings はゲストの`~/.claude/settings.json`へ合成するオブジェクト（フックはmasudaが優先）。
 	ClaudeSettings json.RawMessage `json:"claudeSettings,omitempty"`
 	// Images はイメージのエントリ（`.masuda/images/<entry>/`）ごとのVMの設定。書かなかった
@@ -171,6 +174,12 @@ type PrivilegedCommandDecl struct {
 	Inputs         []string `json:"inputs,omitempty"`
 	Outputs        []string `json:"outputs,omitempty"`
 	TimeoutSeconds int      `json:"timeoutSeconds,omitempty"`
+	// Egress はこのコマンドの特権VMにだけ足すホスト。Settings.Egressに書くとエージェントのVMからも
+	// 届くので、秘密の宛先（本物のテナント等）をエージェントに触らせないためにここへ分ける。
+	Egress []string `json:"egress,omitempty"`
+	// Secrets はこのコマンドの特権VMにだけ渡す秘密。Settings.Secretsはエージェントの
+	// VMに渡るので別に宣言する。値は秘密ストアの同じ名前から取る。
+	Secrets []SecretDecl `json:"secrets,omitempty"`
 }
 
 // PinnedDecl は承認をハッシュで結びつける宣言の型。anyでなく閉じた型集合にしているのは、
@@ -183,10 +192,16 @@ type PinnedDecl interface {
 // 未承認と同じに扱う。名前だけで承認すると、承認済みの宣言の中身をコミットで
 // 差し替えられてしまう。Descriptionは空にした写しで取るので、説明だけの変更では失効せず、
 // Descriptionを足す前に記録した承認のハッシュもそのまま通る。
-func DeclHash[T PinnedDecl](decl T) (string, error) {
+//
+// prepare（Settings.Prepare）も含める。特権VMではコマンドの前にrootで動くので、人間が承認する
+// ものの一部になる。空なら含めないので、準備を宣言していなければ前に記録した承認のハッシュのまま通る。
+func DeclHash[T PinnedDecl](decl T, prepare string) (string, error) {
 	d := PrivilegedCommandDecl(decl)
 	d.Description = ""
-	data, err := json.Marshal(d)
+	data, err := json.Marshal(struct {
+		PrivilegedCommandDecl
+		Prepare string `json:"prepare,omitempty"`
+	}{d, prepare})
 	if err != nil {
 		return "", err
 	}
@@ -259,34 +274,7 @@ func (s Settings) Validate() error {
 	}
 	seen := map[string]bool{}
 	for _, d := range s.Secrets {
-		switch {
-		case !ValidName(d.Name):
-			add("secret name %q must match %s", d.Name, envNameRe)
-		case d.Name == ReservedSecret:
-			add("secret %s is reserved for the Claude API token (masuda secret set %s)", d.Name, d.Name)
-		case seen[d.Name]:
-			add("secret %s is declared twice", d.Name)
-		}
-		seen[d.Name] = true
-		switch d.EffectiveMode() {
-		case ModePlaceholder:
-			if len(d.Hosts) == 0 {
-				add("secret %s: placeholder mode needs hosts", d.Name)
-			}
-		case ModePlaintext:
-		default:
-			add("secret %s: mode %q must be %s or %s", d.Name, d.Mode, ModePlaceholder, ModePlaintext)
-		}
-		for _, h := range d.Hosts {
-			if !hostRe.MatchString(h) {
-				add("secret %s: host %q is not a host name", d.Name, h)
-			}
-		}
-		for _, in := range d.In {
-			if in != InHeader && in != InBody {
-				add("secret %s: in %q must be %s or %s", d.Name, in, InHeader, InBody)
-			}
-		}
+		validateSecret("", d, seen, add)
 	}
 	paths := map[string]bool{}
 	for _, f := range s.EnvFiles {
@@ -307,9 +295,33 @@ func (s Settings) Validate() error {
 			add("checks: name %q must match %s", name, checkNameRe)
 		}
 	}
-	for name := range s.PrivilegedCommands {
+	for name, d := range s.PrivilegedCommands {
 		if !ValidCheckName(name) {
 			add("privilegedCommands: name %q must match %s", name, checkNameRe)
+		}
+		prefix := "privilegedCommands." + name + ": "
+		for _, h := range d.Egress {
+			if !hostRe.MatchString(h) {
+				add("%segress %q is not a host name", prefix, h)
+			}
+		}
+		if len(d.Secrets) > 0 && len(d.Inputs) > 0 {
+			add("%ssecrets and inputs cannot be declared together (a command with secrets runs only on the approved commit)", prefix)
+		}
+		own := map[string]bool{}
+		for _, sd := range d.Secrets {
+			validateSecret(prefix, sd, own, add)
+			if sd.EffectiveMode() != ModePlaceholder {
+				add("%ssecret %s: only %s mode is allowed", prefix, sd.Name, ModePlaceholder)
+			}
+			if _, ok := s.Secret(sd.Name); ok {
+				add("%ssecret %s is also in secrets, which the agent's VM receives; use another name", prefix, sd.Name)
+			}
+			for _, h := range sd.Hosts {
+				if !HostAllowed(d.Egress, h) {
+					add("%ssecret %s: host %q is not in this command's egress", prefix, sd.Name, h)
+				}
+			}
 		}
 	}
 	for name := range s.Images {
@@ -341,6 +353,38 @@ func (s Settings) Validate() error {
 		return errors.New(strings.Join(problems, "; "))
 	}
 	return nil
+}
+
+// validateSecret は秘密1つの宣言の形を検査する。seenは同じ並びで既に見た名前。
+func validateSecret(prefix string, d SecretDecl, seen map[string]bool, add func(string, ...any)) {
+	switch {
+	case !ValidName(d.Name):
+		add("%ssecret name %q must match %s", prefix, d.Name, envNameRe)
+	case d.Name == ReservedSecret:
+		add("%ssecret %s is reserved for the Claude API token (masuda secret set %s)", prefix, d.Name, d.Name)
+	case seen[d.Name]:
+		add("%ssecret %s is declared twice", prefix, d.Name)
+	}
+	seen[d.Name] = true
+	switch d.EffectiveMode() {
+	case ModePlaceholder:
+		if len(d.Hosts) == 0 {
+			add("%ssecret %s: placeholder mode needs hosts", prefix, d.Name)
+		}
+	case ModePlaintext:
+	default:
+		add("%ssecret %s: mode %q must be %s or %s", prefix, d.Name, d.Mode, ModePlaceholder, ModePlaintext)
+	}
+	for _, h := range d.Hosts {
+		if !hostRe.MatchString(h) {
+			add("%ssecret %s: host %q is not a host name", prefix, d.Name, h)
+		}
+	}
+	for _, in := range d.In {
+		if in != InHeader && in != InBody {
+			add("%ssecret %s: in %q must be %s or %s", prefix, d.Name, in, InHeader, InBody)
+		}
+	}
 }
 
 // validateEnvPath はenvFilesのpathが/workspaceの中の相対パスであることを確かめる。
@@ -402,6 +446,34 @@ func (s Settings) Secret(name string) (SecretDecl, bool) {
 		}
 	}
 	return SecretDecl{}, false
+}
+
+// PrivilegedSecrets は特権コマンドが宣言した秘密を、名前ごとに1つ（コマンド名の順）返す。
+// 同じ名前を複数のコマンドが宣言していれば、Hostsはそれらを合わせたもの（最初に出た順）。
+func (s Settings) PrivilegedSecrets() []SecretDecl {
+	names := make([]string, 0, len(s.PrivilegedCommands))
+	for n := range s.PrivilegedCommands {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	var out []SecretDecl
+	index := map[string]int{}
+	for _, n := range names {
+		for _, d := range s.PrivilegedCommands[n].Secrets {
+			i, ok := index[d.Name]
+			if !ok {
+				index[d.Name] = len(out)
+				out = append(out, SecretDecl{Name: d.Name, Mode: ModePlaceholder})
+				i = len(out) - 1
+			}
+			for _, h := range d.Hosts {
+				if !slices.Contains(out[i].Hosts, h) {
+					out[i].Hosts = append(out[i].Hosts, h)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // AllowedEgress は宣言と承認の積（宣言の順）を返す。ゲストが届くホストの上限になる。

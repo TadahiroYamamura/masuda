@@ -206,14 +206,14 @@ masuda privileged-command approve integration-test
 
 - `image`は特権VMのイメージのエントリ（`.masuda/images/privileged/Dockerfile`等）。エージェントのVMと同じエントリでもよい
 - `description`はエージェント向けの説明（何をするコマンドか、いつ使うか）。動くものを変えないので承認には含まれず、書き換えても承認し直す必要は無い
-- 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`）に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため
+- 承認は、その時点の宣言の内容（`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`・`egress`・`secrets`）と、settings.jsonの[`prepare`](settings.md#prepare)に結びつく。宣言が1文字でも変わると、`list`のAPPROVEDが`stale`になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため。`prepare`は特権VMでコマンドの前にrootで流れるので含める。`list`には表示されないので、`settings.json`で読む
 - 承認はイメージの中身（`.masuda/images/<image>/`のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは`/workspace`のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、`.masuda/images/`の変更はレビューで見る
-- 特権VMが通信できるのは、宣言かつ承認済みのegressのホスト
+- 特権VMが通信できるのは、宣言かつ承認済みのegressのホストと、そのコマンドの宣言の`egress`のホスト
 
 ### 呼ばれ方
 
 - エージェントは`run_privileged_command(<名前>)`というツールで、名前を指定して呼ぶことしかできない。コマンドの文字列を渡す口は無い
-- 宣言は実行開始時にVMの`/masuda/privileged-commands.json`へ置かれる（名前→`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。承認の状態は含まない）。同梱の実装の役（`implementer`）はここを読んで宣言を知るので、`.masuda/settings.json`をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて`stuck`で終える
+- 宣言は実行開始時にVMの`/masuda/privileged-commands.json`へ置かれる（名前→`description`・`command`・`image`・`inputs`・`outputs`・`timeoutSeconds`。承認の状態は含まない。[秘密を使う宣言](#privileged-secrets)は呼べないので載らない）。同梱の実装の役（`implementer`）はここを読んで宣言を知るので、`.masuda/settings.json`をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて`stuck`で終える
 - 呼ばれるたびに、宣言は実行開始時の写しから、承認は作業ツリーの`settings.local.json`から読む。実行中にエージェントがVMの中の宣言を書き換えても、承認と食い違って断られるだけ
 - 同じワークスペースでは1つずつ動く
 
@@ -247,6 +247,57 @@ nodes:
 
 特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの`workspaces/<id>/records/privileged/<run-id>/`に残る（`result.json`に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、`privileged`ノードから動いたときはその出現）。
 
+### 秘密を使う特権コマンド {#privileged-secrets}
+
+本物の外部サービス（認証基盤のテナント等）を相手にするE2Eのように、秘密が要るコマンドを流す。秘密と一緒に動くコードは、**あなたがreviewゲートで差分を見て承認したコミット**に限る。CIで秘密を使うのと同じ信頼の形で、CIを持たないリポジトリや、publishの前に本物との結合を確かめたいときに使う。
+
+```json title=".masuda/settings.json"
+{
+  "privilegedCommands": {
+    "e2e-auth": {
+      "command": "make e2e-real",
+      "image": "privileged",
+      "egress": ["example.auth0.com"],
+      "secrets": [{"name": "AUTH0_CLIENT_SECRET", "hosts": ["example.auth0.com"], "in": ["body"]}]
+    }
+  }
+}
+```
+
+```sh
+masuda secret set AUTH0_CLIENT_SECRET   # 値は標準入力から
+masuda privileged-command approve e2e-auth
+```
+
+- 秘密と通信先は、トップレベルの`secrets`・`egress`ではなくコマンドの宣言に書く。トップレベルに書くとエージェントのVMにも渡り、エージェントがその宛先に直接届くようになる。宣言の制約は[settings.json](settings.md#privilegedcommands)を参照
+- 値は`masuda secret set`で登録する。`masuda secret list`にも並ぶ。ワークフローが届く`privileged`ノードの秘密に値が無ければ、`masuda run`・`masuda resume`の始めに断る
+- 秘密は`placeholder`方式だけ。特権VMにはプレースホルダが環境変数で置かれ、`hosts`宛ての通信でだけ本物に置き換わる
+
+同梱のワークフローはこの宣言を使わない。宣言の名前はリポジトリごとに違うので、`.masuda/workflows/`に自分のワークフローを書き、reviewゲートの後・publishの前に`privileged`ノードを置く。
+
+```yaml title=".masuda/workflows/develop-e2e.yaml（抜粋）"
+nodes:
+  review:
+    type: approval
+    gate: review
+    target: diff
+    next: {approved: e2e, rejected: implement}
+  e2e:
+    type: privileged
+    name: e2e-auth
+    next: {done: publish, failed: implement}
+  publish:
+    type: publish
+    target: local
+    next: end
+```
+
+- 特権VMには、reviewゲートで承認したコミットのツリーだけを渡す。エージェントのVMの作業ツリー（承認の後の書き換え、gitignoreされたファイル、ホームディレクトリ）は渡らない。[`prepare`](settings.md#prepare)は流れる
+- 差分の承認が無いか、承認の後にコミットがあれば動かさず、実行は`suspended`で止まる。承認したコミットとstagingのブランチの先頭が食い違うときも同じ
+- 成功すればそのままpublishへ進む。publishの前にもう一度人間の判断を挟みたければ、ノードの後にゲートを置く
+- エージェントには終了コードだけを返す。ログ・`outputs`はホストの`records/privileged/<run-id>/`にだけ置き、エージェントのVMの`/masuda/privileged/`には置かない。応答に含まれるトークン等がエージェントに渡らないようにするため。落ちたときの差し戻しの文面は「コマンドが失敗した（exit N）」と、ログは人間だけが読めるという決まった文になる。何を直してほしいかは、あなたがログを読み、次のreviewゲートで差し戻すときのコメントで伝える
+- エージェントの`run_privileged_command`と`masuda privileged-command run`からは動かせない。記録の`result.json`には、作業ツリーのスナップショットの代わりに`approved_commit`が残る
+
 ### 単体で試す（`masuda privileged-command run`） {#privileged-command-run}
 
 ワークフローを回す前に、特権コマンドのスクリプトが実機の特権VMで動くかを確かめる。ホストのDockerで通っても、特権VMでは起動のたびに空になるディレクトリ（`/run`等）やカーネルの違いで落ちることがある。
@@ -258,7 +309,7 @@ masuda privileged-command run integration-test --out ./privileged-out
 ```
 
 - `masuda serve`は要らない（`masuda-sandbox serve`へ直接つなぐ）。ワークスペースもClaudeも使わない
-- 宣言・承認・通信先は作業ツリーの`.masuda/settings.json`と`settings.local.json`から読む。承認が無ければ断る。イメージも作業ツリーの`.masuda/images/<image>/`からビルドするので、スクリプトを直すたびに流し直せる
+- 宣言・承認・通信先は作業ツリーの`.masuda/settings.json`と`settings.local.json`から読む。承認が無ければ断る。[秘密を使う宣言](#privileged-secrets)は断る。イメージも作業ツリーの`.masuda/images/<image>/`からビルドするので、スクリプトを直すたびに流し直せる
 - `/workspace`に置くのは作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル）。`--ref`ならそのコミットのツリー。あなたのリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）。gitignoreの判定には`.gitignore`・`.git/info/exclude`・`core.excludesFile`が効く
 - `inputs`は作業ツリーのgitignoreされたファイルから運ぶ（ワークフローではエージェントのVMから）
 - コマンドの出力はそのまま端末に流れる。終了コードは特権コマンドのもの（シグナルなら128+番号、時間切れは124、masuda自体の失敗は1）。拒否した通信先があれば最後に一覧が出る。`exit-code`・`log`・`outputs/`は`--out`（無ければ新しい一時ディレクトリ）に置き、その場所を最後に出す

@@ -105,7 +105,7 @@ func privilegedRepo(t *testing.T, decls string, approve ...string) string {
 	}
 	local := config.LocalSettings{PrivilegedCommandsApproved: map[string]config.PrivilegedCommandApproval{}}
 	for _, name := range approve {
-		hash, err := config.DeclHash(cfg.PrivilegedCommands[name])
+		hash, err := config.DeclHash(cfg.PrivilegedCommands[name], cfg.Prepare)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -146,6 +146,17 @@ func TestPrivilegedCommandRun(t *testing.T) {
 		repo := privilegedRepo(t, showDecl)
 		r := runPrivileged(t, socket, privilegedRunOptions{name: "show", repo: repo})
 		if r.err == nil || !strings.Contains(r.err.Error(), "masuda privileged-command approve show") {
+			t.Fatalf("err = %v", r.err)
+		}
+		if len(sb.jobs) != 0 {
+			t.Fatalf("RunJob was called %d times", len(sb.jobs))
+		}
+	})
+
+	t.Run("秘密を使う宣言は承認されていてもsandboxにジョブを出さずに断る", func(t *testing.T) {
+		repo := privilegedRepo(t, `"e2e": {"image": "default", "command": "true", "egress": ["auth.example"], "secrets": [{"name": "AUTH_SECRET", "hosts": ["auth.example"]}]}`, "e2e")
+		r := runPrivileged(t, socket, privilegedRunOptions{name: "e2e", repo: repo})
+		if r.err == nil || !strings.Contains(r.err.Error(), "runs only from a privileged node") {
 			t.Fatalf("err = %v", r.err)
 		}
 		if len(sb.jobs) != 0 {

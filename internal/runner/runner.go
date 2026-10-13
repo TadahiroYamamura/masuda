@@ -64,8 +64,9 @@ type Options struct {
 	// PublishRemote は`target: remote`のpublishがpushする実リポジトリのremote。空ならorigin。
 	PublishRemote string
 	// RunPrivileged はprivilegedノードの出現occurrenceで、宣言の名前nameの特権コマンドを動かす。
+	// approvedCommitはengineのPrivilegedTask.ApprovedCommit（今publishが着地させるコミット、無ければ空）。
 	// MCPのrun_privileged_commandと同じ実行の関数を渡す。nilならprivilegedノードはエラーで止まる。
-	RunPrivileged func(ctx context.Context, occurrence, name string) (*privileged.Result, error)
+	RunPrivileged func(ctx context.Context, occurrence, name, approvedCommit string) (*privileged.Result, error)
 }
 
 // Runner は1つのワークスペースのengine.Runner。
@@ -425,7 +426,7 @@ func (r *Runner) RunPrivileged(ctx context.Context, t engine.PrivilegedTask) (en
 	if r.o.RunPrivileged == nil {
 		return engine.CommandResult{}, errors.New("privileged: privileged commands cannot run in this workspace")
 	}
-	res, err := r.o.RunPrivileged(ctx, t.Occurrence, t.Name)
+	res, err := r.o.RunPrivileged(ctx, t.Occurrence, t.Name, t.ApprovedCommit)
 	if err != nil {
 		return engine.CommandResult{}, err
 	}

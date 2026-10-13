@@ -2334,7 +2334,7 @@ func (*SandboxEvent_StateChanged_) isSandboxEvent_Event() {}
 type RunJobRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The VM; same meaning as in CreateSandboxRequest (0 = default). A job's VM
-	// has no secrets, tcp_maps or ssh_egress.
+	// has no tcp_maps or ssh_egress.
 	BuildId   string `protobuf:"bytes,1,opt,name=build_id,json=buildId,proto3" json:"build_id,omitempty"`
 	MemoryMib uint32 `protobuf:"varint,2,opt,name=memory_mib,json=memoryMib,proto3" json:"memory_mib,omitempty"`
 	Cpus      uint32 `protobuf:"varint,3,opt,name=cpus,proto3" json:"cpus,omitempty"`
@@ -2379,8 +2379,15 @@ type RunJobRequest struct {
 	// Limit for all collected files together; 0 = 1 GiB. Files beyond it are
 	// skipped and reported in outputs_error.
 	MaxOutputTotalBytes uint64 `protobuf:"varint,17,opt,name=max_output_total_bytes,json=maxOutputTotalBytes,proto3" json:"max_output_total_bytes,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// Secrets the job may use, with the meaning of CreateSandboxRequest.secrets.
+	// All are substituted for the whole job (there is no policy to change
+	// during a job). Their placeholders are in the environment of setup_shell
+	// and shell, as in ExecRequest.env's base environment. The real value is
+	// sent only to the secret's hosts, and only if allowed_hosts lets the guest
+	// reach them.
+	Secrets       []*SecretDecl `protobuf:"bytes,18,rep,name=secrets,proto3" json:"secrets,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *RunJobRequest) Reset() {
@@ -2530,6 +2537,13 @@ func (x *RunJobRequest) GetMaxOutputTotalBytes() uint64 {
 		return x.MaxOutputTotalBytes
 	}
 	return 0
+}
+
+func (x *RunJobRequest) GetSecrets() []*SecretDecl {
+	if x != nil {
+		return x.Secrets
+	}
+	return nil
 }
 
 type RunJobEvent struct {
@@ -3691,7 +3705,7 @@ const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\fStateChanged\x125\n" +
 	"\x05state\x18\x01 \x01(\x0e2\x1f.masuda.sandbox.v1.SandboxStateR\x05state\x12\x16\n" +
 	"\x06detail\x18\x02 \x01(\tR\x06detailB\a\n" +
-	"\x05event\"\x99\b\n" +
+	"\x05event\"\xd2\b\n" +
 	"\rRunJobRequest\x12\x19\n" +
 	"\bbuild_id\x18\x01 \x01(\tR\abuildId\x12\x1d\n" +
 	"\n" +
@@ -3713,7 +3727,8 @@ const file_masuda_sandbox_v1_sandbox_proto_rawDesc = "" +
 	"\aoutputs\x18\x0e \x03(\tR\aoutputs\x12(\n" +
 	"\x10outputs_host_dir\x18\x0f \x01(\tR\x0eoutputsHostDir\x121\n" +
 	"\x15max_output_file_bytes\x18\x10 \x01(\x04R\x12maxOutputFileBytes\x123\n" +
-	"\x16max_output_total_bytes\x18\x11 \x01(\x04R\x13maxOutputTotalBytes\x1a6\n" +
+	"\x16max_output_total_bytes\x18\x11 \x01(\x04R\x13maxOutputTotalBytes\x127\n" +
+	"\asecrets\x18\x12 \x03(\v2\x1d.masuda.sandbox.v1.SecretDeclR\asecrets\x1a6\n" +
 	"\bEnvEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\x1a\xae\x01\n" +
@@ -3886,52 +3901,53 @@ var file_masuda_sandbox_v1_sandbox_proto_depIdxs = []int32{
 	47, // 24: masuda.sandbox.v1.SandboxEvent.state_changed:type_name -> masuda.sandbox.v1.SandboxEvent.StateChanged
 	48, // 25: masuda.sandbox.v1.RunJobRequest.env:type_name -> masuda.sandbox.v1.RunJobRequest.EnvEntry
 	49, // 26: masuda.sandbox.v1.RunJobRequest.inputs:type_name -> masuda.sandbox.v1.RunJobRequest.Input
-	52, // 27: masuda.sandbox.v1.RunJobEvent.phase:type_name -> masuda.sandbox.v1.RunJobEvent.Phase
-	46, // 28: masuda.sandbox.v1.RunJobEvent.denied:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
-	53, // 29: masuda.sandbox.v1.RunJobEvent.finished:type_name -> masuda.sandbox.v1.RunJobEvent.Finished
-	1,  // 30: masuda.sandbox.v1.SandboxEvent.StateChanged.state:type_name -> masuda.sandbox.v1.SandboxState
-	50, // 31: masuda.sandbox.v1.RunJobRequest.Input.host_file:type_name -> masuda.sandbox.v1.RunJobRequest.HostFile
-	51, // 32: masuda.sandbox.v1.RunJobRequest.Input.from_sandbox:type_name -> masuda.sandbox.v1.RunJobRequest.FromSandbox
-	42, // 33: masuda.sandbox.v1.RunJobEvent.Finished.setup:type_name -> masuda.sandbox.v1.ExecEvent.Exited
-	42, // 34: masuda.sandbox.v1.RunJobEvent.Finished.exited:type_name -> masuda.sandbox.v1.ExecEvent.Exited
-	54, // 35: masuda.sandbox.v1.RunJobEvent.Finished.denied_hosts:type_name -> masuda.sandbox.v1.RunJobEvent.DeniedHost
-	2,  // 36: masuda.sandbox.v1.SandboxService.GetServerInfo:input_type -> masuda.sandbox.v1.GetServerInfoRequest
-	4,  // 37: masuda.sandbox.v1.SandboxService.BuildImage:input_type -> masuda.sandbox.v1.BuildImageRequest
-	7,  // 38: masuda.sandbox.v1.SandboxService.ListImages:input_type -> masuda.sandbox.v1.ListImagesRequest
-	9,  // 39: masuda.sandbox.v1.SandboxService.DeleteImage:input_type -> masuda.sandbox.v1.DeleteImageRequest
-	11, // 40: masuda.sandbox.v1.SandboxService.CreateSandbox:input_type -> masuda.sandbox.v1.CreateSandboxRequest
-	17, // 41: masuda.sandbox.v1.SandboxService.GetSandbox:input_type -> masuda.sandbox.v1.GetSandboxRequest
-	18, // 42: masuda.sandbox.v1.SandboxService.ListSandboxes:input_type -> masuda.sandbox.v1.ListSandboxesRequest
-	20, // 43: masuda.sandbox.v1.SandboxService.DestroySandbox:input_type -> masuda.sandbox.v1.DestroySandboxRequest
-	22, // 44: masuda.sandbox.v1.SandboxService.SetPolicy:input_type -> masuda.sandbox.v1.SetPolicyRequest
-	24, // 45: masuda.sandbox.v1.SandboxService.Exec:input_type -> masuda.sandbox.v1.ExecRequest
-	26, // 46: masuda.sandbox.v1.SandboxService.EnableSsh:input_type -> masuda.sandbox.v1.EnableSshRequest
-	28, // 47: masuda.sandbox.v1.SandboxService.DisableSsh:input_type -> masuda.sandbox.v1.DisableSshRequest
-	30, // 48: masuda.sandbox.v1.SandboxService.ReadFile:input_type -> masuda.sandbox.v1.ReadFileRequest
-	32, // 49: masuda.sandbox.v1.SandboxService.WriteFile:input_type -> masuda.sandbox.v1.WriteFileRequest
-	34, // 50: masuda.sandbox.v1.SandboxService.WatchEvents:input_type -> masuda.sandbox.v1.WatchEventsRequest
-	36, // 51: masuda.sandbox.v1.SandboxService.RunJob:input_type -> masuda.sandbox.v1.RunJobRequest
-	3,  // 52: masuda.sandbox.v1.SandboxService.GetServerInfo:output_type -> masuda.sandbox.v1.ServerInfo
-	5,  // 53: masuda.sandbox.v1.SandboxService.BuildImage:output_type -> masuda.sandbox.v1.BuildImageEvent
-	8,  // 54: masuda.sandbox.v1.SandboxService.ListImages:output_type -> masuda.sandbox.v1.ListImagesResponse
-	10, // 55: masuda.sandbox.v1.SandboxService.DeleteImage:output_type -> masuda.sandbox.v1.DeleteImageResponse
-	16, // 56: masuda.sandbox.v1.SandboxService.CreateSandbox:output_type -> masuda.sandbox.v1.Sandbox
-	16, // 57: masuda.sandbox.v1.SandboxService.GetSandbox:output_type -> masuda.sandbox.v1.Sandbox
-	19, // 58: masuda.sandbox.v1.SandboxService.ListSandboxes:output_type -> masuda.sandbox.v1.ListSandboxesResponse
-	21, // 59: masuda.sandbox.v1.SandboxService.DestroySandbox:output_type -> masuda.sandbox.v1.DestroySandboxResponse
-	23, // 60: masuda.sandbox.v1.SandboxService.SetPolicy:output_type -> masuda.sandbox.v1.SetPolicyResponse
-	25, // 61: masuda.sandbox.v1.SandboxService.Exec:output_type -> masuda.sandbox.v1.ExecEvent
-	27, // 62: masuda.sandbox.v1.SandboxService.EnableSsh:output_type -> masuda.sandbox.v1.SshAccess
-	29, // 63: masuda.sandbox.v1.SandboxService.DisableSsh:output_type -> masuda.sandbox.v1.DisableSshResponse
-	31, // 64: masuda.sandbox.v1.SandboxService.ReadFile:output_type -> masuda.sandbox.v1.FileChunk
-	33, // 65: masuda.sandbox.v1.SandboxService.WriteFile:output_type -> masuda.sandbox.v1.WriteFileResponse
-	35, // 66: masuda.sandbox.v1.SandboxService.WatchEvents:output_type -> masuda.sandbox.v1.SandboxEvent
-	37, // 67: masuda.sandbox.v1.SandboxService.RunJob:output_type -> masuda.sandbox.v1.RunJobEvent
-	52, // [52:68] is the sub-list for method output_type
-	36, // [36:52] is the sub-list for method input_type
-	36, // [36:36] is the sub-list for extension type_name
-	36, // [36:36] is the sub-list for extension extendee
-	0,  // [0:36] is the sub-list for field type_name
+	12, // 27: masuda.sandbox.v1.RunJobRequest.secrets:type_name -> masuda.sandbox.v1.SecretDecl
+	52, // 28: masuda.sandbox.v1.RunJobEvent.phase:type_name -> masuda.sandbox.v1.RunJobEvent.Phase
+	46, // 29: masuda.sandbox.v1.RunJobEvent.denied:type_name -> masuda.sandbox.v1.SandboxEvent.HttpRequestDenied
+	53, // 30: masuda.sandbox.v1.RunJobEvent.finished:type_name -> masuda.sandbox.v1.RunJobEvent.Finished
+	1,  // 31: masuda.sandbox.v1.SandboxEvent.StateChanged.state:type_name -> masuda.sandbox.v1.SandboxState
+	50, // 32: masuda.sandbox.v1.RunJobRequest.Input.host_file:type_name -> masuda.sandbox.v1.RunJobRequest.HostFile
+	51, // 33: masuda.sandbox.v1.RunJobRequest.Input.from_sandbox:type_name -> masuda.sandbox.v1.RunJobRequest.FromSandbox
+	42, // 34: masuda.sandbox.v1.RunJobEvent.Finished.setup:type_name -> masuda.sandbox.v1.ExecEvent.Exited
+	42, // 35: masuda.sandbox.v1.RunJobEvent.Finished.exited:type_name -> masuda.sandbox.v1.ExecEvent.Exited
+	54, // 36: masuda.sandbox.v1.RunJobEvent.Finished.denied_hosts:type_name -> masuda.sandbox.v1.RunJobEvent.DeniedHost
+	2,  // 37: masuda.sandbox.v1.SandboxService.GetServerInfo:input_type -> masuda.sandbox.v1.GetServerInfoRequest
+	4,  // 38: masuda.sandbox.v1.SandboxService.BuildImage:input_type -> masuda.sandbox.v1.BuildImageRequest
+	7,  // 39: masuda.sandbox.v1.SandboxService.ListImages:input_type -> masuda.sandbox.v1.ListImagesRequest
+	9,  // 40: masuda.sandbox.v1.SandboxService.DeleteImage:input_type -> masuda.sandbox.v1.DeleteImageRequest
+	11, // 41: masuda.sandbox.v1.SandboxService.CreateSandbox:input_type -> masuda.sandbox.v1.CreateSandboxRequest
+	17, // 42: masuda.sandbox.v1.SandboxService.GetSandbox:input_type -> masuda.sandbox.v1.GetSandboxRequest
+	18, // 43: masuda.sandbox.v1.SandboxService.ListSandboxes:input_type -> masuda.sandbox.v1.ListSandboxesRequest
+	20, // 44: masuda.sandbox.v1.SandboxService.DestroySandbox:input_type -> masuda.sandbox.v1.DestroySandboxRequest
+	22, // 45: masuda.sandbox.v1.SandboxService.SetPolicy:input_type -> masuda.sandbox.v1.SetPolicyRequest
+	24, // 46: masuda.sandbox.v1.SandboxService.Exec:input_type -> masuda.sandbox.v1.ExecRequest
+	26, // 47: masuda.sandbox.v1.SandboxService.EnableSsh:input_type -> masuda.sandbox.v1.EnableSshRequest
+	28, // 48: masuda.sandbox.v1.SandboxService.DisableSsh:input_type -> masuda.sandbox.v1.DisableSshRequest
+	30, // 49: masuda.sandbox.v1.SandboxService.ReadFile:input_type -> masuda.sandbox.v1.ReadFileRequest
+	32, // 50: masuda.sandbox.v1.SandboxService.WriteFile:input_type -> masuda.sandbox.v1.WriteFileRequest
+	34, // 51: masuda.sandbox.v1.SandboxService.WatchEvents:input_type -> masuda.sandbox.v1.WatchEventsRequest
+	36, // 52: masuda.sandbox.v1.SandboxService.RunJob:input_type -> masuda.sandbox.v1.RunJobRequest
+	3,  // 53: masuda.sandbox.v1.SandboxService.GetServerInfo:output_type -> masuda.sandbox.v1.ServerInfo
+	5,  // 54: masuda.sandbox.v1.SandboxService.BuildImage:output_type -> masuda.sandbox.v1.BuildImageEvent
+	8,  // 55: masuda.sandbox.v1.SandboxService.ListImages:output_type -> masuda.sandbox.v1.ListImagesResponse
+	10, // 56: masuda.sandbox.v1.SandboxService.DeleteImage:output_type -> masuda.sandbox.v1.DeleteImageResponse
+	16, // 57: masuda.sandbox.v1.SandboxService.CreateSandbox:output_type -> masuda.sandbox.v1.Sandbox
+	16, // 58: masuda.sandbox.v1.SandboxService.GetSandbox:output_type -> masuda.sandbox.v1.Sandbox
+	19, // 59: masuda.sandbox.v1.SandboxService.ListSandboxes:output_type -> masuda.sandbox.v1.ListSandboxesResponse
+	21, // 60: masuda.sandbox.v1.SandboxService.DestroySandbox:output_type -> masuda.sandbox.v1.DestroySandboxResponse
+	23, // 61: masuda.sandbox.v1.SandboxService.SetPolicy:output_type -> masuda.sandbox.v1.SetPolicyResponse
+	25, // 62: masuda.sandbox.v1.SandboxService.Exec:output_type -> masuda.sandbox.v1.ExecEvent
+	27, // 63: masuda.sandbox.v1.SandboxService.EnableSsh:output_type -> masuda.sandbox.v1.SshAccess
+	29, // 64: masuda.sandbox.v1.SandboxService.DisableSsh:output_type -> masuda.sandbox.v1.DisableSshResponse
+	31, // 65: masuda.sandbox.v1.SandboxService.ReadFile:output_type -> masuda.sandbox.v1.FileChunk
+	33, // 66: masuda.sandbox.v1.SandboxService.WriteFile:output_type -> masuda.sandbox.v1.WriteFileResponse
+	35, // 67: masuda.sandbox.v1.SandboxService.WatchEvents:output_type -> masuda.sandbox.v1.SandboxEvent
+	37, // 68: masuda.sandbox.v1.SandboxService.RunJob:output_type -> masuda.sandbox.v1.RunJobEvent
+	53, // [53:69] is the sub-list for method output_type
+	37, // [37:53] is the sub-list for method input_type
+	37, // [37:37] is the sub-list for extension type_name
+	37, // [37:37] is the sub-list for extension extendee
+	0,  // [0:37] is the sub-list for field type_name
 }
 
 func init() { file_masuda_sandbox_v1_sandbox_proto_init() }
