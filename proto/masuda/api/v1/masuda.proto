@@ -113,6 +113,12 @@ message Activity {
   // From guest hooks: what Claude Code says it is waiting for.
   string input_wait = 3;  // "permission", "idle", "question", ""
   string detail = 4;
+  // Host-measured strain inside the VM while it lasts: "memory low",
+  // "<mount> over <N>%" (for / and /tmp), "oom-kill x<count since the VM
+  // booted>", comma-separated. Stays the same while the strain lasts, so a
+  // status event carries it only when it changes. Empty when nothing is
+  // strained or the VM has not been measured. Independent of kind.
+  string resource_warning = 5;
 }
 
 enum ActivityKind {

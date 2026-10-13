@@ -124,17 +124,17 @@ func TestLoadServe(t *testing.T) {
 	if c, err := LoadServe(p); err != nil || c != (ServeConfig{}) || c.DiskWarnThreshold() != DefaultDiskWarnBytes {
 		t.Fatalf("missing config.json: %+v %v", c, err)
 	}
-	if err := os.WriteFile(p, []byte(`{"listen":"127.0.0.1:7788","stallAfter":"90s","diskWarnBytes":1024,"sandboxSocket":"/s"}`), 0o600); err != nil {
+	if err := os.WriteFile(p, []byte(`{"listen":"127.0.0.1:7788","stallAfter":"90s","diskWarnBytes":1024,"sandboxSocket":"/s","vmMemoryWarnPercent":15,"vmDiskWarnPercent":80}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	c, err := LoadServe(p)
-	if err != nil || c.Listen != "127.0.0.1:7788" || c.DiskWarnThreshold() != 1024 || c.SandboxSocket != "/s" {
+	if err != nil || c.Listen != "127.0.0.1:7788" || c.DiskWarnThreshold() != 1024 || c.SandboxSocket != "/s" || c.VMMemoryWarnPercent != 15 || c.VMDiskWarnPercent != 80 {
 		t.Fatalf("config.json: %+v %v", c, err)
 	}
 	if d, _ := c.StallAfterDuration(); d.Seconds() != 90 {
 		t.Fatalf("stallAfter: %v", d)
 	}
-	for _, bad := range []string{`{"listen":"0.0.0.0:7788"}`, `{"listen":"example.com:80"}`, `{"listen":"127.0.0.1"}`, `{"stallAfter":"0s"}`, `{"nope":1}`} {
+	for _, bad := range []string{`{"listen":"0.0.0.0:7788"}`, `{"listen":"example.com:80"}`, `{"listen":"127.0.0.1"}`, `{"stallAfter":"0s"}`, `{"nope":1}`, `{"vmMemoryWarnPercent":-1}`, `{"vmMemoryWarnPercent":100}`, `{"vmDiskWarnPercent":-1}`, `{"vmDiskWarnPercent":100}`} {
 		if err := os.WriteFile(p, []byte(bad), 0o600); err != nil {
 			t.Fatal(err)
 		}

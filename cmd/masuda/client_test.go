@@ -128,6 +128,15 @@ func TestListRow(t *testing.T) {
 	if got, want := listRow(starting, now), "ghi\tfeat/z\tstarting\tidle\tbuilding image (log: /r/image-build.log)\t-"; got != want {
 		t.Fatalf("listRow(starting):\n got %q\nwant %q", got, want)
 	}
+	// VMの中の資源の警告は、活動の種類と経過の間に括弧で出す（watchのstatusの行も同じ）
+	strained := &apiv1.Workspace{
+		Id: "jkl", Branch: "feat/w", State: apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING,
+		Activity: &apiv1.Activity{Kind: apiv1.ActivityKind_ACTIVITY_KIND_WORKING, LastActivity: timestamppb.New(now.Add(-2 * time.Minute)), ResourceWarning: "memory low, /tmp over 90%"},
+		Position: "test (occ 0007)",
+	}
+	if got, want := listRow(strained, now), "jkl\tfeat/w\trunning\tworking [memory low, /tmp over 90%] 2m ago\ttest (occ 0007)\t-"; got != want {
+		t.Fatalf("listRow(strained):\n got %q\nwant %q", got, want)
+	}
 	ev := &apiv1.WorkspaceEvent{Seq: 3, Time: timestamppb.New(now), WorkspaceId: "ghi", Event: &apiv1.WorkspaceEvent_Status{Status: starting}}
 	if got := formatEvent(ev); !strings.HasSuffix(got, "status starting idle building image (log: /r/image-build.log)") {
 		t.Fatalf("formatEvent(starting) = %q", got)
