@@ -2,7 +2,7 @@
 ## 作業項目
 2026-10-13。v0.5.0に入れる#96（レビューで承認したコミットだけを、秘密を使う特権コマンドで新しいVMで動かす）のmasuda側（段1〜4）を実装した。前のセッション（10-11〜12）で#111（`prepare`）と#96の段0a・0bを済ませている。
 
-**ブランチ**: masudaは`feat/privileged-secrets`（`feat/prepare`から切った。#111の5コミットを含む）。10-14にdevelopへマージしてpushした。
+**ブランチ**: masudaは`feat/privileged-secrets`（`feat/prepare`から切った。#111の5コミットを含む）。10-14にdevelopへマージしてpushし、ローカルの`feat/prepare`・`feat/privileged-secrets`は消した。
 
 | コミット | 中身 |
 |---|---|
@@ -32,10 +32,11 @@
 ## 未完と理由
 - sandbox `feat/run-job-secrets`とengine `feat/privileged-approved-commit`は10-14にmainへ入れてpushした（ユーザーが`!`で実行）。v0.5.0のリリースでengineにタグを打ったら、masudaの`go.mod`をそのタグに上げる
 - #9の残りは#114（v0.6）に分けた。#9・#96・#111は10-14に閉じた
+- #112（古いイメージのビルドを消す手段）をv0.6、#113（段階ごとの観点の集合）をv0.5.0に振り、コードと照らした補足をコメントした（10-14、ユーザー判断）
 - engineからmasudaを通って秘密付きのノードが動く経路は、実機では通していない（エージェントを使う1周が要るため。ユーザーの判断で案Aに絞った）
 - v0.4.0の手順6・7、#85・#83・#74のクローズ、sandboxの`fix/destroy-with-ssh`（sandbox#8）の判断、マイルストーンの無いIssue（#103〜#106・#108・#60）の振り分け、Gondolin #155への返事：前のセッションから持ち越し
 ## 次の一手
-1. v0.5.0の残り（#84、#88、sandbox#11、#65）。終わったら、リリースでsandbox→engine→masudaの順にタグを打つ（タグのpushはユーザー）
+1. v0.5.0の残り（#84、#88、#113、sandbox#11、#65）。#113はengineの`over`の検証・`workflow-schema.md`と、契約`guest-protocol.md`の`/masuda/reviews/*.md`の行に触れる（契約変更はユーザー承認）。終わったら、リリースでsandbox→engine→masudaの順にタグを打つ（タグのpushはユーザー）
 2. 持ち越しの項目（上の「未完と理由」の最後）
 ## 注意点
 - **engineの差分の承認が記録するコミットは、その実行の`commit`ノードが作ったものだけ**。`commit`ノードには承認済みの計画が要るので、エージェントを使わないワークフローでは秘密付きの特権ノードを通せない。実機で試すときは、`privileged.Run`を直接呼ぶプローブにする（今回の方法）
