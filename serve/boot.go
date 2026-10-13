@@ -88,7 +88,8 @@ type guestPrivilegedCommand struct {
 }
 
 // privilegedCommandsForGuest はdir（定義の写し）の特権コマンドの宣言を、ゲストへ置くJSONにする。
-// 宣言が無ければnil。承認の状態（settings.local.json）は写さない。timeoutSecondsは省略時の
+// 宣言が無ければnil。秘密を使う宣言はエージェントから呼べないので載せない（それしか無ければnil）。
+// 承認の状態（settings.local.json）は写さない。timeoutSecondsは省略時の
 // 既定を埋めた値にする（エージェントが実際の上限を知れるように）。写しから作るので、再開しても
 // 実行開始時と同じ中身になる。
 func privilegedCommandsForGuest(dir string) ([]byte, error) {
@@ -101,6 +102,9 @@ func privilegedCommandsForGuest(dir string) ([]byte, error) {
 	}
 	out := map[string]guestPrivilegedCommand{}
 	for name, d := range cfg.PrivilegedCommands {
+		if len(d.Secrets) > 0 {
+			continue
+		}
 		timeout := d.TimeoutSeconds
 		if timeout == 0 {
 			timeout = int(privileged.DefaultTimeout.Seconds())
@@ -109,6 +113,9 @@ func privilegedCommandsForGuest(dir string) ([]byte, error) {
 			Description: d.Description, Command: d.Command, Image: d.Image,
 			Inputs: append([]string{}, d.Inputs...), Outputs: append([]string{}, d.Outputs...), TimeoutSeconds: timeout,
 		}
+	}
+	if len(out) == 0 {
+		return nil, nil
 	}
 	b, err := json.MarshalIndent(out, "", "  ")
 	if err != nil {
