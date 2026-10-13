@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -116,7 +117,8 @@ type Resolved struct {
 	Prepare string
 	// Hash は承認と一致した宣言のハッシュ。
 	Hash string
-	// Egress は特権VMに許すホスト（宣言と承認の積）。
+	// Egress は特権VMに許すホスト（宣言と承認の積に、コマンドの宣言のegressを足したもの）。
+	// コマンドの宣言のegressは承認のハッシュに入っているので、egressの承認とは別に足す。
 	Egress []string
 }
 
@@ -145,7 +147,13 @@ func Resolve(cfg config.Settings, local config.LocalSettings, name string, image
 	case Stale:
 		return nil, fmt.Errorf("privileged command %q changed since it was approved; a human must run `masuda privileged-command approve %s` again", name, name)
 	}
-	return &Resolved{Name: name, Decl: decl, Prepare: cfg.Prepare, Hash: hash, Egress: config.AllowedEgress(cfg, local)}, nil
+	egress := config.AllowedEgress(cfg, local)
+	for _, h := range decl.Egress {
+		if !slices.Contains(egress, h) {
+			egress = append(egress, h)
+		}
+	}
+	return &Resolved{Name: name, Decl: decl, Prepare: cfg.Prepare, Hash: hash, Egress: egress}, nil
 }
 
 // Options は1回の実行に要るもの。
@@ -161,12 +169,15 @@ type Options struct {
 	// MemoryMiB と CPUs は特権sandboxのメモリ（MiB）とCPU数（同じくイメージのエントリの設定）。
 	MemoryMiB uint32
 	CPUs      uint32
-	// Egress は特権sandboxに許すホスト（宣言と承認の積）。
+	// Egress は特権sandboxに許すホスト（宣言と承認の積に、コマンドの宣言のegressを足したもの）。
 	Egress []string
-	Decl   config.PrivilegedCommandDecl
+	// Secrets はジョブの間ずっと置き換える秘密（コマンドの宣言のsecretsに値を入れたもの）。
+	Secrets []*sandboxv1.SecretDecl
+	Decl    config.PrivilegedCommandDecl
 	// Prepare はコマンドの前に流す準備（Resolved.Prepare）。
 	Prepare string
-	// Staging と SnapshotRef は、メインの作業ツリーを取り込んだstagingとそのref。
+	// Staging と SnapshotRef は、stagingと特権sandboxへ渡すref。refはメインの作業ツリーの
+	// スナップショット（staging.WIPRef）か、秘密を持つ宣言なら承認済みのコミット（ApprovedRef）。
 	Staging     *staging.Repo
 	SnapshotRef string
 	// HostDir は結果を残すホストのディレクトリ（`records/privileged/<run-id>`）。
@@ -204,16 +215,19 @@ type Result struct {
 // ResultsDir はメインのゲストでの結果の写しの場所。
 func ResultsDir(runID string) string { return GuestResultsRoot + "/" + runID + "/" }
 
-// snapshotRefPattern はsetup_shellに埋め込むref。staging.WIPRefが作る形だけを通し、
+// snapshotRefPattern はsetup_shellに埋め込むref。staging.WIPRefとApprovedRefが作る形だけを通し、
 // シェルの引用を要らなくする。
-var snapshotRefPattern = regexp.MustCompile(`^refs/masuda/wip/[0-9A-Za-z][0-9A-Za-z._-]*$`)
+var snapshotRefPattern = regexp.MustCompile(`^refs/masuda/(wip|approved)/[0-9A-Za-z][0-9A-Za-z._-]*$`)
+
+// ApprovedRef は秘密を持つ宣言を動かすとき、承認済みのコミットを張るstagingのref。
+func ApprovedRef(runID string) string { return "refs/masuda/approved/" + runID }
 
 // Run はRunJobで宣言のコマンドを動かし、結果を置いて返す。コマンドが0以外で終わってもエラーには
 // しない（exit_codeで返す）。スナップショットを展開できなかったときは、コマンドを動かせなかった
 // 基盤の失敗としてエラーを返す。
 func Run(ctx context.Context, o Options) (*Result, error) {
 	if !snapshotRefPattern.MatchString(o.SnapshotRef) {
-		return nil, fmt.Errorf("snapshot ref %q is not a WIP ref", o.SnapshotRef)
+		return nil, fmt.Errorf("snapshot ref %q is not a WIP or approved ref", o.SnapshotRef)
 	}
 	hostDir, err := filepath.Abs(o.HostDir)
 	if err != nil {
@@ -251,8 +265,9 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		MemoryMib: o.MemoryMiB,
 		Cpus:      o.CPUs,
 		DiskMib:   o.DiskMiB,
-		// RunJobのVMは秘密・tcp_mapsを持たない。特権VMはAPIトークンもmasudaへの経路も持たない。
+		// RunJobのVMはtcp_mapsを持たない。特権VMはAPIトークンもmasudaへの経路も持たない。
 		AllowedHosts:   o.Egress,
+		Secrets:        o.Secrets,
 		User:           User,
 		Cwd:            guestWorkspace,
 		SetupShell:     checkoutScript(o.SnapshotRef),

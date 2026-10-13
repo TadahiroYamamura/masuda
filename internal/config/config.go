@@ -448,6 +448,34 @@ func (s Settings) Secret(name string) (SecretDecl, bool) {
 	return SecretDecl{}, false
 }
 
+// PrivilegedSecrets は特権コマンドが宣言した秘密を、名前ごとに1つ（コマンド名の順）返す。
+// 同じ名前を複数のコマンドが宣言していれば、Hostsはそれらを合わせたもの（最初に出た順）。
+func (s Settings) PrivilegedSecrets() []SecretDecl {
+	names := make([]string, 0, len(s.PrivilegedCommands))
+	for n := range s.PrivilegedCommands {
+		names = append(names, n)
+	}
+	slices.Sort(names)
+	var out []SecretDecl
+	index := map[string]int{}
+	for _, n := range names {
+		for _, d := range s.PrivilegedCommands[n].Secrets {
+			i, ok := index[d.Name]
+			if !ok {
+				index[d.Name] = len(out)
+				out = append(out, SecretDecl{Name: d.Name, Mode: ModePlaceholder})
+				i = len(out) - 1
+			}
+			for _, h := range d.Hosts {
+				if !slices.Contains(out[i].Hosts, h) {
+					out[i].Hosts = append(out[i].Hosts, h)
+				}
+			}
+		}
+	}
+	return out
+}
+
 // AllowedEgress は宣言と承認の積（宣言の順）を返す。ゲストが届くホストの上限になる。
 func AllowedEgress(s Settings, l LocalSettings) []string {
 	var out []string

@@ -1323,6 +1323,143 @@ func TestCM11_PrivilegedNodeSuspendsUntilApproved(t *testing.T) {
 	})
 }
 
+// 秘密を使う特権コマンドのワークフロー。差分の承認（review）の後にだけ置ける。
+const secretPrivilegedWorkflow = `version: 1
+inputs: [instructions]
+start: plan
+nodes:
+  plan: {type: agent, role: agents/smoke-planner, inputs: [instructions], outputs: [plan], next: approve}
+  approve: {type: approval, gate: plan, target: plan, next: {approved: work, rejected: plan}}
+  work: {type: agent, role: agents/smoke-implementer, outputs: [commit-message], next: commit}
+  commit: {type: commit, scope: plan, next: {done: review, rejected: work}}
+  review: {type: approval, gate: review, target: diff, next: {approved: e2e, rejected: work}}
+  e2e: {type: privileged, name: e2e, next: {done: publish, failed: work}}
+  publish: {type: publish, target: local, next: end}
+`
+
+// e2eは秘密のplaceholderをログに出し、承認済みのコミットのanswer.txtがokであることを確かめる。
+const secretPrivilegedSettings = `{"image":"default","egress":[],"secrets":[],"checks":{},"privilegedCommands":{"e2e":{"image":"default","command":"printf 'secret=%s\\n' \"$AUTH_SECRET\"; test \"$(cat answer.txt)\" = ok","egress":["auth.example"],"secrets":[{"name":"AUTH_SECRET","hosts":["auth.example"]}]}}}`
+
+func TestCM11_秘密を使う特権ノードは承認済みのコミットのツリーで秘密のplaceholderを持って動く(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = secretPrivilegedSettings
+	files[".masuda/workflows/e2e.yaml"] = secretPrivilegedWorkflow
+	h := start(t, files)
+	ctx := context.Background()
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "e2e"})); err != nil {
+		t.Fatal(err)
+	}
+	run := func() (*connect.Response[apiv1.Workspace], error) {
+		return h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/e2e", Branch: "feat/e", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	}
+
+	t.Run("秘密の値が未登録ならRunの時点で断られ、登録のコマンドが案内される", func(t *testing.T) {
+		if _, err := run(); connect.CodeOf(err) != connect.CodeFailedPrecondition || !strings.Contains(err.Error(), "masuda secret set AUTH_SECRET") {
+			t.Fatalf("Run without the secret's value: %v", err)
+		}
+	})
+
+	t.Run("特権コマンドの秘密は登録でき、一覧に値の有無が出る", func(t *testing.T) {
+		sec, err := h.config.SetSecret(ctx, connect.NewRequest(&apiv1.SetSecretRequest{RepoRoot: h.repo, Name: "AUTH_SECRET", Value: "auth_real"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(sec.Msg.Entries) != 1 || sec.Msg.Entries[0].Name != "AUTH_SECRET" || !sec.Msg.Entries[0].ValueSet || sec.Msg.Entries[0].Hosts[0] != "auth.example" {
+			t.Fatalf("entries %+v", sec.Msg.Entries)
+		}
+	})
+
+	res, err := run()
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApprove(id)
+	task := h.mcp(id, "next_task", nil)
+	occ := task["occurrence"].(string)
+
+	t.Run("エージェントがMCPで呼ぶと断られる", func(t *testing.T) {
+		r := h.mcp(id, "run_privileged_command", map[string]any{"name": "e2e"})
+		if msg, _ := r["error"].(string); !strings.Contains(msg, "runs only from a privileged node") {
+			t.Fatalf("run_privileged_command: %v", r)
+		}
+	})
+
+	h.guestWrite(id, "workspace/answer.txt", "ok")
+	h.mcp(id, "write_output", map[string]any{"occurrence": occ, "name": "commit-message", "content": "feat: answer"})
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_WAITING_GATE, 10*time.Second)
+	open, err := h.gates.ListOpen(ctx, connect.NewRequest(&apiv1.ListOpenGatesRequest{WorkspaceId: id}))
+	if err != nil || len(open.Msg.Gates) != 1 || open.Msg.Gates[0].Gate != "review" {
+		t.Fatalf("want review gate: %v %+v", err, open)
+	}
+	rg := open.Msg.Gates[0]
+	// 承認の後に作業ツリーを書き換える。特権VMに作業ツリーのスナップショットが渡ればanswer.txtが
+	// okでなくなり、コマンドが落ちる。
+	h.guestWrite(id, "workspace/answer.txt", "tampered")
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: rg.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: rg.TargetHash}})); err != nil {
+		t.Fatal(err)
+	}
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_DONE, 15*time.Second)
+
+	t.Run("承認済みのコミットのツリーで動いて通り、記録には作業ツリーのスナップショットでなく承認済みのコミットが残る", func(t *testing.T) {
+		rec := h.privilegedResult(id, "0001")
+		if rec["exit_code"] != float64(0) || rec["approved_commit"] != rg.StagingCommit || rec["snapshot"] != "" {
+			t.Fatalf("record %v; approved %s", rec, rg.StagingCommit)
+		}
+		if got := git(t, h.repo, "rev-parse", "feat/e"); got != rg.StagingCommit {
+			t.Fatalf("published %s, approved %s", got, rg.StagingCommit)
+		}
+	})
+
+	t.Run("コマンドの環境には秘密の本物の値でなくplaceholderが入る", func(t *testing.T) {
+		logs, _ := filepath.Glob(filepath.Join(h.dataDir, "workspaces", id, "records", "privileged", "0001", "log"))
+		if len(logs) != 1 {
+			t.Fatalf("log: %v", logs)
+		}
+		b, _ := os.ReadFile(logs[0])
+		if !strings.Contains(string(b), "secret=masuda-fake-placeholder-") || strings.Contains(string(b), "auth_real") {
+			t.Fatalf("log:\n%s", b)
+		}
+	})
+}
+
+// 差分の承認が無いまま秘密を使う特権ノードに届いたら、承認済みのコミットが無いことを理由に
+// SUSPENDEDで止まり、特権VMは作らない（記録を残さない）。
+func TestCM11_差分の承認の前に秘密を使う特権ノードに届くと動かさずに止まる(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = secretPrivilegedSettings
+	files[".masuda/workflows/e2e.yaml"] = strings.Replace(privilegedWorkflow, "name: itest", "name: e2e", 1)
+	h := start(t, files)
+	ctx := context.Background()
+	if _, err := h.config.ApprovePrivilegedCommand(ctx, connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "e2e"})); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.config.SetSecret(ctx, connect.NewRequest(&apiv1.SetSecretRequest{RepoRoot: h.repo, Name: "AUTH_SECRET", Value: "auth_real"})); err != nil {
+		t.Fatal(err)
+	}
+	res, err := h.ws.Run(ctx, connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/e2e", Branch: "feat/e", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApprove(id)
+	if stopped := h.workLap(id, "ok"); stopped["error"] == nil {
+		t.Fatalf("a privileged node with secrets and no approved commit must stop the run: %v", stopped)
+	}
+	w := h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_SUSPENDED, 15*time.Second)
+	if !strings.Contains(w.Reason, "no approved commit") {
+		t.Fatalf("reason: %q", w.Reason)
+	}
+	if recs, _ := filepath.Glob(filepath.Join(h.dataDir, "workspaces", id, "records", "privileged", "*")); len(recs) != 0 {
+		t.Fatalf("no privileged run may be recorded: %v", recs)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // C-M12: SUSPENDED (resumable) vs BLOCKED (a dead end)
 // ---------------------------------------------------------------------------

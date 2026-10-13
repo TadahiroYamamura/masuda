@@ -38,6 +38,23 @@ func TestResolve(t *testing.T) {
 			t.Fatalf("resolved %+v", r)
 		}
 	})
+	t.Run("コマンドの宣言のegressは承認の積に重ならないものだけを後ろに足す", func(t *testing.T) {
+		withEgress := decl
+		withEgress.Egress = []string{"b.example", "auth.example"}
+		h, err := config.DeclHash(withEgress, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		c := cfg
+		c.PrivilegedCommands = map[string]config.PrivilegedCommandDecl{"itest": withEgress}
+		r, err := Resolve(c, approved(h), "itest", images)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(r.Egress, []string{"b.example", "auth.example"}) {
+			t.Fatalf("egress %v", r.Egress)
+		}
+	})
 	cases := []struct {
 		name, cmd string
 		local     config.LocalSettings

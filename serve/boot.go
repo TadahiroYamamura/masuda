@@ -234,8 +234,8 @@ func (b *backend) newRunCtl(w *workspace.Workspace, set *engine.Set, plan *bootP
 		Secrets:       plan.placeholderNames,
 		Plaintext:     sortedKeys(plan.plaintext),
 		OnLog:         func(e engine.Event) { b.publishEngine(id, e) },
-		RunPrivileged: func(ctx context.Context, occurrence, name string) (*privileged.Result, error) {
-			return c.runPrivileged(ctx, occurrence, name)
+		RunPrivileged: func(ctx context.Context, occurrence, name, approvedCommit string) (*privileged.Result, error) {
+			return c.runPrivileged(ctx, occurrence, name, approvedCommit)
 		},
 	})
 	ctx, cancel := context.WithCancel(b.ctx)

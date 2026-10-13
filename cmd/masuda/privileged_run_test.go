@@ -153,6 +153,17 @@ func TestPrivilegedCommandRun(t *testing.T) {
 		}
 	})
 
+	t.Run("秘密を使う宣言は承認されていてもsandboxにジョブを出さずに断る", func(t *testing.T) {
+		repo := privilegedRepo(t, `"e2e": {"image": "default", "command": "true", "egress": ["auth.example"], "secrets": [{"name": "AUTH_SECRET", "hosts": ["auth.example"]}]}`, "e2e")
+		r := runPrivileged(t, socket, privilegedRunOptions{name: "e2e", repo: repo})
+		if r.err == nil || !strings.Contains(r.err.Error(), "runs only from a privileged node") {
+			t.Fatalf("err = %v", r.err)
+		}
+		if len(sb.jobs) != 0 {
+			t.Fatalf("RunJob was called %d times", len(sb.jobs))
+		}
+	})
+
 	t.Run("--repoで作業ツリーのトップ以外を明示されたらsandboxにジョブを出さずに断る", func(t *testing.T) {
 		repo := privilegedRepo(t, showDecl, "show")
 		sub := filepath.Join(repo, "sub")

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"sync"
 
@@ -147,6 +148,17 @@ func (s *configService) secretEntries(root string, cfg config.Settings, local co
 			Approved:         !plaintext || contains(local.SecretsApproved, d.Name),
 		})
 	}
+	// 特権コマンドの秘密は、値の登録の有無を確かめる場所がほかに無いので同じ一覧に並べる。
+	// placeholderだけなので承認は要らない。
+	for _, d := range cfg.PrivilegedSecrets() {
+		out.Entries = append(out.Entries, &apiv1.SecretEntry{
+			Name:     d.Name,
+			Hosts:    d.Hosts,
+			Mode:     d.EffectiveMode(),
+			ValueSet: store.Has(root, d.Name),
+			Approved: true,
+		})
+	}
 	_, out.ClaudeTokenSet, _ = store.ClaudeToken(root, local.ClaudeTokenName())
 	return out
 }
@@ -177,8 +189,9 @@ func (s *configService) SetSecret(ctx context.Context, req *connect.Request[apiv
 	}
 	name := req.Msg.Name
 	_, declared := cfg.Secret(name)
+	declared = declared || slices.ContainsFunc(cfg.PrivilegedSecrets(), func(d config.SecretDecl) bool { return d.Name == name })
 	if !declared && name != config.ReservedSecret && name != local.ClaudeTokenName() {
-		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets of .masuda/settings.json; declare it there first", name))
+		return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("secret %q is not declared in secrets or privilegedCommands of .masuda/settings.json; declare it there first", name))
 	}
 	if req.Msg.Value == "" {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("value is empty; pass the value on stdin"))

@@ -6,9 +6,9 @@ import (
 	"strings"
 )
 
-// checkHead はstagingのbranchがちょうどcommitを指していることを確かめる。publishするのは
+// CheckHead はstagingのbranchがちょうどcommitを指していることを確かめる。publishするのは
 // review gateで承認されたコミットだけで、その後にブランチが動いていたら反映しない。
-func (r *Repo) checkHead(ctx context.Context, branch, commit string) error {
+func (r *Repo) CheckHead(ctx context.Context, branch, commit string) error {
 	head, err := r.ResolveCommit(ctx, BranchRef(branch))
 	if err != nil {
 		return err
@@ -22,7 +22,7 @@ func (r *Repo) checkHead(ctx context.Context, branch, commit string) error {
 // PublishLocal は実リポジトリrepoRootの同名ブランチを、stagingのbranch（= commit）へ
 // fast-forwardする。ブランチが無ければ作る。fast-forwardにならなければ何も変えない。
 func (r *Repo) PublishLocal(ctx context.Context, repoRoot, branch, commit string) error {
-	if err := r.checkHead(ctx, branch, commit); err != nil {
+	if err := r.CheckHead(ctx, branch, commit); err != nil {
 		return err
 	}
 	ref := BranchRef(branch)
@@ -58,7 +58,7 @@ func (r *Repo) PublishLocal(ctx context.Context, repoRoot, branch, commit string
 // PushRemote はstagingのbranch（= commit）をremoteURLの同名ブランチへpushする。
 // 強制pushはしないので、リモートが先に進んでいればリモート側が拒否する。
 func (r *Repo) PushRemote(ctx context.Context, remoteURL, branch, commit string) error {
-	if err := r.checkHead(ctx, branch, commit); err != nil {
+	if err := r.CheckHead(ctx, branch, commit); err != nil {
 		return err
 	}
 	if remoteURL == "" || strings.HasPrefix(remoteURL, "-") {
