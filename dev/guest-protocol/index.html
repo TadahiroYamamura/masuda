@@ -1455,6 +1455,10 @@
 <td><code>envFiles</code>宣言から生成（秘密はプレースホルダ）</td>
 </tr>
 <tr>
+<td><code>/masuda/prepare</code>・<code>/masuda/prepare.log</code></td>
+<td><code>.masuda/settings.json</code>の<code>prepare</code>（準備のシェルの1行）を実行可能スクリプトとして置き、起動時（再開ならWIPを戻した後）に<code>/workspace</code>で一度流した出力を<code>prepare.log</code>に置く。起動時の失敗では起動を止めない。<code>/masuda/checks/*</code>は先頭でこれを呼ぶ。エージェントも定義を変えた後に呼び直してよい。特権VMでは、宣言のコマンドの前に<code>HOME=/home/ubuntu</code>で流れる（失敗はコマンドの失敗）。宣言が無ければ置かない</td>
+</tr>
+<tr>
 <td><code>/masuda/reviews/*.md</code></td>
 <td>レビュー観点。ホストの実リポジトリの<code>.masuda/reviews/</code>（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong>ここ</strong>を読む。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
 </tr>
@@ -1464,11 +1468,11 @@
 </tr>
 <tr>
 <td><code>/masuda/privileged-commands.json</code></td>
-<td>特権コマンドの宣言。実行開始時に定義の写し（<code>records/definitions/</code>）の<code>privilegedCommands</code>から作る。名前→<code>{description?, command, image, inputs, outputs, timeoutSeconds}</code>（<code>timeoutSeconds</code>は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの<code>settings.local.json</code>の承認で行う）</td>
+<td>特権コマンドの宣言。実行開始時に定義の写し（<code>records/definitions/</code>）の<code>privilegedCommands</code>から作る。名前→<code>{description?, command, image, inputs, outputs, timeoutSeconds}</code>（<code>timeoutSeconds</code>は省略時の既定3600を埋めた値）。秘密を使う宣言（<code>secrets</code>を持つもの）はエージェントから呼べないので載せない。載せる宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの<code>settings.local.json</code>の承認で行う）</td>
 </tr>
 <tr>
 <td><code>/masuda/privileged/&lt;run-id&gt;/</code></td>
-<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。<code>run_privileged_command</code>か<code>privileged</code>ノードで動かすたびに置く。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</td>
+<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。<code>run_privileged_command</code>か<code>privileged</code>ノードで動かすたびに置く。ただし秘密を使う宣言の結果は置かない（記録はホストにだけ残る）。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</td>
 </tr>
 <tr>
 <td><code>~/.claude/.mcp.json</code>相当</td>
@@ -1534,7 +1538,7 @@
 <td><code>run_privileged_command</code></td>
 <td><code>name</code></td>
 <td><code>{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}</code></td>
-<td>宣言済み・承認済みの名前のみ。<code>results_dir</code>は<code>/masuda/privileged/&lt;run-id&gt;/</code>。<code>outputs_error</code>は宣言した<code>outputs</code>のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は<code>outputs</code>に返る</td>
+<td>宣言済み・承認済みの名前のみ。秘密を使う宣言の名前は断る（ワークフローの<code>privileged</code>ノードからだけ動く）。<code>results_dir</code>は<code>/masuda/privileged/&lt;run-id&gt;/</code>。<code>outputs_error</code>は宣言した<code>outputs</code>のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は<code>outputs</code>に返る</td>
 </tr>
 </tbody>
 </table>

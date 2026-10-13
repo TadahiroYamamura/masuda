@@ -2307,6 +2307,10 @@ masuda
 <td>ノード境界のWIPスナップショット（作業ツリー全体を<code>git add -A</code>したtree、gitignore対象は含まない）。クラッシュ復旧と、exec/特権ノードへの受け渡しに使う</td>
 </tr>
 <tr>
+<td><code>refs/masuda/approved/&lt;run-id&gt;</code></td>
+<td>秘密を使う特権コマンドに渡した、承認済みのコミット（「特権コマンド」の節）</td>
+</tr>
+<tr>
 <td><code>refs/masuda/base</code></td>
 <td>分岐元。diffの基準。既存のブランチでは分岐元とブランチの分岐点（merge-base）</td>
 </tr>
@@ -2638,7 +2642,7 @@ masuda
 </tr>
 <tr>
 <td><code>/masuda/privileged/&lt;run-id&gt;/</code></td>
-<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）</td>
+<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。秘密を使う宣言の結果は置かない</td>
 <td>ホスト</td>
 </tr>
 <tr>
@@ -2648,12 +2652,17 @@ masuda
 </tr>
 <tr>
 <td><code>/masuda/checks/&lt;名前&gt;</code></td>
-<td><code>settings.json</code>の<code>checks</code>を実行可能スクリプトにしたもの</td>
+<td><code>settings.json</code>の<code>checks</code>を実行可能スクリプトにしたもの。<code>prepare</code>があれば先頭で<code>/masuda/prepare</code>を呼ぶ</td>
+<td>ホスト（起動時）</td>
+</tr>
+<tr>
+<td><code>/masuda/prepare</code>、<code>/masuda/prepare.log</code></td>
+<td><code>settings.json</code>の<code>prepare</code>のスクリプトと、起動時に一度流した出力</td>
 <td>ホスト（起動時）</td>
 </tr>
 <tr>
 <td><code>/masuda/privileged-commands.json</code></td>
-<td>特権コマンドの宣言（承認の状態を除く）。ホストは読み戻さない</td>
+<td>特権コマンドの宣言（承認の状態と、秘密を使う宣言を除く）。ホストは読み戻さない</td>
 <td>ホスト（起動時）</td>
 </tr>
 <tr>
@@ -2689,6 +2698,7 @@ masuda
 <li>結果: <code>outputs</code>は<code>RunJob</code>がホストの<code>records/privileged/&lt;run-id&gt;/outputs/</code>へ回収する。masudaは終了コード・ログを記録に書き、写しをメインVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>へ置く。特権VMはAPIトークンもMCPも持たない</li>
 <li>呼び出し口はMCPツール<code>run_privileged_command(name)</code>と、ワークフローの<code>privileged</code>ノード（<code>name</code>で宣言を指し、終了コードで<code>done</code>/<code>failed</code>に分岐する。engineの<code>Runner.RunPrivileged</code>）。どちらも同じ実行の手順を通る。コマンド文字列を渡す口は無い。宣言は<code>records/definitions/</code>の写しから読み、承認は作業ツリーの<code>settings.local.json</code>のハッシュと照らす。実行中にエージェントが作業ツリーの宣言を書き換えても、承認と食い違って断られるだけになる。ワークフロー（呼び出す部品のワークフローを含む）が届く<code>privileged</code>ノードの名前は、<code>Run</code>・<code>Resume</code>の始めにすべて宣言済み・検査に通る・承認済み（ハッシュが一致）であることを確かめ（<code>privileged.Resolve</code>）、足りなければ何も作らずにまとめて<code>FailedPrecondition</code>で返す。それでも実行中に承認が取り消されれば、ノードはengineのエラーとして実行をSUSPENDEDで止め、承認の後の<code>Resume</code>（または<code>Advance</code>）で同じ出現をやり直す</li>
 <li>宣言（承認の状態を除く）は実行開始時にゲストの<code>/masuda/privileged-commands.json</code>へ置く（<a href="../../guest-protocol/">guest-protocol.md</a>）。エージェントが使える名前を知るためだけのもので、ホストは読み戻さない</li>
+<li>秘密を使う宣言（<code>secrets</code>を持つもの）: reviewゲートで承認したコミットに対してだけ、ワークフローの<code>privileged</code>ノードからだけ動く。MCPと<code>masuda privileged-command run</code>からは断る。承認済みのコミットはengineの<code>PrivilegedTask.ApprovedCommit</code>（publishが着地させるコミット）で受け取り、空なら断る（engineのエラーとしてSUSPENDED）。stagingのブランチ先頭とも突き合わせ（publishと同じ<code>staging.CheckHead</code>）、<code>refs/masuda/approved/&lt;run-id&gt;</code>に張ってbundleにする。作業ツリーのスナップショットは取らない。<code>inputs</code>は宣言の検証で禁じる。秘密は<code>RunJob</code>の<code>secrets</code>（placeholderだけ。ジョブの間ずっと置き換える）で渡す。<code>CreateSandbox</code>+<code>Exec</code>で組まないのは、masudaが落ちたときに秘密を持ったVMが残るため。通信先は宣言と承認の積に、コマンドの宣言の<code>egress</code>を足したもの（秘密の宛先をエージェントのVMから届かせないため、トップレベルの<code>egress</code>とは分ける）。結果はメインVMに置かず、engineへ返すログは決まった文に差し替える（差し戻しに載るのは終了コードだけになる）</li>
 <li>同じワークスペースでは1つずつ動かす。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</li>
 </ul>
 <p>ホストの記録は<code>records/privileged/&lt;run-id&gt;/</code>に置く。</p>
@@ -2702,7 +2712,7 @@ masuda
 <tbody>
 <tr>
 <td><code>result.json</code></td>
-<td>名前・呼んだ<code>privileged</code>ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した<code>outputs</code>・<code>outputs_error</code>、または失敗の理由</td>
+<td>名前・呼んだ<code>privileged</code>ノードの出現（MCPからなら無し）・宣言のハッシュ・渡したWIPのref（秘密を使う宣言では空で、代わりに<code>approved_commit</code>）・開始と終了の時刻・終了コード・シグナル・タイムアウトの有無・回収した<code>outputs</code>・<code>outputs_error</code>、または失敗の理由</td>
 </tr>
 <tr>
 <td><code>exit-code</code></td>
@@ -2752,11 +2762,15 @@ masuda
 </tr>
 <tr>
 <td><code>privilegedCommands</code></td>
-<td>特権コマンドの宣言（<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。<code>description</code>は承認のハッシュに含めない）</td>
+<td>特権コマンドの宣言（<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>・<code>egress</code>・<code>secrets</code>。<code>description</code>は承認のハッシュに含めない。<code>secrets</code>はこの特権VMにだけ渡し、トップレベルの<code>secrets</code>と同じ名前は書けない）</td>
 </tr>
 <tr>
 <td><code>checks</code></td>
 <td>チェック名→シェルコマンド。ゲストの<code>/masuda/checks/&lt;名前&gt;</code>になる</td>
+</tr>
+<tr>
+<td><code>prepare</code></td>
+<td>準備のシェルの1行。起動時・各チェックの前・各特権コマンドの前（<code>HOME=/home/ubuntu</code>）に流す。特権コマンドの承認のハッシュに含める</td>
 </tr>
 <tr>
 <td><code>claudeSettings</code></td>

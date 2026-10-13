@@ -1717,6 +1717,7 @@
 <li><code>name</code>はmasudaの<code>settings.json</code>の<code>privilegedCommands</code>の名前と同じ形（<code>[A-Za-z0-9][A-Za-z0-9._-]*</code>）。エンジンは形だけ検査し、宣言の有無・承認・中身（コマンド・イメージ・入出力・通信先・期限）は知らない。宣言と承認の側で決まるので、ノードは<code>inputs</code>・<code>outputs</code>・<code>egress</code>・<code>secrets</code>・<code>timeout</code>を持たない</li>
 <li>終わり方: 終了コード0で時間切れでなければ<code>done</code>、それ以外は<code>failed</code>（feedbackにログの末尾）、<code>max</code>超えで<code>exhausted</code></li>
 <li>実行できなかった場合（未宣言・未承認、ホストの失敗）は<code>Runner.RunPrivileged</code>のエラーになり、<code>exec</code>の基盤の失敗と同じく結果を記録せずに<code>Advance</code>がエラーを返す（masudaでは実行がblockedになる）。原因を直した後の<code>Advance</code>で同じ出現をもう一度実行する。<code>exec</code>と同じく、繰り返して安全な前提で、終わるまで何も記録しない</li>
+<li>ホストには<code>PrivilegedTask.ApprovedCommit</code>で、その時点で<code>publish</code>が着地させるコミット（最後の差分の承認が見たコミット）を渡す。差分の承認が無いか、承認の後にコミットがあれば空。エンジンはこの値で実行を止めず、空のときに断るかはホストが宣言に従って決める</li>
 <li>メインの作業ツリーを変えないので、<code>Runner.Snapshot</code>を取らず（下の「スナップショット」）、<code>Runner.SetPolicy</code>も呼ばない（メインのsandboxは直前の方針のまま）</li>
 <li>承認済み計画の前に置いてよい（下の「読み込み時の検査」の「書き込める」ノードに当たらない）</li>
 </ul>

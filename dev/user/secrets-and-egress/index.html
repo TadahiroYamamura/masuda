@@ -846,6 +846,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        秘密を使う特権コマンド
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#privileged-command-run" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1586,6 +1597,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged-secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        秘密を使う特権コマンド
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#privileged-command-run" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1756,7 +1778,7 @@ masuda<span class="w"> </span>secret<span class="w"> </span>list
 <li>書き方の細かい決まりは<a href="../cli/#env">CLIリファレンス</a></li>
 </ul>
 <h2 id="privileged">特権コマンド<a class="headerlink" href="#privileged" title="Permanent link">&para;</a></h2>
-<p>テストがrootやDockerを要するとき、そのコマンドだけを<strong>別の使い捨てVM（rootで動く）</strong>で実行させる仕組み。エージェントが動くVMはrootにしない。</p>
+<p>テストがrootやDockerを要するとき、そのコマンドだけを**別の使い捨てVM（rootで動く）**で実行させる仕組み。エージェントが動くVMはrootにしない。</p>
 <div class="admonition note">
 <p class="admonition-title">実機での確認</p>
 <p>特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、まだ実機で確かめていない。</p>
@@ -1784,14 +1806,14 @@ masuda<span class="w"> </span>privileged-command<span class="w"> </span>approve<
 <ul>
 <li><code>image</code>は特権VMのイメージのエントリ（<code>.masuda/images/privileged/Dockerfile</code>等）。エージェントのVMと同じエントリでもよい</li>
 <li><code>description</code>はエージェント向けの説明（何をするコマンドか、いつ使うか）。動くものを変えないので承認には含まれず、書き換えても承認し直す必要は無い</li>
-<li>承認は、その時点の宣言の内容（<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>）に結びつく。宣言が1文字でも変わると、<code>list</code>のAPPROVEDが<code>stale</code>になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため</li>
+<li>承認は、その時点の宣言の内容（<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>・<code>egress</code>・<code>secrets</code>）と、settings.jsonの<a href="../settings/#prepare"><code>prepare</code></a>に結びつく。宣言が1文字でも変わると、<code>list</code>のAPPROVEDが<code>stale</code>になり、承認し直すまで使えない。コミットで宣言をすり替えられないようにするため。<code>prepare</code>は特権VMでコマンドの前にrootで流れるので含める。<code>list</code>には表示されないので、<code>settings.json</code>で読む</li>
 <li>承認はイメージの中身（<code>.masuda/images/&lt;image&gt;/</code>のDockerfileや、イメージに入れたスクリプト）を含まない。特権コマンドは<code>/workspace</code>のコード（エージェントが書き換えられる）も動かすので、イメージだけを縛っても守れるものは増えないため。承認が守るのは「どのイメージのVMで、どの通信先を開けて、何を動かすか」で、<code>.masuda/images/</code>の変更はレビューで見る</li>
-<li>特権VMが通信できるのは、宣言かつ承認済みのegressのホスト</li>
+<li>特権VMが通信できるのは、宣言かつ承認済みのegressのホストと、そのコマンドの宣言の<code>egress</code>のホスト</li>
 </ul>
 <h3 id="_7">呼ばれ方<a class="headerlink" href="#_7" title="Permanent link">&para;</a></h3>
 <ul>
 <li>エージェントは<code>run_privileged_command(&lt;名前&gt;)</code>というツールで、名前を指定して呼ぶことしかできない。コマンドの文字列を渡す口は無い</li>
-<li>宣言は実行開始時にVMの<code>/masuda/privileged-commands.json</code>へ置かれる（名前→<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。承認の状態は含まない）。同梱の実装の役（<code>implementer</code>）はここを読んで宣言を知るので、<code>.masuda/settings.json</code>をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて<code>stuck</code>で終える</li>
+<li>宣言は実行開始時にVMの<code>/masuda/privileged-commands.json</code>へ置かれる（名前→<code>description</code>・<code>command</code>・<code>image</code>・<code>inputs</code>・<code>outputs</code>・<code>timeoutSeconds</code>。承認の状態は含まない。<a href="#privileged-secrets">秘密を使う宣言</a>は呼べないので載らない）。同梱の実装の役（<code>implementer</code>）はここを読んで宣言を知るので、<code>.masuda/settings.json</code>をコミットしていなくても使える。宣言が無い・承認されていないときは、あなたに承認を求めるfeedbackを書いて<code>stuck</code>で終える</li>
 <li>呼ばれるたびに、宣言は実行開始時の写しから、承認は作業ツリーの<code>settings.local.json</code>から読む。実行中にエージェントがVMの中の宣言を書き換えても、承認と食い違って断られるだけ</li>
 <li>同じワークスペースでは1つずつ動く</li>
 </ul>
@@ -1821,6 +1843,50 @@ masuda<span class="w"> </span>privileged-command<span class="w"> </span>approve<
 <li>終了コード・ログの末尾・<code>outputs</code>に当たるファイルを回収し、写しをエージェントのVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）へ置く。特権VMは壊す</li>
 </ol>
 <p>特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの<code>workspaces/&lt;id&gt;/records/privileged/&lt;run-id&gt;/</code>に残る（<code>result.json</code>に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、<code>privileged</code>ノードから動いたときはその出現）。</p>
+<h3 id="privileged-secrets">秘密を使う特権コマンド<a class="headerlink" href="#privileged-secrets" title="Permanent link">&para;</a></h3>
+<p>本物の外部サービス（認証基盤のテナント等）を相手にするE2Eのように、秘密が要るコマンドを流す。秘密と一緒に動くコードは、<strong>あなたがreviewゲートで差分を見て承認したコミット</strong>に限る。CIで秘密を使うのと同じ信頼の形で、CIを持たないリポジトリや、publishの前に本物との結合を確かめたいときに使う。</p>
+<div class="highlight"><span class="filename">.masuda/settings.json</span><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"privilegedCommands"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"e2e-auth"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"command"</span><span class="p">:</span><span class="w"> </span><span class="s2">"make e2e-real"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"image"</span><span class="p">:</span><span class="w"> </span><span class="s2">"privileged"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"egress"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"example.auth0.com"</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"secrets"</span><span class="p">:</span><span class="w"> </span><span class="p">[{</span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"AUTH0_CLIENT_SECRET"</span><span class="p">,</span><span class="w"> </span><span class="nt">"hosts"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"example.auth0.com"</span><span class="p">],</span><span class="w"> </span><span class="nt">"in"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"body"</span><span class="p">]}]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>AUTH0_CLIENT_SECRET<span class="w">   </span><span class="c1"># 値は標準入力から</span>
+masuda<span class="w"> </span>privileged-command<span class="w"> </span>approve<span class="w"> </span>e2e-auth
+</code></pre></div>
+<ul>
+<li>秘密と通信先は、トップレベルの<code>secrets</code>・<code>egress</code>ではなくコマンドの宣言に書く。トップレベルに書くとエージェントのVMにも渡り、エージェントがその宛先に直接届くようになる。宣言の制約は<a href="../settings/#privilegedcommands">settings.json</a>を参照</li>
+<li>値は<code>masuda secret set</code>で登録する。<code>masuda secret list</code>にも並ぶ。ワークフローが届く<code>privileged</code>ノードの秘密に値が無ければ、<code>masuda run</code>・<code>masuda resume</code>の始めに断る</li>
+<li>秘密は<code>placeholder</code>方式だけ。特権VMにはプレースホルダが環境変数で置かれ、<code>hosts</code>宛ての通信でだけ本物に置き換わる</li>
+</ul>
+<p>同梱のワークフローはこの宣言を使わない。宣言の名前はリポジトリごとに違うので、<code>.masuda/workflows/</code>に自分のワークフローを書き、reviewゲートの後・publishの前に<code>privileged</code>ノードを置く。</p>
+<div class="highlight"><span class="filename">.masuda/workflows/develop-e2e.yaml（抜粋）</span><pre><span></span><code><span class="nt">nodes</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">review</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">approval</span>
+<span class="w">    </span><span class="nt">gate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">review</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">diff</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">approved</span><span class="p">:</span><span class="w"> </span><span class="nv">e2e</span><span class="p p-Indicator">,</span><span class="nt"> rejected</span><span class="p">:</span><span class="w"> </span><span class="nv">implement</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">e2e</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">privileged</span>
+<span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">e2e-auth</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt">done</span><span class="p">:</span><span class="w"> </span><span class="nv">publish</span><span class="p p-Indicator">,</span><span class="nt"> failed</span><span class="p">:</span><span class="w"> </span><span class="nv">implement</span><span class="p p-Indicator">}</span>
+<span class="w">  </span><span class="nt">publish</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">publish</span>
+<span class="w">    </span><span class="nt">target</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">local</span>
+<span class="w">    </span><span class="nt">next</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">end</span>
+</code></pre></div>
+<ul>
+<li>特権VMには、reviewゲートで承認したコミットのツリーだけを渡す。エージェントのVMの作業ツリー（承認の後の書き換え、gitignoreされたファイル、ホームディレクトリ）は渡らない。<a href="../settings/#prepare"><code>prepare</code></a>は流れる</li>
+<li>差分の承認が無いか、承認の後にコミットがあれば動かさず、実行は<code>suspended</code>で止まる。承認したコミットとstagingのブランチの先頭が食い違うときも同じ</li>
+<li>成功すればそのままpublishへ進む。publishの前にもう一度人間の判断を挟みたければ、ノードの後にゲートを置く</li>
+<li>エージェントには終了コードだけを返す。ログ・<code>outputs</code>はホストの<code>records/privileged/&lt;run-id&gt;/</code>にだけ置き、エージェントのVMの<code>/masuda/privileged/</code>には置かない。応答に含まれるトークン等がエージェントに渡らないようにするため。落ちたときの差し戻しの文面は「コマンドが失敗した（exit N）」と、ログは人間だけが読めるという決まった文になる。何を直してほしいかは、あなたがログを読み、次のreviewゲートで差し戻すときのコメントで伝える</li>
+<li>エージェントの<code>run_privileged_command</code>と<code>masuda privileged-command run</code>からは動かせない。記録の<code>result.json</code>には、作業ツリーのスナップショットの代わりに<code>approved_commit</code>が残る</li>
+</ul>
 <h3 id="privileged-command-run">単体で試す（<code>masuda privileged-command run</code>）<a class="headerlink" href="#privileged-command-run" title="Permanent link">&para;</a></h3>
 <p>ワークフローを回す前に、特権コマンドのスクリプトが実機の特権VMで動くかを確かめる。ホストのDockerで通っても、特権VMでは起動のたびに空になるディレクトリ（<code>/run</code>等）やカーネルの違いで落ちることがある。</p>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>privileged-command<span class="w"> </span>run<span class="w"> </span>integration-test<span class="w">            </span><span class="c1"># 作業ツリーの今の状態で</span>
@@ -1829,7 +1895,7 @@ masuda<span class="w"> </span>privileged-command<span class="w"> </span>run<span
 </code></pre></div>
 <ul>
 <li><code>masuda serve</code>は要らない（<code>masuda-sandbox serve</code>へ直接つなぐ）。ワークスペースもClaudeも使わない</li>
-<li>宣言・承認・通信先は作業ツリーの<code>.masuda/settings.json</code>と<code>settings.local.json</code>から読む。承認が無ければ断る。イメージも作業ツリーの<code>.masuda/images/&lt;image&gt;/</code>からビルドするので、スクリプトを直すたびに流し直せる</li>
+<li>宣言・承認・通信先は作業ツリーの<code>.masuda/settings.json</code>と<code>settings.local.json</code>から読む。承認が無ければ断る。<a href="#privileged-secrets">秘密を使う宣言</a>は断る。イメージも作業ツリーの<code>.masuda/images/&lt;image&gt;/</code>からビルドするので、スクリプトを直すたびに流し直せる</li>
 <li><code>/workspace</code>に置くのは作業ツリーの今の状態（追跡しているファイルの未コミットの変更と、gitignoreされていない未追跡のファイル）。<code>--ref</code>ならそのコミットのツリー。あなたのリポジトリにはrefもオブジェクトも書かない（一時ディレクトリのリポジトリでツリーを作る）。gitignoreの判定には<code>.gitignore</code>・<code>.git/info/exclude</code>・<code>core.excludesFile</code>が効く</li>
 <li><code>inputs</code>は作業ツリーのgitignoreされたファイルから運ぶ（ワークフローではエージェントのVMから）</li>
 <li>コマンドの出力はそのまま端末に流れる。終了コードは特権コマンドのもの（シグナルなら128+番号、時間切れは124、masuda自体の失敗は1）。拒否した通信先があれば最後に一覧が出る。<code>exit-code</code>・<code>log</code>・<code>outputs/</code>は<code>--out</code>（無ければ新しい一時ディレクトリ）に置き、その場所を最後に出す</li>
