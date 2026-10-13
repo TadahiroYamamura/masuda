@@ -1,63 +1,58 @@
 # HANDOFF
 ## 作業項目
-2026-10-10〜11。v0.4.0を出し（手順5まで）、v0.5.0の#85・#83を実装してdevelopに入れた（`7b778c1`、push済み）。
+2026-10-13。v0.5.0に入れる#96（レビューで承認したコミットだけを、秘密を使う特権コマンドで新しいVMで動かす）のmasuda側（段1〜4）を実装した。前のセッション（10-11〜12）で#111（`prepare`）と#96の段0a・0bを済ませている。
 
-**v0.4.0**（#107）: masuda・engine・sandboxにv0.4.0のタグ（masuda `04daf1f`、engine `457039b`、sandbox `4dd3fb4`）。公開後の確認まで済み。残りは手順6（ハーネスの更新、v0.3.0→v0.4.0）と手順7（記録）。手順6はハーネスのワークスペースが空いてから、ユーザーがコマンドを打つ。リリース中に入れたもの:
-
-| コミット | 中身 |
-|---|---|
-| `53513d6`（#74） | 確認（許可）が要る操作をPermissionRequestのフックで拒否し、理由（無人実行であること、`mktemp -d`等の代わり）を返す。契約のフックの表に追加（ユーザー承認）。#74は閉じていない（下の次の一手） |
-| `15cc0c4` | 開発版のsandboxを`XDG_DATA_HOME`・`GONDOLIN_IMAGE_STORE`で切り離し、ハーネスと並べて確かめる手順をリリースのSkillに |
-| `281cf77` | リリースの1-0で、Claude Codeのchannelsの状態を見て#109に残す |
-
-**#85・#83**（ブランチ`feat/next-task-waiting`、5段＋liveの修正。契約の変更はユーザー承認）:
+**ブランチ**: masudaは`feat/privileged-secrets`（`feat/prepare`から切った。#111の5コミットを含む）。10-14にdevelopへマージしてpushした。
 
 | コミット | 中身 |
 |---|---|
-| `26b83f1` | `next_task`は最大90秒（`serve.Options.NextTaskWait`）待ち、無ければ`{kind: "waiting", reason: gate/question/triage/running, position}`。`report_result`・`report_concern`は記録した時点で返し、ホスト側のノードは`runCtl.kick()`の`advanceLoop`で回す（実行中に来た分はまとめる）。`stopRun`は`waitAdvance`で終わりを待つ |
-| `1807ee3` | `waiting`を返した後に状態が進む（タスク・done・blocked、ゲート・質問の解決）と、ゲストの`tmux send-keys -t claude-work`で`guest.WakeText`を送って起こす（`serve/wake.go`）。取りこぼしを防ぐため、`waiting`を決めた時点の`seq`と比べる。`masuda chat`でアタッチ中は送らず「起こす待ち（chat中）」、60秒で送り直し、3回で打ち切り。見回り（patrol）も拾う。フェイクは`fake/<id>/wakes`に記録 |
-| `8c325bc` | ループ規約（`loop-claude.md`の「待ち」）・`docs/guest-protocol.md`・`docs/design/overview.md`を書き換え。`MCP_TOOL_TIMEOUT`の7日は`ask_human`・特権コマンドのために残す |
-| `585bee1` | `next_task`の結果を返す前にゲストが切断していたら起こす。go-sdk v1.7.0（stateless）は切断してもハンドラーのctxを取り消さないので、`internal/mcp`の`withDisconnect`でHTTPリクエストのctxに結ぶ（`next_task`だけ） |
-| `1d4e05d` | live: planゲートを8分開けたままにしてから承認し、1周が終わる（`TestFixLapHoldsPlanGate`） |
-| `a1a46f7` | live: develop以前から落ちていた`TestEngineContinuationFallsBackAfterResume`を直す。DONEでVMが壊れて最後の`next_task`のIDが記録されないため、その確認を外した |
+| `fd79ef0` | 段1: `privilegedCommands.<name>`に`egress`・`secrets`。読み込みで次を弾く：placeholder以外、`CLAUDE_CODE_OAUTH_TOKEN`、トップレベルの`secrets`と同じ名前、秘密の`hosts`がそのコマンドの`egress`に無い、`inputs`との同時の宣言。`omitempty`なので既存の承認のハッシュは変わらない |
+| `9f2097b` | 段2: engineの`ApprovedCommit`をrunner→serveへ渡す。秘密付きの宣言では次のとおり：<br>・MCPからと`ApprovedCommit`が空のときは断る<br>・`staging.CheckHead`（公開した）で先頭と突き合わせる<br>・`refs/masuda/approved/<run-id>`を張ってbundleにする<br>・`RunJob.secrets`に値を入れて渡す<br>特権VMのegressは、承認の積に宣言の`egress`を足したもの。実行開始時に値の未登録を断る。`secret set`・`list`は特権コマンドの秘密も扱う。`privileged-command run`は秘密付きの宣言を断る。フェイクの`RunJob`はplaceholderを環境に置く。`buf generate`と`sha.go`も含む |
+| `e488e3d` | 段3: 秘密付きの宣言では、結果をメインのゲストに置かない（`MainID`を空にする）。engineへ返すログを決まった文に差し替える（記録には残す） |
+| `132ceaf` | `/masuda/privileged-commands.json`から秘密付きの宣言を除く（ユーザー承認） |
+| `c21df60` | 文書。`guest-protocol.md`の3か所は承認済みの契約変更。ほかに`settings.md`・`secrets-and-egress.md`（「秘密を使う特権コマンド」の節）・`overview.md` |
 
-ユーザーの判断: 起こすときに入力待ちかは見ない、`resume`の後は起こさない、protoは変えない（活動の`detail`だけ）、gate・questionのdecide/answerからのadvanceは同期のまま。`ask_human`の長い待ちは#110（v0.6）。
+ユーザーの判断（10-13）:
+- 秘密はトップレベルの`secrets`を参照せず、宣言に直接書く（案A）。参照にするとエージェントのVMにも渡るため
+- 通信先も宣言に`egress`を持たせる（案b）。トップレベルに書くと、エージェントのVMから本物の宛先へ届き、ロックやレート制限を招きうるため
+- 別のコマンドが同じ名前の秘密を違う`hosts`で宣言するのは弾かない
+- `secret list`に特権コマンドの秘密を並べる（protoは変えない）
+- `privileged-command run`では秘密付きの宣言を断る
+- 実機の確認では外部へ送信しない
 ## 完了した契約テスト
-- `GOWORK=off go build ./... && go vet ./... && go test ./...`がマージ後のdevelop（`7b778c1`）で緑。serve・contract・mcpは`-race`も緑。判定のテストは分岐を壊して落ちることを確かめた
-- 契約テスト: CM4（planゲートで`waiting`、待っている`next_task`とdecideの並行、reviewゲートで起こす）、CM12（triageで`waiting`→切断→起こす）、CM13（`report_result`がノードを待たずに返り、実行中なら`waiting`）
-- 実機（切り離した開発版のsandbox）: `TestFixLapHoldsPlanGate`（8分開けても止まらない、#85の再現が消えた）、アタッチ中は送らずデタッチ後に見回りが送る、継続テスト一式、`TestEngineContinuationFallsBackAfterResume`（59秒）。開発版のsandboxは止め、ハーネスのプロセス・ソケットが無事なことを確かめた
+- `go.work`のもとで、`go build ./...`・`go vet ./...`・`go test ./...`が緑。serve・contract・privilegedは`-race`も緑。`go.mod`のengineは`main`の擬似バージョン（`v0.4.1-0.20261012072726-d0c00e8c738e`）で、`GOWORK=off`でも緑
+- 契約テスト（C-M11に2件追加）：
+  - 秘密付きの特権ノードは承認済みのコミットのツリーで動く。次の6点を確かめる：<br>・値が未登録なら開始時に断る<br>・登録と一覧ができる<br>・MCPからの呼び出しは断る<br>・落ちたら差し戻しには決まった文だけが載り、ゲストに結果が無い<br>・ホストのログはplaceholderで、本物の値は無い<br>・承認の後に作業ツリーを書き換えても、承認済みのコミットで通ってpublishされる
+  - 差分の承認の前に届くと「no approved commit」でSUSPENDEDになり、記録は残らない
+- 判定の分岐（約20か所）を1つずつ壊し、対応するテストが落ちることを確かめた
+- 実機（開発版のsandbox、一時のプローブ、外部への送信なし）：
+  - `RunJob`の環境はplaceholderで、本物でも空でもない
+  - `refs/masuda/approved/`のツリーで動く
+  - `commit`ノードの無いワークフローでは断ってSUSPENDEDになる
 ## 未完と理由
-- v0.4.0の手順6・7: ハーネスのワークスペースが空くのを待っている
-- #85・#83・#74を閉じていない（コメントを付けて閉じる。#85・#83は配布されるまで開けておくかをユーザーに確かめる）
-- masuda-sandboxの`fix/destroy-with-ssh`（`8670a19`、sandbox#8、アタッチ中でも破棄が有限時間で終わる）: mainへのマージ・pushは未判断。masuda#84の前提
-- マイルストーンの無いIssue: #103・#104・#105・#106・#108（ハーネスから起票）、#96・#60。計画外は置き去りになるので振り分けが要る
-- Gondolinの#155への返事が未回答
+- sandbox `feat/run-job-secrets`とengine `feat/privileged-approved-commit`は10-14にmainへ入れてpushした（ユーザーが`!`で実行）。v0.5.0のリリースでengineにタグを打ったら、masudaの`go.mod`をそのタグに上げる
+- #9の残りは#114（v0.6）に分けた。#9・#96・#111は10-14に閉じた
+- engineからmasudaを通って秘密付きのノードが動く経路は、実機では通していない（エージェントを使う1周が要るため。ユーザーの判断で案Aに絞った）
+- v0.4.0の手順6・7、#85・#83・#74のクローズ、sandboxの`fix/destroy-with-ssh`（sandbox#8）の判断、マイルストーンの無いIssue（#103〜#106・#108・#60）の振り分け、Gondolin #155への返事：前のセッションから持ち越し
 ## 次の一手
-1. ハーネスが空いたらv0.4.0の手順6（Skill `release`）→手順7（記録、#107を閉じる）。手順6の後に、engine#9のfixerの`commit-message`とmasuda自身のイメージが`diskMiB 8192`で足りるかを見る
-2. #85・#83・#74を閉じる（上の確認の後）
-3. sandbox#8（`fix/destroy-with-ssh`）をmainへ入れる判断→masuda#84
-4. v0.5.0の残り: #84、#88、sandbox#11、#65（根本は上流待ち）
-5. マイルストーンの無いIssueをユーザーと振り分ける
-6. Gondolin #155に返事する（日本語の草案から）
+1. v0.5.0の残り（#84、#88、sandbox#11、#65）。終わったら、リリースでsandbox→engine→masudaの順にタグを打つ（タグのpushはユーザー）
+2. 持ち越しの項目（上の「未完と理由」の最後）
 ## 注意点
-- VMを使う確認は、ハーネスと並べて切り離した開発版のsandboxで回す（リリースのSkillに手順）:
-  `(cd ../masuda-sandbox && pnpm build && XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock")`、liveは`MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 GOWORK=off go test ./live/`。ハーネスの更新（手順6）だけはハーネスを空にしてから
-- 開発版のsandboxを止めるときは`pgrep -f`で探さない（自分のシェルにもマッチして止めた）。ソケットのパスで相手を確かめ、pidを指定する
-- masuda-sandboxのチェックアウトは`fix/destroy-with-ssh`のまま
-- Claude CodeはMCPの呼び出しを120秒でバックグラウンドへ回し、その300秒後に打ち切る。`next_task`の90秒はその内側に収めるため
-- `tmux send-keys`は、Claude Codeが作業中なら入力を溜めて後で送る。`tmux -C attach`もlist-clientsのクライアントに数えられる
-- ハーネスのセッションと決めたこと（2026-10-07）: 特権コマンドに秘密を渡す案は取りやめ（承認済みのコミットだけを新しいVMで秘密付きで動かす案は#96）。記録（`records/definitions/`）は不変の扱い。「観察してから承認する」一般の道具（学習モード）はsandboxの仕事
-- CIの結果で止めたい手順は`&&`でつなぐ（v0.3.0で、CIが赤いまま`main`を合わせた。タグの前に気づいて直した）
-- CIのランナーのgitは2.55（手元は2.43）。gitの既定の変化でCIだけ落ちることがある（#98がそれだった）
-- この端末（WSL2）は時計が前後に約10秒跳ぶ。壁時計の順に頼る処理・テストは壊れうる（`resume`のWIPの選び方、特権コマンドの記録の`started_at`）
-- `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`（キャッシュ済み）で生成する。プラグインの版は`buf.gen.yaml`で固定した。BSRは未認証だと短時間に数回の生成でレート制限（`resource_exhausted`）になり、1時間ほど解けない
-- `scripts/docs-prepare.sh`は`docs/`の`__MASUDA_VERSION__`をその場で書き換える。手元で回したら`git checkout -- docs/`で戻す（自分の未コミットの変更と混ざっていないか先に確かめる）
-- `scripts/gh.sh`のトークンにはActionsの再実行の権限が無い。再実行はユーザーがWebで行う
+- **engineの差分の承認が記録するコミットは、その実行の`commit`ノードが作ったものだけ**。`commit`ノードには承認済みの計画が要るので、エージェントを使わないワークフローでは秘密付きの特権ノードを通せない。実機で試すときは、`privileged.Run`を直接呼ぶプローブにする（今回の方法）
+- 自動モードの権限判定：masuda-sandboxの編集は`.claude/settings.local.json`の`Edit(/home/ubuntu/work/masuda-sandbox/**)`で通る。秘密関連のcommitは止まるので、ユーザーに`!`で打ってもらう。判定を迂回しない
+- 開発版のsandboxの起動：`(cd ../masuda-sandbox && pnpm build && XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock")`
+  - liveの実行：`MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 go test ./live/`
+  - 止めるとき：`pgrep`では見つからないことがある（プロセス名が`MainThread`）。`/proc/*/cmdline`でソケットのパスを確かめてから、そのpidを止める
+- ハーネス（sandbox 1008368・serve 1008554）は10-13 12:42から動いている。ハーネスの`RunJob`のVMは、ジョブが終われば消える（消えても異常ではない）
+- 走っているプローブを止めるときは、プローブのserveのソケットへ`go run ./cmd/masuda stop -socket <dataDir>/masuda.sock <id>`を送る。テストの後始末がVMを壊す。プローブの一時ディレクトリにはClaudeのトークンの写しが入るので、終わったら消す
+- チェックアウトの状態：masudaは`develop`、masuda-sandboxとmasuda-engineは`main`。masudaの`go.work`は隣のengineを使う
+- フェイクのsandboxは、cwdとHOMEだけをゲストのrootへ写す。コマンドの中の絶対パス（`/masuda/checks/X`等）は写らないので、フェイクでは動かない
+- `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`で作る。BSRは未認証だと短時間に数回でレート制限になる
+- mkdocsは入っていない。`scripts/docs-prepare.sh`は`docs/`をその場で書き換えるので、手元で回したら`git checkout -- docs/`で戻す
 - `prime.md`のdenyの一覧と`init.go`の`primeDenyRules`は、gate・secret・egress・privileged-commandにサブコマンドを足したら一緒に直す
 - ほかのセッションとはSendMessageで話せる（このリポジトリのセッションは`masuda-d3`、ハーネスは`oncall-pf-template-20`）。相手の依頼でIssueを起票・返事するときは、こちらのユーザーの判断を取ってから
-- Gondolinの作業の記録は`~/work/gondolin-notes/`（README.mdが入口）。ハーネスのgondolinは手で差し替えてあり、`masuda-sandbox`を入れ直すと元に戻る（`~/work/gondolin-notes/harness-hotfix/`の手順で当て直す。手順6で要る）
-- 上流（Gondolin）への投稿は、ユーザーがWebの画面から個人のアカウント（TadahiroYamamura）で行う。この端末の`gh`は社用のアカウント、`scripts/gh.sh`のトークンは自分のリポジトリだけで、どちらも使わない
-- この端末の`~/.gitconfig`は会社用。masuda・masuda-sandbox・masuda-engine・gondolinのcloneにはローカルで個人用の作者を入れてある
-- 「`masuda serve`がsandboxを子プロセスとして起動する」案は、ユーザーの判断で取りやめた
+- 上流（Gondolin）への投稿は、ユーザーがWebから個人のアカウントで行う。この端末の`gh`は社用で、`scripts/gh.sh`は自分のリポジトリだけ
+- この端末の`~/.gitconfig`は会社用。masuda・masuda-sandbox・masuda-engine・gondolinのcloneには、ローカルで個人用の作者を入れてある
+- この端末（WSL2）は時計が前後に約10秒跳ぶ
 ## 契約への提案
-無し（#85・#83の提案は承認されて実装した）。
+無し（#96の`guest-protocol.md`の3か所、sandbox.protoの`RunJobRequest.secrets`、engineの`PrivilegedTask.ApprovedCommit`は、いずれもユーザー承認のうえで変更済み）。
