@@ -846,6 +846,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権VMでDockerを動かす
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#privileged-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1597,6 +1608,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#privileged-docker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        特権VMでDockerを動かす
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#privileged-secrets" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1781,7 +1803,7 @@ masuda<span class="w"> </span>secret<span class="w"> </span>list
 <p>テストがrootやDockerを要するとき、そのコマンドだけを**別の使い捨てVM（rootで動く）**で実行させる仕組み。エージェントが動くVMはrootにしない。</p>
 <div class="admonition note">
 <p class="admonition-title">実機での確認</p>
-<p>特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、まだ実機で確かめていない。</p>
+<p>特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、カーネルのモジュールを手で展開する回避策のうえで動いた実績がある。masuda-sandboxがモジュールを展開するようになった後の<a href="#privileged-docker">手順</a>では、モジュールが読み込めるところまでを確かめてある。</p>
 </div>
 <h3 id="_6">宣言と承認<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h3>
 <div class="highlight"><span class="filename">.masuda/settings.json</span><pre><span></span><code><span class="p">{</span>
@@ -1843,6 +1865,30 @@ masuda<span class="w"> </span>privileged-command<span class="w"> </span>approve<
 <li>終了コード・ログの末尾・<code>outputs</code>に当たるファイルを回収し、写しをエージェントのVMの<code>/masuda/privileged/&lt;run-id&gt;/</code>（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）へ置く。特権VMは壊す</li>
 </ol>
 <p>特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの<code>workspaces/&lt;id&gt;/records/privileged/&lt;run-id&gt;/</code>に残る（<code>result.json</code>に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、<code>privileged</code>ノードから動いたときはその出現）。</p>
+<h3 id="privileged-docker">特権VMでDockerを動かす<a class="headerlink" href="#privileged-docker" title="Permanent link">&para;</a></h3>
+<p>testcontainersやdocker composeのように、テストの中でコンテナを動かすときの手順。</p>
+<ol>
+<li>
+<p>特権VMのイメージ（<code>.masuda/images/&lt;image&gt;/Dockerfile</code>）に、Docker（<code>docker.io</code>等）と<code>kmod</code>を入れる</p>
+<div class="highlight"><pre><span></span><code><span class="k">RUN</span><span class="w"> </span>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>--no-install-recommends<span class="w"> </span>docker.io<span class="w"> </span>kmod<span class="w"> </span>iptables<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span><span class="o">&amp;&amp;</span><span class="w"> </span>rm<span class="w"> </span>-rf<span class="w"> </span>/var/lib/apt/lists/*
+</code></pre></div>
+</li>
+<li>
+<p>特権コマンドのスクリプトの先頭で、モジュールを読み込み、cgroup2をマウントし、dockerdを起動する</p>
+<div class="highlight"><pre><span></span><code><span class="ch">#!/bin/sh -e</span>
+modprobe<span class="w"> </span>-a<span class="w"> </span>overlay<span class="w"> </span>bridge<span class="w"> </span>veth<span class="w"> </span>br_netfilter<span class="w"> </span>nf_tables<span class="w"> </span>nf_nat<span class="w"> </span>nf_conntrack<span class="w"> </span>xt_MASQUERADE<span class="w"> </span>nft_chain_nat<span class="w"> </span>nft_compat
+mountpoint<span class="w"> </span>-q<span class="w"> </span>/sys/fs/cgroup<span class="w"> </span><span class="o">||</span><span class="w"> </span>mount<span class="w"> </span>-t<span class="w"> </span>cgroup2<span class="w"> </span>none<span class="w"> </span>/sys/fs/cgroup
+dockerd<span class="w"> </span>&gt;<span class="w"> </span>/tmp/dockerd.log<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="p">&amp;</span>
+<span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>seq<span class="w"> </span><span class="m">30</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span><span class="w"> </span>docker<span class="w"> </span>info<span class="w"> </span>&gt;<span class="w"> </span>/dev/null<span class="w"> </span><span class="m">2</span>&gt;<span class="p">&amp;</span><span class="m">1</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="k">break</span><span class="p">;</span><span class="w"> </span>sleep<span class="w"> </span><span class="m">1</span><span class="p">;</span><span class="w"> </span><span class="k">done</span>
+<span class="c1"># ここからテスト</span>
+</code></pre></div>
+</li>
+<li>
+<p>コンテナのイメージを取りに行くなら、そのレジストリ（<code>registry-1.docker.io</code>等）をそのコマンドの<code>egress</code>か、トップレベルの<code>egress</code>に書く。前もってイメージに入れておけるものは入れておく方が速い</p>
+</li>
+</ol>
+<p>VMのカーネルのモジュールは、圧縮されたまま（<code>.ko.gz</code>）ではカーネルが読み込めない。masuda-sandboxは、VMを起動するたびに、イメージに<code>depmod</code>（kmod）があればモジュールを展開して索引を作り直す。展開には1〜2秒と、ディスクの約110MBを使う。ディスクの空きが足りなければ展開しない（<code>diskMiB</code>の既定の4096MiBなら足りる）。<code>modprobe</code>が<code>Exec format error</code>で失敗するなら、イメージに<code>kmod</code>が入っているか、<code>diskMiB</code>を小さくしすぎていないかを確かめる。</p>
 <h3 id="privileged-secrets">秘密を使う特権コマンド<a class="headerlink" href="#privileged-secrets" title="Permanent link">&para;</a></h3>
 <p>本物の外部サービス（認証基盤のテナント等）を相手にするE2Eのように、秘密が要るコマンドを流す。秘密と一緒に動くコードは、<strong>あなたがreviewゲートで差分を見て承認したコミット</strong>に限る。CIで秘密を使うのと同じ信頼の形で、CIを持たないリポジトリや、publishの前に本物との結合を確かめたいときに使う。</p>
 <div class="highlight"><span class="filename">.masuda/settings.json</span><pre><span></span><code><span class="p">{</span>
