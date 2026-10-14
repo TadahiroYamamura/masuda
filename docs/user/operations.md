@@ -173,3 +173,4 @@ jq -r 'select(.kind=="invalid" or .kind=="blocked") | .detail' exports/execution
 | `records/image-build.log` | イメージのビルドログ |
 | `records/definitions/`・`records/reviews/` | 始めたときに写した`.masuda/`と、固定したレビュー観点（`records/reviews/<集合>/`） |
 | `records/privileged/<run-id>/` | 特権コマンドの記録 |
+| `records/results/<出現ID>/` | 出現の結果の全文。`output.log`はexecノード（チェック等）の標準出力と標準エラー（末尾1MiBまで）、`feedback.md`はエージェントが終わるときに書いた理由（`report_result`の`feedback`）。実行ログの`finish`の`detail`は短く切られるので、全文がある出現では`detail`の先頭に`[全文: records/results/<出現ID>/<ファイル>]`が付く |

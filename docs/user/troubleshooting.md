@@ -165,6 +165,7 @@ ENV npm_config_offline=true
 ワークスペースの`exports/`（`~/.local/share/masuda/workspaces/<id>/exports/`）に、実行ログ（`execution-log.jsonl`）とVMの中のClaude Codeの会話ログ（`transcripts/`）が残る。どの終わり方（`done`・`stop`・`remove`）でも書き出され、`remove`の後も消えない（[exports](operations.md#exports)）。
 
 - どのノードでどう終わったかは実行ログで追う。`jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl`
+- `finish`の`detail`は短く切られる。チェックが何で落ちたか、エージェントが`stuck`等で終わった理由の全文は、`detail`の先頭の`[全文: records/results/<出現ID>/...]`が指すファイルにある（ワークスペースのディレクトリからの相対パス。`masuda watch`のfinishの行にも出る）
 - エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが`transcripts/-workspace/<session>.jsonl`、サブエージェントがその下の`subagents/agent-*.jsonl`
 - `blocked`と、ワークフローの途中で止まった`suspended`はVMを残しているので、会話ログはまだ書き出されていない。`masuda chat`で画面を見るか、`masuda stop`で書き出してから読む
 - `done`ではVMが壊れているので`masuda chat`は使えない。会話ログを読む

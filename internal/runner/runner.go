@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -109,6 +110,12 @@ const (
 	worktreeRef = "refs/masuda/worktree"
 	// logTailBytes はexec・privilegedノードの出力のうちフィードバックへ渡す末尾の長さ。
 	logTailBytes = 8 << 10
+	// resultOutput・resultFeedback は、出現の結果の全文を置くホストの記録のファイル名
+	// （records/results/<出現>/）。engineの記録と実行ログのdetailは短く切られるので、全文はここに残す。
+	resultOutput   = "output.log"
+	resultFeedback = "feedback.md"
+	// resultOutputMax はresultOutputに残すexecノードの出力の末尾の長さ。
+	resultOutputMax = 1 << 20
 )
 
 // InDir・OutDir はその出現の入力・出力のゲストのパス。
@@ -403,6 +410,9 @@ func (r *Runner) RunCommand(ctx context.Context, t engine.CommandTask) (engine.C
 		out.ExitCode = -1
 	}
 	log := append(append([]byte(nil), res.Stdout...), res.Stderr...)
+	if len(log) > 0 {
+		r.writeResult(t.Occurrence, resultOutput, log[max(0, len(log)-resultOutputMax):])
+	}
 	if len(log) > logTailBytes {
 		log = log[len(log)-logTailBytes:]
 	}
@@ -1125,6 +1135,11 @@ func (r *Runner) logPath() string { return filepath.Join(r.ws.RecordsDir(), "exe
 // Log は実行記録を1行追記する。engine.Runner.Logはエラーを返せないので、書けなかった
 // 行は落とす（engine自身の記録はStoreにあり、これは人間とexports向けの写し）。
 func (r *Runner) Log(e engine.Event) {
+	// 全文の在りかは先頭に置く。`masuda watch`はdetailの1行目しか出さず、エージェントの理由は
+	// 複数行のことが多いので、末尾に置くと見えなくなる。
+	if e.Kind == "finish" {
+		e.Detail = strings.TrimSpace(r.resultPointers(e.Occurrence) + " " + e.Detail)
+	}
 	b, err := json.Marshal(e)
 	if err != nil {
 		return
@@ -1145,6 +1160,67 @@ func (r *Runner) Log(e engine.Event) {
 	if r.o.OnLog != nil {
 		r.o.OnLog(e)
 	}
+}
+
+// resultFile はoccの結果の全文を置くホストのパス（records/results/<出現>/<name>）。
+func (r *Runner) resultFile(occ, name string) string {
+	return filepath.Join(r.ws.RecordsDir(), "results", occ, name)
+}
+
+// writeResult はoccの結果の全文をホストの記録に書く。書けなくてもノードの実行は止めず、
+// ログに出す（失われるのは後から読むための写しだけで、engineへ渡す結果は変わらない）。
+func (r *Runner) writeResult(occ, name string, b []byte) {
+	p := r.resultFile(occ, name)
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		log.Printf("masuda: writing the result of %s: %v", occ, err)
+		return
+	}
+	if err := os.WriteFile(p, b, 0o600); err != nil {
+		log.Printf("masuda: writing the result of %s: %v", occ, err)
+	}
+}
+
+// WriteFeedback はエージェントが報告したfeedbackの全文をホストの記録に書く。engineが実行ログの
+// finishを書くのは報告を受け付けるときなので、その前に呼ぶ（Logがfinishにパスを添えられるように）。
+// engineが受け付けなかったらRemoveFeedbackで消す。
+func (r *Runner) WriteFeedback(occ, feedback string) error {
+	if err := checkOcc(occ); err != nil {
+		return err
+	}
+	if strings.TrimSpace(feedback) == "" {
+		return nil
+	}
+	r.writeResult(occ, resultFeedback, []byte(feedback))
+	return nil
+}
+
+// RemoveFeedback はWriteFeedbackで書いたものを消す。
+func (r *Runner) RemoveFeedback(occ string) {
+	if checkOcc(occ) != nil {
+		return
+	}
+	if err := os.Remove(r.resultFile(occ, resultFeedback)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		log.Printf("masuda: removing the result of %s: %v", occ, err)
+	}
+}
+
+// resultPointers はoccの結果の全文のファイルがあれば、ワークスペースのディレクトリからの相対パスを
+// 実行ログのfinishのdetailに添える形で返す。detailはengineが短く切るので、全文の在りかを示す。
+func (r *Runner) resultPointers(occ string) string {
+	if checkOcc(occ) != nil {
+		return ""
+	}
+	var s string
+	for _, name := range []string{resultOutput, resultFeedback} {
+		p := r.resultFile(occ, name)
+		if _, err := os.Stat(p); err != nil {
+			continue
+		}
+		if rel, err := filepath.Rel(r.ws.Dir, p); err == nil {
+			s += " [全文: " + filepath.ToSlash(rel) + "]"
+		}
+	}
+	return s
 }
 
 func shellQuote(s string) string {
