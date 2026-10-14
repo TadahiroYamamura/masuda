@@ -8,6 +8,7 @@
 | #85・#83・#74 | 10-11までに実装済みだった。修正が`origin/develop`に入っていることを確かめて閉じた | ― |
 | #65・#84 | 閉じた。根治はsandbox#9（gondolinのTCP）・sandbox#8（ssh転送）で追う。新しいIssueは立てない（ユーザー判断） | ― |
 | sandbox#11 | VMの起動の後（`vm.start()`の直後）に、ゲストで`.ko.gz`を展開して`depmod`する。depmodの無いイメージと、空きが足りないディスクでは何もしない。masudaの文書に「特権VMでDockerを動かす」節 | sandbox `cac186f`（`main`）、masuda `ad97d24`。**Issueはまだ閉じていない** |
+| ハーネスの報告（10-14） | ハーネスのセッションから3件。(1)execの出力 (2)finishのdetailが切れる、は全文が`records/engine.json`の`<run>/result/<出現>`のfeedback（base64のJSON）にしか無く辿れない件として**#115**（v0.5.0）にした。(3)承認の`--comment`は次のノードに渡っていたが、タスクファイルで「前回からの差し戻し」の見出しだった。見出しを「前のノード・ゲートからの申し送り」に変えた（契約の`guest-protocol.md:81`の記述も、承認のうえで直した。契約テストC-M5を1件追加） | `30c67c2`（マージ`94a147a`） |
 | #113 | レビュー観点を段階ごとの集合（`.masuda/reviews/<集合>/`）に分け、ゲストの`/masuda/reviews/<集合>/`へ届ける（契約変更・承認済み） | `d978e2d`・`e13237e`・`e55effa`（マージ`651b146`）。**Issueはまだ閉じていない** |
 
 #113の形（ユーザーの判断、10-14）:
@@ -27,7 +28,7 @@ sandbox#11の形（ユーザー判断、10-14）: 案A'。ビルドの設定の`
 - #113は実VMで確かめていない。ゲストの`WriteFile`が親ディレクトリを作ること（`sandbox.proto`）に頼っている。次の実機の周回で、`/masuda/reviews/implement/`に15観点があり、reviewerがそこを読むことを見る。見たら#113を閉じる
 - **ハーネスを上げるときは、ハーネスのリポジトリの`.masuda/reviews/*.md`を`.masuda/reviews/implement/`へ移す**。移さないと`run`がエラーになる。reviewerを`.masuda/agents/`で上書きしていれば、その中の`/masuda/reviews/*.md`も直す
 - #88: 本物の`masuda serve`の見回りの中で警告が出る様子は、実機で見ていない（エージェントを使う1周が要る）
-- v0.5.0で開いているのは、実機の確認待ちの#113とsandbox#11だけ。sandbox#8の保険`8670a19`（`fix/destroy-with-ssh`）は、sandboxのmainに入っていない
+- v0.5.0で開いているのは、実機の確認待ちの#113とsandbox#11と、未着手の#115。sandbox#8の保険`8670a19`（`fix/destroy-with-ssh`）は、sandboxのmainに入っていない
 - 前のセッションから持ち越し：
   - engineのタグを打ったら、masudaの`go.mod`をそのタグに上げる
   - v0.4.0の手順6・7
@@ -35,9 +36,10 @@ sandbox#11の形（ユーザー判断、10-14）: 案A'。ビルドの設定の`
   - マイルストーンの無いIssue（#103〜#106・#108・#60）の振り分け
   - Gondolin #155への返事
 ## 次の一手
-1. v0.5.0をリリースする（Skill `release`。sandbox→engine→masudaの順にタグを打つ。タグのpushはユーザー）。engineのタグを打ったら、masudaの`go.mod`をそのタグに上げる
-2. ハーネスを上げる。その前に、ハーネスのリポジトリの`.masuda/reviews/*.md`を`implement/`へ移す
-3. ハーネスで軽いタスクを動かし、#113（`/masuda/reviews/implement/`に15観点、reviewerがそこを読む）を確かめて閉じる（ユーザーが行う予定）。特権VMでdockerdを動かせるならsandbox#11も確かめて閉じる
+1. #115に着手するか、v0.6に回してリリースするかをユーザーに確かめる
+2. v0.5.0をリリースする（Skill `release`。sandbox→engine→masudaの順にタグを打つ。タグのpushはユーザー）。engineのタグを打ったら、masudaの`go.mod`をそのタグに上げる
+3. ハーネスを上げる。その前に、ハーネスのリポジトリの`.masuda/reviews/*.md`を`implement/`へ移す
+4. ハーネスで軽いタスクを動かし、#113（`/masuda/reviews/implement/`に15観点、reviewerがそこを読む）を確かめて閉じる（ユーザーが行う予定）。特権VMでdockerdを動かせるならsandbox#11も確かめて閉じる
 ## 注意点
 - **engineの差分の承認が記録するコミットは、その実行の`commit`ノードが作ったものだけ**。`commit`ノードには承認済みの計画が要るので、エージェントを使わないワークフローでは秘密付きの特権ノードを通せない。実機で試すときは、`privileged.Run`を直接呼ぶプローブにする（今回の方法）
 - 自動モードの権限判定：masuda-sandboxの編集は`.claude/settings.local.json`の`Edit(/home/ubuntu/work/masuda-sandbox/**)`で通る。秘密関連のcommitは止まるので、ユーザーに`!`で打ってもらう。判定を迂回しない
