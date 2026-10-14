@@ -31,7 +31,7 @@
 
 | RPC | コード | 条件 |
 |---|---|---|
-| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない。`settings.json`の`agents`に定義に無い役の名前がある。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
+| `Run` | `invalid_argument` | `repo_root`が不正。`workflow`か`branch`が空。`.masuda/`を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。`workflow`が定義に無い。ワークフローの`inputs`が足りない。`.masuda/reviews/`の観点ファイルのfrontmatterが読めない・観点が集合のディレクトリに入っていない（直下の`.md`、2段以上の深さ、`.`で始まる集合）。`settings.json`の`agents`に定義に無い役の名前がある。ブランチ名が不正。`base`が実リポジトリに無い。既存のブランチで分岐元を決められない（`base`を渡す） |
 | | `failed_precondition` | `settings.json`・`settings.local.json`が読めない（JSONとして壊れている、知らないキーがある、`stallAfter`が不正）。起動に要るものが足りない: Claudeのトークン・宣言した秘密の値が無い、`plaintext`の秘密が未承認、イメージのDockerfileが無い、`envFiles`の公開値が`vars`に無い、ワークフローが使う`checks`が宣言されていない、ワークフロー（呼び出す部品のワークフローを含む）が届く`privileged`ノードの特権コマンドが宣言されていない・検査に通らない・承認されていない（承認の後に宣言が変わったものを含む）。sandbox serviceの契約（`GetServerInfo`の`contract_sha256`）がmasudaと違う、または`GetServerInfo`を持たない古いsandbox（理由に両方のバージョンが入る） |
 | | `unavailable` | sandbox serviceに届かない（ワークスペースは作らない） |
 | | `already_exists` | ワークフローがpublishを含み、`branch`が実リポジトリに既にある（publishを含まないワークフローは既存のブランチで動かせる） |

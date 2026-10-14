@@ -2,17 +2,45 @@
 
 `develop`・`fix`・`review`のレビューは、**観点**に沿って行う。観点は「何を見るか」を書いたMarkdownのファイル1つで、レビューの役のエージェントは1つのセッションの中で観点を1つずつ順に当て、観点ごとに指摘を書く。
 
-## 置き場所と重ね方
+## 置き場所と重ね方 {#sets}
 
-- masudaは15の観点を同梱している。`masuda init`は、それを対象リポジトリの`.masuda/reviews/`に書き出す
-- 実行に使う観点は「同梱の観点」に「`.masuda/reviews/*.md`」を重ねたもの。同じファイル名のものは丸ごと置き換え、同梱に無いファイル名のものは足される
+観点は、レビューの段階ごとに**集合**（`.masuda/reviews/<集合>/`のディレクトリ）に分けて置く。VMの中では`/masuda/reviews/<集合>/`に届く。
+
+```text
+.masuda/reviews/
+  implement/        実装のレビュー（同梱のreviewer・review-checkerが読む）
+    dead-code.md
+    team-rule.md
+  implement-plan/   例: 実装計画のレビュー（自分の役が読む）
+    layering.md
+  test-plan/        例: テスト計画のレビュー（自分の役が読む）
+    expected-values.md
+```
+
+- `implement`は実装のレビューの集合。masudaは15の観点をこの集合に同梱していて、`masuda init`はそれを`.masuda/reviews/implement/`に書き出す
+  - 実行に使うのは「同梱の観点」に「`.masuda/reviews/implement/*.md`」を重ねたもの。同じファイル名のものは丸ごと置き換え、同梱に無いファイル名のものは足される
+  - `.masuda/reviews/`をコミットしていないリポジトリでも、同梱の観点は使われる
+- ほかの集合（名前は自由）は同梱の観点と重ねない。置いたものだけが届く。計画に当てる観点に、コードの粒度の同梱の観点が混ざらない
 - ファイル名（拡張子を除く）が観点のID
-- `masuda run`の時点の内容で固定され、その実行の終わりまで（`resume`しても）変わらない
-- `.masuda/reviews/`をコミットしていないリポジトリでも、同梱の観点は使われる
+- どの集合も、`masuda run`の時点の内容で固定され、その実行の終わりまで（`resume`しても）変わらない
+- 次の置き方は`masuda run`がエラーにする。黙って外れると、置いたつもりの観点が使われないことに気づけないため
+  - `.masuda/reviews/`の直下の`.md`（集合に入っていない）
+  - 集合の中のディレクトリ（集合は1段だけ）
+  - `.`で始まる集合
+
+### 段階ごとの集合を役に読ませる {#set-roles}
+
+`implement`以外の集合は、同梱の役は読まない。使う役の定義（`.masuda/agents/<役>.md`）に、どの集合を読むかを書く。例えば実装計画を書く役に、書き終えた計画を`implement-plan`の観点で点検させるなら、次のように書く。
+
+```markdown
+書き終えたら、`/masuda/reviews/implement-plan/*.md`をすべて読み、各観点に照らして計画を点検する。
+```
+
+`enable`・frontmatterの扱いは、どの集合でも同じ。
 
 ## ファイルの形
 
-```markdown title=".masuda/reviews/sql-migration.md"
+```markdown title=".masuda/reviews/implement/sql-migration.md"
 ---
 name: "マイグレーションの後方互換"
 trigger: "migrations/ の下のファイルを追加・変更する変更"
@@ -27,13 +55,13 @@ enable: true
 | `trigger` | 途中レビューでこの観点を見るべき変更の条件を、自然文で書く。途中レビューは、自分のワークフローで`interim-`で始まる名前のノードにreviewerを置いたときのレビューで、同梱の`develop`・`fix`・`review`は最終レビューだけなので全観点を当て、`trigger`は効かない。書かなければ、その観点は途中レビューでも常に当てられる |
 | `enable` | 観点を使うかどうか。`false`ならその観点は実行に使われない。書かなければ使う |
 
-同梱の観点を外すには、`.masuda/reviews/`の同じファイル名のファイル（`masuda init`が書き出したもの）を`enable: false`にする。frontmatterがYAMLとして読めない観点ファイルがあると、`masuda run`は定義の誤りとしてエラーで返る。
+同梱の観点を外すには、`.masuda/reviews/implement/`の同じファイル名のファイル（`masuda init`が書き出したもの）を`enable: false`にする。frontmatterがYAMLとして読めない観点ファイルがあると、`masuda run`は定義の誤りとしてエラーで返る。
 
 ## どこで使われるか
 
 | 場面 | 使う観点 |
 |---|---|
-| `develop`・`fix`の最後のレビュー、`review`ワークフロー | すべての観点。同梱のワークフローのレビューはこれだけ |
+| `develop`・`fix`の最後のレビュー、`review`ワークフロー | `implement`の集合のすべての観点。同梱のワークフローのレビューはこれだけ |
 | 途中レビュー（自分のワークフローで`interim-`で始まる名前のノードにreviewerを置いたとき） | レビューの役（`reviewer`）が、差分を各観点の`trigger`に照らし、該当しない観点を飛ばす。迷ったら飛ばしてよい（見逃しは最後のレビューで拾う前提）。`trigger`の無い観点は飛ばさず常に当てる |
 
 レビューの後、別の役（`review-checker`）が全観点の指摘をまとめて正確かを確かめ、誤りは取り下げる。指摘は`findings`という台帳に溜まり、自動で直してよいもの（`autofix: true`）は直す役（`fixer`）がまとめて直し、別の役（`rechecker`）が解消を確かめる。fixerは実装したサブエージェントの続きとして動くので、実装の意図に照らして誤っている・計画の判断に反すると考えた指摘には、直さずに反論できる（台帳の指摘に`disputed`と理由`response`が付く）。recheckerは反論が妥当なら指摘を取り下げ、妥当でなければ直すよう戻す。取り下げられずに残った反論は、人間の判断待ちの指摘としてレポートに載る。最後にレポートを書く役が、残った指摘と直した指摘をまとめる。

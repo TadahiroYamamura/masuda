@@ -171,5 +171,5 @@ jq -r 'select(.kind=="invalid" or .kind=="blocked") | .detail' exports/execution
 | `records/gates/`・`records/questions/` | 開いたゲート・質問と、その判断・回答 |
 | `records/hooks.jsonl` | VMの中のClaude Codeのフックの記録 |
 | `records/image-build.log` | イメージのビルドログ |
-| `records/definitions/`・`records/reviews/` | 始めたときに写した`.masuda/`と、固定したレビュー観点 |
+| `records/definitions/`・`records/reviews/` | 始めたときに写した`.masuda/`と、固定したレビュー観点（`records/reviews/<集合>/`） |
 | `records/privileged/<run-id>/` | 特権コマンドの記録 |
