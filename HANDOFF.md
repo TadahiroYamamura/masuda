@@ -2,7 +2,7 @@
 ## 作業項目
 2026-10-14。v0.5.0の#88（VMの中のメモリ・ディスクの逼迫にホストから気づけない）を実装した。あわせて、実装済みだった#85・#83・#74を閉じた。
 
-**ブランチ**: masudaは`feat/vm-resource-warning`（developの`c992956`から）。developへのマージとpushはまだ。
+**ブランチ**: `feat/vm-resource-warning`（developの`c992956`から）で作り、10-14にdevelopへマージしてpushした。ローカルのブランチは消した。
 
 | コミット | 中身 |
 |---|---|
@@ -32,8 +32,7 @@
   - Gondolin #155への返事
 ## 次の一手
 1. v0.5.0の残りのどれに移るかをユーザーに確かめる（#113、sandbox#11、#84・#65の判断）
-2. `feat/vm-resource-warning`をdevelopへマージする（ユーザーの指示を待つ）
-3. v0.5.0の残りが終わったら、リリースでsandbox→engine→masudaの順にタグを打つ（タグのpushはユーザー）
+2. v0.5.0の残りが終わったら、リリースでsandbox→engine→masudaの順にタグを打つ（タグのpushはユーザー）
 ## 注意点
 - **engineの差分の承認が記録するコミットは、その実行の`commit`ノードが作ったものだけ**。`commit`ノードには承認済みの計画が要るので、エージェントを使わないワークフローでは秘密付きの特権ノードを通せない。実機で試すときは、`privileged.Run`を直接呼ぶプローブにする（今回の方法）
 - 自動モードの権限判定：masuda-sandboxの編集は`.claude/settings.local.json`の`Edit(/home/ubuntu/work/masuda-sandbox/**)`で通る。秘密関連のcommitは止まるので、ユーザーに`!`で打ってもらう。判定を迂回しない
@@ -43,7 +42,7 @@
   - 止めるとき：`pgrep`では見つからないことがある（プロセス名が`MainThread`）。`/proc/*/cmdline`でソケットのパスを確かめてから、そのpidを止める
 - ハーネス（sandbox 1008368・serve 1008554）は10-13 12:42から動いている。ハーネスの`RunJob`のVMは、ジョブが終われば消える（消えても異常ではない）
 - 走っているプローブを止めるときは、プローブのserveのソケットへ`go run ./cmd/masuda stop -socket <dataDir>/masuda.sock <id>`を送る。テストの後始末がVMを壊す。プローブの一時ディレクトリにはClaudeのトークンの写しが入るので、終わったら消す
-- チェックアウトの状態：masudaは`feat/vm-resource-warning`（developへは未マージ・未push）、masuda-sandboxとmasuda-engineは`main`。masudaの`go.work`は隣のengineを使う
+- チェックアウトの状態：masudaは`develop`、masuda-sandboxとmasuda-engineは`main`。masudaの`go.work`は隣のengineを使う
 - フェイクのsandboxは、cwdとHOMEだけをゲストのrootへ写す。コマンドの中の絶対パス（`/masuda/checks/X`等）は写らないので、フェイクでは動かない
 - `buf`は入っていない。`go run github.com/bufbuild/buf/cmd/buf@v1.73.0 generate`で作る。BSRは未認証だと短時間に数回でレート制限になる
 - mkdocsは入っていない。`scripts/docs-prepare.sh`は`docs/`をその場で書き換えるので、手元で回したら`git checkout -- docs/`で戻す
