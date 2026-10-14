@@ -177,7 +177,7 @@ masuda env import .env
 テストがrootやDockerを要するとき、そのコマンドだけを**別の使い捨てVM（rootで動く）**で実行させる仕組み。エージェントが動くVMはrootにしない。
 
 !!! note "実機での確認"
-    特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、まだ実機で確かめていない。
+    特権VMの起動、作業ツリーの受け渡し、rootでのコマンドの実行（PostgreSQLを起動してテストを流す）、結果の回収は、実際のVMで確かめてある。特権VMの中でdockerdを動かす使い方（testcontainers等）は、カーネルのモジュールを手で展開する回避策のうえで動いた実績がある。masuda-sandboxがモジュールを展開するようになった後の[手順](#privileged-docker)では、モジュールが読み込めるところまでを確かめてある。
 
 ### 宣言と承認
 
@@ -246,6 +246,32 @@ nodes:
 4. 終了コード・ログの末尾・`outputs`に当たるファイルを回収し、写しをエージェントのVMの`/masuda/privileged/<run-id>/`（`exit-code`・`log`・`outputs/`）へ置く。特権VMは壊す
 
 特権VMはClaudeのトークンも、masudaへの経路も持たない。記録はホストの`workspaces/<id>/records/privileged/<run-id>/`に残る（`result.json`に名前・宣言のハッシュ・時刻・終了コード・回収したファイル・回収できなかったものの説明、`privileged`ノードから動いたときはその出現）。
+
+### 特権VMでDockerを動かす {#privileged-docker}
+
+testcontainersやdocker composeのように、テストの中でコンテナを動かすときの手順。
+
+1. 特権VMのイメージ（`.masuda/images/<image>/Dockerfile`）に、Docker（`docker.io`等）と`kmod`を入れる
+
+    ```dockerfile
+    RUN apt-get update && apt-get install -y --no-install-recommends docker.io kmod iptables \
+        && rm -rf /var/lib/apt/lists/*
+    ```
+
+2. 特権コマンドのスクリプトの先頭で、モジュールを読み込み、cgroup2をマウントし、dockerdを起動する
+
+    ```sh
+    #!/bin/sh -e
+    modprobe -a overlay bridge veth br_netfilter nf_tables nf_nat nf_conntrack xt_MASQUERADE nft_chain_nat nft_compat
+    mountpoint -q /sys/fs/cgroup || mount -t cgroup2 none /sys/fs/cgroup
+    dockerd > /tmp/dockerd.log 2>&1 &
+    for i in $(seq 30); do docker info > /dev/null 2>&1 && break; sleep 1; done
+    # ここからテスト
+    ```
+
+3. コンテナのイメージを取りに行くなら、そのレジストリ（`registry-1.docker.io`等）をそのコマンドの`egress`か、トップレベルの`egress`に書く。前もってイメージに入れておけるものは入れておく方が速い
+
+VMのカーネルのモジュールは、圧縮されたまま（`.ko.gz`）ではカーネルが読み込めない。masuda-sandboxは、VMを起動するたびに、イメージに`depmod`（kmod）があればモジュールを展開して索引を作り直す。展開には1〜2秒と、ディスクの約110MBを使う。ディスクの空きが足りなければ展開しない（`diskMiB`の既定の4096MiBなら足りる）。`modprobe`が`Exec format error`で失敗するなら、イメージに`kmod`が入っているか、`diskMiB`を小さくしすぎていないかを確かめる。
 
 ### 秘密を使う特権コマンド {#privileged-secrets}
 
