@@ -12,30 +12,38 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-// Merge は同梱の観点に、対象リポジトリの観点（repo、nil可）を重ねた`<id>.md`→中身を返す。
-// repoの`<id>.md`は同じidの同梱観点を丸ごと置き換え、同梱に無いidは足される。
-// 直下の`.md`の通常ファイルだけを読む（サブディレクトリは観点ではない）。
+// ImplementSet は実装のレビューの集合の名前。同梱の観点はこの集合に重なり、同梱の
+// reviewer・review-checkerと`Runner.Items(perspectives)`はこの集合を読む。
+const ImplementSet = "implement"
+
+// Merge は対象リポジトリの観点（repo、nil可）を集合ごとに読み、`<集合>/<id>.md`→中身を返す。
+// ImplementSetだけは同梱の観点に重ね、repoの`<id>.md`が同じidの同梱観点を丸ごと置き換える。
+// ほかの集合は同梱と重ねない（計画向けの集合に、コードの粒度の同梱の観点が混ざらないように）。
+//
+// repoの直下の`.md`・2段以上の深さ・`.`で始まる集合はエラーにする。読み飛ばすと、置いたつもりの
+// 観点が黙って使われなくなるため。集合の中の`.md`以外のファイルは今までどおり無視する。
 func Merge(repo fs.FS) (map[string][]byte, error) {
 	all := map[string][]byte{}
-	for _, src := range []fs.FS{Builtin(), repo} {
-		if src == nil {
-			continue
-		}
-		entries, err := fs.ReadDir(src, ".")
-		if errors.Is(err, fs.ErrNotExist) {
-			continue
-		} else if err != nil {
+	if err := readSet(Builtin(), ".", ImplementSet, all); err != nil {
+		return nil, err
+	}
+	if repo != nil {
+		entries, err := fs.ReadDir(repo, ".")
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
 		for _, e := range entries {
-			if !e.Type().IsRegular() || path.Ext(e.Name()) != ".md" || strings.HasPrefix(e.Name(), ".") {
-				continue
+			switch {
+			case e.IsDir():
+				if strings.HasPrefix(e.Name(), ".") {
+					return nil, fmt.Errorf("%s/: a set name must not start with \".\"", e.Name())
+				}
+				if err := readSet(repo, e.Name(), e.Name(), all); err != nil {
+					return nil, err
+				}
+			case isPerspective(e):
+				return nil, fmt.Errorf("%s: perspectives are grouped into sets; move it to %s/ (the set for reviewing the implementation) or another set directory", e.Name(), ImplementSet)
 			}
-			b, err := fs.ReadFile(src, e.Name())
-			if err != nil {
-				return nil, err
-			}
-			all[e.Name()] = b
 		}
 	}
 	// 重ねた後で外すので、リポジトリの同名ファイルを`enable: false`にすれば同梱の観点も外せる。
@@ -49,6 +57,33 @@ func Merge(repo fs.FS) (map[string][]byte, error) {
 		}
 	}
 	return all, nil
+}
+
+// readSet はsrcのdirの`.md`をsetの観点としてallへ読む。dirの中のディレクトリはエラー。
+func readSet(src fs.FS, dir, set string, all map[string][]byte) error {
+	entries, err := fs.ReadDir(src, dir)
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			return fmt.Errorf("%s/%s/: sets cannot be nested", set, e.Name())
+		}
+		if !isPerspective(e) {
+			continue
+		}
+		b, err := fs.ReadFile(src, path.Join(dir, e.Name()))
+		if err != nil {
+			return err
+		}
+		all[set+"/"+e.Name()] = b
+	}
+	return nil
+}
+
+// isPerspective はeが観点のファイル（`.`で始まらない`.md`の通常ファイル）か。
+func isPerspective(e fs.DirEntry) bool {
+	return e.Type().IsRegular() && path.Ext(e.Name()) == ".md" && !strings.HasPrefix(e.Name(), ".")
 }
 
 // enabled は観点ファイルのfrontmatterの`enable`を返す。frontmatterやキーが無ければ有効。
@@ -71,7 +106,7 @@ func enabled(b []byte) (bool, error) {
 	return fm.Enable == nil || *fm.Enable, nil
 }
 
-// Snapshot はMerge(repo)の結果をdstへ書く。実行はこの写しだけを観点として使う
+// Snapshot はMerge(repo)の結果をdstへ`<集合>/<id>.md`の形で書く。実行はこの写しだけを観点として使う
 // （ホストの`Runner.Items(perspectives)`とゲストの`/masuda/reviews/`の両方）。
 // dstが既にあれば作り直さない: 再開しても、実行開始時と同じ観点で続けるため。
 func Snapshot(repo fs.FS, dst string) error {
@@ -88,29 +123,39 @@ func Snapshot(repo fs.FS, dst string) error {
 	}
 	defer os.RemoveAll(tmp)
 	for name, b := range all {
-		if err := os.WriteFile(filepath.Join(tmp, name), b, 0o600); err != nil {
+		p := filepath.Join(tmp, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(p, b, 0o600); err != nil {
 			return err
 		}
 	}
 	return os.Rename(tmp, dst)
 }
 
-// Load はSnapshotで書いたdirの`<id>.md`→中身を返す。
+// Load はSnapshotで書いたdirの`<集合>/<id>.md`→中身を返す。
 func Load(dir string) (map[string][]byte, error) {
-	entries, err := os.ReadDir(dir)
+	sets, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 	out := map[string][]byte{}
-	for _, e := range entries {
-		if !e.Type().IsRegular() || path.Ext(e.Name()) != ".md" || strings.HasPrefix(e.Name(), ".") {
-			continue
-		}
-		b, err := os.ReadFile(filepath.Join(dir, e.Name()))
+	for _, set := range sets {
+		entries, err := os.ReadDir(filepath.Join(dir, set.Name()))
 		if err != nil {
 			return nil, err
 		}
-		out[e.Name()] = b
+		for _, e := range entries {
+			if !isPerspective(e) {
+				continue
+			}
+			b, err := os.ReadFile(filepath.Join(dir, set.Name(), e.Name()))
+			if err != nil {
+				return nil, err
+			}
+			out[set.Name()+"/"+e.Name()] = b
+		}
 	}
 	return out, nil
 }

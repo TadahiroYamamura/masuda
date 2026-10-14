@@ -121,7 +121,7 @@ outcomes:
 | `workflows/review` | なし | 分岐元からの差分をレビューし、レポートを残して終える（反映しない） |
 | `workflows/implement/build-step` | `step` | `develop`の部品。計画の1ステップを実装・テスト・コミットする |
 | `workflows/fix/build-step` | `step` | `fix`の部品。計画の1ステップを実装・テスト・コミットする |
-| `workflows/review/perspectives` | `diff` | 部品。全レビュー観点を1つのセッションで差分に当て、別の役が指摘の正確さと見落としを確かめる |
+| `workflows/review/perspectives` | `diff` | 部品。実装のレビューの観点（`implement`の集合）を1つのセッションですべて差分に当て、別の役が指摘の正確さと見落としを確かめる |
 | `workflows/review/cross-cutting` | `diff` | 部品。観点に分けにくい横断的な問題を探して確かめる |
 
 | `workflows/smoke` | `instructions` | 疎通確認用。指示をそのまま書き返して終える |

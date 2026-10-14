@@ -149,7 +149,7 @@ func initRepo(root string) ([]string, error) {
 		if err != nil {
 			return created, err
 		}
-		if err := write(filepath.Join(config.DirName, "reviews", name), data); err != nil {
+		if err := write(filepath.Join(config.DirName, "reviews", perspectives.ImplementSet, name), data); err != nil {
 			return created, err
 		}
 	}

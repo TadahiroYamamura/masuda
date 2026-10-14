@@ -31,6 +31,7 @@ import (
 	"github.com/TadahiroYamamura/masuda/gen/masuda/sandbox/v1/sandboxv1connect"
 	"github.com/TadahiroYamamura/masuda/internal/config"
 	"github.com/TadahiroYamamura/masuda/internal/guest"
+	"github.com/TadahiroYamamura/masuda/internal/perspectives"
 	"github.com/TadahiroYamamura/masuda/internal/privileged"
 	"github.com/TadahiroYamamura/masuda/internal/staging"
 	"github.com/TadahiroYamamura/masuda/internal/workspace"
@@ -44,8 +45,9 @@ type Options struct {
 	SandboxID string
 	// Author はstagingのコミットとゲストのWIPスナップショットの作者。
 	Author staging.Identity
-	// Reviews は実行開始時に固定した観点（`<id>.md`→中身、perspectives.Snapshot）。
-	// 観点の一覧はこれだけから作る（ゲストの`/masuda/reviews/`と同じもの）。
+	// Reviews は実行開始時に固定した観点（`<集合>/<id>.md`→中身、perspectives.Snapshot）。
+	// 観点の一覧はこれのperspectives.ImplementSetの集合だけから作る（ゲストの
+	// `/masuda/reviews/implement/`と同じもの）。
 	Reviews map[string][]byte
 	// AlwaysHosts・AlwaysSecrets は、どのノードの方針にも足すもの（Claude APIへの経路）。
 	AlwaysHosts   []string
@@ -734,12 +736,14 @@ func (r *Runner) findingItems(ctx context.Context, run engine.RunID, from engine
 	return items, nil
 }
 
-// perspectiveItems は観点を項目にする。idsがnilなら全観点、そうでなければその順に。
-// 観点は実行開始時の写し（Options.Reviews）だけから引く。
+// perspectiveItems は実装のレビューの集合の観点を項目にする。idsがnilならその集合の全観点、
+// そうでなければその順に。観点は実行開始時の写し（Options.Reviews）だけから引く。
 func (r *Runner) perspectiveItems(ids []string) ([]engine.Item, error) {
 	all := map[string][]byte{}
 	for name, b := range r.o.Reviews {
-		all[strings.TrimSuffix(name, ".md")] = b
+		if file, ok := strings.CutPrefix(name, perspectives.ImplementSet+"/"); ok {
+			all[strings.TrimSuffix(file, ".md")] = b
+		}
 	}
 	if ids == nil {
 		for id := range all {

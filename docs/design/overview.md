@@ -210,12 +210,13 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | ワークフロー | masuda-engineに埋め込み | `.masuda/workflows/**.yaml` |
 | エージェント | 同上 | `.masuda/agents/**.md` |
 | スキーマ | 同上 | `.masuda/schemas/*.json` |
-| レビュー観点 | masudaに埋め込み（`masuda init`が書き出す） | `.masuda/reviews/*.md` |
+| レビュー観点 | masudaに埋め込み（`implement`の集合。`masuda init`が書き出す） | `.masuda/reviews/<集合>/*.md` |
 
 同じパスのファイルがリポジトリにあれば同梱のものを丸ごと置き換える。タスク開始時にすべてホスト側へスナップショットし、以後そのタスクは固定した定義だけを使う。
 
 - ワークフロー・エージェント・スキーマ・設定は、作業ツリーの`.masuda/`を`records/definitions/`へ写したものから読む
-- レビュー観点は、同梱の観点に`records/definitions/reviews/`を重ねたものを`records/reviews/`へ固定する。ホストが返す観点の一覧（`Runner.Items(perspectives)`）と、ゲストの`/masuda/reviews/`はどちらもこの写しから作る。ゲストのcloneの`.masuda/reviews/`は使わない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように）
+- レビュー観点は、`records/definitions/reviews/<集合>/`を集合ごとに`records/reviews/<集合>/`へ固定する。同梱の観点に重ねるのは`implement`の集合だけで、ほかの集合（計画のレビュー向け等）は置いたものだけになる。計画に当てる集合へ、コードの粒度の同梱の観点が混ざらないようにするため。ホストが返す観点の一覧（`Runner.Items(perspectives)`、`implement`の集合）と、ゲストの`/masuda/reviews/`はどちらもこの写しから作る。ゲストのcloneの`.masuda/reviews/`は使わない（`.masuda/`をコミットしていないリポジトリでも観点が揃うように）
+- `.masuda/reviews/`の直下の`.md`、集合の中のディレクトリ、`.`で始まる集合は`Run`で断る。読み飛ばすと、置いたつもりの観点が黙って使われなくなるため
 
 ## 6. サンドボックス
 
@@ -236,7 +237,7 @@ publishとdiscardの最後に、exportsを書き出してからVMを破棄し、
 | `/masuda/in/<出現ID>/` | そのノードの入力データ・タスクファイル | ホスト（`WriteFile`） |
 | `/masuda/out/<出現ID>/` | そのノードの出力データ | ゲスト。ホストが`ReadFile`で読み出して検証する |
 | `/masuda/privileged/<run-id>/` | 特権コマンドの結果の写し（`exit-code`・`log`・`outputs/`）。秘密を使う宣言の結果は置かない | ホスト |
-| `/masuda/reviews/*.md` | 実行開始時に固定したレビュー観点 | ホスト（起動時） |
+| `/masuda/reviews/<集合>/*.md` | 実行開始時に固定したレビュー観点（集合ごと） | ホスト（起動時） |
 | `/masuda/checks/<名前>` | `settings.json`の`checks`を実行可能スクリプトにしたもの。`prepare`があれば先頭で`/masuda/prepare`を呼ぶ | ホスト（起動時） |
 | `/masuda/prepare`、`/masuda/prepare.log` | `settings.json`の`prepare`のスクリプトと、起動時に一度流した出力 | ホスト（起動時） |
 | `/masuda/privileged-commands.json` | 特権コマンドの宣言（承認の状態と、秘密を使う宣言を除く）。ホストは読み戻さない | ホスト（起動時） |

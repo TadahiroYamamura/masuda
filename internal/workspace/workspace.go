@@ -69,8 +69,9 @@ func (w *Workspace) ExportsDir() string { return filepath.Join(w.Dir, "exports")
 // 実行中に作業ツリーの定義が書き換わっていても、始めたときと同じ定義でengineを組み直すため。
 func (w *Workspace) DefinitionsDir() string { return filepath.Join(w.RecordsDir(), "definitions") }
 
-// ReviewsDir は実行開始時に固定したレビュー観点（同梱の観点に定義の写しの`reviews/`を重ねたもの）。
-// ホストの観点の一覧とゲストの`/masuda/reviews/`はどちらもここから作る。
+// ReviewsDir は実行開始時に固定したレビュー観点（定義の写しの`reviews/<集合>/`を集合ごとに。
+// implementの集合は同梱の観点に重ねたもの）。ホストの観点の一覧とゲストの`/masuda/reviews/`は
+// どちらもここから作る。
 func (w *Workspace) ReviewsDir() string { return filepath.Join(w.RecordsDir(), "reviews") }
 
 func (w *Workspace) metaPath() string { return filepath.Join(w.Dir, "workspace.json") }
