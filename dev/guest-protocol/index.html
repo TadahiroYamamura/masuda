@@ -1563,7 +1563,7 @@
 <li><code>resume</code>では起こさない。新しく起動したメインセッションが開始の文で自分から<code>next_task</code>を呼ぶ</li>
 </ul>
 <h2 id="_4">タスクファイル<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、続き（宛先の出現ID。<code>continues</code>があるときだけ）、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
+<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、続き（宛先の出現ID。<code>continues</code>があるときだけ）、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノード・ゲートからの申し送り（失敗・却下の差し戻しの理由や、承認に付けたコメント）、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
 <h2 id="hooks">フック（<code>/hooks</code>）<a class="headerlink" href="#hooks" title="Permanent link">&para;</a></h2>
 <p><code>~/.claude/settings.json</code>に次のフックを入れる。いずれも<code>curl -s -X POST http://masuda.internal:7000/hooks -d @-</code>でstdinのJSONをそのまま送る。</p>
 <table>
