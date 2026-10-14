@@ -146,6 +146,9 @@ func shortActivity(a *apiv1.Activity) string {
 	if a.InputWait != "" {
 		k += "(" + a.InputWait + ")"
 	}
+	if a.ResourceWarning != "" {
+		k += " [" + a.ResourceWarning + "]"
+	}
 	return k
 }
 

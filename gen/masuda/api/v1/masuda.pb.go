@@ -864,10 +864,16 @@ type Activity struct {
 	Kind         ActivityKind           `protobuf:"varint,1,opt,name=kind,proto3,enum=masuda.api.v1.ActivityKind" json:"kind,omitempty"`
 	LastActivity *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=last_activity,json=lastActivity,proto3" json:"last_activity,omitempty"`
 	// From guest hooks: what Claude Code says it is waiting for.
-	InputWait     string `protobuf:"bytes,3,opt,name=input_wait,json=inputWait,proto3" json:"input_wait,omitempty"` // "permission", "idle", "question", ""
-	Detail        string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	InputWait string `protobuf:"bytes,3,opt,name=input_wait,json=inputWait,proto3" json:"input_wait,omitempty"` // "permission", "idle", "question", ""
+	Detail    string `protobuf:"bytes,4,opt,name=detail,proto3" json:"detail,omitempty"`
+	// Host-measured strain inside the VM while it lasts: "memory low",
+	// "<mount> over <N>%" (for / and /tmp), "oom-kill x<count since the VM
+	// booted>", comma-separated. Stays the same while the strain lasts, so a
+	// status event carries it only when it changes. Empty when nothing is
+	// strained or the VM has not been measured. Independent of kind.
+	ResourceWarning string `protobuf:"bytes,5,opt,name=resource_warning,json=resourceWarning,proto3" json:"resource_warning,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *Activity) Reset() {
@@ -924,6 +930,13 @@ func (x *Activity) GetInputWait() string {
 func (x *Activity) GetDetail() string {
 	if x != nil {
 		return x.Detail
+	}
+	return ""
+}
+
+func (x *Activity) GetResourceWarning() string {
+	if x != nil {
+		return x.ResourceWarning
 	}
 	return ""
 }
@@ -3982,13 +3995,14 @@ const file_masuda_api_v1_masuda_proto_rawDesc = "" +
 	"\x06reason\x18\f \x01(\tR\x06reason\x12\x1d\n" +
 	"\n" +
 	"open_gates\x18\r \x03(\tR\topenGates\x12%\n" +
-	"\x0eopen_questions\x18\x0e \x03(\tR\ropenQuestions\"\xb3\x01\n" +
+	"\x0eopen_questions\x18\x0e \x03(\tR\ropenQuestions\"\xde\x01\n" +
 	"\bActivity\x12/\n" +
 	"\x04kind\x18\x01 \x01(\x0e2\x1b.masuda.api.v1.ActivityKindR\x04kind\x12?\n" +
 	"\rlast_activity\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\flastActivity\x12\x1d\n" +
 	"\n" +
 	"input_wait\x18\x03 \x01(\tR\tinputWait\x12\x16\n" +
-	"\x06detail\x18\x04 \x01(\tR\x06detail\"\x91\x03\n" +
+	"\x06detail\x18\x04 \x01(\tR\x06detail\x12)\n" +
+	"\x10resource_warning\x18\x05 \x01(\tR\x0fresourceWarning\"\x91\x03\n" +
 	"\x0eWorkspaceEvent\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x12.\n" +
 	"\x04time\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12!\n" +

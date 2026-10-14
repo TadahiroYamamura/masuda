@@ -60,15 +60,17 @@ func runServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	srv, err := serve.Start(ctx, serve.Options{
-		Socket:            *socket,
-		DataDir:           *dataDir,
-		FakeSandbox:       *fake,
-		SandboxSocket:     *sandboxSocket,
-		StallAfter:        *stallAfter,
-		DefaultStallAfter: defaultStall,
-		DiskWarnBytes:     cfg.DiskWarnBytes,
-		Listen:            cfg.Listen,
-		Version:           version,
+		Socket:              *socket,
+		DataDir:             *dataDir,
+		FakeSandbox:         *fake,
+		SandboxSocket:       *sandboxSocket,
+		StallAfter:          *stallAfter,
+		DefaultStallAfter:   defaultStall,
+		DiskWarnBytes:       cfg.DiskWarnBytes,
+		VMMemoryWarnPercent: cfg.VMMemoryWarnPercent,
+		VMDiskWarnPercent:   cfg.VMDiskWarnPercent,
+		Listen:              cfg.Listen,
+		Version:             version,
 	})
 	if err != nil {
 		return err

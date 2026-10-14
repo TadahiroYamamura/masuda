@@ -83,6 +83,8 @@ type activity struct {
 	dead bool
 	// authRejected はClaude APIがトークンを拒んだ応答のステータス（401・403）。0なら拒まれていない。
 	authRejected uint32
+	// resourceWarning はVMの中の資源の警告（checkResources）。公開APIのActivity.resource_warning。
+	resourceWarning string
 }
 
 type activities struct {
@@ -168,9 +170,12 @@ func (a *activities) compute(w *workspace.Workspace, stallAfter time.Duration, n
 	if act != nil && !cp.last.IsZero() {
 		out.LastActivity = timestamppb.New(cp.last)
 	}
+	// 資源の警告は、人間の判断待ちでもVMが動いている間は見せる（tmpfsはその間もメモリを占める）
+	out.ResourceWarning = cp.resourceWarning
 	switch w.State {
 	case workspace.StateDone, workspace.StateStopped, workspace.StateBlocked, workspace.StateSuspended:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_IDLE
+		out.ResourceWarning = ""
 		return out
 	case workspace.StateWaitingGate:
 		out.Kind = apiv1.ActivityKind_ACTIVITY_KIND_WAITING_GATE
@@ -338,8 +343,8 @@ func (b *backend) watchSandbox(ctx context.Context, id string) {
 const livenessEvery = 30 * time.Second
 
 // patrol は動いているワークスペースを定期的に見て、時間の経過だけで変わる活動
-// （STALLED）と、Execで分かるプロセスの死（DEAD）をstatusイベントに反映する。メインセッションを
-// 起こす処理の送り直し（アタッチ中で送れなかった分を含む）もここで拾う。
+// （STALLED）と、Execで分かるプロセスの死（DEAD）・VMの中の資源の逼迫をstatusイベントに
+// 反映する。メインセッションを起こす処理の送り直し（アタッチ中で送れなかった分を含む）もここで拾う。
 func (b *backend) patrol(ctx context.Context) {
 	t := time.NewTimer(b.patrolTick())
 	defer t.Stop()
@@ -356,11 +361,15 @@ func (b *backend) patrol(ctx context.Context) {
 			lastLiveness = time.Now()
 		}
 		for _, c := range b.allRuns() {
-			if checkLiveness && c.isBooted() && !b.alive(ctx, c.id) {
-				b.acts.update(c.id, func(act *activity) {
-					act.dead = true
-					act.detail = "tmux session " + guest.TmuxSession + " is gone"
-				})
+			if checkLiveness && c.isBooted() {
+				if b.alive(ctx, c.id) {
+					b.checkResources(ctx, c.id)
+				} else {
+					b.acts.update(c.id, func(act *activity) {
+						act.dead = true
+						act.detail = "tmux session " + guest.TmuxSession + " is gone"
+					})
+				}
 			}
 			if c.isBooted() {
 				go c.tryWake()

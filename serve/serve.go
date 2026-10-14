@@ -44,6 +44,10 @@ type Options struct {
 	// DiskWarnBytes はワークスペース置き場の使用量の警告のしきい値（config.jsonのdiskWarnBytes）。
 	// 0なら既定（20GiB）。
 	DiskWarnBytes int64
+	// VMMemoryWarnPercent・VMDiskWarnPercent はVMの中の資源の警告のしきい値（%、config.jsonの
+	// vmMemoryWarnPercent・vmDiskWarnPercent）。0なら既定（10%・90%）。
+	VMMemoryWarnPercent int
+	VMDiskWarnPercent   int
 	// Listen はUDSに加えてConnectを待ち受けるループバックのアドレス（config.jsonのlisten）。
 	// 空ならUDSだけ。CORSは任意のオリジンを許す（serve/listen.go）。
 	Listen string
@@ -102,6 +106,8 @@ type backend struct {
 	nextTaskWait time.Duration
 	// diskWarn はディスク使用量の警告のしきい値（config.json、既定20GiB）。
 	diskWarn int64
+	// vmLimits はVMの中の資源の警告のしきい値（config.json、既定は使えるメモリ10%未満・使用率90%超）。
+	vmLimits resourceLimits
 
 	// diskOver は前回の計測でしきい値を超えていたか（超えたときにだけ警告するため）。
 	diskMu   sync.Mutex
@@ -117,6 +123,10 @@ func newBackend(store *workspace.Store, sb sandboxv1connect.SandboxServiceClient
 		nextTaskWait: cmp.Or(max(opts.NextTaskWait, 0), defaultNextTaskWait),
 		stallDefault: cmp.Or(max(opts.DefaultStallAfter, 0), DefaultStallAfter),
 		diskWarn:     cmp.Or(max(opts.DiskWarnBytes, 0), config.DefaultDiskWarnBytes),
+		vmLimits: resourceLimits{
+			memoryPercent: cmp.Or(max(opts.VMMemoryWarnPercent, 0), config.DefaultVMMemoryWarnPercent),
+			diskPercent:   cmp.Or(max(opts.VMDiskWarnPercent, 0), config.DefaultVMDiskWarnPercent),
+		},
 	}
 }
 

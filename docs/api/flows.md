@@ -256,6 +256,7 @@ stagingは止まった・終わったワークスペースでも`Remove`する�
 - `input_wait`: `"permission"`（ツールの許可を求めている）・`"idle"`（入力を待って止まっている）・`"question"`（Claude Codeが対話で質問している）。その後に通信・ツール・MCPの活動があれば消える
 - `detail`: 最後に分かったことの短い説明（`"tool Edit"`・`"mcp next_task"`・`"claude session ended"`・通知の本文等）。表示用で、解析しない。STARTINGの間は起動の段階（`"building image (log: <パス>)"`→`"booting the VM"`→`"preparing the guest"`→`"starting Claude Code"`）で、段階が変わるたびに`status`が流れる
 - `last_activity`: 最後に活動を観測した時刻。`status`は時刻だけの変化では流れないので、経過時間はクライアントが進める
+- `resource_warning`: VMの中の資源の逼迫（`"memory low"`・`"/tmp over 90%"`・`"oom-kill x2"`をカンマで並べたもの）。`kind`とは独立で、`WORKING`等と一緒に出る。逼迫が続く間は同じ文字列のままで、変わったときだけ`status`が流れる。空なら逼迫していないか、まだ測っていない。表示用で、解析しない
 - 活動の観測はserveのメモリにだけある。serveを再起動したワークスペースはSTOPPED（`IDLE`）になり、`Resume`で観測をやり直す
 - `state`がRUNNINGのままでも`activity`が`DEAD`・`AUTH_REJECTED`・`STALLED`になる。一覧では`state`より`activity`を目立たせる方が、利用者が手を打つべきものに気づきやすい
 

@@ -23,6 +23,12 @@ type ServeConfig struct {
 	// DiskWarnBytes はワークスペース置き場の使用量の警告のしきい値（バイト）。0なら既定。
 	// 置き場はserve全体で1つなので、ここだけに置く。
 	DiskWarnBytes int64 `json:"diskWarnBytes,omitempty"`
+	// VMMemoryWarnPercent は、エージェントのVMの使えるメモリ（MemAvailable）が合計のこの割合（%）を
+	// 下回ったら警告するしきい値。0なら既定。
+	VMMemoryWarnPercent int `json:"vmMemoryWarnPercent,omitempty"`
+	// VMDiskWarnPercent は、エージェントのVMの`/`と`/tmp`の使用率（%）がこれを超えたら警告する
+	// しきい値。0なら既定。
+	VMDiskWarnPercent int `json:"vmDiskWarnPercent,omitempty"`
 }
 
 // ServeConfigPath はconfig.jsonの既定の場所（`$XDG_CONFIG_HOME/masuda/config.json`、
@@ -64,6 +70,12 @@ func LoadServe(path string) (ServeConfig, error) {
 	}
 	if c.DiskWarnBytes < 0 {
 		return c, fmt.Errorf("%s: diskWarnBytes must not be negative", path)
+	}
+	if c.VMMemoryWarnPercent < 0 || c.VMMemoryWarnPercent >= 100 {
+		return c, fmt.Errorf("%s: vmMemoryWarnPercent must be between 1 and 99", path)
+	}
+	if c.VMDiskWarnPercent < 0 || c.VMDiskWarnPercent >= 100 {
+		return c, fmt.Errorf("%s: vmDiskWarnPercent must be between 1 and 99", path)
 	}
 	return c, nil
 }

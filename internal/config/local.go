@@ -42,6 +42,9 @@ type LocalSettings struct {
 const (
 	DefaultStallAfter    = 10 * time.Minute
 	DefaultDiskWarnBytes = int64(20) << 30
+	// DefaultVMMemoryWarnPercent・DefaultVMDiskWarnPercent はVMの中の資源の警告の既定（#88）。
+	DefaultVMMemoryWarnPercent = 10
+	DefaultVMDiskWarnPercent   = 90
 )
 
 // StallAfterDuration はStallAfterを読む。空なら0（serve全体の既定に任せる）、正でない・読めない値はエラー。

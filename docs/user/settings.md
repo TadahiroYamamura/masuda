@@ -336,7 +336,8 @@ VMの中のClaude Code（メインセッションとサブエージェント）�
 {
   "listen": "127.0.0.1:7788",
   "stallAfter": "15m",
-  "diskWarnBytes": 32212254720
+  "diskWarnBytes": 32212254720,
+  "vmMemoryWarnPercent": 15
 }
 ```
 
@@ -346,5 +347,7 @@ VMの中のClaude Code（メインセッションとサブエージェント）�
 | `sandboxSocket` | 文字列（パス） | `$XDG_RUNTIME_DIR/masuda-sandbox.sock` | `masuda-sandbox serve`のソケット。`--sandbox-socket`を指定すればそちらが勝つ |
 | `stallAfter` | 文字列（Goのduration） | `"10m"` | 無活動のしきい値の既定。リポジトリの`settings.local.json`の`stallAfter`が上書きする |
 | `diskWarnBytes` | 整数（バイト） | `21474836480`（20GiB） | ワークスペース置き場（`~/.local/share/masuda/workspaces/`）の使用量の警告しきい値 |
+| `vmMemoryWarnPercent` | 整数（1〜99） | `10` | エージェントのVMの使えるメモリが合計のこの割合（%）を下回ったら、活動に`memory low`を添える（[VMの中の資源の警告](operations.md#vm-resources)） |
+| `vmDiskWarnPercent` | 整数（1〜99） | `90` | エージェントのVMの`/`・`/tmp`の使用率（%）がこれを超えたら、活動に`<マウント先> over <N>%`を添える |
 
 知らないキー・読めない値があると`masuda serve`は起動しない。
