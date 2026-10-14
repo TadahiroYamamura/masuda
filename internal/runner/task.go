@@ -51,8 +51,10 @@ func TaskFile(t *engine.AgentTask, inputPaths map[string]string) []byte {
 		b.WriteString("\n")
 	}
 
+	// engineのFeedbackは、却下・失敗の差し戻しと承認のコメントのどちらでもありうる（engineの
+	// Taskはどちらかを持たない）。承認されたのに却下されたと読み違えないよう、両方に当てはまる見出しにする。
 	if t.Feedback != "" {
-		b.WriteString("## 前回からの差し戻し\n\n")
+		b.WriteString("## 前のノード・ゲートからの申し送り\n\n")
 		b.WriteString(strings.TrimSpace(t.Feedback))
 		b.WriteString("\n\n")
 	}
