@@ -577,9 +577,14 @@ func (c *runCtl) ReportResult(ctx context.Context, occ, outcome, feedback, _ str
 			return reject(fmt.Sprintf("outputs not written yet: %v (use write_output)", missing))
 		}
 	}
+	if err := c.runner.WriteFeedback(occ, feedback); err != nil {
+		c.mu.Unlock()
+		return reject(err.Error())
+	}
 	err := c.eng.ReportResult(c.ctx, c.run(), occ, outcome, feedback)
 	c.mu.Unlock()
 	if err != nil {
+		c.runner.RemoveFeedback(occ)
 		return reject(err.Error())
 	}
 	c.fbMu.Lock()

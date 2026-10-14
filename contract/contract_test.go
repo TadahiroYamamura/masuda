@@ -1195,6 +1195,113 @@ func (h *harness) workLap(id, answer string) map[string]any {
 	return h.mcp(id, "next_task", nil)
 }
 
+const resultWorkflow = `version: 1
+inputs: [instructions]
+start: work
+nodes:
+  work: {type: agent, role: agents/result-worker, inputs: [instructions], next: {done: check, stuck: end:stuck}}
+  check: {type: exec, command: ["/bin/sh", "-c", "echo first-line; i=0; while [ $i -lt 2000 ]; do echo filler-$i; i=$((i+1)); done; echo the-real-cause >&2; exit 1"], next: {done: end, failed: work}}
+`
+
+const resultWorker = `---
+name: result-worker
+description: reports
+tools: Read
+outcomes:
+  done: finished
+  stuck: cannot go on
+---
+Work.
+`
+
+// finishLine は実行ログから、occの出現のfinishのイベントを返す。
+func (h *harness) finishLine(wsID, occ string) map[string]any {
+	h.t.Helper()
+	b, err := os.ReadFile(filepath.Join(h.dataDir, "workspaces", wsID, "records", "execution-log.jsonl"))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	for _, l := range strings.Split(string(b), "\n") {
+		var e map[string]any
+		if json.Unmarshal([]byte(l), &e) == nil && e["kind"] == "finish" && e["occurrence"] == occ {
+			return e
+		}
+	}
+	h.t.Fatalf("no finish of %s in the execution log:\n%s", occ, b)
+	return nil
+}
+
+// execの出力とエージェントの終わりの理由は、実行ログ・engineの記録では短く切られる。全文は
+// records/results/<出現>/に残り、実行ログのfinishのdetailがその在りかを示す。
+func TestCM4_FullResultsAreKeptAndPointedFromTheLog(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/workflows/results.yaml"] = resultWorkflow
+	files[".masuda/agents/result-worker.md"] = resultWorker
+	h := start(t, files)
+	res, err := h.ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/results", Branch: "feat/r", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	results := filepath.Join(h.dataDir, "workspaces", id, "records", "results")
+
+	first := h.mcp(id, "next_task", nil)
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": first["occurrence"], "outcome": "done"}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+	retry := h.mcp(id, "next_task", nil)
+	if retry["role"] != "result-worker" {
+		t.Fatalf("a failed exec must send the run back to work: %v", retry)
+	}
+
+	t.Run("execの出力は、engineへ渡す末尾8KiBより前も含めてoutput.logに残る", func(t *testing.T) {
+		out, err := os.ReadFile(filepath.Join(results, "0000002", "output.log"))
+		if err != nil || !strings.HasPrefix(string(out), "first-line\n") || !strings.Contains(string(out), "the-real-cause") || len(out) <= 8<<10 {
+			t.Fatalf("output.log (%d bytes): %v\n%.200s", len(out), err, out)
+		}
+	})
+	t.Run("execのfinishのdetailがoutput.logを指す", func(t *testing.T) {
+		if d, _ := h.finishLine(id, "0000002")["detail"].(string); d != "[全文: records/results/0000002/output.log]" {
+			t.Fatalf("detail = %q", d)
+		}
+	})
+	t.Run("feedbackの無い報告ではfeedback.mdを作らず、finishも何も指さない", func(t *testing.T) {
+		if _, err := os.Stat(filepath.Join(results, "0000001")); !os.IsNotExist(err) {
+			t.Fatalf("records/results/0001: %v", err)
+		}
+		if d, _ := h.finishLine(id, "0000001")["detail"].(string); strings.Contains(d, "全文") {
+			t.Fatalf("detail = %q", d)
+		}
+	})
+
+	occ := retry["occurrence"].(string)
+	t.Run("engineが受け付けなかった報告のfeedbackは残さない", func(t *testing.T) {
+		if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "bogus", "feedback": "rejected one"}); r["accepted"] == true {
+			t.Fatalf("an undeclared outcome must be refused: %v", r)
+		}
+		if _, err := os.Stat(filepath.Join(results, occ, "feedback.md")); !os.IsNotExist(err) {
+			t.Fatalf("feedback.md of a refused report: %v", err)
+		}
+	})
+
+	reason := strings.Repeat("この計画のステップ2は、既存の依存の向きと合わない。\n", 20)
+	if r := h.mcp(id, "report_result", map[string]any{"occurrence": occ, "outcome": "stuck", "feedback": reason}); r["accepted"] != true {
+		t.Fatalf("report_result: %v", r)
+	}
+	t.Run("エージェントの終わりの理由は、全文がfeedback.mdに残る", func(t *testing.T) {
+		if b, err := os.ReadFile(filepath.Join(results, occ, "feedback.md")); err != nil || string(b) != reason {
+			t.Fatalf("feedback.md: %v %q", err, b)
+		}
+	})
+	t.Run("エージェントのfinishのdetailは切られても、1行目でfeedback.mdを指す", func(t *testing.T) {
+		d, _ := h.finishLine(id, occ)["detail"].(string)
+		if !strings.Contains(d, "…") || !strings.HasPrefix(d, "[全文: records/results/"+occ+"/feedback.md] ") {
+			t.Fatalf("detail = %q", d)
+		}
+	})
+}
+
 // 承認に付けたコメントは、承認の行き先のエージェントのタスクに申し送りとして載る。
 // 差し戻しの見出しでは載せない（承認されたのに却下されたと読み違えないように）。
 func TestCM5_ApprovalCommentReachesTheNextAgent(t *testing.T) {
