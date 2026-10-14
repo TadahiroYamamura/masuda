@@ -1459,8 +1459,8 @@
 <td><code>.masuda/settings.json</code>の<code>prepare</code>（準備のシェルの1行）を実行可能スクリプトとして置き、起動時（再開ならWIPを戻した後）に<code>/workspace</code>で一度流した出力を<code>prepare.log</code>に置く。起動時の失敗では起動を止めない。<code>/masuda/checks/*</code>は先頭でこれを呼ぶ。エージェントも定義を変えた後に呼び直してよい。特権VMでは、宣言のコマンドの前に<code>HOME=/home/ubuntu</code>で流れる（失敗はコマンドの失敗）。宣言が無ければ置かない</td>
 </tr>
 <tr>
-<td><code>/masuda/reviews/*.md</code></td>
-<td>レビュー観点。ホストの実リポジトリの<code>.masuda/reviews/</code>（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong>ここ</strong>を読む。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
+<td><code>/masuda/reviews/&lt;集合&gt;/*.md</code></td>
+<td>レビュー観点の集合。ホストの実リポジトリの<code>.masuda/reviews/&lt;集合&gt;/</code>をタスク開始時にスナップショットしたもの。<code>implement</code>の集合だけは同梱の観点に重ねる（リポジトリに無ければ同梱の観点だけ）。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong><code>/masuda/reviews/implement/</code></strong>を読む。ほかの集合は、それを読むよう書いた利用者の役が使う。<code>/masuda/reviews/</code>の直下にファイルは置かない。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
 </tr>
 <tr>
 <td><code>/masuda/pitfalls.jsonl</code></td>

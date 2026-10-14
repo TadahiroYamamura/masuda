@@ -640,7 +640,7 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#sets" class="md-nav__link">
     <span class="md-ellipsis">
       
         置き場所と重ね方
@@ -648,10 +648,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="置き場所と重ね方">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        段階ごとの集合を役に読ませる
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         ファイルの形
@@ -662,7 +679,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         どこで使われるか
@@ -673,7 +690,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         落とし穴との違い
@@ -695,7 +712,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         観点を書くときのこつ
@@ -1280,7 +1297,7 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#_2" class="md-nav__link">
+  <a href="#sets" class="md-nav__link">
     <span class="md-ellipsis">
       
         置き場所と重ね方
@@ -1288,10 +1305,27 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="置き場所と重ね方">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#set-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        段階ごとの集合を役に読ませる
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
-  <a href="#_3" class="md-nav__link">
+  <a href="#_2" class="md-nav__link">
     <span class="md-ellipsis">
       
         ファイルの形
@@ -1302,7 +1336,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_4" class="md-nav__link">
+  <a href="#_3" class="md-nav__link">
     <span class="md-ellipsis">
       
         どこで使われるか
@@ -1313,7 +1347,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_5" class="md-nav__link">
+  <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
         落とし穴との違い
@@ -1335,7 +1369,7 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#_6" class="md-nav__link">
+  <a href="#_5" class="md-nav__link">
     <span class="md-ellipsis">
       
         観点を書くときのこつ
@@ -1367,16 +1401,36 @@
 
 <h1 id="_1">レビュー観点<a class="headerlink" href="#_1" title="Permanent link">&para;</a></h1>
 <p><code>develop</code>・<code>fix</code>・<code>review</code>のレビューは、<strong>観点</strong>に沿って行う。観点は「何を見るか」を書いたMarkdownのファイル1つで、レビューの役のエージェントは1つのセッションの中で観点を1つずつ順に当て、観点ごとに指摘を書く。</p>
-<h2 id="_2">置き場所と重ね方<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<h2 id="sets">置き場所と重ね方<a class="headerlink" href="#sets" title="Permanent link">&para;</a></h2>
+<p>観点は、レビューの段階ごとに<strong>集合</strong>（<code>.masuda/reviews/&lt;集合&gt;/</code>のディレクトリ）に分けて置く。VMの中では<code>/masuda/reviews/&lt;集合&gt;/</code>に届く。</p>
+<div class="highlight"><pre><span></span><code>.masuda/reviews/
+  implement/        実装のレビュー（同梱のreviewer・review-checkerが読む）
+    dead-code.md
+    team-rule.md
+  implement-plan/   例: 実装計画のレビュー（自分の役が読む）
+    layering.md
+  test-plan/        例: テスト計画のレビュー（自分の役が読む）
+    expected-values.md
+</code></pre></div>
 <ul>
-<li>masudaは15の観点を同梱している。<code>masuda init</code>は、それを対象リポジトリの<code>.masuda/reviews/</code>に書き出す</li>
-<li>実行に使う観点は「同梱の観点」に「<code>.masuda/reviews/*.md</code>」を重ねたもの。同じファイル名のものは丸ごと置き換え、同梱に無いファイル名のものは足される</li>
-<li>ファイル名（拡張子を除く）が観点のID</li>
-<li><code>masuda run</code>の時点の内容で固定され、その実行の終わりまで（<code>resume</code>しても）変わらない</li>
+<li><code>implement</code>は実装のレビューの集合。masudaは15の観点をこの集合に同梱していて、<code>masuda init</code>はそれを<code>.masuda/reviews/implement/</code>に書き出す</li>
+<li>実行に使うのは「同梱の観点」に「<code>.masuda/reviews/implement/*.md</code>」を重ねたもの。同じファイル名のものは丸ごと置き換え、同梱に無いファイル名のものは足される</li>
 <li><code>.masuda/reviews/</code>をコミットしていないリポジトリでも、同梱の観点は使われる</li>
+<li>ほかの集合（名前は自由）は同梱の観点と重ねない。置いたものだけが届く。計画に当てる観点に、コードの粒度の同梱の観点が混ざらない</li>
+<li>ファイル名（拡張子を除く）が観点のID</li>
+<li>どの集合も、<code>masuda run</code>の時点の内容で固定され、その実行の終わりまで（<code>resume</code>しても）変わらない</li>
+<li>次の置き方は<code>masuda run</code>がエラーにする。黙って外れると、置いたつもりの観点が使われないことに気づけないため</li>
+<li><code>.masuda/reviews/</code>の直下の<code>.md</code>（集合に入っていない）</li>
+<li>集合の中のディレクトリ（集合は1段だけ）</li>
+<li><code>.</code>で始まる集合</li>
 </ul>
-<h2 id="_3">ファイルの形<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
-<div class="highlight"><span class="filename">.masuda/reviews/sql-migration.md</span><pre><span></span><code>---
+<h3 id="set-roles">段階ごとの集合を役に読ませる<a class="headerlink" href="#set-roles" title="Permanent link">&para;</a></h3>
+<p><code>implement</code>以外の集合は、同梱の役は読まない。使う役の定義（<code>.masuda/agents/&lt;役&gt;.md</code>）に、どの集合を読むかを書く。例えば実装計画を書く役に、書き終えた計画を<code>implement-plan</code>の観点で点検させるなら、次のように書く。</p>
+<div class="highlight"><pre><span></span><code>書き終えたら、`/masuda/reviews/implement-plan/*.md`をすべて読み、各観点に照らして計画を点検する。
+</code></pre></div>
+<p><code>enable</code>・frontmatterの扱いは、どの集合でも同じ。</p>
+<h2 id="_2">ファイルの形<a class="headerlink" href="#_2" title="Permanent link">&para;</a></h2>
+<div class="highlight"><span class="filename">.masuda/reviews/implement/sql-migration.md</span><pre><span></span><code>---
 name: "マイグレーションの後方互換"
 trigger: "migrations/ の下のファイルを追加・変更する変更"
 <span class="gu">enable: true</span>
@@ -1405,8 +1459,8 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </tr>
 </tbody>
 </table>
-<p>同梱の観点を外すには、<code>.masuda/reviews/</code>の同じファイル名のファイル（<code>masuda init</code>が書き出したもの）を<code>enable: false</code>にする。frontmatterがYAMLとして読めない観点ファイルがあると、<code>masuda run</code>は定義の誤りとしてエラーで返る。</p>
-<h2 id="_4">どこで使われるか<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
+<p>同梱の観点を外すには、<code>.masuda/reviews/implement/</code>の同じファイル名のファイル（<code>masuda init</code>が書き出したもの）を<code>enable: false</code>にする。frontmatterがYAMLとして読めない観点ファイルがあると、<code>masuda run</code>は定義の誤りとしてエラーで返る。</p>
+<h2 id="_3">どこで使われるか<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
@@ -1417,7 +1471,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 <tbody>
 <tr>
 <td><code>develop</code>・<code>fix</code>の最後のレビュー、<code>review</code>ワークフロー</td>
-<td>すべての観点。同梱のワークフローのレビューはこれだけ</td>
+<td><code>implement</code>の集合のすべての観点。同梱のワークフローのレビューはこれだけ</td>
 </tr>
 <tr>
 <td>途中レビュー（自分のワークフローで<code>interim-</code>で始まる名前のノードにreviewerを置いたとき）</td>
@@ -1427,7 +1481,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </table>
 <p>レビューの後、別の役（<code>review-checker</code>）が全観点の指摘をまとめて正確かを確かめ、誤りは取り下げる。指摘は<code>findings</code>という台帳に溜まり、自動で直してよいもの（<code>autofix: true</code>）は直す役（<code>fixer</code>）がまとめて直し、別の役（<code>rechecker</code>）が解消を確かめる。fixerは実装したサブエージェントの続きとして動くので、実装の意図に照らして誤っている・計画の判断に反すると考えた指摘には、直さずに反論できる（台帳の指摘に<code>disputed</code>と理由<code>response</code>が付く）。recheckerは反論が妥当なら指摘を取り下げ、妥当でなければ直すよう戻す。取り下げられずに残った反論は、人間の判断待ちの指摘としてレポートに載る。最後にレポートを書く役が、残った指摘と直した指摘をまとめる。</p>
 <p>レビューのセッションの数は観点の数によらない（レビューと確かめで1つずつ）。観点を増やすと、1つのセッションが長くなる。</p>
-<h2 id="_5">落とし穴との違い<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
+<h2 id="_4">落とし穴との違い<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
 <p>観点は、実装した<strong>差分を判定する</strong>ためのもの（「この差分のここが問題だ」という指摘を書かせる）。これに対して<a href="../settings/#pitfalls">落とし穴</a>（<code>.masuda/pitfalls.jsonl</code>）は、実装の前に<strong>計画へ問う</strong>ためのもの（「この計画で、過去に踏んだこの失敗を避けられるか」という問いを立てさせる）。落とし穴は判定も修正の提案もせず、問いには計画を直す役が答え、答えられなければplan gateの前に人間に聞かれる。チームが過去に踏んだ失敗は、差分を見れば分かるものなら観点に、計画の段階で気づくべきもの（手順・順序・範囲の見落とし）なら落とし穴に書くとよい。</p>
 <h2 id="15">同梱の15観点<a class="headerlink" href="#15" title="Permanent link">&para;</a></h2>
 <table>
@@ -1518,7 +1572,7 @@ trigger: "migrations/ の下のファイルを追加・変更する変更"
 </table>
 <p><code>comment-criteria</code>は、実装する役・直す役が書いたコメントの一覧（<code>comment-manifest</code>。<a href="../workflows/">ワークフロー</a>）と差分のコメントを照合する。一覧に無いコメント、一覧の基準が実際には成り立たないコメント、テストのヘルパー関数・テスト内の変数へのコメントは、自動で直してよい指摘（削除）になる。<code>nolint</code>は<code>//nolint:xxx // 理由</code>の1行にまとめる。同じファイルの全関数に揃えたgodocは問題にしない。実装する役のいない<code>review</code>ワークフローでは一覧が空で届くので、照合せずに基準だけで判定する。コメントに経緯（過去の実装・却下した案・指摘への応答）が書き残されていないかは<code>comment-history-leakage</code>が見る。</p>
 <p>テストの漏れの2観点には<code>trigger</code>が無いので、自分のワークフローに途中レビューを置くと毎回当てられる。「テストは後のステップで書く」という計画では、途中のステップで指摘されても直せないことがある。</p>
-<h2 id="_6">観点を書くときのこつ<a class="headerlink" href="#_6" title="Permanent link">&para;</a></h2>
+<h2 id="_5">観点を書くときのこつ<a class="headerlink" href="#_5" title="Permanent link">&para;</a></h2>
 <ul>
 <li>1つの観点では1種類の問題だけを扱う。広い観点は指摘がぶれる</li>
 <li>「問題としないもの」も書く。誤検知が減る</li>

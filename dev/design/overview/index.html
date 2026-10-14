@@ -2617,15 +2617,16 @@ masuda
 </tr>
 <tr>
 <td>レビュー観点</td>
-<td>masudaに埋め込み（<code>masuda init</code>が書き出す）</td>
-<td><code>.masuda/reviews/*.md</code></td>
+<td>masudaに埋め込み（<code>implement</code>の集合。<code>masuda init</code>が書き出す）</td>
+<td><code>.masuda/reviews/&lt;集合&gt;/*.md</code></td>
 </tr>
 </tbody>
 </table>
 <p>同じパスのファイルがリポジトリにあれば同梱のものを丸ごと置き換える。タスク開始時にすべてホスト側へスナップショットし、以後そのタスクは固定した定義だけを使う。</p>
 <ul>
 <li>ワークフロー・エージェント・スキーマ・設定は、作業ツリーの<code>.masuda/</code>を<code>records/definitions/</code>へ写したものから読む</li>
-<li>レビュー観点は、同梱の観点に<code>records/definitions/reviews/</code>を重ねたものを<code>records/reviews/</code>へ固定する。ホストが返す観点の一覧（<code>Runner.Items(perspectives)</code>）と、ゲストの<code>/masuda/reviews/</code>はどちらもこの写しから作る。ゲストのcloneの<code>.masuda/reviews/</code>は使わない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</li>
+<li>レビュー観点は、<code>records/definitions/reviews/&lt;集合&gt;/</code>を集合ごとに<code>records/reviews/&lt;集合&gt;/</code>へ固定する。同梱の観点に重ねるのは<code>implement</code>の集合だけで、ほかの集合（計画のレビュー向け等）は置いたものだけになる。計画に当てる集合へ、コードの粒度の同梱の観点が混ざらないようにするため。ホストが返す観点の一覧（<code>Runner.Items(perspectives)</code>、<code>implement</code>の集合）と、ゲストの<code>/masuda/reviews/</code>はどちらもこの写しから作る。ゲストのcloneの<code>.masuda/reviews/</code>は使わない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</li>
+<li><code>.masuda/reviews/</code>の直下の<code>.md</code>、集合の中のディレクトリ、<code>.</code>で始まる集合は<code>Run</code>で断る。読み飛ばすと、置いたつもりの観点が黙って使われなくなるため</li>
 </ul>
 <h2 id="6">6. サンドボックス<a class="headerlink" href="#6" title="Permanent link">&para;</a></h2>
 <h3 id="vm">VM<a class="headerlink" href="#vm" title="Permanent link">&para;</a></h3>
@@ -2668,8 +2669,8 @@ masuda
 <td>ホスト</td>
 </tr>
 <tr>
-<td><code>/masuda/reviews/*.md</code></td>
-<td>実行開始時に固定したレビュー観点</td>
+<td><code>/masuda/reviews/&lt;集合&gt;/*.md</code></td>
+<td>実行開始時に固定したレビュー観点（集合ごと）</td>
 <td>ホスト（起動時）</td>
 </tr>
 <tr>

@@ -2224,7 +2224,7 @@ answer: masuda question answer 4f1c2a9e8b3d 0000006 'SPEC-1=&lt;answer&gt;' 'REG
 <h2 id="init">init<a class="headerlink" href="#init" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda init [--repo &lt;dir&gt;]
 </code></pre></div>
-<p>対象リポジトリに<code>.masuda/</code>の雛形（<code>settings.json</code>、<code>images/default/Dockerfile</code>、同梱の14のレビュー観点<code>reviews/*.md</code>）を置き、<code>.gitignore</code>に<code>.masuda/settings.local.json</code>を足す。<code>masuda serve</code>は要らない。既にあるファイルは上書きしない。雛形の<code>settings.json</code>の<code>egress</code>は空（Claude APIへの経路は常に開いているので宣言しない）。<code>.gitignore</code>に<code>.masuda/</code>ごと無視する行（<code>.masuda</code>・<code>.masuda/</code>・<code>.masuda/*</code>・<code>.masuda/**</code>、先頭<code>/</code>付きも）があれば、行を足さない。</p>
+<p>対象リポジトリに<code>.masuda/</code>の雛形（<code>settings.json</code>、<code>images/default/Dockerfile</code>、同梱の15のレビュー観点<code>reviews/implement/*.md</code>）を置き、<code>.gitignore</code>に<code>.masuda/settings.local.json</code>を足す。<code>masuda serve</code>は要らない。既にあるファイルは上書きしない。雛形の<code>settings.json</code>の<code>egress</code>は空（Claude APIへの経路は常に開いているので宣言しない）。<code>.gitignore</code>に<code>.masuda/</code>ごと無視する行（<code>.masuda</code>・<code>.masuda/</code>・<code>.masuda/*</code>・<code>.masuda/**</code>、先頭<code>/</code>付きも）があれば、行を足さない。</p>
 <p>ホストでClaude Codeを使うときのために、次の2つも足す。どちらも個人用でコミットしないファイルにする。コミットしたものは<code>/workspace</code>のcloneでVMにも届くが、VMにはmasudaのバイナリが無く、VMのエージェントにホストの使い方は要らないため。</p>
 <table>
 <thead>

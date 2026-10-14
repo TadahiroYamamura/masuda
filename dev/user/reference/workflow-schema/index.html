@@ -1701,7 +1701,7 @@
 <li><code>step-diff</code>: <strong>ブランチ先頭から作業ツリーまで（未コミット）の差分</strong>。これから<code>commit</code>される内容そのもの。interim gateのようにcommitの<strong>前</strong>に置く承認に使う</li>
 <li>任意のデータ名: そのデータの内容</li>
 <li><code>foreach.over</code>は次のどれか。各項目は<code>step</code>・<code>perspective</code>・またはデータ名の単数形（<code>findings</code>→<code>finding</code>）で<code>body</code>の入力になる</li>
-<li><code>steps</code>（承認済み計画のステップ）、<code>perspectives</code>（全観点）、<code>perspectives(from=&lt;node&gt;)</code>（そのノードが<code>selected-perspectives</code>に選んだ観点）: <strong>Runnerが項目を返す</strong>（<code>Runner.Items</code>）</li>
+<li><code>steps</code>（承認済み計画のステップ）、<code>perspectives</code>（実装のレビューの観点。masudaでは<code>.masuda/reviews/implement/</code>の集合）、<code>perspectives(from=&lt;node&gt;)</code>（そのノードが<code>selected-perspectives</code>に選んだ観点）: <strong>Runnerが項目を返す</strong>（<code>Runner.Items</code>）</li>
 <li><code>&lt;データ名&gt;[]</code>（JSON配列のデータ）: <strong>エンジンが項目を作る</strong>。配列の各要素が項目で、キーは要素の<code>id</code>フィールド（無ければ添字）。任意のフィルタ<code>&lt;データ名&gt;[&lt;field&gt;=&lt;value&gt;]</code>で要素を絞れる（例: <code>findings[autofix=true]</code>。値は<code>true</code>/<code>false</code>/数値/文字列の等価比較のみ）。累積データ（下記）では、以前の反復が<code>done</code>で終わった要素（同じキー）は飛ばす</li>
 <li><code>findings</code>は<code>findings[]</code>の省略形</li>
 <li><code>with</code>は呼び出し先の入力名にデータ名を結びつける。書かなければ同名のデータを渡す</li>
