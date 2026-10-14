@@ -102,7 +102,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	if err := os.WriteFile(settings, []byte(`{"image":"go"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(root, ".masuda/reviews/dead-code.md")); err != nil {
+	if err := os.Remove(filepath.Join(root, ".masuda/reviews/implement/dead-code.md")); err != nil {
 		t.Fatal(err)
 	}
 	// 足すものが無ければ、利用者の書き方（ここでは1行のJSON）のまま残す。
@@ -118,7 +118,7 @@ func TestInitRepoWritesTemplatesAndKeepsExistingFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(created) != 1 || created[0] != filepath.Join(".masuda", "reviews", "dead-code.md") {
+	if len(created) != 1 || created[0] != filepath.Join(".masuda", "reviews", "implement", "dead-code.md") {
 		t.Fatalf("second init created %v", created)
 	}
 	if b, _ := os.ReadFile(settings); string(b) != `{"image":"go"}` {

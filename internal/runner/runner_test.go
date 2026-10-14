@@ -199,3 +199,29 @@ func TestRunPrivileged(t *testing.T) {
 		}
 	})
 }
+
+func TestPerspectiveItemsAreTheImplementSet(t *testing.T) {
+	r := &Runner{o: Options{Reviews: map[string][]byte{
+		"implement/dead-code.md":     []byte("dead"),
+		"implement/n-plus-one.md":    []byte("n1"),
+		"implement-plan/layering.md": []byte("layering"),
+	}}}
+	t.Run("perspectivesはimplementの集合の観点をidの順に返す", func(t *testing.T) {
+		items, err := r.Items(context.Background(), "run", "perspectives", engine.DataRef{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var keys []string
+		for _, it := range items {
+			keys = append(keys, it.Key+"="+string(it.Content)+"/"+it.Input)
+		}
+		if got := strings.Join(keys, ","); got != "dead-code=dead/perspective,n-plus-one=n1/perspective" {
+			t.Fatalf("items = %s", got)
+		}
+	})
+	t.Run("ほかの集合の観点はidで選んでも無いものとして断る", func(t *testing.T) {
+		if _, err := r.perspectiveItems([]string{"layering"}); err == nil || !strings.Contains(err.Error(), "does not exist") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}

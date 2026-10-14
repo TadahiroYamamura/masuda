@@ -32,17 +32,29 @@ func TestMissingTestsPerspectivesHaveNoTrigger(t *testing.T) {
 	}
 }
 
+// writeFiles はdirの下に、相対パス→中身のファイルを作る。
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, body := range files {
+		p := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func TestSnapshotMergesRepoOverBuiltinAndIsKeptOnSecondCall(t *testing.T) {
 	repo := t.TempDir()
-	if err := os.WriteFile(filepath.Join(repo, "dead-code.md"), []byte("mine"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "extra.md"), []byte("extra"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "notes.txt"), []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFiles(t, repo, map[string]string{
+		"implement/dead-code.md":     "mine",
+		"implement/extra.md":         "extra",
+		"implement/notes.txt":        "x",
+		"implement-plan/layering.md": "layering",
+		"test-plan/expected.md":      "expected",
+	})
 	dst := filepath.Join(t.TempDir(), "reviews")
 	if err := Snapshot(os.DirFS(repo), dst); err != nil {
 		t.Fatal(err)
@@ -51,19 +63,35 @@ func TestSnapshotMergesRepoOverBuiltinAndIsKeptOnSecondCall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 16 || string(got["dead-code.md"]) != "mine" || string(got["extra.md"]) != "extra" || got["notes.txt"] != nil {
-		t.Fatalf("snapshot: %d files, dead-code=%q", len(got), got["dead-code.md"])
-	}
-	// 再開では写しを作り直さない。
-	if err := os.WriteFile(filepath.Join(repo, "dead-code.md"), []byte("changed"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := Snapshot(os.DirFS(repo), dst); err != nil {
-		t.Fatal(err)
-	}
-	if got, _ := Load(dst); string(got["dead-code.md"]) != "mine" {
-		t.Fatalf("snapshot was rebuilt: %q", got["dead-code.md"])
-	}
+	t.Run("implementの集合は同梱の15観点に重なり、同じ名前は置き換わり、無い名前は足される", func(t *testing.T) {
+		n := 0
+		for name := range got {
+			if strings.HasPrefix(name, "implement/") {
+				n++
+			}
+		}
+		if n != 16 || string(got["implement/dead-code.md"]) != "mine" || string(got["implement/extra.md"]) != "extra" || got["implement/notes.txt"] != nil {
+			t.Fatalf("implement: %d files, dead-code=%q", n, got["implement/dead-code.md"])
+		}
+	})
+	t.Run("ほかの集合は同梱と重ならず、置いたものだけになる", func(t *testing.T) {
+		if string(got["implement-plan/layering.md"]) != "layering" || string(got["test-plan/expected.md"]) != "expected" || len(got) != 18 {
+			t.Fatalf("sets: %d files", len(got))
+		}
+		if _, ok := got["implement-plan/dead-code.md"]; ok {
+			t.Fatal("builtin perspectives must not leak into other sets")
+		}
+	})
+	t.Run("再開では写しを作り直さない", func(t *testing.T) {
+		writeFiles(t, repo, map[string]string{"implement/dead-code.md": "changed", "test-plan/expected.md": "changed"})
+		if err := Snapshot(os.DirFS(repo), dst); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := Load(dst)
+		if string(got["implement/dead-code.md"]) != "mine" || string(got["test-plan/expected.md"]) != "expected" {
+			t.Fatalf("snapshot was rebuilt: %q %q", got["implement/dead-code.md"], got["test-plan/expected.md"])
+		}
+	})
 }
 
 func TestSnapshotWithoutRepoReviewsIsBuiltin(t *testing.T) {
@@ -71,7 +99,8 @@ func TestSnapshotWithoutRepoReviewsIsBuiltin(t *testing.T) {
 	if err := Snapshot(nil, dst); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := Load(dst); len(got) != 15 {
+	got, _ := Load(dst)
+	if len(got) != 15 || got["implement/dead-code.md"] == nil {
 		t.Fatalf("snapshot of builtin = %d files", len(got))
 	}
 }
@@ -79,32 +108,67 @@ func TestSnapshotWithoutRepoReviewsIsBuiltin(t *testing.T) {
 func TestMergeDropsDisabledPerspectives(t *testing.T) {
 	repo := t.TempDir()
 	off := "---\nname: \"x\"\nenable: false\n---\nbody\n"
-	if err := os.WriteFile(filepath.Join(repo, "dead-code.md"), []byte(off), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "mine.md"), []byte(off), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(repo, "plain.md"), []byte("no frontmatter"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	writeFiles(t, repo, map[string]string{
+		"implement/dead-code.md": off,
+		"implement/mine.md":      off,
+		"implement/plain.md":     "no frontmatter",
+		"implement-plan/off.md":  off,
+		"implement-plan/kept.md": "kept",
+	})
 	all, err := Merge(os.DirFS(repo))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := all["dead-code.md"]; ok {
-		t.Fatal("a builtin perspective overridden with enable: false must be dropped")
+	t.Run("同梱の観点はリポジトリの同名ファイルのenable: falseで外れる", func(t *testing.T) {
+		if _, ok := all["implement/dead-code.md"]; ok {
+			t.Fatal("dropped")
+		}
+	})
+	t.Run("リポジトリだけの観点もenable: falseで外れる", func(t *testing.T) {
+		if _, ok := all["implement/mine.md"]; ok {
+			t.Fatal("implement/mine.md must be dropped")
+		}
+		if _, ok := all["implement-plan/off.md"]; ok {
+			t.Fatal("implement-plan/off.md must be dropped")
+		}
+	})
+	t.Run("frontmatterの無い観点は有効のまま残る", func(t *testing.T) {
+		if _, ok := all["implement/plain.md"]; !ok || all["implement-plan/kept.md"] == nil || len(all) != 16 {
+			t.Fatalf("enabled ones stay: %d", len(all))
+		}
+	})
+	t.Run("frontmatterが読めなければエラー", func(t *testing.T) {
+		writeFiles(t, repo, map[string]string{"test-plan/bad.md": "---\nenable: [\n---\n"})
+		if _, err := Merge(os.DirFS(repo)); err == nil || !strings.Contains(err.Error(), "test-plan/bad.md") {
+			t.Fatalf("err = %v", err)
+		}
+	})
+}
+
+func TestMergeRefusesMisplacedPerspectives(t *testing.T) {
+	for _, c := range []struct {
+		name  string
+		files map[string]string
+		want  string
+	}{
+		{"集合に入っていない直下の観点は、implementへ移すよう案内して断る", map[string]string{"dead-code.md": "x"}, "move it to implement/"},
+		{"集合の中のディレクトリは断る", map[string]string{"implement-plan/deep/x.md": "x"}, "cannot be nested"},
+		{"ドットで始まる集合は断る", map[string]string{".draft/x.md": "x"}, "must not start with"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			repo := t.TempDir()
+			writeFiles(t, repo, c.files)
+			if _, err := Merge(os.DirFS(repo)); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Fatalf("err = %v, want %q", err, c.want)
+			}
+		})
 	}
-	if _, ok := all["mine.md"]; ok {
-		t.Fatal("a disabled repo perspective must be dropped")
-	}
-	if _, ok := all["plain.md"]; !ok || len(all) != 15 {
-		t.Fatalf("enabled ones stay: %d", len(all))
-	}
-	if err := os.WriteFile(filepath.Join(repo, "bad.md"), []byte("---\nenable: [\n---\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Merge(os.DirFS(repo)); err == nil {
-		t.Fatal("a broken frontmatter must be an error")
-	}
+	t.Run("直下の.md以外のファイルとドットで始まるファイルは無視する", func(t *testing.T) {
+		repo := t.TempDir()
+		writeFiles(t, repo, map[string]string{"README.txt": "x", ".hidden.md": "x", "implement/.wip.md": "x"})
+		all, err := Merge(os.DirFS(repo))
+		if err != nil || len(all) != 15 {
+			t.Fatalf("%d %v", len(all), err)
+		}
+	})
 }

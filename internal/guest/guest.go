@@ -88,7 +88,7 @@ type Layout struct {
 	Checks map[string]string
 	// Prepare は準備のシェルコマンド（空なら無し）。PreparePathに置き、各チェックの先頭で呼ぶ。
 	Prepare string
-	// Reviews はレビュー観点の写し（`<id>.md`→中身）。ReviewsDirへ置く。
+	// Reviews はレビュー観点の写し（`<集合>/<id>.md`→中身）。ReviewsDirの下へ置く。
 	Reviews map[string][]byte
 	// Pitfalls は落とし穴（検査済みのJSON Lines）。空でなければPitfallsPathへ置く。
 	Pitfalls []byte
@@ -246,7 +246,7 @@ func writeClaudeDir(ctx context.Context, c sandboxv1connect.SandboxServiceClient
 	return nil
 }
 
-// writeReviews は観点の写しをゲストのReviewsDirへ置く。
+// writeReviews は観点の写しをゲストのReviewsDir/<集合>/へ置く。
 func writeReviews(ctx context.Context, c sandboxv1connect.SandboxServiceClient, id string, reviews map[string][]byte) error {
 	names := make([]string, 0, len(reviews))
 	for name := range reviews {
@@ -254,14 +254,24 @@ func writeReviews(ctx context.Context, c sandboxv1connect.SandboxServiceClient, 
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if name != path.Base(name) || strings.HasPrefix(name, ".") || path.Ext(name) != ".md" {
-			return fmt.Errorf("invalid review perspective file name %q", name)
+		p, err := reviewPath(name)
+		if err != nil {
+			return err
 		}
-		if err := WriteBytes(ctx, c, id, ReviewsDir+"/"+name, reviews[name], 0o644); err != nil {
+		if err := WriteBytes(ctx, c, id, p, reviews[name], 0o644); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// reviewPath は観点の写しの名前（`<集合>/<id>.md`）をゲストのパスにする。それ以外の形は断る。
+func reviewPath(name string) (string, error) {
+	set, file, ok := strings.Cut(name, "/")
+	if !ok || set == "" || strings.HasPrefix(set, ".") || file != path.Base(file) || strings.HasPrefix(file, ".") || path.Ext(file) != ".md" {
+		return "", fmt.Errorf("invalid review perspective file name %q", name)
+	}
+	return ReviewsDir + "/" + name, nil
 }
 
 // writeEnvFiles は生成したファイルを作業ツリーへ置き、ゲストの`.git/info/exclude`に足す。

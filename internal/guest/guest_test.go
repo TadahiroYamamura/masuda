@@ -183,3 +183,18 @@ func TestSettingsのPermissionRequestは入力をホストへ送り拒否と理�
 		t.Fatalf("decision = %+v", d)
 	}
 }
+
+func TestReviewPath(t *testing.T) {
+	t.Run("集合の中の観点はReviewsDirの下の集合のディレクトリに置く", func(t *testing.T) {
+		if p, err := reviewPath("implement-plan/layering.md"); err != nil || p != "/masuda/reviews/implement-plan/layering.md" {
+			t.Fatalf("%q %v", p, err)
+		}
+	})
+	for _, bad := range []string{"dead-code.md", "/x.md", "a/b/x.md", ".a/x.md", "a/.x.md", "a/x.txt", "a/"} {
+		t.Run("集合の中の.mdでない名前は断る: "+bad, func(t *testing.T) {
+			if _, err := reviewPath(bad); err == nil {
+				t.Fatal("must be refused")
+			}
+		})
+	}
+}
