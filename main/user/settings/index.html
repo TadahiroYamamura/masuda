@@ -656,6 +656,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#prepare" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prepare
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#claudesettings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1496,6 +1507,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#prepare" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        prepare
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#claudesettings" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1661,6 +1683,7 @@
 <span class="w">    </span><span class="nt">"test"</span><span class="p">:</span><span class="w"> </span><span class="s2">"go test ./..."</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"lint"</span><span class="p">:</span><span class="w"> </span><span class="s2">"go vet ./..."</span>
 <span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"prepare"</span><span class="p">:</span><span class="w"> </span><span class="s2">"make generate"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"claudeSettings"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
 <span class="w">    </span><span class="nt">"model"</span><span class="p">:</span><span class="w"> </span><span class="s2">"sonnet"</span><span class="p">,</span>
 <span class="w">    </span><span class="nt">"env"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"GOTOOLCHAIN"</span><span class="p">:</span><span class="w"> </span><span class="s2">"local"</span><span class="w"> </span><span class="p">}</span>
@@ -1795,7 +1818,7 @@
 </tr>
 </tbody>
 </table>
-<p>秘密の宣言。値はここに書かず、<code>masuda secret set &lt;name&gt;</code>で登録する。</p>
+<p>秘密の宣言。値はここに書かず、<code>masuda secret set &lt;name&gt;</code>で登録する。ここに書いた秘密はエージェントのVMに渡る。特権コマンドにだけ渡したい秘密は、<a href="#privilegedcommands"><code>privilegedCommands</code></a>の<code>secrets</code>に書く。</p>
 <table>
 <thead>
 <tr>
@@ -1932,8 +1955,27 @@
 <td><code>0</code>（= 1時間）</td>
 <td>打ち切りまでの時間。負は不可</td>
 </tr>
+<tr>
+<td><code>egress</code></td>
+<td>文字列の配列（ホスト名）</td>
+<td>空</td>
+<td>この特権VMにだけ足す通信先（<a href="#egress"><code>egress</code></a>と同じ書き方）。承認済みの<code>egress</code>に加えて開く。承認の対象（宣言のハッシュ）に入るので、<code>masuda egress approve</code>は要らない</td>
+</tr>
+<tr>
+<td><code>secrets</code></td>
+<td>オブジェクトの配列</td>
+<td>空</td>
+<td>この特権VMにだけ渡す秘密（<a href="#secrets"><code>secrets</code></a>と同じキー）。値は<code>masuda secret set &lt;name&gt;</code>で登録する。これを持つ宣言は、reviewゲートで承認したコミットに対して、ワークフローの<code>privileged</code>ノードからだけ動く（<a href="../secrets-and-egress/#privileged-secrets">秘密を使う特権コマンド</a>）</td>
+</tr>
 </tbody>
 </table>
+<p><code>secrets</code>には次の制約があり、破ると<code>settings.json</code>の読み込みで断られる。</p>
+<ul>
+<li><code>mode</code>は<code>placeholder</code>だけ。<code>CLAUDE_CODE_OAUTH_TOKEN</code>は書けない</li>
+<li>トップレベルの<code>secrets</code>と同じ名前は書けない（そちらはエージェントのVMに渡るため）</li>
+<li>各秘密の<code>hosts</code>は、そのコマンドの<code>egress</code>に含まれていなければならない（<code>*.</code>のワイルドカードで含んでもよい）</li>
+<li><code>inputs</code>と一緒には書けない（承認したコミットのツリーだけを渡すため）</li>
+</ul>
 <p>globは<code>/workspace</code>からの相対パスで、<code>*</code>・<code>?</code>・<code>[...]</code>は1つの階層の中、<code>**</code>は0個以上の階層に当たる。<code>..</code>・<code>.</code>・空の階層は書けない。ディレクトリ名だけのパターンは中のファイルに当たらないので、中身は<code>dir/**</code>と書く。</p>
 <h3 id="checks">checks<a class="headerlink" href="#checks" title="Permanent link">&para;</a></h3>
 <table>
@@ -1956,6 +1998,56 @@
 <li>終了コード0で成功（<code>done</code>）、それ以外で失敗（<code>failed</code>）</li>
 <li>ワークフローが呼ぶチェックが宣言されていなければ、<code>masuda run</code>が始める前に断る。同梱の<code>develop</code>は<code>test</code>を使う</li>
 <li>チェック名は<code>image</code>と同じ文字種</li>
+<li><code>prepare</code>を宣言していれば、コマンドの前に準備が流れる。準備が失敗すればそのチェックの失敗になる</li>
+</ul>
+<h3 id="prepare">prepare<a class="headerlink" href="#prepare" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>型</th>
+<th>既定</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文字列（シェルの1行）</td>
+<td>空（準備しない）</td>
+</tr>
+</tbody>
+</table>
+<p>コード生成や、Gitで運ばれない依存・生成物の配置といった準備。<code>checks</code>や特権コマンドのそれぞれに書き写さず、ここに1つ書く。同じものが次の3か所で流れる。</p>
+<table>
+<thead>
+<tr>
+<th>いつ</th>
+<th>どこで</th>
+<th>失敗したとき</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>VMの起動時（<code>resume</code>ならWIPを戻した後）に一度</td>
+<td>エージェントのVM</td>
+<td>起動は止めない。出力はVMの<code>/masuda/prepare.log</code>とワークスペースの<code>records/prepare.log</code>に残る。起動中の<code>masuda list</code>に<code>prepare failed</code>と出て、serveのログにも残る（起動を終えると表示は次の活動に替わる）</td>
+</tr>
+<tr>
+<td>各チェックの前</td>
+<td>エージェントのVM</td>
+<td>そのチェックの失敗</td>
+</tr>
+<tr>
+<td>各特権コマンドの前</td>
+<td>特権VM</td>
+<td>そのコマンドの失敗（ログに準備の出力も入る）</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><code>checks</code>と同じく、ログインシェル（<code>sh -el</code>）で<code>/workspace</code>から動く</li>
+<li>VMには<code>/masuda/prepare</code>として置かれるので、エージェントも定義を変えた後に呼び直せる</li>
+<li>特権VMはrootで動くが、準備だけは<code>HOME=/home/ubuntu</code>で流れる。イメージのビルドで<code>/home/ubuntu</code>の下に入れたツールやキャッシュを、エージェントのVMと同じパスで見つけられるように。コマンドの本体は<code>HOME=/root</code>のまま</li>
+<li>準備は特権コマンドの承認の対象に入る。<code>prepare</code>を変えると、すべての特権コマンドが<code>stale</code>になり、承認し直しが要る（<a href="../secrets-and-egress/#privileged">特権コマンド</a>）。<code>masuda privileged-command list</code>には準備は表示されないので、承認の前に<code>settings.json</code>で読む</li>
+<li>起動時の準備は30分で打ち切る</li>
 </ul>
 <h3 id="claudesettings">claudeSettings<a class="headerlink" href="#claudesettings" title="Permanent link">&para;</a></h3>
 <table>
@@ -2218,7 +2310,8 @@
 <div class="highlight"><span class="filename">~/.config/masuda/config.json</span><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"listen"</span><span class="p">:</span><span class="w"> </span><span class="s2">"127.0.0.1:7788"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"stallAfter"</span><span class="p">:</span><span class="w"> </span><span class="s2">"15m"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"diskWarnBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">32212254720</span>
+<span class="w">  </span><span class="nt">"diskWarnBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">32212254720</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"vmMemoryWarnPercent"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
 <span class="p">}</span>
 </code></pre></div>
 <table>
@@ -2254,6 +2347,18 @@
 <td>整数（バイト）</td>
 <td><code>21474836480</code>（20GiB）</td>
 <td>ワークスペース置き場（<code>~/.local/share/masuda/workspaces/</code>）の使用量の警告しきい値</td>
+</tr>
+<tr>
+<td><code>vmMemoryWarnPercent</code></td>
+<td>整数（1〜99）</td>
+<td><code>10</code></td>
+<td>エージェントのVMの使えるメモリが合計のこの割合（%）を下回ったら、活動に<code>memory low</code>を添える（<a href="../operations/#vm-resources">VMの中の資源の警告</a>）</td>
+</tr>
+<tr>
+<td><code>vmDiskWarnPercent</code></td>
+<td>整数（1〜99）</td>
+<td><code>90</code></td>
+<td>エージェントのVMの<code>/</code>・<code>/tmp</code>の使用率（%）がこれを超えたら、活動に<code>&lt;マウント先&gt; over &lt;N&gt;%</code>を添える</td>
 </tr>
 </tbody>
 </table>

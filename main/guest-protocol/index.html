@@ -1160,6 +1160,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masudaがメインセッションを起こす
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1335,6 +1346,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#masuda" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        masudaがメインセッションを起こす
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#_4" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1393,7 +1415,7 @@
 <ul>
 <li>ゲストからは<code>http://masuda.internal:7000/</code>。sandbox serviceの<code>tcp.hosts</code>で、そのワークスペース専用のホスト側ローカルポートへ対応付ける。別のVMからは届かない</li>
 <li><code>/mcp</code>がMCP（Streamable HTTP）、<code>/hooks</code>がClaude Codeフックの受け口</li>
-<li>MCPの<code>timeout</code>は7日。<code>next_task</code>はゲート待ち・質問待ちの間ブロックするため</li>
+<li>MCPの<code>timeout</code>は7日。<code>ask_human</code>は答えが来るまで、<code>run_privileged_command</code>は宣言の<code>timeoutSeconds</code>（既定3600秒）まで待つため。<code>next_task</code>は最大90秒で返る（下記）</li>
 </ul>
 <h2 id="_3">起動時にホストがゲストへ置くもの<a class="headerlink" href="#_3" title="Permanent link">&para;</a></h2>
 <table>
@@ -1433,8 +1455,12 @@
 <td><code>envFiles</code>宣言から生成（秘密はプレースホルダ）</td>
 </tr>
 <tr>
-<td><code>/masuda/reviews/*.md</code></td>
-<td>レビュー観点。ホストの実リポジトリの<code>.masuda/reviews/</code>（無ければ同梱の観点）をタスク開始時にスナップショットしたもの。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong>ここ</strong>を読む。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
+<td><code>/masuda/prepare</code>・<code>/masuda/prepare.log</code></td>
+<td><code>.masuda/settings.json</code>の<code>prepare</code>（準備のシェルの1行）を実行可能スクリプトとして置き、起動時（再開ならWIPを戻した後）に<code>/workspace</code>で一度流した出力を<code>prepare.log</code>に置く。起動時の失敗では起動を止めない。<code>/masuda/checks/*</code>は先頭でこれを呼ぶ。エージェントも定義を変えた後に呼び直してよい。特権VMでは、宣言のコマンドの前に<code>HOME=/home/ubuntu</code>で流れる（失敗はコマンドの失敗）。宣言が無ければ置かない</td>
+</tr>
+<tr>
+<td><code>/masuda/reviews/&lt;集合&gt;/*.md</code></td>
+<td>レビュー観点の集合。ホストの実リポジトリの<code>.masuda/reviews/&lt;集合&gt;/</code>をタスク開始時にスナップショットしたもの。<code>implement</code>の集合だけは同梱の観点に重ねる（リポジトリに無ければ同梱の観点だけ）。同梱のreviewer・review-checkerと<code>Runner.Items(perspectives)</code>は<strong><code>/masuda/reviews/implement/</code></strong>を読む。ほかの集合は、それを読むよう書いた利用者の役が使う。<code>/masuda/reviews/</code>の直下にファイルは置かない。ゲストのcloneの<code>.masuda/reviews/</code>は読まない（<code>.masuda/</code>をコミットしていないリポジトリでも観点が揃うように）</td>
 </tr>
 <tr>
 <td><code>/masuda/pitfalls.jsonl</code></td>
@@ -1442,11 +1468,11 @@
 </tr>
 <tr>
 <td><code>/masuda/privileged-commands.json</code></td>
-<td>特権コマンドの宣言。実行開始時に定義の写し（<code>records/definitions/</code>）の<code>privilegedCommands</code>から作る。名前→<code>{description?, command, image, inputs, outputs, timeoutSeconds}</code>（<code>timeoutSeconds</code>は省略時の既定3600を埋めた値）。宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの<code>settings.local.json</code>の承認で行う）</td>
+<td>特権コマンドの宣言。実行開始時に定義の写し（<code>records/definitions/</code>）の<code>privilegedCommands</code>から作る。名前→<code>{description?, command, image, inputs, outputs, timeoutSeconds}</code>（<code>timeoutSeconds</code>は省略時の既定3600を埋めた値）。秘密を使う宣言（<code>secrets</code>を持つもの）はエージェントから呼べないので載せない。載せる宣言が無ければ置かない。承認の状態は含まない。同梱のimplementerが読む。ホストはこのファイルを読み戻さない（実行の判断は名前と、定義の写しの宣言と、作業ツリーの<code>settings.local.json</code>の承認で行う）</td>
 </tr>
 <tr>
 <td><code>/masuda/privileged/&lt;run-id&gt;/</code></td>
-<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。<code>run_privileged_command</code>か<code>privileged</code>ノードで動かすたびに置く。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</td>
+<td>特権コマンドの結果の写し（<code>exit-code</code>・<code>log</code>・<code>outputs/</code>）。<code>run_privileged_command</code>か<code>privileged</code>ノードで動かすたびに置く。ただし秘密を使う宣言の結果は置かない（記録はホストにだけ残る）。<code>&lt;run-id&gt;</code>は<code>0001</code>からの連番</td>
 </tr>
 <tr>
 <td><code>~/.claude/.mcp.json</code>相当</td>
@@ -1462,6 +1488,8 @@
 <li>タスクに<code>continues</code>があり、その<code>agent_id</code>のサブエージェントがまだいれば、そのサブエージェントに<code>SendMessage</code>でタスクファイルのパスだけを送る。いなければ（VMの再開後など）、タスクが指す役（<code>role</code>）のサブエージェントを新しく起動し、タスクファイルのパスだけを渡して委譲する。自分では調査・実装・レビューをしない</li>
 <li>サブエージェントが<code>write_output</code>と<code>report_result</code>を呼び終えるのを待つ。呼んでいなければ、呼ぶよう差し戻す</li>
 <li><code>next_task</code>に直前のサブエージェントの<code>agent_id</code>を渡して1へ戻る。<code>next_task</code>が<code>done</code>または<code>blocked</code>を返したら終了する</li>
+<li><code>next_task</code>が<code>waiting</code>を返したら、何も呼ばず待たずにターンを終える。masudaに起こされたら（下記「masudaがメインセッションを起こす」）、同じ<code>agent_id</code>で<code>next_task</code>を呼んで続ける</li>
+<li><code>next_task</code>が失敗した（接続の失敗等）ときは、間を置いて数回呼び直す。それでも失敗するならターンを終える。自分の判断でループをやめない</li>
 </ol>
 <p>続きは「記憶はあれば使う。無くても成立する入力を常に渡す」。続けられたかどうかでタスクの入力は変わらないので、送る相手がいない・送れないときに新しく起動しても実行は成り立つ。</p>
 <p>メインセッションがゲートや質問を自分で解決する経路は無い。</p>
@@ -1479,8 +1507,8 @@
 <tr>
 <td><code>next_task</code></td>
 <td><code>agent_id?</code></td>
-<td><code>{kind: "task", occurrence, role, task_path, continues?}</code> / <code>{kind: "done", outcome}</code> / <code>{kind: "blocked", reason}</code></td>
-<td>engine.Advanceを1回進める。待ちの間はブロック。<code>agent_id</code>と<code>continues</code>は下記</td>
+<td><code>{kind: "task", occurrence, role, task_path, continues?}</code> / <code>{kind: "done", outcome}</code> / <code>{kind: "blocked", reason}</code> / <code>{kind: "waiting", reason, position}</code></td>
+<td>engine.Advanceを1回進める。次のタスクがまだ無い（ゲート・質問・triageの待ち、ホスト側のノードの実行中）ときは最大90秒待ち、その間に用意できなければ<code>waiting</code>を返す。<code>reason</code>は<code>gate</code> / <code>question</code> / <code>triage</code> / <code>running</code>、<code>position</code>は人間向けの位置（<code>gate plan (occ 0002)</code>等）。engineのエラーはエラーで返す。<code>agent_id</code>と<code>continues</code>は下記</td>
 </tr>
 <tr>
 <td><code>write_output</code></td>
@@ -1492,13 +1520,13 @@
 <td><code>report_result</code></td>
 <td><code>occurrence</code>, <code>outcome</code>, <code>feedback?</code>, <code>agent_id?</code></td>
 <td><code>{accepted: true}</code> / <code>{accepted: false, reason}</code></td>
-<td>宣言外のoutcome、<code>done</code>なのに未出力のoutputがあれば拒否。<code>done</code>以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。<code>agent_id</code>はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは<code>next_task</code>の<code>agent_id</code>で行う</td>
+<td>engineに記録した時点で返し、その後のホスト側のノード（exec・commit・publish等）の実行は待たない。宣言外のoutcome、<code>done</code>なのに未出力のoutputがあれば拒否。<code>done</code>以外の終わり方では、書かれた出力だけを検証して受け付ける（不正なら拒否）。<code>agent_id</code>はサブエージェント自身が自分のIDを知らないので通常は空。続きの宛先との結び付けは<code>next_task</code>の<code>agent_id</code>で行う</td>
 </tr>
 <tr>
 <td><code>report_concern</code></td>
 <td><code>occurrence</code>, <code>text</code></td>
 <td><code>{recorded: true}</code></td>
-<td>triageゲートを開く。以後<code>next_task</code>は人間の判断までブロック</td>
+<td>triageゲートを開く。以後、人間が判断するまで<code>next_task</code>は<code>{kind: "waiting", reason: "triage"}</code>を返す</td>
 </tr>
 <tr>
 <td><code>ask_human</code></td>
@@ -1510,7 +1538,7 @@
 <td><code>run_privileged_command</code></td>
 <td><code>name</code></td>
 <td><code>{exit_code, signal?, log, truncated, results_dir, outputs, outputs_error?, timed_out}</code></td>
-<td>宣言済み・承認済みの名前のみ。<code>results_dir</code>は<code>/masuda/privileged/&lt;run-id&gt;/</code>。<code>outputs_error</code>は宣言した<code>outputs</code>のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は<code>outputs</code>に返る</td>
+<td>宣言済み・承認済みの名前のみ。秘密を使う宣言の名前は断る（ワークフローの<code>privileged</code>ノードからだけ動く）。<code>results_dir</code>は<code>/masuda/privileged/&lt;run-id&gt;/</code>。<code>outputs_error</code>は宣言した<code>outputs</code>のうち回収できなかったもの（当たらなかったパターン、読めなかったファイル）の説明で、コマンドの終了コードとは独立。回収できた分は<code>outputs</code>に返る</td>
 </tr>
 </tbody>
 </table>
@@ -1520,8 +1548,22 @@
 <li>引数<code>agent_id</code>（任意）: 直前に完了したタスクを担当したサブエージェントのID。メインセッションが<code>Agent</code>ツールの結果から得る。続きのタスクで同じサブエージェントを続けたときも、そのサブエージェントのIDを渡す。masudaはそのメインセッションに最後に渡したタスクの出現にIDを結び付けて記録する。VMを作り直す再開では記録を消す（前のVMのIDは通じないため）</li>
 <li>戻り<code>continues</code>（任意）: <code>{occurrence, agent_id?}</code>。このタスクを続けて渡す宛先。<code>occurrence</code>はengineが決めた出現（ワークフローの<code>continues: agents/&lt;役&gt;</code>）、<code>agent_id</code>はその出現について<code>next_task</code>で報告されたID（報告が無ければ省く）</li>
 </ul>
+<h2 id="masuda">masudaがメインセッションを起こす<a class="headerlink" href="#masuda" title="Permanent link">&para;</a></h2>
+<p><code>next_task</code>が<code>waiting</code>を返した後、次のどれかが起きると、masudaはメインセッションのtmux（<code>claude-work</code>）の入力欄に決まった1文を送って起こす。</p>
+<ul>
+<li>ゲートの判断・質問の回答・エージェントの報告が記録された</li>
+<li>ホスト側のノードが終わり、次のタスクか終わり（<code>done</code>・<code>blocked</code>）に進んだ</li>
+<li><code>waiting</code>を返すのとほぼ同時に上のどちらかが起き、<code>next_task</code>がそれを見ずに<code>waiting</code>を返した</li>
+</ul>
+<p>送る文は「masudaからの知らせ: 待っていたものが進みました。next_taskを呼んで続けてください。」。sandboxのExecで<code>tmux send-keys -t claude-work -l &lt;文&gt;</code>を打ち、続けて<code>Enter</code>を押す。メインセッションが作業中でも、Claude Codeは入力を溜めて今の作業の後に処理する。</p>
+<ul>
+<li><code>tmux list-clients -t claude-work</code>にクライアントがいる（<code>masuda chat</code>でアタッチ中）間は送らない。人間が打っている入力に混ざるため。活動の<code>detail</code>に「起こす待ち（chat中）」と出し、見回り（長くても30秒ごと）でデタッチの後に送る</li>
+<li>送ってから60秒たっても<code>next_task</code>が来なければ送り直す。3回送っても来なければやめる</li>
+<li><code>next_task</code>が来れば、起こす必要も回数も忘れる</li>
+<li><code>resume</code>では起こさない。新しく起動したメインセッションが開始の文で自分から<code>next_task</code>を呼ぶ</li>
+</ul>
 <h2 id="_4">タスクファイル<a class="headerlink" href="#_4" title="Permanent link">&para;</a></h2>
-<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、続き（宛先の出現ID。<code>continues</code>があるときだけ）、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
+<p><code>next_task</code>が返す<code>task_path</code>は<code>/masuda/in/&lt;occ&gt;/task.md</code>。構成は、役割と実行位置、続き（宛先の出現ID。<code>continues</code>があるときだけ）、エージェント定義の本文、入力データのパス（<code>/masuda/in/&lt;occ&gt;/&lt;name&gt;</code>）、前のノード・ゲートからの申し送り（失敗・却下の差し戻しの理由や、承認に付けたコメント）、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、<code>report_concern</code>の案内。大きなものはすべてパスで渡し、埋め込まない。</p>
 <h2 id="hooks">フック（<code>/hooks</code>）<a class="headerlink" href="#hooks" title="Permanent link">&para;</a></h2>
 <p><code>~/.claude/settings.json</code>に次のフックを入れる。いずれも<code>curl -s -X POST http://masuda.internal:7000/hooks -d @-</code>でstdinのJSONをそのまま送る。</p>
 <table>
@@ -1547,6 +1589,10 @@
 <tr>
 <td><code>SessionEnd</code></td>
 <td>セッション終了（<code>dead</code>判定の補助）</td>
+</tr>
+<tr>
+<td><code>PermissionRequest</code></td>
+<td>確認が必要な操作（bypass modeでも出る、重要なパスを狙う<code>rm</code>等）。送った上で、<code>hookSpecificOutput.decision</code>を<code>deny</code>にし、無人実行であることと代わりの手段を<code>message</code>で返す。答える人がいないため待たない。許可はしない</td>
 </tr>
 </tbody>
 </table>

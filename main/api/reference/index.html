@@ -3055,7 +3055,8 @@ API traffic (trustworthy) and guest hooks (informative).</p>
 </tbody>
 </table>
 <p>&#34;permission&#34;, &#34;idle&#34;, &#34;question&#34;, &#34;&#34; |
-| detail | <a href="#string">string</a> |  |  |</p>
+| detail | <a href="#string">string</a> |  |  |
+| resource_warning | <a href="#string">string</a> |  | Host-measured strain inside the VM while it lasts: &#34;memory low&#34;, &#34;&lt;mount&gt; over &lt;N&gt;%&#34; (for / and /tmp), &#34;oom-kill x&lt;count since the VM booted&gt;&#34;, comma-separated. Stays the same while the strain lasts, so a status event carries it only when it changes. Empty when nothing is strained or the VM has not been measured. Independent of kind. |</p>
 <p><a name="masuda-api-v1-AddCommentRequest"></a></p>
 <h3 id="addcommentrequest">AddCommentRequest<a class="headerlink" href="#addcommentrequest" title="Permanent link">&para;</a></h3>
 <table>

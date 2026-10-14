@@ -1508,7 +1508,7 @@
 <tr>
 <td><code>Run</code></td>
 <td><code>invalid_argument</code></td>
-<td><code>repo_root</code>が不正。<code>workflow</code>か<code>branch</code>が空。<code>.masuda/</code>を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。<code>workflow</code>が定義に無い。ワークフローの<code>inputs</code>が足りない。<code>.masuda/reviews/</code>の観点ファイルのfrontmatterが読めない。<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。ブランチ名が不正。<code>base</code>が実リポジトリに無い。既存のブランチで分岐元を決められない（<code>base</code>を渡す）</td>
+<td><code>repo_root</code>が不正。<code>workflow</code>か<code>branch</code>が空。<code>.masuda/</code>を読めない。定義が読み込めない・検査で問題がある（問題の一覧がメッセージに入る）。<code>workflow</code>が定義に無い。ワークフローの<code>inputs</code>が足りない。<code>.masuda/reviews/</code>の観点ファイルのfrontmatterが読めない・観点が集合のディレクトリに入っていない（直下の<code>.md</code>、2段以上の深さ、<code>.</code>で始まる集合）。<code>settings.json</code>の<code>agents</code>に定義に無い役の名前がある。ブランチ名が不正。<code>base</code>が実リポジトリに無い。既存のブランチで分岐元を決められない（<code>base</code>を渡す）</td>
 </tr>
 <tr>
 <td></td>

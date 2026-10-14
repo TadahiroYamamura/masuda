@@ -1618,7 +1618,45 @@
 <li><code>~/.config/masuda/config.json</code>はハーネスと共有で、<code>sandboxSocket</code>が書いてあれば明示しない限りそちらが使われる。開発版は<code>--sandbox-socket</code>を必ず明示する</li>
 <li>開発版のCLIは毎回<code>--socket "$XDG_RUNTIME_DIR/masuda-dev.sock"</code>を付ける（既定はハーネスの<code>masuda.sock</code>）</li>
 <li>秘密はデータディレクトリに置かれるので、開発版のserveにはトークンを別に登録する: <code>./masuda secret set CLAUDE_CODE_OAUTH_TOKEN --socket "$XDG_RUNTIME_DIR/masuda-dev.sock"</code>（値は標準入力から）</li>
-<li><strong>sandbox</strong>: 普段は共有（ハーネスの<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>）で、開発版のmasudaの<code>--sandbox-socket</code>もそこを指してよい。<code>masuda version</code>の<code>contract: ok</code>はハーネスのmasudaと共有のsandboxの組で見る。<code>sandbox.proto</code>を変える作業では、開発版の<code>masuda-sandbox serve</code>（<code>../masuda-sandbox</code>の<code>node dist/cli.js serve</code>）を<code>$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock</code>で立て、開発版のmasudaはそちらを指す</li>
+<li><strong>sandbox</strong>: 普段は共有（ハーネスの<code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code>）で、開発版のmasudaの<code>--sandbox-socket</code>もそこを指してよい。<code>masuda version</code>の<code>contract: ok</code>はハーネスのmasudaと共有のsandboxの組で見る。<code>sandbox.proto</code>を変える作業とリリース前の確認（手順1-0・1-2）では、下の<strong>開発版のsandbox</strong>を立て、開発版のmasudaとliveはそちらを指す</li>
+<li><strong>開発版のsandbox</strong>: ソケットに加えて、記録とイメージの資産もハーネスから切り離して立てる。こうしておけば、ハーネスでワークスペースが走っていても（ゲート待ちを含む）並べて確かめられる</li>
+</ul>
+<div class="highlight"><pre><span></span><code><span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">XDG_DATA_HOME</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/share/masuda-sandbox-dev-xdg"</span><span class="w"> </span><span class="nv">GONDOLIN_IMAGE_STORE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.cache/gondolin-dev/images"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>切り離すもの</th>
+<th>既定の場所</th>
+<th>共有したときに起きること</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>ソケット</td>
+<td><code>$XDG_RUNTIME_DIR/masuda-sandbox.sock</code></td>
+<td>ハーネスのserveと同じソケットで待ち受けられない</td>
+</tr>
+<tr>
+<td>記録（<code>sandboxes.json</code>・<code>images.json</code>）: <code>XDG_DATA_HOME</code></td>
+<td><code>~/.local/share/masuda-sandbox</code></td>
+<td>2つのserveが同じファイルを書き換え、ハーネスのVMやイメージの記録を上書きしうる</td>
+</tr>
+<tr>
+<td>イメージの資産: <code>GONDOLIN_IMAGE_STORE</code></td>
+<td><code>~/.cache/gondolin/images</code></td>
+<td>契約テストの<code>DeleteImage</code>や<code>prune</code>が、自分の<code>images.json</code>に無い資産としてハーネスのイメージを消しうる</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>開発版の資産の置き場は初回は空なので、イメージは作り直しになる（数分。2回目からはそこに残る）</li>
+<li><strong>メモリ</strong>: VMは既定で4096MiB。立てる前に<code>grep MemAvailable /proc/meminfo</code>が「VMの分＋1.5GiB」以上あること。回している間も見て、1.5GiBを切ったら止める（WSL2がOOMになるとハーネスのVMも巻き込まれる）</li>
+<li>開発版のVMを使うもの同士（liveの2つ、契約テスト）は同時に走らせない。同じ開発版のsandboxを順に使う</li>
+<li><strong>孤児の確認</strong>: 立てる前に<code>pgrep -a qemu-system</code>でハーネスのqemuのpidを控え、終わった後にそれ以外が残っていないことを見る</li>
+<li>ハーネスの更新（手順6）だけは、従来どおりハーネスのワークスペースをすべて終わらせてから行う</li>
 <li><strong>masuda自身の<code>.masuda/</code></strong>: 入っているハーネスの版で読める範囲に留める。新しい設定・スキーマは、その版をハーネスにしてから使う</li>
 <li><strong>gate・questionの操作</strong>: serveとCLIは同じ版の組で使う。ハーネスのserveのgate・questionはハーネスのCLI（<code>masuda</code>）で操作し、開発版のCLI（<code>./masuda</code>）をハーネスのserveに向けない。開発版のserveは開発版のCLIで操作する</li>
 <li><strong>liveテスト（<code>live/</code>）</strong>: VMの中では回せないので、ホストで開発版として回す。liveは既定で共有のsandboxに繋ぐ。<code>sandbox.proto</code>が変わる作業とリリース前の確認（手順1-0・1-2）では、<code>MASUDA_SANDBOX_SOCKET="$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock"</code>で開発版のsandboxを指す</li>
@@ -1636,11 +1674,13 @@
 <p>最新版を知る（<code>install.sh</code>が引数なしで入れる版と同じURLから引く）。</p>
 <div class="highlight"><pre><span></span><code>.claude/skills/release/scripts/claude-code-latest.sh<span class="w">   </span><span class="c1"># 例 2.1.288</span>
 </code></pre></div>
-<p><code>internal/guest/guest.go</code>の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。</p>
+<p><code>internal/guest/guest.go</code>の定数をその版にし、短いものから順に回す（落ちるなら早く落とす。VMを使うものは同時に走らせない）。VMを使う段は、「開発版との分離」の<strong>開発版のsandbox</strong>で回す（メモリと孤児の確認もそこに従う）。</p>
 <div class="highlight"><pre><span></span><code><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>./cmd/masuda/<span class="w"> </span>./internal/guest/<span class="w"> </span>./live/
 .claude/skills/release/scripts/precheck.sh<span class="w"> </span>--claude-code<span class="w">    </span><span class="c1"># 版が雛形・liveに入り、配布元に実在する</span>
 <span class="c1"># 開発版のsandboxを立てる（liveは既定でハーネスのsandboxに繋ぎ、sandbox.protoが変わるリリースでは契約が合わず起動しない）</span>
-<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
+<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">XDG_DATA_HOME</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/share/masuda-sandbox-dev-xdg"</span><span class="w"> </span><span class="nv">GONDOLIN_IMAGE_STORE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.cache/gondolin-dev/images"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
 <span class="c1"># 継続テスト（約1分。ログのcontinuation-reportの1行目が新しい版であること）</span>
 <span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
 <span class="c1"># 実機1周（15〜20分）</span>
@@ -1652,6 +1692,7 @@
 <ul>
 <li><strong>通れば</strong>（既定）: <code>chore(guest): Claude Codeを&lt;版&gt;に上げる</code>の1コミットにする。本文の<code>## 意図</code>に、上げる前の版と、継続テスト・1周が通ったことを書く。<code>develop</code>へpushする</li>
 <li><strong>通らなければ</strong>: 定数を前の版に戻す（コミットしない）。追跡Issueと、公開後にReleaseのノートへ「最新版 X では〜が動かないため Y で検証」と書く。原因は別Issueに切る（再現手順・落ちたテスト・ログの該当行）。前の版で両方が通ることは下の「遅い確認」で確かめる</li>
+<li><strong>channelsの状態を見る</strong>: 上げる前の版から新しい版までのCHANGELOG（https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md）で<code>channel</code>を探し、research previewのままかを追跡Issueに1行書く（例「channels: preview のまま」）。正式になった、無人の起動で確認ダイアログが出なくなった、などの変化があれば#109にも書く。正式になる時期が決まっていないので、版を上げるたびに見ることで検討が置き去りにならないようにしている</li>
 </ul>
 <h3 id="1-1">1-1. 速い確認<a class="headerlink" href="#1-1" title="Permanent link">&para;</a></h3>
 <p>速い確認は<code>scripts/precheck.sh vX.Y.Z</code>にまとめてある。masudaのチェックアウトから打つ（隣に<code>../masuda-engine</code>と<code>../masuda-sandbox</code>がある前提。無ければ<code>MASUDA_ENGINE_DIR</code>・<code>MASUDA_SANDBOX_DIR</code>で場所を渡す）。</p>
@@ -1660,9 +1701,11 @@
 <p>確かめること: 3リポジトリの作業ツリーがcleanでoriginと一致、<code>vX.Y.Z</code>のタグが未使用、masudaの<code>GOWORK=off</code>でのbuild・vet・test（契約テストC-M*を含む）、ゲストのClaude Codeの版（<code>--claude-code</code>と同じ段。最新版と違えばinfoで出す）、engineのtest、sandboxの単体テスト、<code>internal/sandboxcontract/sha.go</code>の再生成に差分が無いこと、<code>release.yml</code>と同じクロスビルドで<code>masuda version</code>が版を出すこと、<code>clients/ts</code>の<code>npm pack --dry-run</code>。</p>
 <p><code>go.work</code>があるとテストは隣の<code>../masuda-engine</code>の作業ツリーで走る。固定した版で確かめたいので、スクリプトは<code>GOWORK=off</code>を付ける。</p>
 <h3 id="1-2">1-2. 遅い確認<a class="headerlink" href="#1-2" title="Permanent link">&para;</a></h3>
-<p>遅い確認は手で回す。VMを使うものは同時に走らせない（ハーネスで走っているワークスペースも含む。契約テストは資産ストアを書き換え、開発版とハーネスのsandboxが資産ストアを共有するかはこのリポジトリからは確かめられない）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。</p>
+<p>遅い確認は手で回す。VMを使うものは同時に走らせず、1-0と同じく「開発版との分離」の<strong>開発版のsandbox</strong>で回す。記録と資産を切り離してあるので、ハーネスで走っているワークスペースとは並べてよい（契約テストは資産を消すので、切り離さずに回すとハーネスのイメージを消しうる）。1-0で継続テストと1周を今の定数で通していれば、liveの2行は回し直さなくてよい。開発版のsandboxは1-0の末尾で止めてあるので、ここで起動行から始める。</p>
 <div class="highlight"><pre><span></span><code><span class="c1"># masuda-sandboxの契約テスト（実VM。serveを起動した状態で。向こうのdocs/release.md「タグを打つ前に」）</span>
-<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
+<span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nv">XDG_DATA_HOME</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.local/share/masuda-sandbox-dev-xdg"</span><span class="w"> </span><span class="nv">GONDOLIN_IMAGE_STORE</span><span class="o">=</span><span class="s2">"</span><span class="nv">$HOME</span><span class="s2">/.cache/gondolin-dev/images"</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span><span class="nb">exec</span><span class="w"> </span>node<span class="w"> </span>dist/cli.js<span class="w"> </span>serve<span class="w"> </span>--socket<span class="w"> </span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="o">)</span><span class="w"> </span><span class="p">&amp;</span><span class="w"> </span><span class="nv">sbpid</span><span class="o">=</span><span class="nv">$!</span>
 <span class="o">(</span><span class="nb">cd</span><span class="w"> </span>../masuda-sandbox<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span>pnpm<span class="w"> </span>test:contract<span class="o">)</span>
 <span class="c1"># masudaの継続テスト（約1分）→実機1周（15〜20分）。同じserveを使う。短いほうを先に回して早く落とす</span>
 <span class="nb">cd</span><span class="w"> </span>../masuda<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nv">MASUDA_SANDBOX_SOCKET</span><span class="o">=</span><span class="s2">"</span><span class="nv">$XDG_RUNTIME_DIR</span><span class="s2">/masuda-sandbox-dev.sock"</span><span class="w"> </span><span class="nv">MASUDA_LIVE_TEST</span><span class="o">=</span><span class="m">1</span><span class="w"> </span><span class="nv">GOWORK</span><span class="o">=</span>off<span class="w"> </span>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-count<span class="o">=</span><span class="m">1</span><span class="w"> </span>-timeout<span class="w"> </span>20m<span class="w"> </span>-v<span class="w"> </span>-run<span class="w"> </span>TestGuestSubagentContinuation<span class="w"> </span>./live/
@@ -1684,7 +1727,7 @@
 <span class="w">  </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">/prefix/bin/masuda-sandbox"</span><span class="w"> </span>--version
 <span class="o">)</span>
 rm<span class="w"> </span>-rf<span class="w"> </span><span class="s2">"</span><span class="nv">$t</span><span class="s2">"</span>
-pgrep<span class="w"> </span>-af<span class="w"> </span>qemu-system<span class="w">   </span><span class="c1"># 孤児が無いこと</span>
+pgrep<span class="w"> </span>-a<span class="w"> </span>qemu-system<span class="w">   </span><span class="c1"># 立てる前に控えたハーネスのqemu以外が残っていないこと</span>
 </code></pre></div>
 <p>liveが完走したら、ログに2分以上の無反応が無いかも見る（#65の停止は1周に2回ほど出る。完走を妨げないが、増えていたら記録する）。</p>
 <h2 id="2-masuda-engine">2. masuda-engineのタグ<a class="headerlink" href="#2-masuda-engine" title="Permanent link">&para;</a></h2>
@@ -1779,7 +1822,7 @@ pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">"</span>
 <li><strong>GitHubのランナー（Ubuntu 24.04）</strong>: AppArmorが非特権ユーザー名前空間を禁じているため、フェイクsandboxの<code>unshare -Urm</code>を使うテスト（C-M7・serveの特権コマンド）が落ちる。<code>ci.yml</code>・<code>release.yml</code>に<code>sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0</code>のステップがある。ランナーの像が変わったら最初に疑う</li>
 <li><strong>同じソケットに2つのserve</strong>: 既定のソケットとデータディレクトリはハーネスが使う。確かめるもの・開発版のserveは別のソケットとデータディレクトリで立てる。データディレクトリを2つのmasuda serveで共有しない（「開発版との分離」）</li>
 <li><strong><code>docs.yml</code>のengineの文書</strong>: サイトはmasuda-engineの既定ブランチ（<code>main</code>）から<code>workflow-schema.md</code>を取り込む。engineの<code>main</code>の先頭がタグと同じ時点で打てば一致する</li>
-<li><strong>sandboxの契約テストと資産ストア</strong>: 契約テストはサービス稼働中に共有の資産ストアを書き換える（masuda-sandbox #5）。liveとも、ハーネスで走っているワークスペースとも同時に走らせない</li>
+<li><strong>sandboxの契約テストと資産ストア</strong>: 契約テストはサービス稼働中に資産ストアを書き換える（masuda-sandbox #5）。開発版のsandboxを<code>XDG_DATA_HOME</code>・<code>GONDOLIN_IMAGE_STORE</code>で切り離さずに回すと、ハーネスのイメージの記録や資産を壊しうる。liveとは同時に走らせない</li>
 </ul>
 
 
