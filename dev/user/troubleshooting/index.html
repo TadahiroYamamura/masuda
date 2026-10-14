@@ -1880,6 +1880,7 @@
 <p>ワークスペースの<code>exports/</code>（<code>~/.local/share/masuda/workspaces/&lt;id&gt;/exports/</code>）に、実行ログ（<code>execution-log.jsonl</code>）とVMの中のClaude Codeの会話ログ（<code>transcripts/</code>）が残る。どの終わり方（<code>done</code>・<code>stop</code>・<code>remove</code>）でも書き出され、<code>remove</code>の後も消えない（<a href="../operations/#exports">exports</a>）。</p>
 <ul>
 <li>どのノードでどう終わったかは実行ログで追う。<code>jq -c 'select(.kind=="finish" or .kind=="blocked" or .kind=="invalid") | {time, node, outcome, detail}' exports/execution-log.jsonl</code></li>
+<li><code>finish</code>の<code>detail</code>は短く切られる。チェックが何で落ちたか、エージェントが<code>stuck</code>等で終わった理由の全文は、<code>detail</code>の先頭の<code>[全文: records/results/&lt;出現ID&gt;/...]</code>が指すファイルにある（ワークスペースのディレクトリからの相対パス。<code>masuda watch</code>のfinishの行にも出る）</li>
 <li>エージェントが何を考えて止まったかは会話ログで読む。メインのセッションが<code>transcripts/-workspace/&lt;session&gt;.jsonl</code>、サブエージェントがその下の<code>subagents/agent-*.jsonl</code></li>
 <li><code>blocked</code>と、ワークフローの途中で止まった<code>suspended</code>はVMを残しているので、会話ログはまだ書き出されていない。<code>masuda chat</code>で画面を見るか、<code>masuda stop</code>で書き出してから読む</li>
 <li><code>done</code>ではVMが壊れているので<code>masuda chat</code>は使えない。会話ログを読む</li>

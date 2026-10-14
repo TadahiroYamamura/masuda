@@ -1793,6 +1793,10 @@ jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'select(.ki
 <td><code>records/privileged/&lt;run-id&gt;/</code></td>
 <td>特権コマンドの記録</td>
 </tr>
+<tr>
+<td><code>records/results/&lt;出現ID&gt;/</code></td>
+<td>出現の結果の全文。<code>output.log</code>はexecノード（チェック等）の標準出力と標準エラー（末尾1MiBまで）、<code>feedback.md</code>はエージェントが終わるときに書いた理由（<code>report_result</code>の<code>feedback</code>）。実行ログの<code>finish</code>の<code>detail</code>は短く切られるので、全文がある出現では<code>detail</code>の先頭に<code>[全文: records/results/&lt;出現ID&gt;/&lt;ファイル&gt;]</code>が付く</td>
+</tr>
 </tbody>
 </table>
 
