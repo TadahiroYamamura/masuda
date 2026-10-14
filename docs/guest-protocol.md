@@ -78,7 +78,7 @@ VM内のエージェントとmasudaの間の取り決め。masudaが所有する
 
 ## タスクファイル
 
-`next_task`が返す`task_path`は`/masuda/in/<occ>/task.md`。構成は、役割と実行位置、続き（宛先の出現ID。`continues`があるときだけ）、エージェント定義の本文、入力データのパス（`/masuda/in/<occ>/<name>`）、前のノードからの差し戻し、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、`report_concern`の案内。大きなものはすべてパスで渡し、埋め込まない。
+`next_task`が返す`task_path`は`/masuda/in/<occ>/task.md`。構成は、役割と実行位置、続き（宛先の出現ID。`continues`があるときだけ）、エージェント定義の本文、入力データのパス（`/masuda/in/<occ>/<name>`）、前のノード・ゲートからの申し送り（失敗・却下の差し戻しの理由や、承認に付けたコメント）、書くべき出力の名前、終わり方（宣言したoutcomeと説明）、`report_concern`の案内。大きなものはすべてパスで渡し、埋め込まない。
 
 ## フック（`/hooks`）
 

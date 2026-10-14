@@ -1151,6 +1151,12 @@ func (h *harness) privilegedResult(wsID, runID string) map[string]any {
 // planAndApprove gets the run past the planner and the plan gate.
 func (h *harness) planAndApprove(id string) {
 	h.t.Helper()
+	h.planAndApproveWith(id, "")
+}
+
+// planAndApproveWith is planAndApprove with a comment on the approval.
+func (h *harness) planAndApproveWith(id, comment string) {
+	h.t.Helper()
 	ctx := context.Background()
 	task := h.mcp(id, "next_task", nil)
 	occ := task["occurrence"].(string)
@@ -1167,7 +1173,7 @@ func (h *harness) planAndApprove(id string) {
 		h.t.Fatalf("open gates: %v %+v", err, open)
 	}
 	g := open.Msg.Gates[0]
-	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash}})); err != nil {
+	if _, err := h.gates.Decide(ctx, connect.NewRequest(&apiv1.DecideRequest{WorkspaceId: id, Occurrence: g.Occurrence, Decision: &apiv1.Decision{Outcome: "approved", TargetHash: g.TargetHash, Comment: comment}})); err != nil {
 		h.t.Fatalf("Decide: %v", err)
 	}
 }
@@ -1187,6 +1193,34 @@ func (h *harness) workLap(id, answer string) map[string]any {
 		h.t.Fatalf("report_result: %v", r)
 	}
 	return h.mcp(id, "next_task", nil)
+}
+
+// 承認に付けたコメントは、承認の行き先のエージェントのタスクに申し送りとして載る。
+// 差し戻しの見出しでは載せない（承認されたのに却下されたと読み違えないように）。
+func TestCM5_ApprovalCommentReachesTheNextAgent(t *testing.T) {
+	files := smokeRepo()
+	files[".masuda/settings.json"] = privilegedSettings
+	files[".masuda/workflows/verify.yaml"] = privilegedWorkflow
+	h := start(t, files)
+	if _, err := h.config.ApprovePrivilegedCommand(context.Background(), connect.NewRequest(&apiv1.NameRequest{RepoRoot: h.repo, Name: "itest"})); err != nil {
+		t.Fatal(err)
+	}
+	res, err := h.ws.Run(context.Background(), connect.NewRequest(&apiv1.RunRequest{RepoRoot: h.repo, Workflow: "workflows/verify", Branch: "feat/c", Inputs: map[string][]byte{"instructions": []byte("x")}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := res.Msg.Id
+	h.waitState(id, apiv1.WorkspaceState_WORKSPACE_STATE_RUNNING, 15*time.Second)
+	h.planAndApproveWith(id, "answer.txtは1行にする")
+
+	next := h.mcp(id, "next_task", nil)
+	if next["role"] != "smoke-implementer" {
+		t.Fatalf("expected the work task: %v", next)
+	}
+	task, _ := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", next["task_path"].(string)))
+	if !strings.Contains(string(task), "## 前のノード・ゲートからの申し送り\n\nanswer.txtは1行にする") || strings.Contains(string(task), "差し戻し") {
+		t.Fatalf("the approval comment must reach the next task as a handover, not as a send-back:\n%s", task)
+	}
 }
 
 // A privileged node runs the declared command by name and branches on its exit:
@@ -1214,7 +1248,7 @@ func TestCM11_PrivilegedNodeBranchesOnExit(t *testing.T) {
 		t.Fatalf("a failed privileged command must send the run back to work: %v", retry)
 	}
 	task, _ := os.ReadFile(filepath.Join(h.dataDir, "fake", id, "root", retry["task_path"].(string)))
-	if !strings.Contains(string(task), "前回からの差し戻し") || !strings.Contains(string(task), `特権コマンド"itest"`) || !strings.Contains(string(task), "answer=bad") {
+	if !strings.Contains(string(task), "前のノード・ゲートからの申し送り") || !strings.Contains(string(task), `特権コマンド"itest"`) || !strings.Contains(string(task), "answer=bad") {
 		t.Fatalf("the retry's feedback must carry the log tail:\n%s", task)
 	}
 	if rec := h.privilegedResult(id, "0001"); rec["occurrence"] == nil || rec["occurrence"] == "" || rec["exit_code"] != float64(1) {
