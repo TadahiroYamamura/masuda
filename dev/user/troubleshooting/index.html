@@ -779,6 +779,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#vm-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        活動に[memory low]・[oom-kill ...]が出る・チェックが急に遅い
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dockerfile-env" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1456,6 +1467,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#vm-memory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        活動に[memory low]・[oom-kill ...]が出る・チェックが急に遅い
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#dockerfile-env" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1756,6 +1778,21 @@
 <p>キャッシュを<code>/tmp</code>へ逃がさない。<code>/tmp</code>はtmpfs（VMのメモリの上）なので、大きなキャッシュ（Goの<code>GOCACHE</code>、pip・npmのキャッシュ）を置くと、まともに開発を回すとメモリの上限（<code>images.&lt;entry&gt;.memoryMiB</code>）にすぐ当たる。ディスク（既定の<code>~/.cache</code>等）に置いたまま、上のようにディスクを増やす。既に<code>/tmp</code>へ向けている（<code>ENV GOCACHE=/tmp/...</code>や<code>claudeSettings.env</code>）なら外す</p>
 </li>
 </ul>
+<h2 id="vm-memory">活動に<code>[memory low]</code>・<code>[oom-kill ...]</code>が出る・チェックが急に遅い<a class="headerlink" href="#vm-memory" title="Permanent link">&para;</a></h2>
+<p>VMの中のメモリが足りない（<a href="../operations/#vm-resources">VMの中の資源の警告</a>）。メモリが尽きかけるとチェックやClaude Codeが極端に遅くなり、OOM killerがプロセスを殺すとチェックが失敗する。</p>
+<ul>
+<li><code>/tmp</code>に大きなものを置いていないか確かめる。<code>/tmp</code>はtmpfsでメモリを使う。<code>/tmp over 90%</code>が一緒に出ていれば、ほぼこれ。上の<code>No space left on device</code>の2つ目のとおり、キャッシュはディスクへ置く</li>
+<li>テストの並列数を減らす（jestの<code>--maxWorkers</code>、<code>go test -p</code>等）。ワーカーごとにメモリを使う</li>
+<li>
+<p><code>settings.json</code>で、使うイメージのエントリのメモリを増やす。次の<code>run</code>・<code>resume</code>から効く</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span><span class="w"> </span><span class="nt">"images"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"default"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"memoryMiB"</span><span class="p">:</span><span class="w"> </span><span class="mi">8192</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+</li>
+<li>
+<p>中を見るには<code>masuda chat &lt;id&gt;</code>で入り、<code>free -m</code>・<code>df -h / /tmp</code>を見る</p>
+</li>
+</ul>
+<p><code>/ over 90%</code>なら、上の<code>No space left on device</code>と同じ手当て（ディスクを増やす）。</p>
 <h2 id="dockerfile-env">Dockerfileの<code>ENV</code>が効かない<a class="headerlink" href="#dockerfile-env" title="Permanent link">&para;</a></h2>
 <p>DockerfileのENVはVMの中のプロセスに引き継がれ、PATHの先頭には<code>~/.local/bin</code>が足される。それでも<code>ENV PATH=/usr/local/go/bin:$PATH</code>等が届かないときは、次を確かめる。</p>
 <ul>

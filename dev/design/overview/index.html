@@ -1386,6 +1386,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#vm_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMの中の資源
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1999,6 +2010,17 @@
     <span class="md-ellipsis">
       
         ディスク使用量
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vm_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMの中の資源
       
     </span>
   </a>
@@ -2945,6 +2967,17 @@ masuda
 <li>しきい値は<code>config.json</code>の<code>diskWarnBytes</code>（既定20GiB）。置き場はserve全体で1つなので、リポジトリごとの設定には置かない</li>
 <li>下回っていた状態から超えたときにだけ、標準エラーへのログとWatchの<code>ServeNotice{kind: "disk-warning", value: 使用量}</code>（<code>workspace_id</code>が空）を1回出す。超えたままなら繰り返さない（serveを再起動すると、超えたままなら起動直後にもう一度出る）</li>
 <li>何も消さない。何を残すかは利用者が<code>masuda remove</code>で決める</li>
+</ul>
+<h3 id="vm_1">VMの中の資源<a class="headerlink" href="#vm_1" title="Permanent link">&para;</a></h3>
+<p>VMの中のメモリやディスクが尽きると、チェックやエージェントが止まったのか遅いだけなのかをホストから区別できない（#88。tmpfsの<code>/tmp</code>に置いたビルドキャッシュとjestでメモリが尽きた）。そこで、エージェントのVMの中を測り、逼迫を活動の<code>resource_warning</code>に載せる。</p>
+<ul>
+<li><code>Exec</code>での生存確認（30秒ごと）の後に、同じVMで<code>/proc/meminfo</code>・<code>/proc/vmstat</code>・<code>df -Pk / /tmp</code>を読む。ゲストのClaude Codeやワークフローの協力は要らない。sandboxの<code>metrics</code>はホストから見たQEMUのRSSだけで、VMの中の使えるメモリやtmpfsの使用量は分からないため、こちらで測る</li>
+<li>警告するのは、使えるメモリ（<code>MemAvailable</code>）が合計の<code>vmMemoryWarnPercent</code>（既定10）%未満、<code>/</code>・<code>/tmp</code>の使用率が<code>vmDiskWarnPercent</code>（既定90）%超、<code>oom_kill</code>（VMの起動からの回数）が1以上のとき。しきい値は<code>config.json</code>。マシンの大きさに依るので、リポジトリごとの設定には置かない</li>
+<li><code>resource_warning</code>には数値を入れず（<code>"memory low"</code>・<code>"/tmp over 90%"</code>・<code>"oom-kill x2"</code>）、逼迫が続く間は同じ文字列にする。<code>status</code>は内容が変わったときだけ流れるので、測るたびに流さずに済む。測った値は、警告が変わったときに標準エラーへのログに出す</li>
+<li>測れなかった（Execの失敗・出力が読めない）ときは前の表示を残し、ログだけ出す。測れていないものを「余裕がある」とみなさない</li>
+<li><code>ServeNotice</code>には載せない。serve全体についての通知（<code>workspace_id</code>が空）という意味を変えずに済み、<code>masuda list</code>のACTIVITYにも同じものが出せる</li>
+<li>特権コマンドのVM（<code>RunJob</code>）は測らない。使い捨てで、ジョブの終わりに消える</li>
+<li>DONE・STOPPED・BLOCKED・SUSPENDEDでは見せない。ゲート・質問の待ちでは見せる（tmpfsはその間もメモリを占める）</li>
 </ul>
 <h2 id="9-api">9. 公開API<a class="headerlink" href="#9-api" title="Permanent link">&para;</a></h2>
 <p><code>masuda serve</code>がConnectで提供する。UIもCLIも同じAPIを使う。Protobufで定義し、gRPCとHTTP+JSONの両方で呼べる。</p>

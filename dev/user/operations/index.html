@@ -718,6 +718,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#vm-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMの中の資源の警告
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1347,6 +1358,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#vm-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VMの中の資源の警告
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1488,7 +1510,7 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tr>
 <tr>
 <td>ACTIVITY</td>
-<td>VMの中のClaude Codeが今何をしているか（下表）と、最後に活動してからの経過</td>
+<td>VMの中のClaude Codeが今何をしているか（下表）と、最後に活動してからの経過。VMの中のメモリ・ディスクが逼迫していれば<code>[...]</code>で添える（<a href="#vm-resources">下記</a>）</td>
 </tr>
 <tr>
 <td>POSITION</td>
@@ -1554,6 +1576,31 @@ masuda<span class="w"> </span>list<span class="w"> </span>--repo<span class="w">
 </tbody>
 </table>
 <p>活動は、ホストが見ているClaude APIへの通信（VMの中から偽れない）を一番に信じ、VMの中のClaude Codeのフックの知らせを補助に使って決める。</p>
+<h3 id="vm-resources">VMの中の資源の警告<a class="headerlink" href="#vm-resources" title="Permanent link">&para;</a></h3>
+<p>masudaは動いているVMの中のメモリとディスクを30秒ごとに測り、逼迫していれば活動に添える（例: <code>working [memory low, /tmp over 90%] 2m ago</code>）。<code>masuda watch</code>の<code>status</code>の行にも同じものが出る。</p>
+<table>
+<thead>
+<tr>
+<th>表示</th>
+<th>意味</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memory low</code></td>
+<td>使えるメモリが合計の10%を下回った</td>
+</tr>
+<tr>
+<td><code>/ over 90%</code>・<code>/tmp over 90%</code></td>
+<td>ルートディスク・<code>/tmp</code>（tmpfs。メモリを使う）の使用率が90%を超えた</td>
+</tr>
+<tr>
+<td><code>oom-kill x&lt;回数&gt;</code></td>
+<td>VMの中でOOM killerがプロセスを殺した（VMの起動からの回数。起動し直すまで消えない）</td>
+</tr>
+</tbody>
+</table>
+<p>しきい値は<a href="../settings/#serve-config"><code>config.json</code></a>で変えられる。出たときの手当ては<a href="../troubleshooting/#vm-memory">トラブルシューティング</a>。</p>
 <h2 id="watch">流れを見る<a class="headerlink" href="#watch" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code>masuda<span class="w"> </span>watch<span class="w">            </span><span class="c1"># 全ワークスペース</span>
 masuda<span class="w"> </span>watch<span class="w"> </span>&lt;id&gt;<span class="w">       </span><span class="c1"># 1つだけ</span>

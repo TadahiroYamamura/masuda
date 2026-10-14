@@ -2310,7 +2310,8 @@
 <div class="highlight"><span class="filename">~/.config/masuda/config.json</span><pre><span></span><code><span class="p">{</span>
 <span class="w">  </span><span class="nt">"listen"</span><span class="p">:</span><span class="w"> </span><span class="s2">"127.0.0.1:7788"</span><span class="p">,</span>
 <span class="w">  </span><span class="nt">"stallAfter"</span><span class="p">:</span><span class="w"> </span><span class="s2">"15m"</span><span class="p">,</span>
-<span class="w">  </span><span class="nt">"diskWarnBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">32212254720</span>
+<span class="w">  </span><span class="nt">"diskWarnBytes"</span><span class="p">:</span><span class="w"> </span><span class="mi">32212254720</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"vmMemoryWarnPercent"</span><span class="p">:</span><span class="w"> </span><span class="mi">15</span>
 <span class="p">}</span>
 </code></pre></div>
 <table>
@@ -2346,6 +2347,18 @@
 <td>整数（バイト）</td>
 <td><code>21474836480</code>（20GiB）</td>
 <td>ワークスペース置き場（<code>~/.local/share/masuda/workspaces/</code>）の使用量の警告しきい値</td>
+</tr>
+<tr>
+<td><code>vmMemoryWarnPercent</code></td>
+<td>整数（1〜99）</td>
+<td><code>10</code></td>
+<td>エージェントのVMの使えるメモリが合計のこの割合（%）を下回ったら、活動に<code>memory low</code>を添える（<a href="../operations/#vm-resources">VMの中の資源の警告</a>）</td>
+</tr>
+<tr>
+<td><code>vmDiskWarnPercent</code></td>
+<td>整数（1〜99）</td>
+<td><code>90</code></td>
+<td>エージェントのVMの<code>/</code>・<code>/tmp</code>の使用率（%）がこれを超えたら、活動に<code>&lt;マウント先&gt; over &lt;N&gt;%</code>を添える</td>
 </tr>
 </tbody>
 </table>
