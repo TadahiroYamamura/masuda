@@ -1,45 +1,59 @@
 # HANDOFF
 ## 作業項目
-2026-10-14。v0.5.0の作業を進めた。いずれもdevelop（sandboxは`main`）へ入れてpush済みで、作業ブランチは消した。
+2026-10-14〜15。v0.5.0を公開し、ハーネスを0.3.0から0.5.0へ上げた（追跡Issue #116）。
 
-| Issue | 中身 | masudaのコミット |
+| リポジトリ | タグ | コミット |
 |---|---|---|
-| #88 | VMの中のメモリ・ディスクの逼迫を、公開APIの`Activity.resource_warning`に載せる（契約変更・承認済み）。しきい値は`config.json`の`vmMemoryWarnPercent`・`vmDiskWarnPercent` | `a7dad1f`・`3d5e9ba`（マージ`8003855`）。Issueは閉じた |
-| #85・#83・#74 | 10-11までに実装済みだった。修正が`origin/develop`に入っていることを確かめて閉じた | ― |
-| #65・#84 | 閉じた。根治はsandbox#9（gondolinのTCP）・sandbox#8（ssh転送）で追う。新しいIssueは立てない（ユーザー判断） | ― |
-| sandbox#11 | VMの起動の後（`vm.start()`の直後）に、ゲストで`.ko.gz`を展開して`depmod`する。depmodの無いイメージと、空きが足りないディスクでは何もしない。masudaの文書に「特権VMでDockerを動かす」節 | sandbox `cac186f`（`main`）、masuda `ad97d24`。**Issueはまだ閉じていない** |
-| ハーネスの報告（10-14） | ハーネスのセッションから3件。(1)execの出力 (2)finishのdetailが切れる、は全文が`records/engine.json`の`<run>/result/<出現>`のfeedback（base64のJSON）にしか無く辿れない件として**#115**（v0.5.0）にした。(3)承認の`--comment`は次のノードに渡っていたが、タスクファイルで「前回からの差し戻し」の見出しだった。見出しを「前のノード・ゲートからの申し送り」に変えた（契約の`guest-protocol.md:81`の記述も、承認のうえで直した。契約テストC-M5を1件追加） | `30c67c2`（マージ`94a147a`） |
-| #115 | execの出力（`records/results/<出現>/output.log`、末尾1MiB）とエージェントの`report_result`のfeedbackの全文（`feedback.md`）を書き出し、実行ログの`finish`の`detail`の先頭に`[全文: records/results/...]`を付ける。契約テストC-M4を1件追加。Issueは閉じた | `5d5bdbe`（マージ`d4843e1`） |
-| #113 | レビュー観点を段階ごとの集合（`.masuda/reviews/<集合>/`）に分け、ゲストの`/masuda/reviews/<集合>/`へ届ける（契約変更・承認済み） | `d978e2d`・`e13237e`・`e55effa`（マージ`651b146`）。**Issueはまだ閉じていない** |
+| masuda | v0.5.0 | `7c75d28` |
+| masuda-engine | v0.5.0 | `25f2947` |
+| masuda-sandbox | v0.5.0 | `8fcd146` |
 
-#113の形（ユーザーの判断、10-14）:
-- 実装のレビューの観点も`implement`の集合に移し、3つの段階を対称にする（案2）。直下の`.md`は置かない
-- 同梱の15観点は`implement`の集合に入り、そこにだけ重なる。ほかの集合は置いたものだけ
-- 直下の`.md`・集合の中のディレクトリ・`.`で始まる集合は、`run`が`InvalidArgument`で断る
-- `Runner.Items(perspectives)`は`implement`の集合を返す。engineの`over`の文法は変えない
-- 後方互換は考えない（利用者はユーザーだけ）。以前の版で始めたワークスペースの写しは読まない
-sandbox#11の形（ユーザー判断、10-14）: 案A'。ビルドの設定の`init.rootfsInitExtra`に書く案Aは、Gondolinがディスクを拡げるのが`start()`の中（rootfsInitExtraより後）なので空きが常に足りず、展開できなかった。ビルドの時点で展開する案（B〜E）は、Gondolinの内部に頼り、版上げで黙って元に戻るので取らない。代わりに、VMごとに1〜2秒と約110MBのディスクを使う
-- engineは`25f2947`（同梱のreviewer・review-checkerが`/masuda/reviews/implement/*.md`を読む）を`main`へ入れてpushした。masudaの`go.mod`はその擬似バージョン（`v0.4.1-0.20261014110642-25f2947937da`）
+v0.5.0に入れたもの（このセッション分）:
+- #88: VMの中の資源の警告（`Activity.resource_warning`、契約変更）
+- #113: 観点を段階ごとの集合に分ける（`.masuda/reviews/<集合>/`、`implement`だけ同梱と重なる。直下の`.md`は`run`が断る。契約変更）
+- #115: execの出力と、エージェントの理由の全文を残す（`records/results/<出現>/`。finishの`detail`の先頭から在りかを指す）
+- 承認のコメントの見出しを「前のノード・ゲートからの申し送り」に変えた（`30c67c2`、契約の記述を直した）
+- masuda-sandbox#11: 起動の後にカーネルのモジュールを展開する（`cac186f`）
+- ゲストのClaude Codeを2.1.299へ（`82dcb9d`）
+
+Issueの整理（10-14）:
+- #85・#83・#74・#88・#115を閉じた
+- #65・#84は閉じた。根治はsandbox#9・#8で追う。sandbox#8はv0.6へ移した
+
+ハーネスの更新（10-15）:
+- ワークスペース17件を`remove`した
+- oncall_pf_templateの`.masuda/reviews/*.md`を`implement/`へ移した
+- 0.5.0を入れ、`doctor`がすべてokであることを確かめた
+- Dockerfileのゲストの版を2.1.299にし、3つのイメージを作り直した
+  - masuda: `default`（`0df7411`）
+  - oncall_pf_template: `oncall-platform`・`oncall-platform-e2e`
 ## 完了した契約テスト
-- `go build ./...`・`go vet ./...`・`go test ./...`が、`go.work`のもとでも`GOWORK=off`でも緑（契約テストを含む）
-- #88: 単体テスト（`serve/resources_test.go`）。判定の分岐13か所を壊し、すべてテストが落ちることを確かめた。実機（開発版のsandbox、2048MiBのVM）で、`/tmp over 90%`・`memory low`・`oom-kill x1`が出て、`/tmp`を消すと戻ることを確かめた
-- #113: 単体テスト（`internal/perspectives`・`internal/guest`の`TestReviewPath`・`internal/runner`の`TestPerspectiveItemsAreTheImplementSet`）と、フェイクを使ったserveのテスト（`serve/reviews_test.go`。ゲストに集合ごとに置かれること、直下の`.md`は断ること）。判定の分岐を壊すと12か所すべてでテストが落ちる（残る1か所は以前の写しを読む分岐で、後方互換を考えないので消した）
+- リリース前の確認（#116の1-0〜1-2）
+  - 継続テスト: 1分40秒
+  - 実機1周: 6分22秒。2分以上の無反応なし
+  - `precheck.sh`: すべてok
+  - sandboxの契約テスト: 16件
+  - tarballの予行、qemuの孤児なし
+- 公開後の確認（#116の5）
+  - ノートの3タグ・コミットが一致
+  - 添付物5つ
+  - サイトの`0.5`に`latest`
+  - 一時ディレクトリに入れて`version`・`doctor`
 ## 未完と理由
-- sandbox#11は、masuda経由で特権VMのdockerdを動かす1周を回していない（確かめたのはモジュールの読み込みまで）。v0.5.0を出したらハーネスで確かめて閉じる
-- #113は実VMで確かめていない。ゲストの`WriteFile`が親ディレクトリを作ること（`sandbox.proto`）に頼っている。次の実機の周回で、`/masuda/reviews/implement/`に15観点があり、reviewerがそこを読むことを見る。見たら#113を閉じる
-- **ハーネスを上げるときは、ハーネスのリポジトリの`.masuda/reviews/*.md`を`.masuda/reviews/implement/`へ移す**。移さないと`run`がエラーになる。reviewerを`.masuda/agents/`で上書きしていれば、その中の`/masuda/reviews/*.md`も直す
-- #88: 本物の`masuda serve`の見回りの中で警告が出る様子は、実機で見ていない（エージェントを使う1周が要る）
-- v0.5.0で開いているのは、実機の確認待ちの#113とsandbox#11だけ。sandbox#8の保険`8670a19`（`fix/destroy-with-ssh`）は、sandboxのmainに入っていない
-- 前のセッションから持ち越し：
-  - engineのタグを打ったら、masudaの`go.mod`をそのタグに上げる
-  - v0.4.0の手順6・7
+- ハーネスで軽いタスクを動かして確かめる（ユーザーが行う予定）。確かめたら閉じる
+  - #113: `/masuda/reviews/implement/`に15観点が届き、reviewerがそこを読む
+  - sandbox#11: 特権VMでdockerdが動く
+  - 併せて見ること: #88のACTIVITYの警告、#115のfinishの`[全文: ...]`、2.1.299のアイドル時の圧縮（ゲート待ちのメインセッション）
+- sandboxの契約テストのC-S3（`timedOut`）が、3回のうち1回落ちた。`exec.ts`の`guestTimedOut`のコメントにある、起動直後の時計のずれと見ている（未確認）。続くようならIssueにする
+- v0.4.0の追跡Issue #107が開いたまま（手順6は飛ばしてv0.5.0で上げた）。閉じるかはユーザーに確かめる
+- 持ち越し:
   - sandboxの`fix/destroy-with-ssh`（sandbox#8）の判断
   - マイルストーンの無いIssue（#103〜#106・#108・#60）の振り分け
   - Gondolin #155への返事
 ## 次の一手
-1. v0.5.0をリリースする（Skill `release`。sandbox→engine→masudaの順にタグを打つ。タグのpushはユーザー）。engineのタグを打ったら、masudaの`go.mod`をそのタグに上げる
-2. ハーネスを上げる。その前に、ハーネスのリポジトリの`.masuda/reviews/*.md`を`implement/`へ移す
-3. ハーネスで軽いタスクを動かし、#113（`/masuda/reviews/implement/`に15観点、reviewerがそこを読む）を確かめて閉じる（ユーザーが行う予定）。特権VMでdockerdを動かせるならsandbox#11も確かめて閉じる
+1. ハーネスで軽いタスクを動かした結果を受けて、#113・sandbox#11を閉じる
+2. #107を閉じるか確かめる
+3. v0.6のIssueの選定
 ## 注意点
 - **engineの差分の承認が記録するコミットは、その実行の`commit`ノードが作ったものだけ**。`commit`ノードには承認済みの計画が要るので、エージェントを使わないワークフローでは秘密付きの特権ノードを通せない。実機で試すときは、`privileged.Run`を直接呼ぶプローブにする（今回の方法）
 - 自動モードの権限判定：masuda-sandboxの編集は`.claude/settings.local.json`の`Edit(/home/ubuntu/work/masuda-sandbox/**)`で通る。秘密関連のcommitは止まるので、ユーザーに`!`で打ってもらう。判定を迂回しない
@@ -47,7 +61,7 @@ sandbox#11の形（ユーザー判断、10-14）: 案A'。ビルドの設定の`
 - 開発版のsandboxの起動：`(cd ../masuda-sandbox && pnpm build && XDG_DATA_HOME="$HOME/.local/share/masuda-sandbox-dev-xdg" GONDOLIN_IMAGE_STORE="$HOME/.cache/gondolin-dev/images" exec node dist/cli.js serve --socket "$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock")`
   - liveの実行：`MASUDA_SANDBOX_SOCKET=$XDG_RUNTIME_DIR/masuda-sandbox-dev.sock MASUDA_LIVE_TEST=1 go test ./live/`
   - 止めるとき：`pgrep`では見つからないことがある（プロセス名が`MainThread`）。`/proc/*/cmdline`でソケットのパスを確かめてから、そのpidを止める
-- ハーネス（sandbox 1008368・serve 1008554）は10-13 12:42から動いている。ハーネスの`RunJob`のVMは、ジョブが終われば消える（消えても異常ではない）
+- ハーネスは10-15にv0.5.0へ上げた。serveとsandboxはユーザーが端末で起動している（pidは控えていない）。ハーネスの`RunJob`のVMは、ジョブが終われば消える（消えても異常ではない）
 - 走っているプローブを止めるときは、プローブのserveのソケットへ`go run ./cmd/masuda stop -socket <dataDir>/masuda.sock <id>`を送る。テストの後始末がVMを壊す。プローブの一時ディレクトリにはClaudeのトークンの写しが入るので、終わったら消す
 - チェックアウトの状態：masudaは`develop`、masuda-sandboxとmasuda-engineは`main`（いずれもoriginと同じ）。masudaの`go.work`は隣のengineを使う
 - フェイクのsandboxは、cwdとHOMEだけをゲストのrootへ写す。コマンドの中の絶対パス（`/masuda/checks/X`等）は写らないので、フェイクでは動かない
@@ -59,4 +73,7 @@ sandbox#11の形（ユーザー判断、10-14）: 案A'。ビルドの設定の`
 - この端末の`~/.gitconfig`は会社用。masuda・masuda-sandbox・masuda-engine・gondolinのcloneには、ローカルで個人用の作者を入れてある
 - この端末（WSL2）は時計が前後に約10秒跳ぶ
 ## 契約への提案
-無し（#88の`Activity.resource_warning`と、#113の`guest-protocol.md`の`/masuda/reviews/<集合>/*.md`は、いずれもユーザー承認のうえで変更済み）。
+無し。v0.5.0の契約の変更は、すべてユーザー承認のうえで入れた:
+- `Activity.resource_warning`
+- `guest-protocol.md`の`/masuda/reviews/<集合>/`
+- `guest-protocol.md`のタスクファイルの申し送りの記述
