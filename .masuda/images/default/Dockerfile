@@ -22,7 +22,7 @@ COPY --chown=ubuntu:ubuntu ctx/go.mod ctx/go.sum /tmp/modprefetch/
 USER ubuntu
 WORKDIR /home/ubuntu
 # Claude Codeの版はinternal/guest.ClaudeCodeVersion（masudaが実機で検証した版）に合わせる。
-RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.292
+RUN curl -fsSL https://claude.ai/install.sh | bash -s -- 2.1.299
 ENV PATH=/home/ubuntu/.local/bin:/home/ubuntu/go/bin:$PATH
 # GOCACHE は既定（~/.cache/go-build、ルートディスク）のまま。tmpfs の /tmp はVMのメモリを使い、
 # go test ./... 全体でメモリの上限に当たるため（#88）。ディスクは settings.json の diskMiB で足りる分を取る。
